@@ -22,6 +22,42 @@ docker-compose up -d
 docker-compose logs -f
 ```
 
+## Pre-configured RuneLite Plugins
+
+The Docker image comes with these RuneLite plugins pre-configured:
+
+### Quest Helper (Plugin Hub)
+Automatically installed from Plugin Hub on first launch. Provides step-by-step quest guidance.
+
+### Screenshot Plugin (Built-in)
+Enabled by default to capture important game events:
+
+| Event Type | Enabled | Notes |
+|------------|---------|-------|
+| Level ups | ✅ | All 99s and milestones captured |
+| Pet drops | ✅ | Rare pet acquisitions |
+| Deaths | ✅ | Critical for HCIM tracking |
+| Valuable drops | ✅ | Threshold: 100k+ GP value |
+| Untraded valuable drops | ✅ | Untradeable rares |
+| Boss kills | ✅ | Boss KC milestones |
+| Quest/Clue rewards | ✅ | Completion screenshots |
+| Collection log entries | ✅ | New unique items |
+| Combat achievements | ✅ | CA completions |
+
+Screenshots are saved to `~/.runelite/screenshots/` inside the container.
+
+**To access screenshots from host:**
+```bash
+# Copy screenshots to host
+docker cp rocinante_account1:/home/runelite/.runelite/screenshots ./screenshots_account1/
+
+# Or mount as volume in docker-compose.yml:
+volumes:
+  - ./screenshots/account1:/home/runelite/.runelite/screenshots
+```
+
+---
+
 ## Managing Accounts
 
 ### Start/Stop Individual Accounts
