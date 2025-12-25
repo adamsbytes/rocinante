@@ -16,7 +16,7 @@ export const BotCard: Component<BotCardProps> = (props) => {
   const [showLogs, setShowLogs] = createSignal(false);
 
   const handleCardClick = () => {
-    navigate({ to: '/bots/$id', params: { id: props.bot.id } });
+    navigate(`/bots/${props.bot.id}`);
   };
 
   const handleStart = (e: MouseEvent) => {
@@ -36,7 +36,7 @@ export const BotCard: Component<BotCardProps> = (props) => {
 
   const handleEdit = (e: MouseEvent) => {
     e.stopPropagation();
-    navigate({ to: '/bots/$id/edit', params: { id: props.bot.id } });
+    navigate(`/bots/${props.bot.id}/edit`);
   };
 
   const isRunning = () => props.bot.status.state === 'running';
