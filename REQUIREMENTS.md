@@ -2624,18 +2624,31 @@ The implementation is complete when:
 
 ## 20. Docker Deployment
 
-**Deployment Model**: One container per account. Each container runs isolated with dedicated proxy, resources, and behavioral profile.
+**Deployment Model**: Web management app as primary entrypoint. Bot containers are created dynamically via the management UI, one container per account. Each bot container runs isolated with dedicated proxy, resources, and behavioral profile.
 
-**Benefits**: Proxy isolation (one proxy per container), crash isolation, simple scaling (`docker-compose up -d accountN`), resource limits per account.
+**Architecture**:
+- `web/` — Management web app (SolidJS + Bun backend)
+- `bot/` — Bot container image (RuneLite + Rocinante plugin)
+- Bot containers are created programmatically via Docker API, not defined in docker-compose.yml
+
+**Benefits**: Web-based management UI, dynamic container creation, VNC viewing, proxy isolation (one proxy per container), crash isolation, resource limits per account.
 
 **Quick Start**:
 ```bash
-cp .env.example .env        # Configure accounts and proxies
-docker-compose build
-docker-compose up -d        # Start all accounts
-docker logs -f rocinante_account1
+# 1. Build the bot image
+docker build -t rocinante-bot:latest ./bot
+
+# 2. Start the management app
+docker-compose up -d
+
+# 3. Open http://localhost:3000 to manage bots via web UI
 ```
 
-**Files**: `Dockerfile`, `docker-compose.yml`, `entrypoint.sh`, `.env.example` (see inline comments for configuration).
+**Files**:
+- `bot/Dockerfile` — Bot container image
+- `bot/entrypoint.sh` — Bot container startup script
+- `web/` — Management web app source
+- `docker-compose.yml` — Management app service definition
+- `data/bots.json` — Bot configurations (managed via web UI)
 
-**Critical**: Backup `./profiles/` directory - contains unique behavioral fingerprints that cannot be regenerated.
+**Critical**: Backup `./data/` directory (bot configurations) and `./profiles/` directory (unique behavioral fingerprints that cannot be regenerated).

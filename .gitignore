@@ -1,43 +1,31 @@
-# Gradle
-.gradle/
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
 build/
-out/
+*.class
+
+# Environment
+.env
+.env.local
+.env.*.local
 
 # IDE
 .idea/
 *.iml
-*.ipr
-*.iws
-.project
-.classpath
-.settings/
-*.swp
-*.swo
 .vscode/
 
 # OS
 .DS_Store
 Thumbs.db
 
-# RuneLite
-.runelite/
-
-# Profiles (contains behavioral fingerprints - sensitive)
-bot/profiles/*.json
-bot/profiles/*.json.bak
-
-# Wiki cache (can be regenerated)
-wiki-cache/
-
 # Logs
 *.log
 logs/
 
-# Environment
-.env
-.env.local
+# Data (contains sensitive bot configs)
+data/bots.json
 
-# Compiled
-*.class
-*.jar
-!bot/gradle/wrapper/gradle-wrapper.jar
+# Gradle
+.gradle/
