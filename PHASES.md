@@ -3,12 +3,12 @@
 ## Phase 1: Core Foundation
 **Goal**: Bot can perform basic humanized clicks and read game state.
 
-- [ ] `RobotMouseController` - Bezier curves, click variance, idle behavior
-- [ ] `RobotKeyboardController` - Typing simulation, hotkeys
-- [ ] `InputProfile` - Per-session randomized characteristics
-- [ ] `HumanTimer` - Gaussian/Poisson delays, named profiles
-- [ ] `GameStateService` - Tick-based state polling and caching
-- [ ] `PlayerState`, `InventoryState`, `EquipmentState` - Basic state tracking
+- [X] `RobotMouseController` - Bezier curves, click variance, idle behavior
+- [X] `RobotKeyboardController` - Typing simulation, hotkeys
+- [X] `InputProfile` - Per-session randomized characteristics
+- [X] `HumanTimer` - Gaussian/Poisson delays, named profiles
+- [X] `GameStateService` - Tick-based state polling and caching
+- [X] `PlayerState`, `InventoryState`, `EquipmentState` - Basic state tracking
 
 **Test**: Click objects in-game with humanized movement. Verify timing distributions match spec.
 
