@@ -96,13 +96,17 @@ export async function startBot(bot: BotConfig): Promise<void> {
     return;
   }
 
-  // Build environment variables
+  // Build environment variables for Jagex Launcher authentication
   const env: string[] = [
     'DISPLAY=:99',
-    'ENABLE_VNC=true',
-    `ACCOUNT_USERNAME=${bot.username}`,
+    `ACCOUNT_EMAIL=${bot.username}`,
     `ACCOUNT_PASSWORD=${bot.password}`,
   ];
+
+  // Add TOTP secret if provided (for 2FA)
+  if (bot.totpSecret) {
+    env.push(`TOTP_SECRET=${bot.totpSecret}`);
+  }
 
   if (bot.proxy) {
     env.push(`PROXY_HOST=${bot.proxy.host}`);

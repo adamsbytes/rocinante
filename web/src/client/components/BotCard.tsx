@@ -1,7 +1,8 @@
-import type { Component } from 'solid-js';
+import { type Component, createSignal, Show } from 'solid-js';
 import { Link } from '@tanstack/solid-router';
 import type { BotWithStatus } from '../../shared/types';
 import { StatusBadge } from './StatusBadge';
+import { LogsViewer } from './LogsViewer';
 import { useStartBotMutation, useStopBotMutation } from '../lib/api';
 
 interface BotCardProps {
@@ -11,6 +12,7 @@ interface BotCardProps {
 export const BotCard: Component<BotCardProps> = (props) => {
   const startMutation = useStartBotMutation();
   const stopMutation = useStopBotMutation();
+  const [showLogs, setShowLogs] = createSignal(false);
 
   const handleStart = (e: Event) => {
     e.preventDefault();
@@ -22,6 +24,12 @@ export const BotCard: Component<BotCardProps> = (props) => {
     e.preventDefault();
     e.stopPropagation();
     stopMutation.mutate(props.bot.id);
+  };
+
+  const handleShowLogs = (e: Event) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setShowLogs(true);
   };
 
   const isRunning = () => props.bot.status.state === 'running';
@@ -73,6 +81,12 @@ export const BotCard: Component<BotCardProps> = (props) => {
             {isLoading() ? 'Starting...' : 'Start'}
           </button>
         )}
+        <button
+          onClick={handleShowLogs}
+          class="px-3 py-2 bg-[var(--bg-tertiary)] hover:bg-zinc-700 rounded-lg text-sm font-medium transition-colors"
+        >
+          Logs
+        </button>
         <Link
           to="/bots/$id/edit"
           params={{ id: props.bot.id }}
@@ -82,6 +96,11 @@ export const BotCard: Component<BotCardProps> = (props) => {
           Edit
         </Link>
       </div>
+
+      {/* Logs Modal */}
+      <Show when={showLogs()}>
+        <LogsViewer botId={props.bot.id} onClose={() => setShowLogs(false)} />
+      </Show>
     </Link>
   );
 };

@@ -3,6 +3,7 @@ import { Link, useParams } from '@tanstack/solid-router';
 import { useBotQuery, useStartBotMutation, useStopBotMutation, useRestartBotMutation, useDeleteBotMutation } from '../lib/api';
 import { StatusBadge } from '../components/StatusBadge';
 import { VncViewer } from '../components/VncViewer';
+import { LogsViewer } from '../components/LogsViewer';
 
 export const BotDetail: Component = () => {
   const params = useParams();
@@ -12,6 +13,7 @@ export const BotDetail: Component = () => {
   const restartMutation = useRestartBotMutation();
   const deleteMutation = useDeleteBotMutation();
   const [showDeleteConfirm, setShowDeleteConfirm] = createSignal(false);
+  const [showLogs, setShowLogs] = createSignal(false);
 
   const isRunning = () => botQuery.data?.status.state === 'running';
   const isLoading = () =>
@@ -77,6 +79,12 @@ export const BotDetail: Component = () => {
                       Start
                     </button>
                   )}
+                  <button
+                    onClick={() => setShowLogs(true)}
+                    class="px-4 py-2 bg-[var(--bg-tertiary)] hover:bg-zinc-700 rounded-lg font-medium transition-colors"
+                  >
+                    Logs
+                  </button>
                   <Link
                     to="/bots/$id/edit"
                     params={{ id: params.id }}
@@ -86,6 +94,11 @@ export const BotDetail: Component = () => {
                   </Link>
                 </div>
               </div>
+
+              {/* Logs Modal */}
+              <Show when={showLogs()}>
+                <LogsViewer botId={params.id} onClose={() => setShowLogs(false)} />
+              </Show>
 
               {/* VNC Viewer */}
               <Show when={isRunning()}>

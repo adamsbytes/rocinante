@@ -19,8 +19,9 @@ export interface ResourceConfig {
 export interface BotConfig {
   id: string;
   name: string;
-  username: string;
-  password: string;
+  username: string;  // Jagex account email
+  password: string;  // Jagex account password
+  totpSecret?: string;  // Optional: Base32 TOTP secret for 2FA
   proxy: ProxyConfig | null;
   ironman: IronmanConfig;
   resources: ResourceConfig;

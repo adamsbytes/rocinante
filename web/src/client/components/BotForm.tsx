@@ -12,6 +12,7 @@ export const BotForm: Component<BotFormProps> = (props) => {
   const [name, setName] = createSignal(props.initialData?.name ?? '');
   const [username, setUsername] = createSignal(props.initialData?.username ?? '');
   const [password, setPassword] = createSignal(props.initialData?.password ?? '');
+  const [totpSecret, setTotpSecret] = createSignal(props.initialData?.totpSecret ?? '');
   const [vncPort, setVncPort] = createSignal(props.initialData?.vncPort ?? 5901);
 
   // Proxy
@@ -36,6 +37,7 @@ export const BotForm: Component<BotFormProps> = (props) => {
       name: name(),
       username: username(),
       password: password(),
+      totpSecret: totpSecret() || undefined,
       vncPort: vncPort(),
       proxy: proxyEnabled()
         ? {
@@ -78,12 +80,13 @@ export const BotForm: Component<BotFormProps> = (props) => {
         </div>
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class={labelClass}>Username</label>
+            <label class={labelClass}>Jagex Account Email</label>
             <input
-              type="text"
+              type="email"
               value={username()}
               onInput={(e) => setUsername(e.currentTarget.value)}
               class={inputClass}
+              placeholder="email@example.com"
               required
             />
           </div>
@@ -97,6 +100,19 @@ export const BotForm: Component<BotFormProps> = (props) => {
               required
             />
           </div>
+        </div>
+        <div>
+          <label class={labelClass}>2FA TOTP Secret (optional)</label>
+          <input
+            type="password"
+            value={totpSecret()}
+            onInput={(e) => setTotpSecret(e.currentTarget.value)}
+            class={inputClass}
+            placeholder="Base32 secret from authenticator setup"
+          />
+          <p class="text-xs text-[var(--text-secondary)] mt-1">
+            Required if your Jagex account has authenticator enabled. This is the secret key shown during 2FA setup (not the 6-digit code).
+          </p>
         </div>
         <div>
           <label class={labelClass}>VNC Port</label>

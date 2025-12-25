@@ -24,12 +24,10 @@ if ! kill -0 $XVFB_PID 2>/dev/null; then
     exit 1
 fi
 
-# Optional: Start VNC server for remote debugging
-if [ "$ENABLE_VNC" = "true" ]; then
-    echo "Starting VNC server on port 5900..."
-    x11vnc -display :99 -bg -nopw -listen 0.0.0.0 -xkb
-    echo "VNC server started - connect to port 5900 for debugging"
-fi
+# Start VNC server for remote access (always enabled)
+echo "Starting VNC server on port 5900..."
+x11vnc -display :99 -bg -nopw -listen 0.0.0.0 -xkb
+echo "VNC server started - connect to port 5900"
 
 # Initialize Wine prefix if it doesn't exist or is corrupted
 if [ ! -d "$WINEPREFIX/drive_c" ]; then
@@ -90,7 +88,7 @@ echo "2FA Enabled: $([ -n "$TOTP_SECRET" ] && echo 'Yes (TOTP)' || echo 'No')"
 echo "Ironman Mode: ${IRONMAN_MODE:-false}"
 echo "Ironman Type: ${IRONMAN_TYPE:-N/A}"
 echo "Quest Helper: Pre-configured for auto-install"
-echo "VNC Debug: ${ENABLE_VNC:-false}"
+echo "VNC: Enabled (port 5900)"
 echo "================================================="
 
 # Jagex Launcher executable path - check common installation locations

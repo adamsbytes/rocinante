@@ -19,8 +19,6 @@ services:
       - ACCOUNT_PASSWORD=${ACCOUNT_PASSWORD:-}
       # Optional: TOTP secret for 2FA (base32 encoded)
       - TOTP_SECRET=${TOTP_SECRET:-}
-      # Optional: Enable VNC for debugging
-      - ENABLE_VNC=${ENABLE_VNC:-false}
 
   management:
     build: ./web
