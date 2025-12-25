@@ -91,8 +91,31 @@ export const LogsViewer: Component<LogsViewerProps> = (props) => {
     setLogs([]);
   };
 
-  const copyLogs = () => {
-    navigator.clipboard.writeText(logs().join('\n'));
+  const [copyStatus, setCopyStatus] = createSignal<'idle' | 'copied' | 'error'>('idle');
+
+  const copyLogs = async () => {
+    try {
+      const text = logs().join('\n');
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        // Fallback for older browsers or non-secure contexts
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setCopyStatus('copied');
+      setTimeout(() => setCopyStatus('idle'), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+      setCopyStatus('error');
+      setTimeout(() => setCopyStatus('idle'), 2000);
+    }
   };
 
   return (
@@ -121,7 +144,7 @@ export const LogsViewer: Component<LogsViewerProps> = (props) => {
               class="px-3 py-1.5 text-sm bg-[var(--bg-tertiary)] hover:bg-zinc-700 rounded-lg transition-colors"
               title="Copy logs"
             >
-              Copy
+              {copyStatus() === 'copied' ? '✓ Copied' : copyStatus() === 'error' ? 'Failed' : 'Copy'}
             </button>
             <button
               onClick={clearLogs}

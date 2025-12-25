@@ -33,11 +33,10 @@ export const BotCard: Component<BotCardProps> = (props) => {
   };
 
   const isRunning = () => props.bot.status.state === 'running';
-  const isLoading = () =>
-    props.bot.status.state === 'starting' ||
-    props.bot.status.state === 'stopping' ||
-    startMutation.isPending ||
-    stopMutation.isPending;
+  const isStarting = () => props.bot.status.state === 'starting' || startMutation.isPending;
+  const isStopping = () => props.bot.status.state === 'stopping' || stopMutation.isPending;
+  const isError = () => props.bot.status.state === 'error';
+  const hasContainer = () => !!props.bot.status.containerId;
 
   return (
     <Link
@@ -65,20 +64,41 @@ export const BotCard: Component<BotCardProps> = (props) => {
 
       <div class="flex gap-2">
         {isRunning() ? (
+          /* Running state: full-width stop button */
           <button
             onClick={handleStop}
-            disabled={isLoading()}
+            disabled={isStopping()}
             class="flex-1 px-3 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded-lg text-sm font-medium transition-colors"
           >
-            {isLoading() ? 'Stopping...' : 'Stop'}
+            {isStopping() ? 'Stopping...' : 'Stop'}
           </button>
+        ) : isStarting() || isError() ? (
+          /* Starting or Error state: half-width start + stop buttons */
+          <>
+            <button
+              onClick={handleStart}
+              disabled={isStarting()}
+              class="flex-1 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-lg text-sm font-medium transition-colors"
+            >
+              {isStarting() ? 'Starting...' : 'Retry'}
+            </button>
+            <button
+              onClick={handleStop}
+              disabled={isStopping()}
+              class="px-3 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded-lg text-sm font-medium transition-colors"
+              title="Force stop / cleanup"
+            >
+              {isStopping() ? '...' : 'Stop'}
+            </button>
+          </>
         ) : (
+          /* Stopped state: full-width start button */
           <button
             onClick={handleStart}
-            disabled={isLoading()}
+            disabled={isStarting()}
             class="flex-1 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-lg text-sm font-medium transition-colors"
           >
-            {isLoading() ? 'Starting...' : 'Start'}
+            Start
           </button>
         )}
         <button

@@ -16,10 +16,10 @@ export const BotDetail: Component = () => {
   const [showLogs, setShowLogs] = createSignal(false);
 
   const isRunning = () => botQuery.data?.status.state === 'running';
-  const isLoading = () =>
-    startMutation.isPending ||
-    stopMutation.isPending ||
-    restartMutation.isPending;
+  const isStarting = () => botQuery.data?.status.state === 'starting' || startMutation.isPending;
+  const isStopping = () => botQuery.data?.status.state === 'stopping' || stopMutation.isPending;
+  const isError = () => botQuery.data?.status.state === 'error';
+  const isRestarting = () => restartMutation.isPending;
 
   const handleDelete = async () => {
     try {
@@ -54,26 +54,47 @@ export const BotDetail: Component = () => {
                 </div>
                 <div class="flex gap-2">
                   {isRunning() ? (
+                    /* Running state: restart + stop buttons */
                     <>
                       <button
                         onClick={() => restartMutation.mutate(params.id)}
-                        disabled={isLoading()}
+                        disabled={isRestarting() || isStopping()}
                         class="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 rounded-lg font-medium transition-colors"
                       >
-                        Restart
+                        {isRestarting() ? 'Restarting...' : 'Restart'}
                       </button>
                       <button
                         onClick={() => stopMutation.mutate(params.id)}
-                        disabled={isLoading()}
+                        disabled={isStopping()}
                         class="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded-lg font-medium transition-colors"
                       >
-                        Stop
+                        {isStopping() ? 'Stopping...' : 'Stop'}
+                      </button>
+                    </>
+                  ) : isStarting() || isError() ? (
+                    /* Starting or Error state: start/retry + stop buttons */
+                    <>
+                      <button
+                        onClick={() => startMutation.mutate(params.id)}
+                        disabled={isStarting()}
+                        class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-lg font-medium transition-colors"
+                      >
+                        {isStarting() ? 'Starting...' : 'Retry'}
+                      </button>
+                      <button
+                        onClick={() => stopMutation.mutate(params.id)}
+                        disabled={isStopping()}
+                        class="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded-lg font-medium transition-colors"
+                        title="Force stop / cleanup container"
+                      >
+                        {isStopping() ? 'Stopping...' : 'Stop'}
                       </button>
                     </>
                   ) : (
+                    /* Stopped state: start button only */
                     <button
                       onClick={() => startMutation.mutate(params.id)}
-                      disabled={isLoading()}
+                      disabled={isStarting()}
                       class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-lg font-medium transition-colors"
                     >
                       Start

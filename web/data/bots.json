@@ -1,3 +1,21 @@
 {
-  "bots": []
+  "bots": [
+    {
+      "id": "01426201-bcf8-4063-8d4d-dce167ee5d51",
+      "name": "abc",
+      "username": "123@exmaple.com",
+      "password": "skdjc",
+      "proxy": null,
+      "ironman": {
+        "enabled": false,
+        "type": null,
+        "hcimSafetyLevel": null
+      },
+      "resources": {
+        "cpuLimit": "1.0",
+        "memoryLimit": "2G"
+      },
+      "vncPort": 5901
+    }
+  ]
 }
