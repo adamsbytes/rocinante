@@ -10,13 +10,13 @@ interface BotCardProps {
 }
 
 export const BotCard: Component<BotCardProps> = (props) => {
-  const navigate = useNavigate();
+  const navigate = useNavigate({ from: '/' });
   const startMutation = useStartBotMutation();
   const stopMutation = useStopBotMutation();
   const [showLogs, setShowLogs] = createSignal(false);
 
   const handleCardClick = () => {
-    navigate(`/bots/${props.bot.id}`);
+    navigate({ to: '/bots/$id', params: { id: props.bot.id } });
   };
 
   const handleStart = (e: MouseEvent) => {
@@ -36,7 +36,7 @@ export const BotCard: Component<BotCardProps> = (props) => {
 
   const handleEdit = (e: MouseEvent) => {
     e.stopPropagation();
-    navigate(`/bots/${props.bot.id}/edit`);
+    navigate({ to: '/bots/$id/edit', params: { id: props.bot.id } });
   };
 
   const isRunning = () => props.bot.status.state === 'running';

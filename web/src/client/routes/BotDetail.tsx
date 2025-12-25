@@ -6,8 +6,8 @@ import { VncViewer } from '../components/VncViewer';
 import { LogsViewer } from '../components/LogsViewer';
 
 export const BotDetail: Component = () => {
-  const params = useParams();
-  const botQuery = useBotQuery(() => params.id);
+  const params = useParams({ from: '/bots/$id' });
+  const botQuery = useBotQuery(() => params().id);
   const startMutation = useStartBotMutation();
   const stopMutation = useStopBotMutation();
   const restartMutation = useRestartBotMutation();
@@ -23,7 +23,7 @@ export const BotDetail: Component = () => {
 
   const handleDelete = async () => {
     try {
-      await deleteMutation.mutateAsync(params.id);
+      await deleteMutation.mutateAsync(params().id);
       window.location.href = '/';
     } catch (err) {
       // Error handled by mutation
@@ -57,14 +57,14 @@ export const BotDetail: Component = () => {
                     /* Running state: restart + stop buttons */
                     <>
                       <button
-                        onClick={() => restartMutation.mutate(params.id)}
+                        onClick={() => restartMutation.mutate(params().id)}
                         disabled={isRestarting() || isStopping()}
                         class="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 rounded-lg font-medium transition-colors"
                       >
                         {isRestarting() ? 'Restarting...' : 'Restart'}
                       </button>
                       <button
-                        onClick={() => stopMutation.mutate(params.id)}
+                        onClick={() => stopMutation.mutate(params().id)}
                         disabled={isStopping()}
                         class="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded-lg font-medium transition-colors"
                       >
@@ -75,14 +75,14 @@ export const BotDetail: Component = () => {
                     /* Starting or Error state: start/retry + stop buttons */
                     <>
                       <button
-                        onClick={() => startMutation.mutate(params.id)}
+                        onClick={() => startMutation.mutate(params().id)}
                         disabled={isStarting()}
                         class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-lg font-medium transition-colors"
                       >
                         {isStarting() ? 'Starting...' : 'Retry'}
                       </button>
                       <button
-                        onClick={() => stopMutation.mutate(params.id)}
+                        onClick={() => stopMutation.mutate(params().id)}
                         disabled={isStopping()}
                         class="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded-lg font-medium transition-colors"
                         title="Force stop / cleanup container"
@@ -93,7 +93,7 @@ export const BotDetail: Component = () => {
                   ) : (
                     /* Stopped state: start button only */
                     <button
-                      onClick={() => startMutation.mutate(params.id)}
+                      onClick={() => startMutation.mutate(params().id)}
                       disabled={isStarting()}
                       class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-lg font-medium transition-colors"
                     >
@@ -108,7 +108,7 @@ export const BotDetail: Component = () => {
                   </button>
                   <Link
                     to="/bots/$id/edit"
-                    params={{ id: params.id }}
+                    params={{ id: params().id }}
                     class="px-4 py-2 bg-[var(--bg-tertiary)] hover:bg-zinc-700 rounded-lg font-medium transition-colors"
                   >
                     Edit
@@ -118,7 +118,7 @@ export const BotDetail: Component = () => {
 
               {/* Logs Modal */}
               <Show when={showLogs()}>
-                <LogsViewer botId={params.id} onClose={() => setShowLogs(false)} />
+                <LogsViewer botId={params().id} onClose={() => setShowLogs(false)} />
               </Show>
 
               {/* VNC Viewer */}

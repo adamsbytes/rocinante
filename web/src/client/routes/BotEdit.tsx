@@ -5,15 +5,15 @@ import { useBotQuery, useUpdateBotMutation } from '../lib/api';
 import type { BotConfig } from '../../shared/types';
 
 export const BotEdit: Component = () => {
-  const params = useParams();
+  const params = useParams({ from: '/bots/$id/edit' });
   const navigate = useNavigate();
-  const botQuery = useBotQuery(() => params.id);
+  const botQuery = useBotQuery(() => params().id);
   const updateMutation = useUpdateBotMutation();
 
   const handleSubmit = async (data: Omit<BotConfig, 'id'>) => {
     try {
-      await updateMutation.mutateAsync({ id: params.id, ...data });
-      navigate({ to: '/bots/$id', params: { id: params.id } });
+      await updateMutation.mutateAsync({ id: params().id, ...data });
+      navigate({ to: '/bots/$id', params: { id: params().id } });
     } catch (err) {
       // Error is handled by the mutation
     }
