@@ -1,4 +1,4 @@
-import { type Component, createSignal, onCleanup, onMount, Show } from 'solid-js';
+import { type Component, createSignal, onCleanup, onMount, Show, For } from 'solid-js';
 
 interface LogsViewerProps {
   botId: string;
@@ -10,15 +10,17 @@ export const LogsViewer: Component<LogsViewerProps> = (props) => {
   const [isConnected, setIsConnected] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   const [autoScroll, setAutoScroll] = createSignal(true);
+  const [copyStatus, setCopyStatus] = createSignal<'idle' | 'copied' | 'error'>('idle');
   let logsContainer: HTMLDivElement | undefined;
-  let eventSource: EventSource | null = null;
+  let abortController: AbortController | null = null;
 
   const connectToLogs = () => {
     setError(null);
     setIsConnected(false);
     
-    // Use fetch with ReadableStream for the logs
-    fetch(`/api/bots/${props.botId}/logs`)
+    abortController = new AbortController();
+    
+    fetch(`/api/bots/${props.botId}/logs`, { signal: abortController.signal })
       .then(async (response) => {
         if (!response.ok) {
           const data = await response.json();
@@ -38,16 +40,13 @@ export const LogsViewer: Component<LogsViewerProps> = (props) => {
           if (done) break;
           
           const text = decoder.decode(value, { stream: true });
-          // Split by newlines and add each line
           const lines = text.split('\n').filter(line => line.trim());
           if (lines.length > 0) {
             setLogs(prev => {
               const newLogs = [...prev, ...lines];
-              // Keep last 1000 lines
               return newLogs.slice(-1000);
             });
             
-            // Auto-scroll to bottom
             if (autoScroll() && logsContainer) {
               setTimeout(() => {
                 logsContainer!.scrollTop = logsContainer!.scrollHeight;
@@ -57,8 +56,10 @@ export const LogsViewer: Component<LogsViewerProps> = (props) => {
         }
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : 'Failed to connect to logs');
-        setIsConnected(false);
+        if (err.name !== 'AbortError') {
+          setError(err instanceof Error ? err.message : 'Failed to connect to logs');
+          setIsConnected(false);
+        }
       });
   };
 
@@ -67,15 +68,14 @@ export const LogsViewer: Component<LogsViewerProps> = (props) => {
   });
 
   onCleanup(() => {
-    if (eventSource) {
-      eventSource.close();
+    if (abortController) {
+      abortController.abort();
     }
   });
 
   const handleScroll = () => {
     if (!logsContainer) return;
     const { scrollTop, scrollHeight, clientHeight } = logsContainer;
-    // If user scrolled up, disable auto-scroll
     const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
     setAutoScroll(isAtBottom);
   };
@@ -91,31 +91,38 @@ export const LogsViewer: Component<LogsViewerProps> = (props) => {
     setLogs([]);
   };
 
-  const [copyStatus, setCopyStatus] = createSignal<'idle' | 'copied' | 'error'>('idle');
-
-  const copyLogs = async () => {
+  const copyLogs = () => {
+    const text = logs().join('\n');
+    
+    // Use the fallback method which is more reliable
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    textarea.style.top = '0';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    
     try {
-      const text = logs().join('\n');
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        // Fallback for older browsers or non-secure contexts
-        const textarea = document.createElement('textarea');
-        textarea.value = text;
-        textarea.style.position = 'fixed';
-        textarea.style.opacity = '0';
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textarea);
-      }
-      setCopyStatus('copied');
-      setTimeout(() => setCopyStatus('idle'), 2000);
+      const success = document.execCommand('copy');
+      setCopyStatus(success ? 'copied' : 'error');
     } catch (err) {
-      console.error('Failed to copy:', err);
+      console.error('Copy failed:', err);
       setCopyStatus('error');
-      setTimeout(() => setCopyStatus('idle'), 2000);
     }
+    
+    document.body.removeChild(textarea);
+    setTimeout(() => setCopyStatus('idle'), 2000);
+  };
+
+  const getLineClass = (line: string): string => {
+    const lower = line.toLowerCase();
+    if (lower.includes('error') || lower.includes('exception')) return 'text-red-400';
+    if (lower.includes('warn')) return 'text-yellow-400';
+    if (lower.includes('success') || lower.includes('started')) return 'text-emerald-400';
+    if (lower.includes('info')) return 'text-blue-400';
+    return '';
   };
 
   return (
@@ -165,36 +172,32 @@ export const LogsViewer: Component<LogsViewerProps> = (props) => {
           </div>
         </div>
 
-        {/* Logs container */}
+        {/* Logs container - text is selectable */}
         <div
           ref={logsContainer}
           onScroll={handleScroll}
-          class="flex-1 overflow-auto p-4 font-mono text-xs bg-[var(--bg-secondary)] min-h-[400px]"
+          class="flex-1 overflow-auto p-4 font-mono text-xs bg-[var(--bg-secondary)] min-h-[400px] select-text cursor-text"
         >
           <Show
             when={logs().length > 0}
             fallback={
-              <div class="text-[var(--text-secondary)] text-center py-8">
+              <div class="text-[var(--text-secondary)] text-center py-8 select-none">
                 <Show when={isConnected()} fallback={<p>Connecting to logs...</p>}>
                   <p>Waiting for log output...</p>
                 </Show>
               </div>
             }
           >
-            {logs().map((line, i) => (
-              <div 
-                class="py-0.5 hover:bg-white/5 whitespace-pre-wrap break-all"
-                classList={{
-                  'text-red-400': line.toLowerCase().includes('error') || line.toLowerCase().includes('exception'),
-                  'text-yellow-400': line.toLowerCase().includes('warn'),
-                  'text-emerald-400': line.toLowerCase().includes('success') || line.toLowerCase().includes('started'),
-                  'text-blue-400': line.toLowerCase().includes('info'),
-                }}
-              >
-                <span class="text-[var(--text-secondary)] mr-2 select-none">{String(i + 1).padStart(4, ' ')}</span>
-                {line}
-              </div>
-            ))}
+            <pre class="whitespace-pre-wrap break-all m-0">
+              <For each={logs()}>
+                {(line, i) => (
+                  <div class={`py-0.5 hover:bg-white/5 ${getLineClass(line)}`}>
+                    <span class="text-[var(--text-secondary)] mr-2 select-none inline-block w-10 text-right">{i() + 1}</span>
+                    <span class="select-text">{line}</span>
+                  </div>
+                )}
+              </For>
+            </pre>
           </Show>
         </div>
 
