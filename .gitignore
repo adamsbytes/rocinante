@@ -1,0 +1,43 @@
+# Gradle
+.gradle/
+build/
+out/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+*.swp
+*.swo
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# RuneLite
+.runelite/
+
+# Profiles (contains behavioral fingerprints - sensitive)
+profiles/*.json
+profiles/*.json.bak
+
+# Wiki cache (can be regenerated)
+wiki-cache/
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+.env.local
+
+# Compiled
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar

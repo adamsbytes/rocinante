@@ -1,0 +1,123 @@
+version: '3.8'
+
+services:
+  # Example account 1 - Normal account with GE access
+  account1:
+    build: .
+    container_name: rocinante_account1
+    environment:
+      - DISPLAY=:99
+      - ACCOUNT_USERNAME=${ACCOUNT1_USER}
+      - ACCOUNT_PASSWORD=${ACCOUNT1_PASS}
+      - PROXY_HOST=${ACCOUNT1_PROXY_HOST:-}
+      - PROXY_PORT=${ACCOUNT1_PROXY_PORT:-}
+      - PROXY_USER=${ACCOUNT1_PROXY_USER:-}
+      - PROXY_PASS=${ACCOUNT1_PROXY_PASS:-}
+      - IRONMAN_MODE=false
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+    volumes:
+      # Persistent behavioral profiles
+      - ./profiles/account1:/home/runelite/.runelite/rocinante/profiles
+      # Logs for debugging
+      - ./logs/account1:/home/runelite/.runelite/logs
+      # Optional: RuneLite settings persistence
+      - ./settings/account1:/home/runelite/.runelite/settings
+    networks:
+      account1_net:
+        ipv4_address: 172.20.0.10
+    restart: unless-stopped
+    # Resource limits per account
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+
+  # Example account 2 - Hardcore Ironman
+  account2:
+    build: .
+    container_name: rocinante_account2
+    environment:
+      - DISPLAY=:99
+      - ACCOUNT_USERNAME=${ACCOUNT2_USER}
+      - ACCOUNT_PASSWORD=${ACCOUNT2_PASS}
+      - PROXY_HOST=${ACCOUNT2_PROXY_HOST:-}
+      - PROXY_PORT=${ACCOUNT2_PROXY_PORT:-}
+      - PROXY_USER=${ACCOUNT2_PROXY_USER:-}
+      - PROXY_PASS=${ACCOUNT2_PROXY_PASS:-}
+      - IRONMAN_MODE=true
+      - IRONMAN_TYPE=HARDCORE_IRONMAN
+      - HCIM_SAFETY_LEVEL=PARANOID
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+    volumes:
+      - ./profiles/account2:/home/runelite/.runelite/rocinante/profiles
+      - ./logs/account2:/home/runelite/.runelite/logs
+      - ./settings/account2:/home/runelite/.runelite/settings
+    networks:
+      account2_net:
+        ipv4_address: 172.20.1.10
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+
+  # Example account 3 - Standard Ironman
+  account3:
+    build: .
+    container_name: rocinante_account3
+    environment:
+      - DISPLAY=:99
+      - ACCOUNT_USERNAME=${ACCOUNT3_USER}
+      - ACCOUNT_PASSWORD=${ACCOUNT3_PASS}
+      - PROXY_HOST=${ACCOUNT3_PROXY_HOST:-}
+      - PROXY_PORT=${ACCOUNT3_PROXY_PORT:-}
+      - PROXY_USER=${ACCOUNT3_PROXY_USER:-}
+      - PROXY_PASS=${ACCOUNT3_PROXY_PASS:-}
+      - IRONMAN_MODE=true
+      - IRONMAN_TYPE=STANDARD_IRONMAN
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+    volumes:
+      - ./profiles/account3:/home/runelite/.runelite/rocinante/profiles
+      - ./logs/account3:/home/runelite/.runelite/logs
+      - ./settings/account3:/home/runelite/.runelite/settings
+    networks:
+      account3_net:
+        ipv4_address: 172.20.2.10
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+
+networks:
+  # Separate network per account for proxy isolation
+  account1_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+  
+  account2_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.1.0/24
+  
+  account3_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.2.0/24
+

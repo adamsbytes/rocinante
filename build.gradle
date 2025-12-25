@@ -1,0 +1,97 @@
+plugins {
+    id 'java'
+}
+
+repositories {
+    mavenLocal()
+    maven {
+        url = 'https://repo.runelite.net'
+        content {
+            includeGroupByRegex("net\\.runelite.*")
+        }
+    }
+    mavenCentral()
+}
+
+def runeLiteVersion = 'latest.release'
+
+dependencies {
+    // RuneLite client API
+    compileOnly group: 'net.runelite', name: 'client', version: runeLiteVersion
+
+    // Quest Helper - built from source in Docker build stage
+    // See build.Dockerfile for how this JAR is produced
+    if (file('/deps/quest-helper.jar').exists()) {
+        compileOnly files('/deps/quest-helper.jar')
+    }
+
+    // Lombok for boilerplate reduction
+    compileOnly 'org.projectlombok:lombok:1.18.34'
+    annotationProcessor 'org.projectlombok:lombok:1.18.34'
+
+    // OkHttp for Wiki API and Claude API calls
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+
+    // Gson for JSON parsing
+    implementation 'com.google.code.gson:gson:2.11.0'
+
+    // Guava for caching (WikiCacheManager)
+    implementation 'com.google.guava:guava:33.3.1-jre'
+
+    // Testing
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation group: 'net.runelite', name: 'client', version: runeLiteVersion
+    testImplementation group: 'net.runelite', name: 'jshell', version: runeLiteVersion
+    testImplementation 'org.mockito:mockito-core:5.14.2'
+}
+
+group = 'com.rocinante'
+version = '0.1.0-SNAPSHOT'
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    // Java 17 required for java.awt.Robot JVM args (--add-opens)
+    options.release.set(17)
+}
+
+// Shadow JAR for standalone testing with RuneLite
+tasks.register('shadowJar', Jar) {
+    dependsOn configurations.testRuntimeClasspath
+    manifest {
+        attributes(
+            'Main-Class': 'com.rocinante.RocinantePluginTest',
+            'Multi-Release': true
+        )
+    }
+
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from sourceSets.main.output
+    from sourceSets.test.output
+    from {
+        configurations.testRuntimeClasspath.collect { file ->
+            file.isDirectory() ? file : zipTree(file)
+        }
+    }
+
+    exclude 'META-INF/INDEX.LIST'
+    exclude 'META-INF/*.SF'
+    exclude 'META-INF/*.DSA'
+    exclude 'META-INF/*.RSA'
+    exclude '**/module-info.class'
+
+    group = BasePlugin.BUILD_GROUP
+    archiveClassifier.set('shadow')
+    archiveFileName.set("${rootProject.name}-${project.version}-all.jar")
+}
+
+// Standard JAR for plugin installation
+jar {
+    archiveBaseName.set('rocinante')
+    manifest {
+        attributes(
+            'Implementation-Title': 'Rocinante',
+            'Implementation-Version': project.version
+        )
+    }
+}
+
