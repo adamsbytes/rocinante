@@ -1,5 +1,8 @@
 # Implementation Phases
 
+## Phase 0: Webserver and Docker Runtime
+**Goal**: A management pane should exist that successfully runs the bot container via Docker.
+
 ## Phase 1: Core Foundation
 **Goal**: Bot can perform basic humanized clicks and read game state.
 

@@ -1,4 +1,5 @@
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUIDv7 } from 'bun';
+import type { ServerWebSocket, Socket } from 'bun';
 import {
   getBots,
   getBot,
@@ -22,6 +23,13 @@ import type { ApiResponse, BotConfig, BotWithStatus } from '../shared/types';
 
 const PORT = parseInt(process.env.PORT || '3000');
 
+// Store VNC TCP connections per WebSocket
+type VncWebSocketData = {
+  botId: string;
+  vncPort: number;
+  tcpSocket: Socket<{ ws: ServerWebSocket<VncWebSocketData> }> | null;
+};
+
 function json<T>(data: T, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
@@ -37,10 +45,41 @@ function error(message: string, status = 400): Response {
   return json<ApiResponse<never>>({ success: false, error: message }, status);
 }
 
-async function handleRequest(req: Request): Promise<Response> {
+async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>): Promise<Response | undefined> {
   const url = new URL(req.url);
   const path = url.pathname;
   const method = req.method;
+
+  // VNC WebSocket upgrade
+  const vncMatch = path.match(/^\/api\/vnc\/([^/]+)$/);
+  if (vncMatch && req.headers.get('upgrade') === 'websocket') {
+    const botId = vncMatch[1];
+    const bot = await getBot(botId);
+    
+    if (!bot) {
+      return error('Bot not found', 404);
+    }
+
+    // Check if bot is running
+    const status = await getContainerStatus(botId);
+    if (status.state !== 'running') {
+      return error('Bot is not running', 400);
+    }
+
+    // Upgrade to WebSocket
+    const upgraded = server.upgrade(req, {
+      data: {
+        botId,
+        vncPort: bot.vncPort,
+        tcpSocket: null,
+      } as VncWebSocketData,
+    });
+
+    if (upgraded) {
+      return undefined; // Bun handles the 101 response
+    }
+    return error('WebSocket upgrade failed', 500);
+  }
 
   // Health check
   if (path === '/api/health' && method === 'GET') {
@@ -72,14 +111,16 @@ async function handleRequest(req: Request): Promise<Response> {
       const nextVncPort = await getNextVncPort();
 
       const newBot: BotConfig = {
-        id: uuidv4(),
+        id: randomUUIDv7(),
         name: body.name,
         username: body.username,
         password: body.password,
+        totpSecret: body.totpSecret || undefined,
+        characterName: body.characterName || undefined,
         proxy: body.proxy || null,
         ironman: body.ironman || { enabled: false, type: null, hcimSafetyLevel: null },
         resources: body.resources || { cpuLimit: '1.0', memoryLimit: '2G' },
-        vncPort: body.vncPort || nextVncPort,
+        vncPort: nextVncPort, // Auto-assigned, not configurable
       };
 
       await createBot(newBot);
@@ -111,7 +152,9 @@ async function handleRequest(req: Request): Promise<Response> {
     if (method === 'PUT') {
       try {
         const body = await req.json();
-        const updated = await updateBot(botId, body);
+        // Prevent updating vncPort (auto-assigned)
+        const { vncPort: _, ...updates } = body;
+        const updated = await updateBot(botId, updates);
         if (!updated) {
           return error('Bot not found', 404);
         }
@@ -159,7 +202,7 @@ async function handleRequest(req: Request): Promise<Response> {
           return success({ stopped: true });
 
         case 'restart':
-          await restartBot(botId);
+          await restartBot(bot);
           return success({ restarted: true });
 
         default:
@@ -255,7 +298,84 @@ await checkPrerequisites();
 Bun.serve({
   port: PORT,
   fetch: handleRequest,
+  websocket: {
+    // Called when WebSocket connection opens
+    async open(ws: ServerWebSocket<VncWebSocketData>) {
+      const { vncPort } = ws.data;
+      console.log(`VNC WebSocket opened for port ${vncPort}`);
+
+      try {
+        // Connect to VNC server via TCP
+        const tcpSocket = await Bun.connect({
+          hostname: 'localhost',
+          port: vncPort,
+          socket: {
+            data(socket, data) {
+              // Forward VNC server data to WebSocket client
+              const wsConn = socket.data.ws;
+              if (wsConn.readyState === 1) { // OPEN
+                wsConn.send(data);
+              }
+            },
+            open(socket) {
+              console.log(`TCP connection to VNC port ${vncPort} established`);
+            },
+            close(socket) {
+              console.log(`TCP connection to VNC port ${vncPort} closed`);
+              const wsConn = socket.data.ws;
+              if (wsConn.readyState === 1) {
+                wsConn.close(1000, 'VNC server disconnected');
+              }
+            },
+            error(socket, err) {
+              console.error(`TCP error for VNC port ${vncPort}:`, err);
+              const wsConn = socket.data.ws;
+              if (wsConn.readyState === 1) {
+                wsConn.close(1011, 'VNC connection error');
+              }
+            },
+          },
+          data: { ws },
+        });
+
+        ws.data.tcpSocket = tcpSocket;
+      } catch (err) {
+        console.error(`Failed to connect to VNC port ${vncPort}:`, err);
+        ws.close(1011, 'Failed to connect to VNC server');
+      }
+    },
+
+    // Called when WebSocket receives a message from client
+    message(ws: ServerWebSocket<VncWebSocketData>, message) {
+      // Forward client data to VNC server
+      const { tcpSocket } = ws.data;
+      if (tcpSocket) {
+        if (typeof message === 'string') {
+          tcpSocket.write(Buffer.from(message));
+        } else {
+          tcpSocket.write(message);
+        }
+      }
+    },
+
+    // Called when WebSocket connection closes
+    close(ws: ServerWebSocket<VncWebSocketData>, code, reason) {
+      console.log(`VNC WebSocket closed: ${code} ${reason}`);
+      const { tcpSocket } = ws.data;
+      if (tcpSocket) {
+        tcpSocket.end();
+      }
+    },
+
+    // Called on WebSocket error
+    error(ws: ServerWebSocket<VncWebSocketData>, error) {
+      console.error('VNC WebSocket error:', error);
+      const { tcpSocket } = ws.data;
+      if (tcpSocket) {
+        tcpSocket.end();
+      }
+    },
+  },
 });
 
 console.log(`Server running on http://localhost:${PORT}`);
-

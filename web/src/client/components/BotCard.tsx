@@ -1,9 +1,9 @@
-import { type Component, createSignal, Show } from 'solid-js';
+import { type Component } from 'solid-js';
 import { useNavigate } from '@tanstack/solid-router';
 import type { BotWithStatus } from '../../shared/types';
 import { StatusBadge } from './StatusBadge';
-import { LogsViewer } from './LogsViewer';
 import { useStartBotMutation, useStopBotMutation } from '../lib/api';
+import { openLogs } from '../lib/logsStore';
 
 interface BotCardProps {
   bot: BotWithStatus;
@@ -13,7 +13,6 @@ export const BotCard: Component<BotCardProps> = (props) => {
   const navigate = useNavigate({ from: '/' });
   const startMutation = useStartBotMutation();
   const stopMutation = useStopBotMutation();
-  const [showLogs, setShowLogs] = createSignal(false);
 
   const handleCardClick = () => {
     navigate({ to: '/bots/$id', params: { id: props.bot.id } });
@@ -31,7 +30,7 @@ export const BotCard: Component<BotCardProps> = (props) => {
 
   const handleShowLogs = (e: MouseEvent) => {
     e.stopPropagation();
-    setShowLogs(true);
+    openLogs(props.bot.id);
   };
 
   const handleEdit = (e: MouseEvent) => {
@@ -65,7 +64,6 @@ export const BotCard: Component<BotCardProps> = (props) => {
           {props.bot.ironman.enabled && (
             <p>Mode: {props.bot.ironman.type?.replace('_', ' ')}</p>
           )}
-          <p>VNC: :{props.bot.vncPort}</p>
         </div>
 
         <div class="flex gap-2">
@@ -118,11 +116,6 @@ export const BotCard: Component<BotCardProps> = (props) => {
           </button>
         </div>
       </div>
-
-      {/* Logs Modal - rendered OUTSIDE the card */}
-      <Show when={showLogs()}>
-        <LogsViewer botId={props.bot.id} onClose={() => setShowLogs(false)} />
-      </Show>
     </>
   );
 };

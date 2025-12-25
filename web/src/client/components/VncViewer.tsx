@@ -1,120 +1,402 @@
-import { type Component, onMount, onCleanup, createSignal } from 'solid-js';
+import { type Component, onMount, onCleanup, createSignal, createEffect, Show } from 'solid-js';
+
+export type VncStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 
 interface VncViewerProps {
-  host: string;
-  port: number;
+  botId: string;
   class?: string;
+  onStatusChange?: (status: VncStatus, error?: string | null) => void;
 }
+
+// Basic RFB protocol constants
+const RFB_PROTOCOL_VERSION = 'RFB 003.008\n';
 
 export const VncViewer: Component<VncViewerProps> = (props) => {
   let canvasRef: HTMLCanvasElement | undefined;
+  let ws: WebSocket | null = null;
+  
   const [status, setStatus] = createSignal<'connecting' | 'connected' | 'disconnected' | 'error'>('connecting');
   const [error, setError] = createSignal<string | null>(null);
+  const [dimensions, setDimensions] = createSignal({ width: 1920, height: 1080 });
 
-  // Simple VNC implementation using WebSocket
-  // For production, consider using @nickcis/react-vnc or novnc
-  onMount(() => {
-    const wsUrl = `ws://${props.host}:${props.port}`;
-    let ws: WebSocket | null = null;
+  // RFB state machine
+  let rfbState: 'protocol' | 'security' | 'auth' | 'securityResult' | 'serverInit' | 'normal' = 'protocol';
+  let serverName = '';
+  let pixelFormat = {
+    bitsPerPixel: 32,
+    depth: 24,
+    bigEndian: false,
+    trueColor: true,
+    redMax: 255,
+    greenMax: 255,
+    blueMax: 255,
+    redShift: 16,
+    greenShift: 8,
+    blueShift: 0,
+  };
 
-    const connect = () => {
-      setStatus('connecting');
-      setError(null);
+  // Buffer for incoming data
+  let dataBuffer = new Uint8Array(0);
 
-      try {
-        ws = new WebSocket(wsUrl);
-        ws.binaryType = 'arraybuffer';
+  const appendData = (newData: Uint8Array) => {
+    const combined = new Uint8Array(dataBuffer.length + newData.length);
+    combined.set(dataBuffer);
+    combined.set(newData, dataBuffer.length);
+    dataBuffer = combined;
+  };
 
-        ws.onopen = () => {
-          setStatus('connected');
-        };
+  const consumeData = (length: number): Uint8Array | null => {
+    if (dataBuffer.length < length) return null;
+    const result = dataBuffer.slice(0, length);
+    dataBuffer = dataBuffer.slice(length);
+    return result;
+  };
 
-        ws.onclose = () => {
-          setStatus('disconnected');
-        };
+  const readU8 = (): number | null => {
+    const data = consumeData(1);
+    return data ? data[0] : null;
+  };
 
-        ws.onerror = () => {
-          setStatus('error');
-          setError('Failed to connect to VNC server');
-        };
+  const readU16 = (): number | null => {
+    const data = consumeData(2);
+    return data ? (data[0] << 8) | data[1] : null;
+  };
 
-        ws.onmessage = (event) => {
-          // Handle VNC protocol messages
-          // This is a simplified implementation
-          // Real VNC requires RFB protocol handling
-          if (canvasRef && event.data instanceof ArrayBuffer) {
-            // Placeholder for actual VNC frame rendering
+  const readU32 = (): number | null => {
+    const data = consumeData(4);
+    return data ? (data[0] << 24) | (data[1] << 16) | (data[2] << 8) | data[3] : null;
+  };
+
+  const sendFramebufferUpdateRequest = (incremental: boolean) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    
+    const { width, height } = dimensions();
+    const msg = new Uint8Array(10);
+    msg[0] = 3; // FramebufferUpdateRequest
+    msg[1] = incremental ? 1 : 0;
+    msg[2] = 0; msg[3] = 0; // x
+    msg[4] = 0; msg[5] = 0; // y
+    msg[6] = (width >> 8) & 0xff; msg[7] = width & 0xff;
+    msg[8] = (height >> 8) & 0xff; msg[9] = height & 0xff;
+    ws.send(msg);
+  };
+
+  const processProtocol = () => {
+    if (dataBuffer.length < 12) return;
+    
+    const version = new TextDecoder().decode(consumeData(12));
+    console.log('VNC Server version:', version.trim());
+    
+    // Send our version
+    ws?.send(new TextEncoder().encode(RFB_PROTOCOL_VERSION));
+    rfbState = 'security';
+  };
+
+  const processSecurity = () => {
+    const numTypes = readU8();
+    if (numTypes === null) return;
+    
+    if (numTypes === 0) {
+      // Error
+      const reasonLen = readU32();
+      if (reasonLen === null) { dataBuffer = new Uint8Array([numTypes, ...dataBuffer]); return; }
+      const reason = consumeData(reasonLen);
+      if (!reason) { dataBuffer = new Uint8Array([numTypes, ...dataBuffer]); return; }
+      setError(new TextDecoder().decode(reason));
+      setStatus('error');
+      return;
+    }
+
+    const types = consumeData(numTypes);
+    if (!types) { dataBuffer = new Uint8Array([numTypes, ...dataBuffer]); return; }
+    
+    console.log('Security types:', Array.from(types));
+    
+    // Choose None (1) or VNC Auth (2)
+    let chosen = 1; // None
+    if (!types.includes(1) && types.includes(2)) {
+      chosen = 2; // VNC Auth
+    }
+    
+    ws?.send(new Uint8Array([chosen]));
+    
+    if (chosen === 1) {
+      rfbState = 'securityResult';
+    } else {
+      rfbState = 'auth';
+    }
+  };
+
+  const processAuth = () => {
+    // VNC authentication - we need 16 bytes challenge
+    const challenge = consumeData(16);
+    if (!challenge) return;
+    
+    // For now, send empty DES-encrypted response (no password)
+    // This won't work with password-protected VNC, but our server uses -nopw
+    const response = new Uint8Array(16);
+    ws?.send(response);
+    rfbState = 'securityResult';
+  };
+
+  const processSecurityResult = () => {
+    // SecurityResult (4 bytes)
+    const result = readU32();
+    if (result === null) return;
+    
+    console.log('SecurityResult:', result);
+    
+    if (result !== 0) {
+      setError('Authentication failed');
+      setStatus('error');
+      return;
+    }
+    
+    // Send ClientInit (share flag)
+    ws?.send(new Uint8Array([1])); // Share desktop
+    rfbState = 'serverInit';
+  };
+
+  const processServerInit = () => {
+    // Read ServerInit
+    const width = readU16();
+    if (width === null) return;
+    const height = readU16();
+    if (height === null) return;
+    
+    // Pixel format (16 bytes)
+    const pf = consumeData(16);
+    if (!pf) return;
+    
+    // Name length and name
+    const nameLen = readU32();
+    if (nameLen === null) return;
+    const name = consumeData(nameLen);
+    if (!name) return;
+    
+    serverName = new TextDecoder().decode(name);
+    console.log('VNC Desktop:', serverName, width, 'x', height);
+    
+    setDimensions({ width, height });
+    
+    // Set pixel format to 32-bit RGBA
+    const setPixelFormat = new Uint8Array(20);
+    setPixelFormat[0] = 0; // SetPixelFormat
+    setPixelFormat[4] = 32; // bpp
+    setPixelFormat[5] = 24; // depth
+    setPixelFormat[6] = 0;  // big-endian
+    setPixelFormat[7] = 1;  // true-color
+    setPixelFormat[8] = 0; setPixelFormat[9] = 255; // red-max
+    setPixelFormat[10] = 0; setPixelFormat[11] = 255; // green-max
+    setPixelFormat[12] = 0; setPixelFormat[13] = 255; // blue-max
+    setPixelFormat[14] = 16; // red-shift
+    setPixelFormat[15] = 8;  // green-shift
+    setPixelFormat[16] = 0;  // blue-shift
+    ws?.send(setPixelFormat);
+    
+    // Set encodings (Raw only for simplicity)
+    const setEncodings = new Uint8Array(8);
+    setEncodings[0] = 2; // SetEncodings
+    setEncodings[2] = 0; setEncodings[3] = 1; // 1 encoding
+    setEncodings[4] = 0; setEncodings[5] = 0; setEncodings[6] = 0; setEncodings[7] = 0; // Raw
+    ws?.send(setEncodings);
+    
+    rfbState = 'normal';
+    setStatus('connected');
+    
+    // Request initial framebuffer
+    sendFramebufferUpdateRequest(false);
+  };
+
+  const processNormal = () => {
+    // Save buffer state for potential rollback
+    const savedBuffer = dataBuffer.slice();
+    
+    const msgType = readU8();
+    if (msgType === null) return;
+    
+    if (msgType === 0) {
+      // FramebufferUpdate
+      const padding = consumeData(1);
+      if (!padding) { dataBuffer = savedBuffer; return; }
+      
+      const numRects = readU16();
+      if (numRects === null) { dataBuffer = savedBuffer; return; }
+      
+      for (let i = 0; i < numRects; i++) {
+        const x = readU16();
+        const y = readU16();
+        const w = readU16();
+        const h = readU16();
+        const encoding = readU32();
+        
+        if (x === null || y === null || w === null || h === null || encoding === null) {
+          dataBuffer = savedBuffer;
+          return;
+        }
+        
+        if (encoding === 0) {
+          // Raw encoding
+          const pixelDataLen = w * h * 4;
+          
+          // Skip empty rectangles
+          if (w === 0 || h === 0) continue;
+          
+          const pixelData = consumeData(pixelDataLen);
+          if (!pixelData) {
+            dataBuffer = savedBuffer;
+            return;
+          }
+          
+          // Draw to canvas
+          if (canvasRef) {
             const ctx = canvasRef.getContext('2d');
             if (ctx) {
-              ctx.fillStyle = '#1a1a24';
-              ctx.fillRect(0, 0, canvasRef.width, canvasRef.height);
-              ctx.fillStyle = '#3b82f6';
-              ctx.font = '14px Inter, sans-serif';
-              ctx.textAlign = 'center';
-              ctx.fillText('VNC Stream Active', canvasRef.width / 2, canvasRef.height / 2);
+              const imageData = ctx.createImageData(w, h);
+              for (let j = 0; j < w * h; j++) {
+                // VNC sends BGRX, canvas wants RGBA
+                imageData.data[j * 4 + 0] = pixelData[j * 4 + 2]; // R
+                imageData.data[j * 4 + 1] = pixelData[j * 4 + 1]; // G
+                imageData.data[j * 4 + 2] = pixelData[j * 4 + 0]; // B
+                imageData.data[j * 4 + 3] = 255; // A
+              }
+              ctx.putImageData(imageData, x, y);
             }
           }
-        };
-      } catch (err) {
+        }
+      }
+      
+      // Request next update
+      setTimeout(() => sendFramebufferUpdateRequest(true), 50);
+    } else if (msgType === 1) {
+      // SetColorMapEntries - skip
+      consumeData(1); // padding
+      const firstColor = readU16();
+      const numColors = readU16();
+      if (firstColor === null || numColors === null) return;
+      consumeData(numColors * 6);
+    } else if (msgType === 2) {
+      // Bell - ignore
+    } else if (msgType === 3) {
+      // ServerCutText
+      consumeData(3); // padding
+      const len = readU32();
+      if (len === null) return;
+      consumeData(len);
+    }
+  };
+
+  const processData = () => {
+    try {
+      while (dataBuffer.length > 0) {
+        const prevLen = dataBuffer.length;
+        
+        switch (rfbState) {
+          case 'protocol': processProtocol(); break;
+          case 'security': processSecurity(); break;
+          case 'auth': processAuth(); break;
+          case 'securityResult': processSecurityResult(); break;
+          case 'serverInit': processServerInit(); break;
+          case 'normal': processNormal(); break;
+        }
+        
+        // If no data was consumed, wait for more
+        if (dataBuffer.length === prevLen) break;
+      }
+    } catch (err) {
+      console.error('RFB processing error:', err);
+    }
+  };
+
+  onMount(() => {
+    // Build WebSocket URL for VNC proxy
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/api/vnc/${props.botId}`;
+
+    try {
+      setStatus('connecting');
+      setError(null);
+      rfbState = 'protocol';
+      dataBuffer = new Uint8Array(0);
+
+      ws = new WebSocket(wsUrl);
+      ws.binaryType = 'arraybuffer';
+
+      ws.onopen = () => {
+        console.log('WebSocket connected to VNC proxy');
+      };
+
+      ws.onmessage = (event) => {
+        if (event.data instanceof ArrayBuffer) {
+          appendData(new Uint8Array(event.data));
+          processData();
+        }
+      };
+
+      ws.onclose = (event) => {
+        console.log('WebSocket closed:', event.code, event.reason);
+        setStatus('disconnected');
+      };
+
+      ws.onerror = (event) => {
+        console.error('WebSocket error:', event);
         setStatus('error');
-        setError(err instanceof Error ? err.message : 'Connection failed');
-      }
-    };
+        setError('Connection error');
+      };
 
-    // Attempt connection
-    connect();
+    } catch (err) {
+      console.error('Failed to create WebSocket:', err);
+      setStatus('error');
+      setError(err instanceof Error ? err.message : 'Failed to connect');
+    }
+  });
 
-    onCleanup(() => {
-      if (ws) {
-        ws.close();
-      }
-    });
+  onCleanup(() => {
+    if (ws) {
+      ws.close();
+      ws = null;
+    }
+  });
+
+  // Update canvas size when dimensions change
+  createEffect(() => {
+    const { width, height } = dimensions();
+    if (canvasRef) {
+      canvasRef.width = width;
+      canvasRef.height = height;
+    }
+  });
+
+  // Notify parent of status changes
+  createEffect(() => {
+    props.onStatusChange?.(status(), error());
   });
 
   return (
-    <div class={`relative bg-[var(--bg-tertiary)] rounded-lg overflow-hidden ${props.class ?? ''}`}>
+    <div class={`relative bg-black rounded-lg overflow-hidden ${props.class ?? ''}`}>
       <canvas
         ref={canvasRef}
-        width={1024}
-        height={768}
+        width={dimensions().width}
+        height={dimensions().height}
         class="w-full h-auto"
+        style={{ "max-width": "100%", "aspect-ratio": `${dimensions().width} / ${dimensions().height}` }}
       />
-      <div class="absolute top-2 right-2 flex items-center gap-2">
-        <span
-          class={`w-2 h-2 rounded-full ${
-            status() === 'connected'
-              ? 'bg-emerald-500'
-              : status() === 'connecting'
-              ? 'bg-amber-500 animate-pulse'
-              : 'bg-red-500'
-          }`}
-        />
-        <span class="text-xs text-[var(--text-secondary)]">
-          {status() === 'connected' && 'Connected'}
-          {status() === 'connecting' && 'Connecting...'}
-          {status() === 'disconnected' && 'Disconnected'}
-          {status() === 'error' && (error() || 'Error')}
-        </span>
-      </div>
-      {status() !== 'connected' && (
-        <div class="absolute inset-0 flex items-center justify-center bg-[var(--bg-tertiary)]/90">
+      <Show when={status() !== 'connected'}>
+        <div class="absolute inset-0 flex items-center justify-center bg-black/80">
           <div class="text-center">
-            {status() === 'connecting' && (
-              <>
-                <div class="w-8 h-8 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                <p class="text-[var(--text-secondary)]">Connecting to VNC...</p>
-              </>
-            )}
-            {status() === 'disconnected' && (
+            <Show when={status() === 'connecting'}>
+              <div class="w-8 h-8 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+              <p class="text-[var(--text-secondary)]">Connecting to VNC...</p>
+            </Show>
+            <Show when={status() === 'disconnected'}>
               <p class="text-[var(--text-secondary)]">VNC Disconnected</p>
-            )}
-            {status() === 'error' && (
+            </Show>
+            <Show when={status() === 'error'}>
               <p class="text-red-400">{error() || 'Connection failed'}</p>
-            )}
+            </Show>
           </div>
         </div>
-      )}
+      </Show>
     </div>
   );
 };
-

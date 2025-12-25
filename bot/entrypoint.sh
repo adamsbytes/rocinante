@@ -3,18 +3,37 @@ set -e
 
 echo "Starting Rocinante RuneLite Automation Container"
 echo "================================================="
-echo "Authentication: Jagex Launcher (via Wine)"
+echo "Launcher: Bolt (native Linux launcher)"
 echo "================================================="
 
-# Export display for Wine and GUI tools
+# Export display for GUI tools
 export DISPLAY=:99
-export WINEARCH=win64
-export WINEPREFIX=/home/runelite/.wine
-export WINEDEBUG=-all
+
+# Set a common timezone (appears more normal)
+export TZ="America/New_York"
+
+# Clean up stale Xvfb processes and lock files from previous runs
+# This is necessary when container is restarted (not recreated)
+echo "Cleaning up previous display state..."
+pkill -9 Xvfb 2>/dev/null || true
+rm -f /tmp/.X99-lock 2>/dev/null || true
+rm -f /tmp/.X11-unix/X99 2>/dev/null || true
+
+# Clean up stale Chromium/CEF lock files from previous container runs
+# These persist in the mounted volume and block Bolt from starting
+echo "Cleaning up Bolt/Chromium lock files..."
+BOLT_DATA="$HOME/.local/share/bolt-launcher"
+rm -f "$BOLT_DATA/SingletonLock" 2>/dev/null || true
+rm -f "$BOLT_DATA/SingletonSocket" 2>/dev/null || true
+rm -f "$BOLT_DATA/SingletonCookie" 2>/dev/null || true
+rm -rf "$BOLT_DATA/CefCache/SingletonLock" 2>/dev/null || true
+rm -rf "$BOLT_DATA/CefCache/SingletonSocket" 2>/dev/null || true
+rm -rf "$BOLT_DATA/CefCache/SingletonCookie" 2>/dev/null || true
+sleep 1
 
 # Start Xvfb virtual display
 echo "Starting Xvfb on display :99..."
-Xvfb :99 -screen 0 1280x1024x24 -ac +extension GLX +render -noreset &
+Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +render -noreset &
 XVFB_PID=$!
 sleep 2
 
@@ -24,29 +43,29 @@ if ! kill -0 $XVFB_PID 2>/dev/null; then
     exit 1
 fi
 
+# Start window manager for proper window handling
+echo "Starting Openbox window manager..."
+openbox &
+sleep 1
+
+# Set a nice desktop background (dark gradient)
+xsetroot -solid "#1a1a2e"
+
+# Start PulseAudio for virtual sound (apps expect audio device)
+echo "Starting PulseAudio..."
+pulseaudio --start --exit-idle-time=-1 2>/dev/null || true
+
 # Start VNC server for remote access (always enabled)
 echo "Starting VNC server on port 5900..."
-x11vnc -display :99 -bg -nopw -listen 0.0.0.0 -xkb
+x11vnc -display :99 -bg -nopw -listen 0.0.0.0 -xkb -forever -shared
+sleep 1
+
+# Verify x11vnc started
+if ! pgrep -x x11vnc > /dev/null; then
+    echo "ERROR: x11vnc failed to start"
+    exit 1
+fi
 echo "VNC server started - connect to port 5900"
-
-# Initialize Wine prefix if it doesn't exist or is corrupted
-if [ ! -d "$WINEPREFIX/drive_c" ]; then
-    echo "Initializing Wine prefix..."
-    wineboot --init
-    # Wait for wineserver to finish
-    while pgrep -x wineserver > /dev/null; do sleep 1; done
-    echo "Wine prefix initialized"
-fi
-
-# Configure proxy for Wine if provided
-if [ -n "$PROXY_HOST" ] && [ -n "$PROXY_PORT" ]; then
-    echo "Configuring proxy: $PROXY_HOST:$PROXY_PORT"
-    # Wine uses system proxy settings, configure via registry
-    wine reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" \
-        /v ProxyEnable /t REG_DWORD /d 1 /f 2>/dev/null || true
-    wine reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" \
-        /v ProxyServer /t REG_SZ /d "$PROXY_HOST:$PROXY_PORT" /f 2>/dev/null || true
-fi
 
 # Ensure Quest Helper is configured for Plugin Hub install
 SETTINGS_FILE="$HOME/.runelite/settings.properties"
@@ -91,45 +110,49 @@ echo "Quest Helper: Pre-configured for auto-install"
 echo "VNC: Enabled (port 5900)"
 echo "================================================="
 
-# Jagex Launcher executable path - check common installation locations
-JAGEX_LAUNCHER=""
-for path in \
-    "$WINEPREFIX/drive_c/Program Files (x86)/Jagex Launcher/JagexLauncher.exe" \
-    "$WINEPREFIX/drive_c/Program Files/Jagex Launcher/JagexLauncher.exe" \
-    "$WINEPREFIX/drive_c/Program Files (x86)/Jagex/Launcher/JagexLauncher.exe" \
-    "$WINEPREFIX/drive_c/Program Files/Jagex/Launcher/JagexLauncher.exe"; do
-    if [ -f "$path" ]; then
-        JAGEX_LAUNCHER="$path"
-        break
-    fi
-done
-
-# Check if Jagex Launcher is installed
-if [ -z "$JAGEX_LAUNCHER" ] || [ ! -f "$JAGEX_LAUNCHER" ]; then
-    echo "ERROR: Jagex Launcher not found in Wine prefix"
-    echo "Searching for JagexLauncher.exe..."
-    find "$WINEPREFIX/drive_c" -name "JagexLauncher.exe" 2>/dev/null || true
-    echo "The launcher may need to be reinstalled or the path has changed"
+# Check for Bolt launcher
+BOLT_PATH="/home/runelite/bolt-launcher/bolt"
+if [ ! -f "$BOLT_PATH" ]; then
+    echo "ERROR: Bolt launcher not found at $BOLT_PATH"
     exit 1
 fi
 
-echo "Found Jagex Launcher at: $JAGEX_LAUNCHER"
+echo "Found Bolt launcher at: $BOLT_PATH"
 
-# Launch Jagex Launcher via Wine
-echo "Launching Jagex Launcher..."
-wine "$JAGEX_LAUNCHER" &
-LAUNCHER_PID=$!
+# Launch Bolt
+# Chromium flags for containerized environment:
+# --no-sandbox: Required for containers
+# --disable-gpu: Use CPU rendering (SwiftShader handles WebGL)
+# --use-gl=swiftshader: Software WebGL (still reports as supported - normal fingerprint)
+# --disable-dev-shm-usage: Use /tmp instead of /dev/shm (prevents OOM crashes)
+# --disable-features=VizDisplayCompositor: Fixes compositing in virtual displays
+# --lang=en-US: Match our timezone region
+echo "Launching Bolt..."
+cd /home/runelite/bolt-launcher
+./bolt \
+    --no-sandbox \
+    --disable-gpu \
+    --use-gl=swiftshader \
+    --disable-dev-shm-usage \
+    --disable-features=VizDisplayCompositor \
+    --lang=en-US \
+    &
+BOLT_PID=$!
 
-# Give the launcher a moment to initialize
+# Give Bolt a moment to initialize
 sleep 5
 
-# Run login automation script
-echo "Running login automation..."
-if /home/runelite/jagex-login.sh; then
-    echo "Login automation completed successfully"
+# Run login automation script if credentials are provided
+if [ -n "$ACCOUNT_EMAIL" ] && [ -n "$ACCOUNT_PASSWORD" ]; then
+    echo "Running login automation..."
+    if /home/runelite/bolt-login.sh; then
+        echo "Login automation completed successfully"
+    else
+        echo "WARNING: Login automation encountered issues"
+        echo "Please check VNC connection for manual intervention"
+    fi
 else
-    echo "WARNING: Login automation encountered issues"
-    echo "Please check VNC connection for manual intervention"
+    echo "No credentials provided - manual login required via VNC"
 fi
 
 # Wait for RuneLite process
@@ -144,11 +167,11 @@ while [ $WAIT_ELAPSED -lt $RUNELITE_WAIT_TIMEOUT ]; do
         break
     fi
     
-    # Check if launcher is still running
-    if ! kill -0 $LAUNCHER_PID 2>/dev/null; then
-        # Launcher closed, check if RuneLite was spawned
+    # Check if Bolt is still running
+    if ! kill -0 $BOLT_PID 2>/dev/null; then
+        # Bolt closed, check if RuneLite was spawned
         if ! xdotool search --name "RuneLite" > /dev/null 2>&1; then
-            echo "WARNING: Launcher closed without spawning RuneLite"
+            echo "WARNING: Bolt closed without spawning RuneLite"
         fi
         break
     fi
@@ -170,12 +193,12 @@ while true; do
     if ! xdotool search --name "RuneLite" > /dev/null 2>&1; then
         echo "WARNING: RuneLite window not detected"
         
-        # Check if Jagex Launcher is still running
-        if pgrep -f "JagexLauncher" > /dev/null 2>&1; then
-            echo "Jagex Launcher is still running, waiting..."
+        # Check if Bolt is still running
+        if pgrep -f "bolt" > /dev/null 2>&1; then
+            echo "Bolt is still running, waiting..."
         else
-            echo "Neither RuneLite nor Jagex Launcher detected"
-            # Could restart launcher here if desired
+            echo "Neither RuneLite nor Bolt detected"
+            # Could restart Bolt here if desired
         fi
     fi
     

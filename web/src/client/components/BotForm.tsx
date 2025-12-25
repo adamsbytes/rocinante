@@ -13,7 +13,7 @@ export const BotForm: Component<BotFormProps> = (props) => {
   const [username, setUsername] = createSignal(props.initialData?.username ?? '');
   const [password, setPassword] = createSignal(props.initialData?.password ?? '');
   const [totpSecret, setTotpSecret] = createSignal(props.initialData?.totpSecret ?? '');
-  const [vncPort, setVncPort] = createSignal(props.initialData?.vncPort ?? 5901);
+  const [characterName, setCharacterName] = createSignal(props.initialData?.characterName ?? '');
 
   // Proxy
   const [proxyEnabled, setProxyEnabled] = createSignal(!!props.initialData?.proxy);
@@ -38,7 +38,7 @@ export const BotForm: Component<BotFormProps> = (props) => {
       username: username(),
       password: password(),
       totpSecret: totpSecret() || undefined,
-      vncPort: vncPort(),
+      characterName: characterName() || undefined,
       proxy: proxyEnabled()
         ? {
             host: proxyHost(),
@@ -115,17 +115,18 @@ export const BotForm: Component<BotFormProps> = (props) => {
           </p>
         </div>
         <div>
-          <label class={labelClass}>VNC Port</label>
+          <label class={labelClass}>Character Name (optional)</label>
           <input
-            type="number"
-            value={vncPort()}
-            onInput={(e) => setVncPort(parseInt(e.currentTarget.value))}
+            type="text"
+            value={characterName()}
+            onInput={(e) => setCharacterName(e.currentTarget.value)}
             class={inputClass}
-            min="5901"
-            max="5999"
-            required
+            placeholder="Desired name for new accounts"
+            maxLength={12}
           />
-          <p class="text-xs text-[var(--text-secondary)] mt-1">Port for VNC viewer (5901-5999)</p>
+          <p class="text-xs text-[var(--text-secondary)] mt-1">
+            Only needed for new accounts that don't have a character yet. Max 12 characters.
+          </p>
         </div>
       </section>
 

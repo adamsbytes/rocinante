@@ -1,10 +1,10 @@
 {
   "bots": [
     {
-      "id": "01426201-bcf8-4063-8d4d-dce167ee5d51",
-      "name": "abc",
-      "username": "123@exmaple.com",
-      "password": "skdjc",
+      "id": "019b5798-3fab-7000-97ec-dfa6c4c376bf",
+      "name": "Test Account",
+      "username": "hnddhfzbpksuzgzyek@nesopf.com",
+      "password": "n$t@4oSoF!4Q2KvMjCtgv3uZUKAciUaw",
       "proxy": null,
       "ironman": {
         "enabled": false,
@@ -15,7 +15,9 @@
         "cpuLimit": "1.0",
         "memoryLimit": "2G"
       },
-      "vncPort": 5901
+      "vncPort": 32577,
+      "totpSecret": "ANSSXZB4HFGYVC74NVI6R3MAXDGNP4X4",
+      "characterName": "devoverflow"
     }
   ]
 }

@@ -2,7 +2,7 @@ import { type Component, Show, Suspense, createSignal } from 'solid-js';
 import { Link, useParams } from '@tanstack/solid-router';
 import { useBotQuery, useStartBotMutation, useStopBotMutation, useRestartBotMutation, useDeleteBotMutation } from '../lib/api';
 import { StatusBadge } from '../components/StatusBadge';
-import { VncViewer } from '../components/VncViewer';
+import { VncViewer, type VncStatus } from '../components/VncViewer';
 import { LogsViewer } from '../components/LogsViewer';
 
 export const BotDetail: Component = () => {
@@ -14,6 +14,13 @@ export const BotDetail: Component = () => {
   const deleteMutation = useDeleteBotMutation();
   const [showDeleteConfirm, setShowDeleteConfirm] = createSignal(false);
   const [showLogs, setShowLogs] = createSignal(false);
+  const [vncStatus, setVncStatus] = createSignal<VncStatus>('connecting');
+  const [vncError, setVncError] = createSignal<string | null>(null);
+
+  const handleVncStatusChange = (status: VncStatus, error?: string | null) => {
+    setVncStatus(status);
+    setVncError(error ?? null);
+  };
 
   const isRunning = () => botQuery.data?.status.state === 'running';
   const isStarting = () => botQuery.data?.status.state === 'starting' || startMutation.isPending;
@@ -124,8 +131,33 @@ export const BotDetail: Component = () => {
               {/* VNC Viewer */}
               <Show when={isRunning()}>
                 <div class="mb-6">
-                  <h3 class="text-lg font-semibold mb-3">Live View</h3>
-                  <VncViewer host="localhost" port={bot().vncPort} />
+                  <div class="flex items-center gap-3 mb-3">
+                    <h3 class="text-lg font-semibold">Live View</h3>
+                    <span class="flex items-center gap-1.5 text-xs">
+                      <span
+                        class={`w-2 h-2 rounded-full ${
+                          vncStatus() === 'connected'
+                            ? 'bg-emerald-500'
+                            : vncStatus() === 'connecting'
+                            ? 'bg-amber-500 animate-pulse'
+                            : 'bg-red-500'
+                        }`}
+                      />
+                      <span class={
+                        vncStatus() === 'connected'
+                          ? 'text-emerald-400'
+                          : vncStatus() === 'connecting'
+                          ? 'text-amber-400'
+                          : 'text-red-400'
+                      }>
+                        {vncStatus() === 'connected' && 'Connected'}
+                        {vncStatus() === 'connecting' && 'Connecting...'}
+                        {vncStatus() === 'disconnected' && 'Disconnected'}
+                        {vncStatus() === 'error' && (vncError() || 'Error')}
+                      </span>
+                    </span>
+                  </div>
+                  <VncViewer botId={params().id} onStatusChange={handleVncStatusChange} />
                 </div>
               </Show>
 
@@ -135,10 +167,6 @@ export const BotDetail: Component = () => {
                 <div class="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-5">
                   <h3 class="text-lg font-semibold mb-4">Configuration</h3>
                   <dl class="space-y-3 text-sm">
-                    <div class="flex justify-between">
-                      <dt class="text-[var(--text-secondary)]">VNC Port</dt>
-                      <dd>{bot().vncPort}</dd>
-                    </div>
                     <Show when={bot().proxy}>
                       <div class="flex justify-between">
                         <dt class="text-[var(--text-secondary)]">Proxy</dt>

@@ -37,7 +37,11 @@ export const LogsViewer: Component<LogsViewerProps> = (props) => {
 
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+          if (done) {
+            // Stream ended gracefully (container stopped or saved logs finished)
+            setIsConnected(false);
+            break;
+          }
           
           const text = decoder.decode(value, { stream: true });
           const lines = text.split('\n').filter(line => line.trim());
@@ -151,6 +155,12 @@ export const LogsViewer: Component<LogsViewerProps> = (props) => {
                 Live
               </span>
             </Show>
+            <Show when={!isConnected() && !error() && logs().length > 0}>
+              <span class="flex items-center gap-1.5 text-xs text-zinc-400">
+                <span class="w-2 h-2 bg-zinc-400 rounded-full" />
+                Disconnected
+              </span>
+            </Show>
             <Show when={error()}>
               <span class="flex items-center gap-1.5 text-xs text-red-400">
                 <span class="w-2 h-2 bg-red-400 rounded-full" />
@@ -159,6 +169,15 @@ export const LogsViewer: Component<LogsViewerProps> = (props) => {
             </Show>
           </div>
           <div class="flex items-center gap-2">
+            <Show when={!isConnected()}>
+              <button
+                onClick={() => { setLogs([]); connectToLogs(); }}
+                class="px-3 py-1.5 text-sm bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white rounded-lg transition-colors"
+                title="Reconnect to logs"
+              >
+                Refresh
+              </button>
+            </Show>
             <button
               onClick={copyLogs}
               class="px-3 py-1.5 text-sm bg-[var(--bg-tertiary)] hover:bg-zinc-700 rounded-lg transition-colors"

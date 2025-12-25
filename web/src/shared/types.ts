@@ -22,6 +22,7 @@ export interface BotConfig {
   username: string;  // Jagex account email
   password: string;  // Jagex account password
   totpSecret?: string;  // Optional: Base32 TOTP secret for 2FA
+  characterName?: string;  // Optional: Desired character name for new accounts
   proxy: ProxyConfig | null;
   ironman: IronmanConfig;
   resources: ResourceConfig;
