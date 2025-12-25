@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # Example account 1 - Normal account with GE access
   account1:
-    build: .
+    build: ./bot
     container_name: rocinante_account1
     environment:
       - DISPLAY=:99
@@ -38,7 +38,7 @@ services:
 
   # Example account 2 - Hardcore Ironman
   account2:
-    build: .
+    build: ./bot
     container_name: rocinante_account2
     environment:
       - DISPLAY=:99
@@ -71,7 +71,7 @@ services:
 
   # Example account 3 - Standard Ironman
   account3:
-    build: .
+    build: ./bot
     container_name: rocinante_account3
     environment:
       - DISPLAY=:99

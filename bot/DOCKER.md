@@ -1,5 +1,7 @@
 # Docker Deployment Guide
 
+> **Note**: All commands should be run from the project root directory (not from `bot/`).
+
 ## Quick Start
 
 ```bash
@@ -7,11 +9,10 @@
 cp .env.example .env
 nano .env  # Edit with your account details and proxy configuration
 
-# 2. Build the Docker image
+# 2. Build the Docker image (uses bot/Dockerfile)
 docker-compose build
 
 # 3. Create directories for persistent data
-mkdir -p profiles/{account1,account2,account3}
 mkdir -p logs/{account1,account2,account3}
 mkdir -p settings/{account1,account2,account3}
 
