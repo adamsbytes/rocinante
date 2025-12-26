@@ -598,9 +598,9 @@ public class WalkToTask extends AbstractTask {
             return;
         }
 
-        // Perform the click
+        // Perform the click (minimap and viewport points are canvas-relative)
         clickPending = true;
-        CompletableFuture<Void> moveFuture = ctx.getMouseController().moveTo(screenPoint.x, screenPoint.y);
+        CompletableFuture<Void> moveFuture = ctx.getMouseController().moveToCanvas(screenPoint.x, screenPoint.y);
 
         moveFuture.thenCompose(v -> ctx.getMouseController().click())
                 .thenRun(() -> {

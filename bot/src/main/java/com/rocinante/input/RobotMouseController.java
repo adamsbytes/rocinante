@@ -188,15 +188,14 @@ public class RobotMouseController {
     }
     
     /**
-     * Translate canvas-relative coordinates to absolute screen coordinates.
+     * Translate a CanvasPoint to a ScreenPoint.
      * 
-     * @param canvasX X coordinate relative to game canvas
-     * @param canvasY Y coordinate relative to game canvas
-     * @return Point with absolute screen coordinates
+     * @param canvas point in canvas-relative coordinates
+     * @return point in screen-absolute coordinates
      */
-    public Point canvasToScreen(int canvasX, int canvasY) {
+    public ScreenPoint canvasToScreen(CanvasPoint canvas) {
         Point offset = getCanvasOffset();
-        return new Point(canvasX + offset.x, canvasY + offset.y);
+        return new ScreenPoint(canvas.getX() + offset.x, canvas.getY() + offset.y);
     }
     
     /**
@@ -228,28 +227,33 @@ public class RobotMouseController {
     // ========================================================================
 
     /**
-     * Move mouse to a target point using humanized Bezier curve movement.
+     * Move mouse to a ScreenPoint using humanized Bezier curve movement.
+     * 
+     * <p>This is the type-safe way to move to screen coordinates.
      *
-     * @param target the target point
+     * @param target the target point in screen coordinates
      * @return CompletableFuture that completes when movement is done
      */
-    public CompletableFuture<Void> moveTo(Point target) {
-        return moveTo(target.x, target.y);
+    public CompletableFuture<Void> moveTo(ScreenPoint target) {
+        return moveToScreen(target.getX(), target.getY());
     }
 
     /**
-     * Move mouse to target coordinates using humanized Bezier curve movement.
+     * Move mouse to screen coordinates using humanized Bezier curve movement.
+     * 
+     * <p>Use this only when you have actual screen coordinates (e.g., from MouseInfo).
+     * For game element coordinates, use {@link #moveToCanvas(int, int)}.
      *
-     * @param targetX target X coordinate
-     * @param targetY target Y coordinate
+     * @param screenX target X in screen coordinates
+     * @param screenY target Y in screen coordinates
      * @return CompletableFuture that completes when movement is done
      */
-    public CompletableFuture<Void> moveTo(int targetX, int targetY) {
+    public CompletableFuture<Void> moveToScreen(int screenX, int screenY) {
         CompletableFuture<Void> future = new CompletableFuture<>();
 
         executor.execute(() -> {
             try {
-                executeMovement(targetX, targetY);
+                executeMovement(screenX, screenY);
                 future.complete(null);
             } catch (Exception e) {
                 log.error("Mouse movement failed", e);
@@ -277,8 +281,39 @@ public class RobotMouseController {
                 hitbox.x, hitbox.y, hitbox.width, hitbox.height,
                 screenHitbox.x, screenHitbox.y, screenHitbox.width, screenHitbox.height);
         int[] clickPos = generateClickPosition(screenHitbox);
-        return moveTo(clickPos[0], clickPos[1]);
+        return moveToScreen(clickPos[0], clickPos[1]);
     }
+
+    /**
+     * Move mouse to a CanvasPoint using humanized movement.
+     * 
+     * <p>This is the type-safe way to move to canvas coordinates.
+     * The coordinates are automatically translated to screen coordinates.
+     *
+     * @param canvas point in canvas-relative coordinates
+     * @return CompletableFuture that completes when movement is done
+     */
+    public CompletableFuture<Void> moveToCanvas(CanvasPoint canvas) {
+        ScreenPoint screen = canvasToScreen(canvas);
+        log.debug("moveToCanvas: {} -> {}", canvas, screen);
+        return moveToScreen(screen.getX(), screen.getY());
+    }
+
+    /**
+     * Move mouse to canvas-relative coordinates using humanized movement.
+     * 
+     * This method translates canvas coordinates to screen coordinates before moving.
+     * Use this when you have coordinates from game elements (widgets, NPCs, objects)
+     * which are always canvas-relative.
+     *
+     * @param canvasX X coordinate relative to game canvas
+     * @param canvasY Y coordinate relative to game canvas
+     * @return CompletableFuture that completes when movement is done
+     */
+    public CompletableFuture<Void> moveToCanvas(int canvasX, int canvasY) {
+        return moveToCanvas(new CanvasPoint(canvasX, canvasY));
+    }
+
 
     /**
      * Execute the actual mouse movement with all humanization features.
@@ -526,16 +561,6 @@ public class RobotMouseController {
     }
 
     /**
-     * Move to target and click.
-     *
-     * @param target the target point
-     * @return CompletableFuture that completes when click is done
-     */
-    public CompletableFuture<Void> click(Point target) {
-        return moveTo(target).thenCompose(v -> click());
-    }
-
-    /**
      * Move to a random point within hitbox and click.
      * 
      * NOTE: The hitbox is assumed to be in CANVAS-RELATIVE coordinates (from widget bounds).
@@ -561,7 +586,8 @@ public class RobotMouseController {
             return executeMisclick(screenHitbox, clickPos);
         }
 
-        return moveTo(clickPos[0], clickPos[1]).thenCompose(v -> click());
+        // clickPos is already in screen coordinates (from screenHitbox)
+        return moveToScreen(clickPos[0], clickPos[1]).thenCompose(v -> click());
     }
 
     /**
@@ -577,7 +603,8 @@ public class RobotMouseController {
         // Translate canvas-relative hitbox to screen coordinates
         Rectangle screenHitbox = canvasToScreen(hitbox);
         int[] clickPos = generateClickPosition(screenHitbox);
-        return moveTo(clickPos[0], clickPos[1])
+        // clickPos is in screen coordinates (from screenHitbox)
+        return moveToScreen(clickPos[0], clickPos[1])
                 .thenCompose(v -> executeClick(InputEvent.BUTTON3_DOWN_MASK, false));
     }
 
@@ -594,7 +621,8 @@ public class RobotMouseController {
         // Translate canvas-relative hitbox to screen coordinates
         Rectangle screenHitbox = canvasToScreen(hitbox);
         int[] clickPos = generateClickPosition(screenHitbox);
-        return moveTo(clickPos[0], clickPos[1])
+        // clickPos is in screen coordinates (from screenHitbox)
+        return moveToScreen(clickPos[0], clickPos[1])
                 .thenCompose(v -> executeClick(InputEvent.BUTTON1_DOWN_MASK, true));
     }
 
@@ -707,8 +735,8 @@ public class RobotMouseController {
         log.trace("Simulating misclick: intended ({}, {}), actual ({}, {})",
                 intendedPos[0], intendedPos[1], misclickX, misclickY);
 
-        // Move to misclick position and click
-        return moveTo(misclickX, misclickY)
+        // Move to misclick position and click (already in screen coordinates)
+        return moveToScreen(misclickX, misclickY)
                 .thenCompose(v -> click())
                 .thenCompose(v -> {
                     // Delay before correction
@@ -800,6 +828,7 @@ public class RobotMouseController {
 
     /**
      * Move mouse to a rest position (inventory, minimap, or chat).
+     * ScreenRegion coordinates are canvas-relative, so we translate them.
      */
     private CompletableFuture<Void> moveToRestPosition() {
         ScreenRegion restRegion = inputProfile.selectIdlePosition();
@@ -807,7 +836,8 @@ public class RobotMouseController {
 
         log.trace("Idle: move to rest position ({})", restRegion.name());
 
-        return moveTo(restPos[0], restPos[1]);
+        // ScreenRegion uses canvas-relative coordinates
+        return moveToCanvas(restPos[0], restPos[1]);
     }
 
     // ========================================================================

@@ -1,8 +1,9 @@
 package com.rocinante.state;
 
+import com.rocinante.quest.conditions.VarbitCondition;
+import com.rocinante.quest.conditions.ZoneCondition;
+import com.rocinante.quest.conditions.ZoneCondition.Zone;
 import net.runelite.api.coords.WorldPoint;
-
-import java.util.List;
 
 /**
  * Factory methods for common StateCondition predicates.
@@ -768,6 +769,123 @@ public final class Conditions {
      */
     public static StateCondition inventoryTabOpen() {
         return widgetVisible(149); // Inventory widget group
+    }
+
+    // ========================================================================
+    // Varbit Conditions (Quest/Game Progress)
+    // ========================================================================
+
+    /**
+     * Check if a varbit equals a specific value.
+     *
+     * @param varbitId the varbit ID to check
+     * @param value    the expected value
+     * @return condition checking varbit equality
+     */
+    public static StateCondition varbitEquals(int varbitId, int value) {
+        return VarbitCondition.equals(varbitId, value);
+    }
+
+    /**
+     * Check if a varbit is greater than a value.
+     *
+     * @param varbitId the varbit ID to check
+     * @param value    the threshold value
+     * @return condition checking varbit is greater
+     */
+    public static StateCondition varbitGreaterThan(int varbitId, int value) {
+        return VarbitCondition.greaterThan(varbitId, value);
+    }
+
+    /**
+     * Check if a varbit is greater than or equal to a value.
+     *
+     * @param varbitId the varbit ID to check
+     * @param value    the threshold value
+     * @return condition checking varbit is greater or equal
+     */
+    public static StateCondition varbitGreaterThanOrEqual(int varbitId, int value) {
+        return VarbitCondition.greaterThanOrEqual(varbitId, value);
+    }
+
+    /**
+     * Check if a varbit is less than a value.
+     *
+     * @param varbitId the varbit ID to check
+     * @param value    the threshold value
+     * @return condition checking varbit is less
+     */
+    public static StateCondition varbitLessThan(int varbitId, int value) {
+        return VarbitCondition.lessThan(varbitId, value);
+    }
+
+    /**
+     * Check if a varbit is within a range (inclusive).
+     *
+     * @param varbitId the varbit ID to check
+     * @param minValue minimum value (inclusive)
+     * @param maxValue maximum value (inclusive)
+     * @return condition checking varbit is in range
+     */
+    public static StateCondition varbitInRange(int varbitId, int minValue, int maxValue) {
+        return VarbitCondition.inRange(varbitId, minValue, maxValue);
+    }
+
+    // ========================================================================
+    // Zone Conditions
+    // ========================================================================
+
+    /**
+     * Check if player is within a zone defined by two corners.
+     *
+     * @param corner1 first corner WorldPoint
+     * @param corner2 second corner WorldPoint
+     * @return condition checking zone membership
+     */
+    public static StateCondition inZone(WorldPoint corner1, WorldPoint corner2) {
+        return ZoneCondition.fromCorners(corner1, corner2);
+    }
+
+    /**
+     * Check if player is within a named zone.
+     *
+     * @param corner1     first corner WorldPoint
+     * @param corner2     second corner WorldPoint
+     * @param description human-readable zone name
+     * @return condition checking zone membership
+     */
+    public static StateCondition inZone(WorldPoint corner1, WorldPoint corner2, String description) {
+        return ZoneCondition.fromCorners(corner1, corner2, description);
+    }
+
+    /**
+     * Check if player is within a Zone object.
+     *
+     * @param zone the zone to check
+     * @return condition checking zone membership
+     */
+    public static StateCondition inZone(Zone zone) {
+        return ZoneCondition.in(zone);
+    }
+
+    /**
+     * Check if player is within a region.
+     *
+     * @param regionId the region ID
+     * @return condition checking region membership
+     */
+    public static StateCondition inRegion(int regionId) {
+        return ZoneCondition.inRegion(regionId);
+    }
+
+    /**
+     * Check if player is at a specific tile.
+     *
+     * @param point the exact WorldPoint
+     * @return condition checking exact position
+     */
+    public static StateCondition atExactTile(WorldPoint point) {
+        return ZoneCondition.atPoint(point);
     }
 }
 

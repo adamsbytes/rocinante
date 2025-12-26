@@ -362,12 +362,12 @@ public class WaitForConditionTask extends AbstractTask {
 
         log.trace("Idle mouse drift: ({}, {}) -> ({}, {})", mousePos.x, mousePos.y, newX, newY);
 
-        // Perform idle movement
+        // Perform idle movement (these are screen coordinates from getCurrentPosition)
         idleMousePending = true;
         final int targetX = newX;
         final int targetY = newY;
 
-        ctx.getMouseController().moveTo(targetX, targetY)
+        ctx.getMouseController().moveToScreen(targetX, targetY)
                 .thenRun(() -> idleMousePending = false)
                 .exceptionally(e -> {
                     idleMousePending = false;

@@ -2,6 +2,9 @@ package com.rocinante.core;
 
 import com.rocinante.input.RobotKeyboardController;
 import com.rocinante.input.RobotMouseController;
+import com.rocinante.quest.QuestExecutor;
+import com.rocinante.quest.impl.TutorialIsland;
+import com.rocinante.tasks.TaskExecutor;
 import com.rocinante.timing.DelayProfile;
 import com.rocinante.timing.HumanTimer;
 import com.rocinante.util.Randomization;
@@ -16,6 +19,7 @@ import net.runelite.api.widgets.Widget;
 import net.runelite.client.eventbus.Subscribe;
 
 import javax.inject.Inject;
+import javax.inject.Provider;
 import javax.inject.Singleton;
 import java.awt.Rectangle;
 import java.util.ArrayList;
@@ -105,6 +109,8 @@ public class LoginFlowHandler {
     private final RobotKeyboardController keyboardController;
     private final HumanTimer humanTimer;
     private final Randomization randomization;
+    private final Provider<QuestExecutor> questExecutorProvider;
+    private final Provider<TaskExecutor> taskExecutorProvider;
 
     private final AtomicBoolean nameEntered = new AtomicBoolean(false);
     private final AtomicBoolean nameLookedUp = new AtomicBoolean(false);
@@ -112,6 +118,8 @@ public class LoginFlowHandler {
     private final AtomicBoolean experienceSelected = new AtomicBoolean(false);
     private final AtomicBoolean actionInProgress = new AtomicBoolean(false);
     private final AtomicBoolean onTutorialIsland = new AtomicBoolean(false);
+    private final AtomicBoolean tutorialQuestStarted = new AtomicBoolean(false);
+    private final AtomicBoolean loginFlowComplete = new AtomicBoolean(false);
     
     private volatile long lastCheckTick = 0;
     private static final int CHECK_INTERVAL_TICKS = 3;
@@ -128,12 +136,16 @@ public class LoginFlowHandler {
             RobotMouseController mouseController,
             RobotKeyboardController keyboardController,
             HumanTimer humanTimer,
-            Randomization randomization) {
+            Randomization randomization,
+            Provider<QuestExecutor> questExecutorProvider,
+            Provider<TaskExecutor> taskExecutorProvider) {
         this.client = client;
         this.mouseController = mouseController;
         this.keyboardController = keyboardController;
         this.humanTimer = humanTimer;
         this.randomization = randomization;
+        this.questExecutorProvider = questExecutorProvider;
+        this.taskExecutorProvider = taskExecutorProvider;
         
         this.characterName = System.getenv("CHARACTER_NAME");
         
@@ -144,6 +156,11 @@ public class LoginFlowHandler {
     @Subscribe
     public void onGameTick(GameTick event) {
         if (client.getGameState() != GameState.LOGGED_IN) {
+            return;
+        }
+        
+        // Login flow is complete - nothing more to do
+        if (loginFlowComplete.get()) {
             return;
         }
         
@@ -163,47 +180,93 @@ public class LoginFlowHandler {
         boolean isOnTutorial = checkTutorialIsland();
         
         if (!isOnTutorial) {
-            // Not on tutorial island - nothing to do here
+            // Not on tutorial island - mark login flow as complete
+            log.info("[LOGIN] Not on Tutorial Island - login flow complete (existing account)");
+            loginFlowComplete.set(true);
             return;
         }
         
-        // Log status periodically when on tutorial island
+        // Log status periodically when on tutorial island (only while handling setup)
         logTutorialStatus();
         
-        // STEP 2: If on Tutorial Island, check for display name entry
+        // Read the tutorial progress varp (VarPlayer, not varbit) - this is the source of truth
+        // varp 281: 1 = customization, 2+ = past customization
+        int tutorialVarbit = client.getVarpValue(TutorialIsland.VARP_TUTORIAL_PROGRESS);
+        
+        // Check what screens are visible
+        boolean displayNameVisible = isDisplayNameScreenVisible();
+        boolean charCreationVisible = isCharacterCreationVisible();
+        boolean experienceVisible = isExperienceSelectVisible();
+        
+        // STEP 2: Handle display name screen if visible
         if (!nameEntered.get()) {
-            if (isDisplayNameScreenVisible()) {
+            if (displayNameVisible) {
                 log.info("[TUTORIAL] Display name screen detected - handling...");
                 handleDisplayNameScreen();
                 return;
             }
+            // If varbit >= 2, the game says we're past customization - trust the varbit
+            if (tutorialVarbit >= 2) {
+                log.info("[TUTORIAL] Varbit {} >= 2 - name/customization already complete", tutorialVarbit);
+                nameEntered.set(true);
+                characterCreated.set(true);
+                experienceSelected.set(true);
+            }
         }
         
-        // STEP 3: If name is entered (or not needed), check for character creation
+        // STEP 3: Handle character creation screen if visible
         if (!characterCreated.get()) {
-            if (isCharacterCreationVisible()) {
+            if (charCreationVisible) {
                 log.info("[TUTORIAL] Character creation screen detected - handling...");
                 handleCharacterCreation();
                 return;
             }
         }
         
-        // STEP 4: Check for experience selection ("How familiar are you with OSRS?")
+        // STEP 4: Handle experience selection screen if visible
         if (!experienceSelected.get()) {
-            if (isExperienceSelectVisible()) {
+            if (experienceVisible) {
                 log.info("[TUTORIAL] Experience selection screen detected - selecting 'Experienced'...");
                 handleExperienceSelection();
                 return;
             }
         }
         
-        // STEP 5: All initial setup done - handle tutorial steps
+        // STEP 5: All initial setup done - start Tutorial Island quest
         if (nameEntered.get() && characterCreated.get() && experienceSelected.get()) {
-            // TODO: Tutorial step handling
-            // For now, just log that we're ready
-            if (wasOnTutorial != isOnTutorial || System.currentTimeMillis() - lastStatusLogTime > 10000) {
-                log.info("[TUTORIAL] Ready for tutorial steps (TODO)");
+            if (!tutorialQuestStarted.get()) {
+                startTutorialIslandQuest();
             }
+        }
+    }
+
+    /**
+     * Start the Tutorial Island quest via QuestExecutor.
+     * This hands off tutorial completion to the quest system.
+     */
+    private void startTutorialIslandQuest() {
+        if (tutorialQuestStarted.getAndSet(true)) {
+            return; // Already started
+        }
+        
+        log.info("[TUTORIAL] ✓ Login flow complete - starting Tutorial Island quest");
+        
+        try {
+            // Start the TaskExecutor so queued tasks will execute
+            TaskExecutor taskExecutor = taskExecutorProvider.get();
+            taskExecutor.start();
+            log.info("[TUTORIAL] TaskExecutor started");
+            
+            // Start the Tutorial Island quest
+            QuestExecutor questExecutor = questExecutorProvider.get();
+            TutorialIsland tutorialIsland = new TutorialIsland();
+            questExecutor.startQuest(tutorialIsland);
+            
+            log.info("[TUTORIAL] Tutorial Island quest activated - QuestExecutor will handle remaining steps");
+            loginFlowComplete.set(true);
+        } catch (Exception e) {
+            log.error("[TUTORIAL] Failed to start Tutorial Island quest", e);
+            tutorialQuestStarted.set(false); // Allow retry
         }
     }
 
@@ -227,8 +290,10 @@ public class LoginFlowHandler {
         }
         lastStatusLogTime = now;
         
-        log.info("[TUTORIAL STATUS] onTutorialIsland={}, nameEntered={}, characterCreated={}, experienceSelected={}, actionInProgress={}",
-                onTutorialIsland.get(), nameEntered.get(), characterCreated.get(), experienceSelected.get(), actionInProgress.get());
+        int tutorialVarp = client.getVarpValue(TutorialIsland.VARP_TUTORIAL_PROGRESS);
+        
+        log.info("[TUTORIAL STATUS] varp281={}, onTutorialIsland={}, nameEntered={}, characterCreated={}, experienceSelected={}, questStarted={}",
+                tutorialVarp, onTutorialIsland.get(), nameEntered.get(), characterCreated.get(), experienceSelected.get(), tutorialQuestStarted.get());
         
         // Also log what widgets we can see
         boolean displayNameVisible = isDisplayNameScreenVisible();
@@ -603,10 +668,11 @@ public class LoginFlowHandler {
     }
 
     public boolean isLoginFlowComplete() {
-        return client.getGameState() == GameState.LOGGED_IN 
-            && nameEntered.get() 
-            && characterCreated.get()
-            && experienceSelected.get();
+        return loginFlowComplete.get();
+    }
+
+    public boolean isTutorialQuestStarted() {
+        return tutorialQuestStarted.get();
     }
 
     public void reset() {
@@ -616,6 +682,8 @@ public class LoginFlowHandler {
         experienceSelected.set(false);
         actionInProgress.set(false);
         onTutorialIsland.set(false);
+        tutorialQuestStarted.set(false);
+        loginFlowComplete.set(false);
         log.debug("[LOGIN] State reset");
     }
 }

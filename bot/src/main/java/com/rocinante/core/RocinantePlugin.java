@@ -19,6 +19,7 @@ import com.rocinante.tasks.TaskContext;
 import com.rocinante.tasks.TaskExecutor;
 import com.rocinante.tasks.TaskPriority;
 import com.rocinante.timing.HumanTimer;
+import com.rocinante.quest.QuestExecutor;
 
 import java.util.List;
 
@@ -78,6 +79,10 @@ public class RocinantePlugin extends Plugin
     @Getter
     private LoginFlowHandler loginFlowHandler;
 
+    @Inject
+    @Getter
+    private QuestExecutor questExecutor;
+
     @Override
     protected void startUp() throws Exception
     {
@@ -96,6 +101,10 @@ public class RocinantePlugin extends Plugin
         // TaskExecutor handles task execution on each GameTick
         eventBus.register(taskExecutor);
 
+        // Register QuestExecutor with the event bus
+        // QuestExecutor monitors quest progress and queues tasks
+        eventBus.register(questExecutor);
+
         // Configure TaskExecutor
         taskExecutor.setOnTaskStuckCallback(this::onTaskStuck);
 
@@ -103,6 +112,7 @@ public class RocinantePlugin extends Plugin
         log.info("  GameStateService: registered");
         log.info("  LoginFlowHandler: registered (auto-active)");
         log.info("  TaskExecutor: registered (stopped)");
+        log.info("  QuestExecutor: registered");
     }
 
     @Override
@@ -112,6 +122,9 @@ public class RocinantePlugin extends Plugin
 
         // Stop task execution first
         taskExecutor.stop();
+
+        // Unregister QuestExecutor from the event bus
+        eventBus.unregister(questExecutor);
 
         // Unregister TaskExecutor from the event bus
         eventBus.unregister(taskExecutor);

@@ -363,6 +363,17 @@ public class InteractNpcTask extends AbstractTask {
 
         if (targetNpc == null) {
             log.warn("NPC {} not found within {} tiles", npcId, searchRadius);
+            
+            // Debug: log all NPCs we CAN see
+            Client client = ctx.getClient();
+            log.debug("NPCs visible (total: {}):", client.getNpcs().size());
+            for (NPC npc : client.getNpcs()) {
+                if (npc == null) continue;
+                WorldPoint npcPos = npc.getWorldLocation();
+                int dist = playerPos != null && npcPos != null ? playerPos.distanceTo(npcPos) : -1;
+                log.debug("  - {} (id={}) at {} dist={}", npc.getName(), npc.getId(), npcPos, dist);
+            }
+            
             fail("NPC not found: " + npcId);
             return;
         }
@@ -428,11 +439,11 @@ public class InteractNpcTask extends AbstractTask {
             return;
         }
 
-        log.debug("Moving mouse to NPC at screen point ({}, {})", clickPoint.x, clickPoint.y);
+        log.debug("Moving mouse to NPC at canvas point ({}, {})", clickPoint.x, clickPoint.y);
 
-        // Start async mouse movement
+        // Start async mouse movement (canvas coordinates -> screen coordinates)
         movePending = true;
-        CompletableFuture<Void> moveFuture = ctx.getMouseController().moveTo(clickPoint.x, clickPoint.y);
+        CompletableFuture<Void> moveFuture = ctx.getMouseController().moveToCanvas(clickPoint.x, clickPoint.y);
 
         moveFuture.thenRun(() -> {
             movePending = false;

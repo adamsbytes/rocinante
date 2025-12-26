@@ -53,8 +53,10 @@
 **Goal**: Bot can read Quest Helper state and query external data.
 
 - [ ] `QuestHelperBridge` - Plugin detection, state extraction
-- [ ] Quest step → Task mapping (NpcStep, ObjectStep, etc.)
-- [ ] `QuestState` - Varbit tracking, quest progress
+- [X] Quest step → Task mapping (NpcStep, ObjectStep, etc.)
+- [X] `QuestState` - Varbit tracking, quest progress (`Quest`, `QuestProgress`, `QuestExecutor`)
+- [X] `VarbitCondition`, `ZoneCondition` - Quest requirement conditions
+- [X] `TutorialIsland` - Complete 54-step quest implementation (varbit 281)
 - [ ] `WikiDataService` - OSRS Wiki API client
 - [ ] `WikiCacheManager` - Response caching
 - [ ] Drop table, item source, shop inventory parsing
@@ -107,7 +109,8 @@
 - [ ] `GearProgressionPlanner` - Equipment upgrade paths
 - [ ] `UnlockTracker` - Teleports, areas, features
 - [ ] `TeleportTask` with behavioral profile preferences
-- [ ] `BankTask`, `InventoryTask`, `DialogueTask`, `WidgetInteractTask`
+- [ ] `BankTask`, `InventoryTask`
+- [X] `DialogueTask`, `WidgetInteractTask`
 
 **Test**: Give goal "complete Recipe for Disaster" - bot generates valid plan and begins execution.
 

@@ -307,6 +307,10 @@ public class InteractObjectTask extends AbstractTask {
 
         if (targetObject == null) {
             log.warn("Object {} not found within {} tiles", objectId, searchRadius);
+            
+            // Debug: log all nearby objects to help identify correct IDs
+            logNearbyObjects(ctx, playerPos);
+            
             fail("Object not found: " + objectId);
             return;
         }
@@ -360,11 +364,11 @@ public class InteractObjectTask extends AbstractTask {
             return;
         }
 
-        log.debug("Moving mouse to object at screen point ({}, {})", clickPoint.x, clickPoint.y);
+        log.debug("Moving mouse to object at canvas point ({}, {})", clickPoint.x, clickPoint.y);
 
-        // Start async mouse movement
+        // Start async mouse movement (canvas coordinates -> screen coordinates)
         movePending = true;
-        CompletableFuture<Void> moveFuture = ctx.getMouseController().moveTo(clickPoint.x, clickPoint.y);
+        CompletableFuture<Void> moveFuture = ctx.getMouseController().moveToCanvas(clickPoint.x, clickPoint.y);
 
         moveFuture.thenRun(() -> {
             movePending = false;
@@ -515,6 +519,82 @@ public class InteractObjectTask extends AbstractTask {
         }
 
         return nearest;
+    }
+
+    /**
+     * Log all nearby objects for debugging when target object isn't found.
+     */
+    private void logNearbyObjects(TaskContext ctx, WorldPoint playerPos) {
+        Client client = ctx.getClient();
+        Scene scene = client.getScene();
+        Tile[][][] tiles = scene.getTiles();
+        int playerPlane = playerPos.getPlane();
+        
+        log.debug("Objects within {} tiles:", searchRadius);
+        int count = 0;
+        
+        for (int x = 0; x < Constants.SCENE_SIZE; x++) {
+            for (int y = 0; y < Constants.SCENE_SIZE; y++) {
+                Tile tile = tiles[playerPlane][x][y];
+                if (tile == null) {
+                    continue;
+                }
+                
+                // Check game objects
+                GameObject[] gameObjects = tile.getGameObjects();
+                if (gameObjects != null) {
+                    for (GameObject obj : gameObjects) {
+                        if (obj != null) {
+                            WorldPoint objPos = obj.getWorldLocation();
+                            int dist = playerPos.distanceTo(objPos);
+                            if (dist <= searchRadius) {
+                                log.debug("  - GameObject (id={}) at {} dist={}", 
+                                    obj.getId(), objPos, dist);
+                                count++;
+                            }
+                        }
+                    }
+                }
+                
+                // Check wall objects
+                WallObject wallObj = tile.getWallObject();
+                if (wallObj != null) {
+                    WorldPoint objPos = wallObj.getWorldLocation();
+                    int dist = playerPos.distanceTo(objPos);
+                    if (dist <= searchRadius) {
+                        log.debug("  - WallObject (id={}) at {} dist={}", 
+                            wallObj.getId(), objPos, dist);
+                        count++;
+                    }
+                }
+                
+                // Check ground objects
+                GroundObject groundObj = tile.getGroundObject();
+                if (groundObj != null) {
+                    WorldPoint objPos = groundObj.getWorldLocation();
+                    int dist = playerPos.distanceTo(objPos);
+                    if (dist <= searchRadius) {
+                        log.debug("  - GroundObject (id={}) at {} dist={}", 
+                            groundObj.getId(), objPos, dist);
+                        count++;
+                    }
+                }
+                
+                // Check decorative objects
+                DecorativeObject decObj = tile.getDecorativeObject();
+                if (decObj != null) {
+                    WorldPoint objPos = decObj.getWorldLocation();
+                    int dist = playerPos.distanceTo(objPos);
+                    if (dist <= searchRadius) {
+                        log.debug("  - DecorativeObject (id={}) at {} dist={}", 
+                            decObj.getId(), objPos, dist);
+                        count++;
+                    }
+                }
+            }
+        }
+        
+        log.debug("Total nearby objects: {}", count);
     }
 
     /**
