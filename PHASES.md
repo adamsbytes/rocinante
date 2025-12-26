@@ -48,9 +48,9 @@
 - [X] `XpGoal` - Training goal selection (Attack/Strength/Defence/etc.)
 - [X] Spell system - `CombatSpell`, `StandardSpell`, `AncientSpell`, `Spellbook`
 - [X] `CombatQuestStep` - Quest step integration with all combat features
-- [ ] `FoodManager` - Eat thresholds, combo eating
-- [ ] `PrayerFlicker` - Protection prayer switching
-- [ ] `SpecialAttackManager` - Spec weapon usage
+- [X] `FoodManager` - Eat thresholds, combo eating
+- [X] `PrayerFlicker` - Protection prayer switching
+- [X] `SpecialAttackManager` - Spec weapon usage
 
 **Test**: Kill cows/goblins for 30 minutes without dying. Verify eat timing, prayer switching.
 
@@ -114,7 +114,7 @@
 - [ ] `SkillPlanner` - Training method selection
 - [ ] `QuestOrderPlanner` - Optimal quest ordering
 - [ ] `GearProgressionPlanner` - Equipment upgrade paths
-- [ ] `UnlockTracker` - Teleports, areas, features
+- [X] `UnlockTracker` - Teleports, areas, features (integrated with WebWalker)
 - [ ] `TeleportTask` with behavioral profile preferences
 - [ ] `BankTask`, `InventoryTask`
 - [X] `DialogueTask`, `WidgetInteractTask`

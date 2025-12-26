@@ -830,8 +830,8 @@ public class WalkToTask extends AbstractTask {
         // Create PathFinder
         pathFinder = new PathFinder(client);
 
-        // Create WebWalker
-        webWalker = new WebWalker(client);
+        // Create WebWalker (null UnlockTracker - basic requirement checking only)
+        webWalker = new WebWalker(client, null);
 
         // Create ObstacleHandler
         obstacleHandler = new ObstacleHandler(client);

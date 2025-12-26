@@ -3,8 +3,12 @@ package com.rocinante.quest.steps;
 import com.rocinante.combat.AttackStyle;
 import com.rocinante.combat.CombatConfig;
 import com.rocinante.combat.CombatManager;
+import com.rocinante.combat.FlickMode;
+import com.rocinante.combat.FoodConfig;
 import com.rocinante.combat.GearSet;
+import com.rocinante.combat.PrayerConfig;
 import com.rocinante.combat.SelectionPriority;
+import com.rocinante.combat.SpecialAttackConfig;
 import com.rocinante.combat.TargetSelector;
 import com.rocinante.combat.TargetSelectorConfig;
 import com.rocinante.combat.WeaponStyle;
@@ -164,6 +168,17 @@ public class CombatQuestStep extends QuestStep {
     private XpGoal xpGoal = XpGoal.ANY;
 
     /**
+     * Prayer flicking mode.
+     * Per Section 10.2: PERFECT (tick-perfect), LAZY (safe), ALWAYS_ON (no flicking).
+     */
+    private FlickMode flickMode = FlickMode.LAZY;
+
+    /**
+     * Whether to use offensive prayers along with protection prayers.
+     */
+    private boolean useOffensivePrayers = false;
+
+    /**
      * Create a combat quest step for a single kill.
      *
      * @param npcId the NPC ID to attack
@@ -283,16 +298,41 @@ public class CombatQuestStep extends QuestStep {
 
         CombatTaskConfig config = configBuilder.build();
 
-        // Configure CombatManager if eating/prayer is enabled
+        // Configure CombatManager if eating/prayer/spec is enabled
         if (eatEnabled || usePrayer || useSpecialAttack) {
-            CombatConfig combatConfig = CombatConfig.builder()
+            CombatConfig.CombatConfigBuilder combatConfigBuilder = CombatConfig.builder()
                     .primaryEatThreshold(0.50)
                     .panicEatThreshold(0.25)
                     .useProtectionPrayers(usePrayer)
                     .useSpecialAttack(useSpecialAttack)
-                    .specEnergyThreshold(useSpecialAttack ? 50 : 100)
-                    .build();
-            combatManager.setConfig(combatConfig);
+                    .specEnergyThreshold(useSpecialAttack ? 50 : 100);
+
+            // Configure detailed FoodConfig if eating enabled
+            if (eatEnabled) {
+                combatConfigBuilder.foodConfig(FoodConfig.DEFAULT);
+            }
+
+            // Configure detailed PrayerConfig if prayer enabled
+            // Note: PrayerFlicker will gracefully degrade if prayer level too low
+            if (usePrayer) {
+                combatConfigBuilder.prayerConfig(PrayerConfig.builder()
+                        .useProtectionPrayers(true)
+                        .flickMode(flickMode)
+                        .useOffensivePrayers(useOffensivePrayers)
+                        .build());
+            }
+
+            // Configure detailed SpecialAttackConfig if special attack enabled
+            if (useSpecialAttack) {
+                combatConfigBuilder.specialAttackConfig(SpecialAttackConfig.builder()
+                        .enabled(true)
+                        .energyThreshold(50)
+                        .useSpecWeapon(false) // Use equipped weapon's spec
+                        .stackSpecs(false) // Single spec by default
+                        .build());
+            }
+
+            combatManager.setConfig(combatConfigBuilder.build());
         }
 
         // Create the CombatTask
@@ -568,6 +608,47 @@ public class CombatQuestStep extends QuestStep {
      */
     public CombatQuestStep withXpGoal(XpGoal goal) {
         this.xpGoal = goal;
+        return this;
+    }
+
+    /**
+     * Set prayer flicking mode (builder-style).
+     * Per Section 10.2:
+     * <ul>
+     *   <li>PERFECT - Tick-perfect flicking, maximum prayer conservation (ironman mode)</li>
+     *   <li>LAZY - Activate before attack, deactivate after (safe default)</li>
+     *   <li>ALWAYS_ON - No flicking, prayer always active (safest)</li>
+     * </ul>
+     *
+     * <p>Note: If prayer level is too low for protection prayers,
+     * PrayerFlicker will gracefully degrade and skip prayer management.
+     *
+     * @param mode the flick mode
+     * @return this step for chaining
+     */
+    public CombatQuestStep withFlickMode(FlickMode mode) {
+        this.flickMode = mode;
+        return this;
+    }
+
+    /**
+     * Enable offensive prayers along with protection prayers (builder-style).
+     * The best available offensive prayer for the attack style will be used.
+     *
+     * <p>Example:
+     * <pre>{@code
+     * // Boss fight with Piety
+     * new CombatQuestStep(NpcID.BOSS, "Kill boss")
+     *     .withUsePrayer(true)
+     *     .withUseOffensivePrayers(true)
+     *     .withAttackStyle(AttackStyle.MELEE);
+     * }</pre>
+     *
+     * @param enabled true to enable offensive prayers
+     * @return this step for chaining
+     */
+    public CombatQuestStep withUseOffensivePrayers(boolean enabled) {
+        this.useOffensivePrayers = enabled;
         return this;
     }
 }

@@ -39,7 +39,7 @@ public class WebWalkerTest {
         when(client.getRealSkillLevel(Skill.MAGIC)).thenReturn(50);
         when(client.getRealSkillLevel(Skill.AGILITY)).thenReturn(50);
 
-        webWalker = new WebWalker(client);
+        webWalker = new WebWalker(client, null); // null UnlockTracker for basic tests
     }
 
     // ========================================================================
@@ -238,7 +238,7 @@ public class WebWalkerTest {
     @Test
     public void testFindPathWithNullWeb() {
         // Create a webwalker that couldn't load the web
-        WebWalker badWalker = new WebWalker(client) {
+        WebWalker badWalker = new WebWalker(client, null) {
             @Override
             public boolean isWebLoaded() {
                 return false;

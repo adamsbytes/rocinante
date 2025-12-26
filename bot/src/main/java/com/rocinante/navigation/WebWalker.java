@@ -1,11 +1,14 @@
 package com.rocinante.navigation;
 
+import com.rocinante.progression.UnlockTracker;
 import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.Skill;
 import net.runelite.api.coords.WorldPoint;
 
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.io.IOException;
@@ -31,6 +34,14 @@ public class WebWalker {
     private final Client client;
 
     /**
+     * UnlockTracker for checking edge requirements.
+     * Optional - if null, falls back to basic checks.
+     */
+    @Setter
+    @Nullable
+    private UnlockTracker unlockTracker;
+
+    /**
      * The navigation web graph.
      */
     @Getter
@@ -52,9 +63,16 @@ public class WebWalker {
     private boolean avoidWilderness = true;
 
     @Inject
-    public WebWalker(Client client) {
+    public WebWalker(Client client, @Nullable UnlockTracker unlockTracker) {
         this.client = client;
+        this.unlockTracker = unlockTracker;
         loadNavigationWeb();
+        
+        if (unlockTracker != null) {
+            log.info("WebWalker initialized with UnlockTracker integration");
+        } else {
+            log.info("WebWalker initialized without UnlockTracker (limited requirement checking)");
+        }
     }
 
     // ========================================================================
@@ -307,8 +325,24 @@ public class WebWalker {
 
     /**
      * Check a single requirement.
+     * Delegates to UnlockTracker when available for comprehensive checking.
      */
     private boolean checkRequirement(EdgeRequirement req) {
+        // Use UnlockTracker for most requirement types if available
+        if (unlockTracker != null) {
+            // Handle ironman restriction separately (account-type based, not unlock-based)
+            if (req.getType() == EdgeRequirementType.IRONMAN_RESTRICTION) {
+                if (isIronman && req.getIdentifier() != null) {
+                    return false;
+                }
+                return true;
+            }
+            
+            // Delegate to UnlockTracker for quest, item, rune, and skill checks
+            return unlockTracker.isEdgeRequirementMet(req);
+        }
+
+        // Fallback to basic checks if UnlockTracker not available
         switch (req.getType()) {
             case MAGIC_LEVEL:
                 return getSkillLevel(Skill.MAGIC) >= req.getValue();
@@ -324,14 +358,14 @@ public class WebWalker {
                 return skill != null && getSkillLevel(skill) >= req.getValue();
 
             case QUEST:
-                // TODO: Implement quest state checking
-                log.trace("Quest requirement check not implemented: {}", req.getIdentifier());
+                // Cannot check without UnlockTracker - be conservative
+                log.trace("Quest requirement check requires UnlockTracker: {}", req.getIdentifier());
                 return false;
 
             case ITEM:
             case RUNES:
-                // TODO: Implement inventory checking
-                log.trace("Item requirement check not implemented");
+                // Cannot check without UnlockTracker - be conservative
+                log.trace("Item/rune requirement check requires UnlockTracker");
                 return false;
 
             case IRONMAN_RESTRICTION:

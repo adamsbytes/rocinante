@@ -3,6 +3,8 @@ package com.rocinante.combat;
 import lombok.Builder;
 import lombok.Value;
 
+import javax.annotation.Nullable;
+
 /**
  * Configuration for combat behavior.
  *
@@ -13,6 +15,13 @@ import lombok.Value;
  *   <li>Prayer management</li>
  *   <li>Special attack usage</li>
  *   <li>Loot settings</li>
+ * </ul>
+ *
+ * Supports delegation to specialized configs:
+ * <ul>
+ *   <li>{@link FoodConfig} - Detailed food consumption settings</li>
+ *   <li>{@link PrayerConfig} - Detailed prayer flicking settings</li>
+ *   <li>{@link SpecialAttackConfig} - Detailed special attack settings</li>
  * </ul>
  */
 @Value
@@ -181,6 +190,28 @@ public class CombatConfig {
      */
     @Builder.Default
     int lootMinValue = 1000;
+
+    // ========================================================================
+    // Delegated Manager Configs
+    // ========================================================================
+
+    /**
+     * Detailed food configuration. If null, uses defaults based on hcimMode.
+     */
+    @Nullable
+    FoodConfig foodConfig;
+
+    /**
+     * Detailed prayer configuration. If null, uses defaults based on hcimMode.
+     */
+    @Nullable
+    PrayerConfig prayerConfig;
+
+    /**
+     * Detailed special attack configuration. If null, uses defaults.
+     */
+    @Nullable
+    SpecialAttackConfig specialAttackConfig;
 
     // ========================================================================
     // HCIM Safety Settings (Section 10.1.4)
