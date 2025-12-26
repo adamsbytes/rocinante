@@ -157,7 +157,11 @@ export const BotDetail: Component = () => {
                       </span>
                     </span>
                   </div>
-                  <VncViewer botId={params().id} onStatusChange={handleVncStatusChange} />
+                  <VncViewer 
+                    botId={params().id} 
+                    shouldConnect={isRunning}
+                    onStatusChange={handleVncStatusChange} 
+                  />
                 </div>
               </Show>
 

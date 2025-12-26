@@ -9,6 +9,7 @@ import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.ItemContainerChanged;
+import net.runelite.client.game.ItemManager;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
@@ -40,12 +41,15 @@ public class GameStateServiceTest {
     @Mock
     private LocalPoint mockLocalPoint;
 
+    @Mock
+    private ItemManager itemManager;
+
     private GameStateService gameStateService;
 
     @Before
     public void setUp() {
         MockitoAnnotations.openMocks(this);
-        gameStateService = new GameStateService(client);
+        gameStateService = new GameStateService(client, itemManager);
     }
 
     // ========================================================================

@@ -4,6 +4,7 @@ import com.rocinante.util.PerlinNoise;
 import com.rocinante.util.Randomization;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.Client;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -100,6 +101,7 @@ public class RobotMouseController {
     private static final long MAX_DRIFT_DURATION_MS = 2000;
 
     private final Robot robot;
+    private final Client client;
     private final Randomization randomization;
     private final PerlinNoise perlinNoise;
     private final InputProfile inputProfile;
@@ -114,11 +116,17 @@ public class RobotMouseController {
     private volatile long lastMovementTime = System.currentTimeMillis();
     private volatile boolean isMoving = false;
     private long movementSeed = System.nanoTime();
+    
+    // Cached canvas offset (updated periodically)
+    private volatile Point canvasOffset = new Point(0, 0);
+    private volatile long lastCanvasOffsetUpdate = 0;
+    private static final long CANVAS_OFFSET_UPDATE_INTERVAL_MS = 1000;
 
     @Inject
-    public RobotMouseController(Randomization randomization, PerlinNoise perlinNoise, InputProfile inputProfile) throws AWTException {
+    public RobotMouseController(Client client, Randomization randomization, PerlinNoise perlinNoise, InputProfile inputProfile) throws AWTException {
         this.robot = new Robot();
         this.robot.setAutoDelay(0); // We handle delays ourselves
+        this.client = client;
         this.randomization = randomization;
         this.perlinNoise = perlinNoise;
         this.inputProfile = inputProfile;
@@ -136,6 +144,83 @@ public class RobotMouseController {
         }
 
         log.info("RobotMouseController initialized");
+    }
+    
+    // ========================================================================
+    // Canvas Offset Translation
+    // ========================================================================
+    
+    /**
+     * Get the current canvas offset (screen position of the game canvas).
+     * This is used to translate canvas-relative widget coordinates to absolute screen coordinates.
+     * The offset is cached and updated periodically to avoid frequent AWT calls.
+     */
+    private Point getCanvasOffset() {
+        long now = System.currentTimeMillis();
+        if (now - lastCanvasOffsetUpdate > CANVAS_OFFSET_UPDATE_INTERVAL_MS) {
+            updateCanvasOffset();
+        }
+        return canvasOffset;
+    }
+    
+    /**
+     * Update the cached canvas offset by querying the game canvas position.
+     */
+    private void updateCanvasOffset() {
+        try {
+            Canvas canvas = client.getCanvas();
+            if (canvas != null && canvas.isShowing()) {
+                Point screenPos = canvas.getLocationOnScreen();
+                // Log if this is a significant change (first detection or window moved)
+                if (canvasOffset.x == 0 && canvasOffset.y == 0 && (screenPos.x != 0 || screenPos.y != 0)) {
+                    log.info("Canvas screen position detected: ({}, {})", screenPos.x, screenPos.y);
+                } else if (Math.abs(screenPos.x - canvasOffset.x) > 10 || Math.abs(screenPos.y - canvasOffset.y) > 10) {
+                    log.debug("Canvas position changed: ({}, {}) -> ({}, {})", 
+                            canvasOffset.x, canvasOffset.y, screenPos.x, screenPos.y);
+                }
+                canvasOffset = screenPos;
+            }
+        } catch (Exception e) {
+            // Canvas may not be displayable yet, keep previous offset
+            log.trace("Could not get canvas offset: {}", e.getMessage());
+        }
+        lastCanvasOffsetUpdate = System.currentTimeMillis();
+    }
+    
+    /**
+     * Translate canvas-relative coordinates to absolute screen coordinates.
+     * 
+     * @param canvasX X coordinate relative to game canvas
+     * @param canvasY Y coordinate relative to game canvas
+     * @return Point with absolute screen coordinates
+     */
+    public Point canvasToScreen(int canvasX, int canvasY) {
+        Point offset = getCanvasOffset();
+        return new Point(canvasX + offset.x, canvasY + offset.y);
+    }
+    
+    /**
+     * Translate a canvas-relative Rectangle to absolute screen coordinates.
+     * 
+     * @param canvasBounds Rectangle with canvas-relative coordinates
+     * @return Rectangle with absolute screen coordinates
+     */
+    public Rectangle canvasToScreen(Rectangle canvasBounds) {
+        Point offset = getCanvasOffset();
+        return new Rectangle(
+            canvasBounds.x + offset.x,
+            canvasBounds.y + offset.y,
+            canvasBounds.width,
+            canvasBounds.height
+        );
+    }
+    
+    /**
+     * Force update of the canvas offset cache.
+     * Call this when the window is known to have moved or resized.
+     */
+    public void invalidateCanvasOffset() {
+        lastCanvasOffsetUpdate = 0;
     }
 
     // ========================================================================
@@ -178,12 +263,20 @@ public class RobotMouseController {
     /**
      * Move mouse to a random point within a hitbox using humanized movement.
      * Click position uses 2D Gaussian as per REQUIREMENTS 3.1.2.
+     * 
+     * NOTE: The hitbox is assumed to be in CANVAS-RELATIVE coordinates (from widget bounds).
+     * This method automatically translates to screen coordinates.
      *
-     * @param hitbox the target hitbox
+     * @param hitbox the target hitbox (canvas-relative)
      * @return CompletableFuture that completes when movement is done
      */
     public CompletableFuture<Void> moveTo(Rectangle hitbox) {
-        int[] clickPos = generateClickPosition(hitbox);
+        // Translate canvas-relative hitbox to screen coordinates
+        Rectangle screenHitbox = canvasToScreen(hitbox);
+        log.debug("moveTo hitbox: canvas({},{} {}x{}) -> screen({},{} {}x{})",
+                hitbox.x, hitbox.y, hitbox.width, hitbox.height,
+                screenHitbox.x, screenHitbox.y, screenHitbox.width, screenHitbox.height);
+        int[] clickPos = generateClickPosition(screenHitbox);
         return moveTo(clickPos[0], clickPos[1]);
     }
 
@@ -444,23 +537,28 @@ public class RobotMouseController {
 
     /**
      * Move to a random point within hitbox and click.
+     * 
+     * NOTE: The hitbox is assumed to be in CANVAS-RELATIVE coordinates (from widget bounds).
+     * This method automatically translates to screen coordinates.
      *
-     * @param hitbox the target hitbox
+     * @param hitbox the target hitbox (canvas-relative)
      * @return CompletableFuture that completes when click is done
      */
     public CompletableFuture<Void> click(Rectangle hitbox) {
-        return click(hitbox, false);
+        // Translate canvas-relative hitbox to screen coordinates
+        Rectangle screenHitbox = canvasToScreen(hitbox);
+        return clickScreen(screenHitbox, false);
     }
 
     /**
-     * Move to a random point within hitbox and click, with optional misclick simulation.
+     * Move to a random point within screen-coordinate hitbox and click.
      */
-    private CompletableFuture<Void> click(Rectangle hitbox, boolean isCorrectionClick) {
-        int[] clickPos = generateClickPosition(hitbox);
+    private CompletableFuture<Void> clickScreen(Rectangle screenHitbox, boolean isCorrectionClick) {
+        int[] clickPos = generateClickPosition(screenHitbox);
 
         // Simulate misclick (unless this is already a correction click)
         if (!isCorrectionClick && shouldMisclick()) {
-            return executeMisclick(hitbox, clickPos);
+            return executeMisclick(screenHitbox, clickPos);
         }
 
         return moveTo(clickPos[0], clickPos[1]).thenCompose(v -> click());
@@ -468,24 +566,34 @@ public class RobotMouseController {
 
     /**
      * Right-click at a random point within hitbox.
+     * 
+     * NOTE: The hitbox is assumed to be in CANVAS-RELATIVE coordinates (from widget bounds).
+     * This method automatically translates to screen coordinates.
      *
-     * @param hitbox the target hitbox
+     * @param hitbox the target hitbox (canvas-relative)
      * @return CompletableFuture that completes when click is done
      */
     public CompletableFuture<Void> rightClick(Rectangle hitbox) {
-        int[] clickPos = generateClickPosition(hitbox);
+        // Translate canvas-relative hitbox to screen coordinates
+        Rectangle screenHitbox = canvasToScreen(hitbox);
+        int[] clickPos = generateClickPosition(screenHitbox);
         return moveTo(clickPos[0], clickPos[1])
                 .thenCompose(v -> executeClick(InputEvent.BUTTON3_DOWN_MASK, false));
     }
 
     /**
      * Double-click at a random point within hitbox.
+     * 
+     * NOTE: The hitbox is assumed to be in CANVAS-RELATIVE coordinates (from widget bounds).
+     * This method automatically translates to screen coordinates.
      *
-     * @param hitbox the target hitbox
+     * @param hitbox the target hitbox (canvas-relative)
      * @return CompletableFuture that completes when double-click is done
      */
     public CompletableFuture<Void> doubleClick(Rectangle hitbox) {
-        int[] clickPos = generateClickPosition(hitbox);
+        // Translate canvas-relative hitbox to screen coordinates
+        Rectangle screenHitbox = canvasToScreen(hitbox);
+        int[] clickPos = generateClickPosition(screenHitbox);
         return moveTo(clickPos[0], clickPos[1])
                 .thenCompose(v -> executeClick(InputEvent.BUTTON1_DOWN_MASK, true));
     }
@@ -586,8 +694,9 @@ public class RobotMouseController {
 
     /**
      * Execute misclick: click outside hitbox, then correct.
+     * Note: hitbox should already be in screen coordinates.
      */
-    private CompletableFuture<Void> executeMisclick(Rectangle hitbox, int[] intendedPos) {
+    private CompletableFuture<Void> executeMisclick(Rectangle screenHitbox, int[] intendedPos) {
         // Calculate misclick offset
         int offsetDistance = randomization.uniformRandomInt(MIN_MISCLICK_OFFSET, MAX_MISCLICK_OFFSET);
         double angle = randomization.uniformRandom(0, 2 * Math.PI);
@@ -607,7 +716,7 @@ public class RobotMouseController {
                             MIN_MISCLICK_CORRECTION_DELAY_MS, MAX_MISCLICK_CORRECTION_DELAY_MS);
                     return sleep(delay);
                 })
-                .thenCompose(v -> click(hitbox, true)); // Correction click
+                .thenCompose(v -> clickScreen(screenHitbox, true)); // Correction click (already screen coords)
     }
 
     // ========================================================================

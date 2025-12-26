@@ -2,6 +2,8 @@ package com.rocinante.state;
 
 import net.runelite.api.coords.WorldPoint;
 
+import java.util.List;
+
 /**
  * Factory methods for common StateCondition predicates.
  *
@@ -11,8 +13,10 @@ import net.runelite.api.coords.WorldPoint;
  *   <li>Player state (idle, animating, interacting)</li>
  *   <li>Inventory and equipment checks</li>
  *   <li>Health, prayer, and run energy thresholds</li>
- *   <li>Combat state conditions</li>
+ *   <li>Combat state conditions (WorldState, CombatState)</li>
  *   <li>Widget and dialogue visibility</li>
+ *   <li>NPC existence and targeting</li>
+ *   <li>Special attack and poison/venom status</li>
  * </ul>
  *
  * <p>All conditions are composable via and(), or(), not() methods.
@@ -496,6 +500,274 @@ public final class Conditions {
                 hasFoodCount(minFood),
                 healthAbove(minHealth)
         );
+    }
+
+    // ========================================================================
+    // NPC and World State Conditions (Section 6.3 additions)
+    // ========================================================================
+
+    /**
+     * NPC with specified ID exists within range.
+     *
+     * @param npcId the NPC definition ID
+     * @return condition checking NPC presence
+     */
+    public static StateCondition npcExists(int npcId) {
+        return ctx -> ctx.getWorldState().hasNpc(npcId);
+    }
+
+    /**
+     * NPC with specified ID exists within a specific radius.
+     *
+     * @param npcId  the NPC definition ID
+     * @param radius maximum distance in tiles
+     * @return condition checking NPC presence within radius
+     */
+    public static StateCondition npcExists(int npcId, int radius) {
+        return ctx -> {
+            WorldState world = ctx.getWorldState();
+            PlayerState player = ctx.getPlayerState();
+            WorldPoint playerPos = player.getWorldPosition();
+            if (playerPos == null) return false;
+            
+            return world.getNpcsById(npcId).stream()
+                    .anyMatch(npc -> npc.isWithinDistance(playerPos, radius));
+        };
+    }
+
+    /**
+     * Any NPC is currently targeting the player.
+     *
+     * @return condition checking if player is being targeted
+     */
+    public static StateCondition npcTargetingPlayer() {
+        return ctx -> ctx.getWorldState().isPlayerTargeted();
+    }
+
+    /**
+     * Target NPC health is below a threshold.
+     *
+     * @param percent health threshold (0.0 to 1.0)
+     * @return condition checking target health
+     */
+    public static StateCondition npcHealthBelow(double percent) {
+        return ctx -> {
+            CombatState combat = ctx.getCombatState();
+            NpcSnapshot target = combat.getTargetNpc();
+            if (target == null) return false;
+            return target.isHealthBelow(percent);
+        };
+    }
+
+    /**
+     * Ground item with specified ID exists nearby.
+     *
+     * @param itemId the item definition ID
+     * @return condition checking ground item presence
+     */
+    public static StateCondition groundItemExists(int itemId) {
+        return ctx -> ctx.getWorldState().hasGroundItem(itemId);
+    }
+
+    /**
+     * Valuable ground items exist (above threshold).
+     *
+     * @param minValue minimum GE value in gp
+     * @return condition checking valuable loot
+     */
+    public static StateCondition valuableLootExists(int minValue) {
+        return ctx -> !ctx.getWorldState().getValuableGroundItems(minValue).isEmpty();
+    }
+
+    /**
+     * Game object with specified ID exists nearby.
+     *
+     * @param objectId the object definition ID
+     * @return condition checking object presence
+     */
+    public static StateCondition objectExists(int objectId) {
+        return ctx -> ctx.getWorldState().hasObject(objectId);
+    }
+
+    // ========================================================================
+    // Combat State Conditions (Section 6.3 additions)
+    // ========================================================================
+
+    /**
+     * Player has a combat target.
+     *
+     * @return condition checking target presence
+     */
+    public static StateCondition hasTarget() {
+        return ctx -> ctx.getCombatState().hasTarget();
+    }
+
+    /**
+     * Player is being attacked by any NPC.
+     *
+     * @return condition checking if under attack
+     */
+    public static StateCondition isBeingAttacked() {
+        return ctx -> ctx.getCombatState().isBeingAttacked();
+    }
+
+    /**
+     * Player is piled up by multiple NPCs (HCIM danger).
+     *
+     * @return condition checking pile-up status
+     */
+    public static StateCondition isPiledUp() {
+        return ctx -> ctx.getCombatState().isPiledUp();
+    }
+
+    /**
+     * Player is in multi-combat area.
+     *
+     * @return condition checking multi-combat status
+     */
+    public static StateCondition inMultiCombat() {
+        return ctx -> ctx.getCombatState().isInMultiCombat();
+    }
+
+    /**
+     * Special attack energy is above threshold.
+     *
+     * @param percent threshold (0-100)
+     * @return condition checking spec energy
+     */
+    public static StateCondition specialAttackAbove(int percent) {
+        return ctx -> ctx.getCombatState().hasSpecEnergy(percent);
+    }
+
+    /**
+     * Player can use special attack with given cost.
+     *
+     * @param cost spec cost (25, 50, or 100)
+     * @return condition checking spec availability
+     */
+    public static StateCondition canUseSpecialAttack(int cost) {
+        return ctx -> ctx.getCombatState().canUseSpec(cost);
+    }
+
+    /**
+     * Venom is active on player.
+     *
+     * @return condition checking venom status
+     */
+    public static StateCondition venomActive() {
+        return ctx -> ctx.getCombatState().isVenomed();
+    }
+
+    /**
+     * Poison (not venom) is active on player.
+     *
+     * @return condition checking poison status
+     */
+    public static StateCondition poisonActive() {
+        return ctx -> ctx.getCombatState().isPoisoned();
+    }
+
+    /**
+     * Venom is at critical damage levels (16+).
+     *
+     * @return condition checking critical venom
+     */
+    public static StateCondition venomCritical() {
+        return ctx -> ctx.getCombatState().isVenomCritical();
+    }
+
+    /**
+     * An incoming attack has been detected.
+     *
+     * @return condition checking incoming attack
+     */
+    public static StateCondition hasIncomingAttack() {
+        return ctx -> ctx.getCombatState().hasIncomingAttack();
+    }
+
+    /**
+     * Number of aggressors is at or above threshold.
+     *
+     * @param count minimum aggressor count
+     * @return condition checking aggressor count
+     */
+    public static StateCondition aggressorCountAtLeast(int count) {
+        return ctx -> ctx.getCombatState().getAggressorCount() >= count;
+    }
+
+    /**
+     * Player's attack is ready (cooldown elapsed).
+     *
+     * @return condition checking attack readiness
+     */
+    public static StateCondition attackReady() {
+        return ctx -> ctx.getCombatState().isAttackReady();
+    }
+
+    // ========================================================================
+    // HCIM Safety Conditions (Section 10.1.4)
+    // ========================================================================
+
+    /**
+     * HCIM should flee based on current state.
+     * Checks: pile-up, low HP with no food, critical venom.
+     *
+     * @return condition checking if HCIM should flee
+     */
+    public static StateCondition hcimShouldFlee() {
+        return StateCondition.anyOf(
+                isPiledUp(),
+                StateCondition.allOf(healthBelow(0.50), hasFood().not()),
+                venomCritical(),
+                isSkulled()
+        );
+    }
+
+    /**
+     * HCIM pre-combat ready: all safety equipment and minimum supplies.
+     *
+     * @param minFood minimum food count
+     * @return condition checking HCIM pre-combat readiness
+     */
+    public static StateCondition hcimPreCombatReady(int minFood) {
+        return StateCondition.allOf(
+                hasRingOfLife(),
+                hasFoodCount(minFood),
+                healthAbove(0.80),
+                isSkulled().not()
+        );
+    }
+
+    // ========================================================================
+    // Widget Conditions
+    // ========================================================================
+
+    /**
+     * A specific widget group is visible.
+     *
+     * @param widgetGroupId the widget group ID
+     * @return condition checking widget visibility
+     */
+    public static StateCondition widgetVisible(int widgetGroupId) {
+        return ctx -> ctx.getWorldState().isWidgetVisible(widgetGroupId);
+    }
+
+    /**
+     * Bank interface is open.
+     *
+     * @return condition checking bank open
+     */
+    public static StateCondition bankIsOpen() {
+        return widgetVisible(12); // Bank widget group
+    }
+
+    /**
+     * Inventory interface is visible.
+     *
+     * @return condition checking inventory tab open
+     */
+    public static StateCondition inventoryTabOpen() {
+        return widgetVisible(149); // Inventory widget group
     }
 }
 

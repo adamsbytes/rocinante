@@ -23,6 +23,7 @@ export interface BotConfig {
   password: string;  // Jagex account password
   totpSecret?: string;  // Optional: Base32 TOTP secret for 2FA
   characterName?: string;  // Optional: Desired character name for new accounts
+  preferredWorld?: number;  // Optional: Default world to use (defaults to 301 F2P)
   proxy: ProxyConfig | null;
   ironman: IronmanConfig;
   resources: ResourceConfig;

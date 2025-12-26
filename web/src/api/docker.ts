@@ -160,6 +160,11 @@ export async function startBot(bot: BotConfig): Promise<void> {
     env.push(`CHARACTER_NAME=${bot.characterName}`);
   }
 
+  // Add preferred world if provided (defaults to 301 F2P in entrypoint)
+  if (bot.preferredWorld) {
+    env.push(`PREFERRED_WORLD=${bot.preferredWorld}`);
+  }
+
   if (bot.proxy) {
     env.push(`PROXY_HOST=${bot.proxy.host}`);
     env.push(`PROXY_PORT=${bot.proxy.port}`);
@@ -325,11 +330,19 @@ export async function getContainerLogs(botId: string): Promise<ReadableStream<st
       });
 
       logStream.on('end', () => {
-        controller.close();
+        try {
+          controller.close();
+        } catch {
+          // Controller already closed
+        }
       });
 
       logStream.on('error', (err: Error) => {
-        controller.error(err);
+        try {
+          controller.error(err);
+        } catch {
+          // Controller already closed
+        }
       });
     },
   });

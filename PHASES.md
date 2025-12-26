@@ -35,9 +35,9 @@
 ## Phase 3: Combat System
 **Goal**: Bot can fight, eat, pray, and survive.
 
-- [ ] `WorldState` - NPCs, objects, ground items, projectiles
-- [ ] `CombatState` - Target, incoming attacks, poison/venom tracking
-- [ ] `CombatManager` - Main combat loop
+- [X] `WorldState` - NPCs, objects, ground items, projectiles
+- [X] `CombatState` - Target, incoming attacks, poison/venom tracking
+- [X] `CombatManager` - Main combat loop
 - [ ] `FoodManager` - Eat thresholds, combo eating
 - [ ] `PrayerFlicker` - Protection prayer switching
 - [ ] `GearSwitcher` - Equipment swaps

@@ -1,4 +1,45 @@
-FROM eclipse-temurin:17-jdk-noble
+# =============================================================================
+# Stage 1: Build Quest Helper dependency
+# =============================================================================
+FROM eclipse-temurin:17-jdk-noble AS quest-helper-builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+RUN git clone --depth 1 https://github.com/Zoinkwiz/quest-helper.git
+
+WORKDIR /build/quest-helper
+RUN chmod +x gradlew && ./gradlew jar --no-daemon
+
+# =============================================================================
+# Stage 2: Build Rocinante plugin
+# =============================================================================
+FROM eclipse-temurin:17-jdk-noble AS rocinante-builder
+
+WORKDIR /build
+
+# Copy Quest Helper JAR as compile dependency
+COPY --from=quest-helper-builder /build/quest-helper/build/libs/quest-helper-*.jar /deps/quest-helper.jar
+
+# Copy Gradle wrapper and build files first (better layer caching)
+COPY gradlew gradlew.bat settings.gradle build.gradle ./
+COPY gradle/ gradle/
+
+# Download dependencies (cached unless build.gradle changes)
+RUN chmod +x gradlew && ./gradlew dependencies --no-daemon || true
+
+# Copy source code
+COPY src/ src/
+COPY runelite-plugin.properties ./
+
+# Build the plugin
+RUN ./gradlew jar --no-daemon
+
+# =============================================================================
+# Stage 3: Runtime image
+# =============================================================================
+FROM eclipse-temurin:17-jdk-noble AS runtime
 
 # JDK 17 LTS for long-term support (Eclipse Temurin on Ubuntu 24.04 Noble)
 # Ubuntu 24.04 required for Bolt launcher's glibc 2.38+ requirement
@@ -117,15 +158,16 @@ RUN mkdir -p .runelite/screenshots
 RUN mkdir -p .config/bolt-launcher \
     && mkdir -p .local/share/bolt-launcher
 
-# Copy Rocinante plugin (will be built separately)
-# COPY --chown=runelite:runelite build/libs/rocinante-*.jar .runelite/plugins/
+# Copy Rocinante plugin from build stage
+COPY --from=rocinante-builder --chown=runelite:runelite /build/build/libs/rocinante-*.jar .runelite/plugins/
 
 # Copy automation scripts and templates
 COPY --chown=runelite:runelite entrypoint.sh /home/runelite/
 COPY --chown=runelite:runelite bolt-login.sh /home/runelite/
 COPY --chown=runelite:runelite bolt_login.py /home/runelite/
+COPY --chown=runelite:runelite post_launch.py /home/runelite/
 COPY --chown=runelite:runelite templates/ /home/runelite/templates/
-RUN chmod +x /home/runelite/entrypoint.sh /home/runelite/bolt-login.sh /home/runelite/bolt_login.py
+RUN chmod +x /home/runelite/entrypoint.sh /home/runelite/bolt-login.sh /home/runelite/bolt_login.py /home/runelite/post_launch.py
 
 # Expose VNC port for debugging (optional)
 EXPOSE 5900

@@ -37,7 +37,7 @@ import java.util.List;
     name = "Rocinante",
     description = "Human-like automation framework",
     tags = {"automation", "quests", "combat", "slayer"},
-    enabledByDefault = false
+    enabledByDefault = true
 )
 public class RocinantePlugin extends Plugin
 {
@@ -74,6 +74,10 @@ public class RocinantePlugin extends Plugin
     @Getter
     private TaskExecutor taskExecutor;
 
+    @Inject
+    @Getter
+    private LoginFlowHandler loginFlowHandler;
+
     @Override
     protected void startUp() throws Exception
     {
@@ -82,6 +86,11 @@ public class RocinantePlugin extends Plugin
         // Register GameStateService with the event bus
         // GameStateService needs to receive events for state tracking
         eventBus.register(gameStateService);
+
+        // Register LoginFlowHandler with the event bus
+        // LoginFlowHandler auto-handles license agreement and name entry screens
+        // This runs before task automation and is always active
+        eventBus.register(loginFlowHandler);
 
         // Register TaskExecutor with the event bus
         // TaskExecutor handles task execution on each GameTick
@@ -92,6 +101,7 @@ public class RocinantePlugin extends Plugin
 
         log.info("Rocinante plugin started - Services registered");
         log.info("  GameStateService: registered");
+        log.info("  LoginFlowHandler: registered (auto-active)");
         log.info("  TaskExecutor: registered (stopped)");
     }
 
@@ -105,6 +115,10 @@ public class RocinantePlugin extends Plugin
 
         // Unregister TaskExecutor from the event bus
         eventBus.unregister(taskExecutor);
+
+        // Unregister LoginFlowHandler from the event bus
+        eventBus.unregister(loginFlowHandler);
+        loginFlowHandler.reset();
 
         // Unregister GameStateService from the event bus
         eventBus.unregister(gameStateService);
@@ -214,6 +228,17 @@ public class RocinantePlugin extends Plugin
     public String getTaskStatus()
     {
         return taskExecutor.getStatus();
+    }
+
+    /**
+     * Check if the login flow is complete (license accepted, name entered if needed).
+     * This should be true before automation tasks can run effectively.
+     *
+     * @return true if the bot is ready for task automation
+     */
+    public boolean isLoginFlowComplete()
+    {
+        return loginFlowHandler.isLoginFlowComplete();
     }
 
     @Provides

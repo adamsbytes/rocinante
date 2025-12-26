@@ -14,6 +14,7 @@ export const BotForm: Component<BotFormProps> = (props) => {
   const [password, setPassword] = createSignal(props.initialData?.password ?? '');
   const [totpSecret, setTotpSecret] = createSignal(props.initialData?.totpSecret ?? '');
   const [characterName, setCharacterName] = createSignal(props.initialData?.characterName ?? '');
+  const [preferredWorld, setPreferredWorld] = createSignal(props.initialData?.preferredWorld ?? 301);
 
   // Proxy
   const [proxyEnabled, setProxyEnabled] = createSignal(!!props.initialData?.proxy);
@@ -39,6 +40,7 @@ export const BotForm: Component<BotFormProps> = (props) => {
       password: password(),
       totpSecret: totpSecret() || undefined,
       characterName: characterName() || undefined,
+      preferredWorld: preferredWorld() || undefined,
       proxy: proxyEnabled()
         ? {
             host: proxyHost(),
@@ -126,6 +128,21 @@ export const BotForm: Component<BotFormProps> = (props) => {
           />
           <p class="text-xs text-[var(--text-secondary)] mt-1">
             Only needed for new accounts that don't have a character yet. Max 12 characters.
+          </p>
+        </div>
+        <div>
+          <label class={labelClass}>Preferred World</label>
+          <input
+            type="number"
+            value={preferredWorld()}
+            onInput={(e) => setPreferredWorld(parseInt(e.currentTarget.value) || 301)}
+            class={inputClass}
+            placeholder="301"
+            min={301}
+            max={580}
+          />
+          <p class="text-xs text-[var(--text-secondary)] mt-1">
+            Default world to log into. 301 is a safe F2P world. Members worlds are 302+.
           </p>
         </div>
       </section>

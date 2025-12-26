@@ -3,9 +3,11 @@ package com.rocinante.tasks;
 import com.rocinante.core.GameStateService;
 import com.rocinante.input.RobotKeyboardController;
 import com.rocinante.input.RobotMouseController;
+import com.rocinante.state.CombatState;
 import com.rocinante.state.EquipmentState;
 import com.rocinante.state.InventoryState;
 import com.rocinante.state.PlayerState;
+import com.rocinante.state.WorldState;
 import com.rocinante.timing.HumanTimer;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -21,15 +23,15 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * Per REQUIREMENTS.md Section 5.2, TaskContext provides:
  * <ul>
- *   <li>Read-only access to PlayerState, InventoryState, EquipmentState</li>
+ *   <li>Read-only access to PlayerState, InventoryState, EquipmentState, WorldState, CombatState</li>
  *   <li>Access to RobotMouseController and RobotKeyboardController</li>
  *   <li>Access to HumanTimer for delay scheduling</li>
  *   <li>Mutable taskVariables map for passing data between subtasks</li>
  *   <li>abortTask() method for immediate task termination</li>
  * </ul>
  *
- * <p>Note: WorldState, QuestState, CombatState, SlayerState will be added
- * in later phases as those state classes are implemented.
+ * <p>Note: QuestState and SlayerState will be added in later phases as those
+ * state classes are implemented.
  */
 @Slf4j
 public class TaskContext {
@@ -126,6 +128,26 @@ public class TaskContext {
      */
     public EquipmentState getEquipmentState() {
         return gameStateService.getEquipmentState();
+    }
+
+    /**
+     * Get the current world state snapshot.
+     * Contains nearby NPCs, objects, players, ground items, projectiles, and graphics objects.
+     *
+     * @return immutable WorldState
+     */
+    public WorldState getWorldState() {
+        return gameStateService.getWorldState();
+    }
+
+    /**
+     * Get the current combat state snapshot.
+     * Contains target info, special attack energy, poison/venom status, and aggressor tracking.
+     *
+     * @return immutable CombatState
+     */
+    public CombatState getCombatState() {
+        return gameStateService.getCombatState();
     }
 
     /**

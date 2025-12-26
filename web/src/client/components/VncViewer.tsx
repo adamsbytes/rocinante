@@ -5,19 +5,28 @@ export type VncStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 interface VncViewerProps {
   botId: string;
   class?: string;
+  /** Signal accessor indicating whether reconnection should be attempted (e.g., bot is running) */
+  shouldConnect?: () => boolean;
   onStatusChange?: (status: VncStatus, error?: string | null) => void;
 }
 
 // Basic RFB protocol constants
 const RFB_PROTOCOL_VERSION = 'RFB 003.008\n';
 
+// Reconnection constants
+const INITIAL_RECONNECT_DELAY = 1000; // 1 second
+const MAX_RECONNECT_DELAY = 30000; // 30 seconds
+
 export const VncViewer: Component<VncViewerProps> = (props) => {
   let canvasRef: HTMLCanvasElement | undefined;
   let ws: WebSocket | null = null;
+  let reconnectTimeoutId: ReturnType<typeof setTimeout> | null = null;
   
-  const [status, setStatus] = createSignal<'connecting' | 'connected' | 'disconnected' | 'error'>('connecting');
+  const [status, setStatus] = createSignal<VncStatus>('connecting');
   const [error, setError] = createSignal<string | null>(null);
   const [dimensions, setDimensions] = createSignal({ width: 1920, height: 1080 });
+  const [reconnectAttempt, setReconnectAttempt] = createSignal(0);
+  const [isReconnecting, setIsReconnecting] = createSignal(false);
 
   // RFB state machine
   let rfbState: 'protocol' | 'security' | 'auth' | 'securityResult' | 'serverInit' | 'normal' = 'protocol';
@@ -308,7 +317,52 @@ export const VncViewer: Component<VncViewerProps> = (props) => {
     }
   };
 
-  onMount(() => {
+  /** Calculate reconnection delay with exponential backoff */
+  const getReconnectDelay = (attempt: number): number => {
+    return Math.min(INITIAL_RECONNECT_DELAY * Math.pow(2, attempt), MAX_RECONNECT_DELAY);
+  };
+
+  /** Schedule a reconnection attempt with exponential backoff */
+  const scheduleReconnect = () => {
+    // Only reconnect if shouldConnect returns true (or if prop not provided, always reconnect)
+    const shouldReconnect = props.shouldConnect?.() ?? true;
+    if (!shouldReconnect) {
+      console.log('VNC: Not reconnecting - shouldConnect is false');
+      setIsReconnecting(false);
+      return;
+    }
+
+    // Clear any existing reconnect timeout
+    if (reconnectTimeoutId) {
+      clearTimeout(reconnectTimeoutId);
+      reconnectTimeoutId = null;
+    }
+
+    const attempt = reconnectAttempt();
+    const delay = getReconnectDelay(attempt);
+    
+    console.log(`VNC: Scheduling reconnect attempt ${attempt + 1} in ${delay}ms`);
+    
+    setIsReconnecting(true);
+    setStatus('connecting');
+    
+    reconnectTimeoutId = setTimeout(() => {
+      reconnectTimeoutId = null;
+      setReconnectAttempt(a => a + 1);
+      connect();
+    }, delay);
+  };
+
+  /** Establish WebSocket connection to VNC proxy */
+  const connect = () => {
+    // Close existing connection if any
+    if (ws) {
+      ws.onclose = null; // Prevent triggering reconnect on intentional close
+      ws.onerror = null;
+      ws.close();
+      ws = null;
+    }
+
     // Build WebSocket URL for VNC proxy
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/api/vnc/${props.botId}`;
@@ -323,7 +377,10 @@ export const VncViewer: Component<VncViewerProps> = (props) => {
       ws.binaryType = 'arraybuffer';
 
       ws.onopen = () => {
-        console.log('WebSocket connected to VNC proxy');
+        console.log('VNC: WebSocket connected');
+        // Reset reconnection state on successful connection
+        setReconnectAttempt(0);
+        setIsReconnecting(false);
       };
 
       ws.onmessage = (event) => {
@@ -334,27 +391,59 @@ export const VncViewer: Component<VncViewerProps> = (props) => {
       };
 
       ws.onclose = (event) => {
-        console.log('WebSocket closed:', event.code, event.reason);
+        console.log('VNC: WebSocket closed:', event.code, event.reason);
         setStatus('disconnected');
+        
+        // Schedule reconnection if appropriate
+        scheduleReconnect();
       };
 
       ws.onerror = (event) => {
-        console.error('WebSocket error:', event);
-        setStatus('error');
-        setError('Connection error');
+        console.error('VNC: WebSocket error:', event);
+        // Don't set error state here - let onclose handle the reconnection
+        // Only set error if this is a persistent failure
+        if (reconnectAttempt() > 0) {
+          setError('Connection error');
+        }
       };
 
     } catch (err) {
-      console.error('Failed to create WebSocket:', err);
+      console.error('VNC: Failed to create WebSocket:', err);
       setStatus('error');
       setError(err instanceof Error ? err.message : 'Failed to connect');
+      // Schedule reconnection even on creation failure
+      scheduleReconnect();
     }
+  };
+
+  onMount(() => {
+    connect();
   });
 
   onCleanup(() => {
+    // Clear reconnection timeout
+    if (reconnectTimeoutId) {
+      clearTimeout(reconnectTimeoutId);
+      reconnectTimeoutId = null;
+    }
+    
+    // Close WebSocket
     if (ws) {
+      ws.onclose = null; // Prevent triggering reconnect on cleanup
+      ws.onerror = null;
       ws.close();
       ws = null;
+    }
+  });
+
+  // React to shouldConnect changes - if it becomes false, stop reconnecting
+  createEffect(() => {
+    const shouldConnect = props.shouldConnect?.() ?? true;
+    if (!shouldConnect && reconnectTimeoutId) {
+      console.log('VNC: Cancelling reconnection - shouldConnect became false');
+      clearTimeout(reconnectTimeoutId);
+      reconnectTimeoutId = null;
+      setIsReconnecting(false);
     }
   });
 
@@ -382,16 +471,24 @@ export const VncViewer: Component<VncViewerProps> = (props) => {
         style={{ "max-width": "100%", "aspect-ratio": `${dimensions().width} / ${dimensions().height}` }}
       />
       <Show when={status() !== 'connected'}>
-        <div class="absolute inset-0 flex items-center justify-center bg-black/80">
+        {/* Use reduced opacity (bg-black/60) to keep last frame visible during reconnection */}
+        <div class={`absolute inset-0 flex items-center justify-center ${isReconnecting() ? 'bg-black/60' : 'bg-black/80'}`}>
           <div class="text-center">
             <Show when={status() === 'connecting'}>
               <div class="w-8 h-8 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-              <p class="text-[var(--text-secondary)]">Connecting to VNC...</p>
+              <Show 
+                when={isReconnecting()}
+                fallback={<p class="text-[var(--text-secondary)]">Connecting to VNC...</p>}
+              >
+                <p class="text-amber-400">
+                  Reconnecting{reconnectAttempt() > 1 ? ` (attempt ${reconnectAttempt()})` : '...'}
+                </p>
+              </Show>
             </Show>
-            <Show when={status() === 'disconnected'}>
+            <Show when={status() === 'disconnected' && !isReconnecting()}>
               <p class="text-[var(--text-secondary)]">VNC Disconnected</p>
             </Show>
-            <Show when={status() === 'error'}>
+            <Show when={status() === 'error' && !isReconnecting()}>
               <p class="text-red-400">{error() || 'Connection failed'}</p>
             </Show>
           </div>
