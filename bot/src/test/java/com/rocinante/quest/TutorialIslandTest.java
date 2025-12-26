@@ -250,7 +250,7 @@ public class TutorialIslandTest {
         assertEquals(StepType.COMBAT, steps.get(450).getType()); // Attack rat
         assertEquals(StepType.COMBAT, steps.get(460).getType()); // Wait for rat to die
         assertEquals(StepType.NPC, steps.get(470).getType());    // Talk to Combat Instructor
-        assertEquals(StepType.CONDITIONAL, steps.get(480).getType()); // Equip bow + attack
+        assertEquals(StepType.COMBAT, steps.get(480).getType()); // Equip bow (via AttackStyle) + attack
         assertEquals(StepType.COMBAT, steps.get(490).getType()); // Wait for rat to die
         assertEquals(StepType.OBJECT, steps.get(500).getType()); // Exit combat area
     }

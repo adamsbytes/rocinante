@@ -1,47 +1,69 @@
 package com.rocinante.quest.steps;
 
-import com.rocinante.state.StateCondition;
+import com.rocinante.combat.AttackStyle;
+import com.rocinante.combat.CombatConfig;
+import com.rocinante.combat.CombatManager;
+import com.rocinante.combat.GearSet;
+import com.rocinante.combat.SelectionPriority;
+import com.rocinante.combat.TargetSelector;
+import com.rocinante.combat.TargetSelectorConfig;
+import com.rocinante.combat.WeaponStyle;
+import com.rocinante.combat.XpGoal;
+import com.rocinante.combat.spell.CombatSpell;
 import com.rocinante.tasks.Task;
 import com.rocinante.tasks.TaskContext;
-import com.rocinante.tasks.impl.InteractNpcTask;
-import com.rocinante.tasks.impl.WaitForConditionTask;
+import com.rocinante.tasks.impl.CombatTask;
+import com.rocinante.tasks.impl.CombatTaskConfig;
+import com.rocinante.tasks.impl.EquipItemTask;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.experimental.Accessors;
+import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.coords.WorldPoint;
 
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
  * Quest step for engaging in combat.
  *
- * This step handles simple combat encounters like attacking rats on Tutorial Island.
- * For more complex combat (boss fights, prayer switching), use the full combat system.
+ * Uses CombatTask internally, which provides:
+ * <ul>
+ *   <li>Intelligent target selection via TargetSelector</li>
+ *   <li>Integration with CombatManager for eating, prayer, special attacks</li>
+ *   <li>Safe-spotting support</li>
+ *   <li>Loot collection</li>
+ *   <li>Kill count tracking</li>
+ * </ul>
  *
  * <p>Example usage:
  * <pre>{@code
- * // Attack a rat for Tutorial Island
- * CombatQuestStep attackRat = new CombatQuestStep(NpcID.GIANT_RAT, "Kill the rat")
- *     .withWaitForDeath(true);
+ * // Kill one rat (Tutorial Island)
+ * CombatQuestStep attackRat = new CombatQuestStep(NpcID.GIANT_RAT, "Kill the rat");
  *
- * // Attack with ranged
- * CombatQuestStep rangedAttack = new CombatQuestStep(NpcID.CHICKEN, "Kill the chicken with magic")
- *     .withAttackStyle(AttackStyle.MAGIC);
+ * // Kill 10 goblins with looting
+ * CombatQuestStep killGoblins = new CombatQuestStep(NpcID.GOBLIN, "Kill 10 goblins")
+ *     .withKillCount(10)
+ *     .withLootEnabled(true);
+ *
+ * // Boss fight with eating enabled
+ * CombatQuestStep demonSlayer = new CombatQuestStep(NpcID.DELRITH, "Defeat Delrith")
+ *     .withEatEnabled(true)
+ *     .withUseSpecialAttack(true);
+ *
+ * // Safe-spot combat with ranged
+ * CombatQuestStep rangedKill = new CombatQuestStep(NpcID.MOSS_GIANT, "Kill Moss Giant")
+ *     .withSafeSpot(new WorldPoint(2676, 9561, 0))
+ *     .withAttackRange(7);
  * }</pre>
  */
+@Slf4j
 @Getter
 @Setter
 @Accessors(chain = true)
 public class CombatQuestStep extends QuestStep {
-
-    /**
-     * Attack styles for combat.
-     */
-    public enum AttackStyle {
-        MELEE,
-        RANGED,
-        MAGIC
-    }
 
     /**
      * The NPC ID to attack.
@@ -49,22 +71,17 @@ public class CombatQuestStep extends QuestStep {
     private final int npcId;
 
     /**
-     * Optional NPC name filter.
+     * Optional NPC name filter (for NPCs with same ID but different names).
      */
     private String npcName;
 
     /**
-     * Attack style to use.
+     * Number of NPCs to kill (default: 1).
      */
-    private AttackStyle attackStyle = AttackStyle.MELEE;
+    private int killCount = 1;
 
     /**
-     * Whether to wait for the NPC to die.
-     */
-    private boolean waitForDeath = true;
-
-    /**
-     * Search radius for finding the target.
+     * Search radius for finding the target (default: 15 tiles).
      */
     private int searchRadius = 15;
 
@@ -74,12 +91,80 @@ public class CombatQuestStep extends QuestStep {
     private boolean useSpecialAttack = false;
 
     /**
-     * Maximum ticks to wait for death.
+     * Whether eating is enabled during combat.
      */
-    private int deathTimeoutTicks = 100;
+    private boolean eatEnabled = false;
 
     /**
-     * Create a combat quest step.
+     * Whether protection prayers should be used.
+     */
+    private boolean usePrayer = false;
+
+    /**
+     * Whether to loot drops after kills.
+     */
+    private boolean lootEnabled = false;
+
+    /**
+     * Minimum loot value to pick up (if looting enabled).
+     */
+    private int lootMinValue = 1000;
+
+    /**
+     * Safe-spot position for ranged/magic combat.
+     */
+    private WorldPoint safeSpotPosition;
+
+    /**
+     * Attack range (1 = melee, 7+ = ranged/magic).
+     */
+    private int attackRange = 1;
+
+    /**
+     * Maximum combat duration before giving up.
+     */
+    private Duration maxDuration = Duration.ofMinutes(10);
+
+    /**
+     * Attack style to use (auto-equips appropriate gear from inventory).
+     */
+    private AttackStyle attackStyle;
+
+    /**
+     * Specific gear set to equip before combat (takes precedence over attackStyle).
+     */
+    private GearSet gearSet;
+
+    /**
+     * Spells to use for magic combat.
+     * If specified, sets attackStyle to MAGIC automatically and configures CombatTask for spellcasting.
+     */
+    private List<CombatSpell> spells;
+
+    /**
+     * Whether to use autocast for the first spell (if autocastable).
+     */
+    private boolean useAutocast = true;
+
+    /**
+     * Spell cycle mode when multiple spells are configured.
+     */
+    private CombatTaskConfig.SpellCycleMode spellCycleMode = CombatTaskConfig.SpellCycleMode.IN_ORDER;
+
+    /**
+     * Required weapon attack style (Slash, Stab, Crush).
+     * Takes precedence over XP goal if they conflict.
+     */
+    private WeaponStyle weaponStyle = WeaponStyle.ANY;
+
+    /**
+     * Desired XP training goal.
+     * Must be compatible with weaponStyle.
+     */
+    private XpGoal xpGoal = XpGoal.ANY;
+
+    /**
+     * Create a combat quest step for a single kill.
      *
      * @param npcId the NPC ID to attack
      * @param text  instruction text
@@ -106,31 +191,115 @@ public class CombatQuestStep extends QuestStep {
 
     @Override
     public List<Task> toTasks(TaskContext ctx) {
+        TargetSelector targetSelector = ctx.getTargetSelector();
+        CombatManager combatManager = ctx.getCombatManager();
+
+        if (targetSelector == null || combatManager == null) {
+            log.error("CombatQuestStep requires TargetSelector and CombatManager in TaskContext");
+            throw new IllegalStateException("Combat system not available in TaskContext");
+        }
+
         List<Task> tasks = new ArrayList<>();
 
-        // Create attack task
-        InteractNpcTask attackTask = new InteractNpcTask(npcId, "Attack")
-                .withSearchRadius(searchRadius)
-                .withDialogueExpected(false)
-                .withWaitForIdle(false)
+        // Add equipment task if attack style or gear set specified
+        if (gearSet != null) {
+            // Use explicit gear set (takes precedence)
+            log.debug("Adding EquipItemTask for gear set: {}", gearSet.getName());
+            tasks.add(new EquipItemTask(gearSet)
+                    .withDescription("Equip " + gearSet.getName() + " for combat"));
+            
+            // Auto-set attack range from gear set if not explicitly set
+            if (attackRange == 1 && gearSet.getAttackStyle() != null) {
+                attackRange = gearSet.getAttackStyle().getDefaultRange();
+            }
+        } else if (attackStyle != null) {
+            // Use attack style auto-detection
+            log.debug("Adding EquipItemTask for attack style: {}", attackStyle);
+            tasks.add(new EquipItemTask(attackStyle)
+                    .withDescription("Equip gear for " + attackStyle.name().toLowerCase() + " combat"));
+            
+            // Auto-set attack range from attack style if not explicitly set
+            if (attackRange == 1) {
+                attackRange = attackStyle.getDefaultRange();
+            }
+        }
+
+        // Build target selector config
+        TargetSelectorConfig.TargetSelectorConfigBuilder targetConfigBuilder = TargetSelectorConfig.builder()
+                .priority(SelectionPriority.TARGETING_PLAYER)
+                .priority(SelectionPriority.SPECIFIC_ID)
+                .priority(SelectionPriority.NEAREST)
+                .targetNpcId(npcId)
+                .searchRadius(searchRadius)
+                .skipInCombatWithOthers(true)
+                .skipUnreachable(true)
+                .skipDead(true);
+
+        TargetSelectorConfig targetConfig = targetConfigBuilder.build();
+
+        // Build combat task config
+        CombatTaskConfig.CombatTaskConfigBuilder configBuilder = CombatTaskConfig.builder()
+                .targetConfig(targetConfig)
+                .killCount(killCount)
+                .maxDuration(maxDuration)
+                .lootEnabled(lootEnabled)
+                .lootMinValue(lootMinValue)
+                .stopWhenOutOfFood(eatEnabled) // Only stop for food if we care about eating
+                .stopWhenLowResources(false);
+
+        // Safe-spotting
+        if (safeSpotPosition != null) {
+            configBuilder
+                    .useSafeSpot(true)
+                    .safeSpotPosition(safeSpotPosition)
+                    .attackRange(attackRange);
+        } else if (attackRange > 1) {
+            // Set attack range even without safe-spotting (for ranged/magic)
+            configBuilder.attackRange(attackRange);
+        }
+
+        // Magic combat / spell configuration
+        if (spells != null && !spells.isEmpty()) {
+            log.debug("Configuring magic combat with {} spell(s)", spells.size());
+            for (CombatSpell spell : spells) {
+                configBuilder.spell(spell);
+            }
+            configBuilder.useAutocast(useAutocast);
+            configBuilder.spellCycleMode(spellCycleMode);
+            
+            // Auto-set attack range for magic if not explicitly set
+            if (attackRange == 1) {
+                configBuilder.attackRange(10); // Default magic range
+            }
+        }
+
+        // Weapon style and XP goal configuration
+        if (weaponStyle != WeaponStyle.ANY) {
+            configBuilder.weaponStyle(weaponStyle);
+        }
+        if (xpGoal != XpGoal.ANY) {
+            configBuilder.xpGoal(xpGoal);
+        }
+
+        CombatTaskConfig config = configBuilder.build();
+
+        // Configure CombatManager if eating/prayer is enabled
+        if (eatEnabled || usePrayer || useSpecialAttack) {
+            CombatConfig combatConfig = CombatConfig.builder()
+                    .primaryEatThreshold(0.50)
+                    .panicEatThreshold(0.25)
+                    .useProtectionPrayers(usePrayer)
+                    .useSpecialAttack(useSpecialAttack)
+                    .specEnergyThreshold(useSpecialAttack ? 50 : 100)
+                    .build();
+            combatManager.setConfig(combatConfig);
+        }
+
+        // Create the CombatTask
+        CombatTask combatTask = new CombatTask(config, targetSelector, combatManager)
                 .withDescription(getText());
 
-        if (npcName != null) {
-            attackTask.withNpcName(npcName);
-        }
-
-        tasks.add(attackTask);
-
-        // Optionally wait for NPC death
-        if (waitForDeath) {
-            // Wait until player is no longer in combat (NPC died)
-            WaitForConditionTask waitTask = new WaitForConditionTask(
-                    new NpcDeathCondition(npcId)
-            ).withDescription("Wait for NPC to die");
-
-            tasks.add(waitTask);
-        }
-
+        tasks.add(combatTask);
         return tasks;
     }
 
@@ -150,24 +319,13 @@ public class CombatQuestStep extends QuestStep {
     }
 
     /**
-     * Set attack style (builder-style).
+     * Set number of kills required (builder-style).
      *
-     * @param style the attack style
+     * @param count the kill count
      * @return this step for chaining
      */
-    public CombatQuestStep withAttackStyle(AttackStyle style) {
-        this.attackStyle = style;
-        return this;
-    }
-
-    /**
-     * Set whether to wait for death (builder-style).
-     *
-     * @param wait true to wait for NPC death
-     * @return this step for chaining
-     */
-    public CombatQuestStep withWaitForDeath(boolean wait) {
-        this.waitForDeath = wait;
+    public CombatQuestStep withKillCount(int count) {
+        this.killCount = count;
         return this;
     }
 
@@ -183,56 +341,233 @@ public class CombatQuestStep extends QuestStep {
     }
 
     /**
-     * Set whether to use special attack (builder-style).
+     * Enable/disable special attack usage (builder-style).
      *
      * @param useSpec true to use special attack
      * @return this step for chaining
      */
-    public CombatQuestStep withSpecialAttack(boolean useSpec) {
+    public CombatQuestStep withUseSpecialAttack(boolean useSpec) {
         this.useSpecialAttack = useSpec;
         return this;
     }
 
-    // ========================================================================
-    // NPC Death Condition
-    // ========================================================================
+    /**
+     * Enable/disable eating during combat (builder-style).
+     *
+     * @param enabled true to enable eating
+     * @return this step for chaining
+     */
+    public CombatQuestStep withEatEnabled(boolean enabled) {
+        this.eatEnabled = enabled;
+        return this;
+    }
 
     /**
-     * Condition that checks if combat is complete (player idle or NPC dead).
+     * Enable/disable prayer usage (builder-style).
+     *
+     * @param enabled true to enable prayer
+     * @return this step for chaining
      */
-    private static class NpcDeathCondition implements StateCondition {
-        private final int npcId;
-        private int ticksInCombat = 0;
-        private int ticksIdle = 0;
+    public CombatQuestStep withUsePrayer(boolean enabled) {
+        this.usePrayer = enabled;
+        return this;
+    }
 
-        NpcDeathCondition(int npcId) {
-            this.npcId = npcId;
+    /**
+     * Enable/disable looting (builder-style).
+     *
+     * @param enabled true to enable looting
+     * @return this step for chaining
+     */
+    public CombatQuestStep withLootEnabled(boolean enabled) {
+        this.lootEnabled = enabled;
+        return this;
+    }
+
+    /**
+     * Set minimum loot value (builder-style).
+     *
+     * @param minValue the minimum GE value to loot
+     * @return this step for chaining
+     */
+    public CombatQuestStep withLootMinValue(int minValue) {
+        this.lootMinValue = minValue;
+        return this;
+    }
+
+    /**
+     * Set safe-spot position for ranged/magic combat (builder-style).
+     *
+     * @param position the safe-spot world position
+     * @return this step for chaining
+     */
+    public CombatQuestStep withSafeSpot(WorldPoint position) {
+        this.safeSpotPosition = position;
+        return this;
+    }
+
+    /**
+     * Set attack range (builder-style).
+     * 1 = melee, 4-5 = shortbow/javelin, 7 = longbow/crossbow, 10 = magic
+     *
+     * @param range the attack range in tiles
+     * @return this step for chaining
+     */
+    public CombatQuestStep withAttackRange(int range) {
+        this.attackRange = range;
+        return this;
+    }
+
+    /**
+     * Set maximum combat duration (builder-style).
+     *
+     * @param duration the max duration
+     * @return this step for chaining
+     */
+    public CombatQuestStep withMaxDuration(Duration duration) {
+        this.maxDuration = duration;
+        return this;
+    }
+
+    /**
+     * Set attack style (builder-style).
+     * Automatically equips appropriate gear from inventory before combat.
+     * For example, RANGED will find and equip a bow/crossbow and ammo.
+     *
+     * @param style the attack style (MELEE, RANGED, or MAGIC)
+     * @return this step for chaining
+     */
+    public CombatQuestStep withAttackStyle(AttackStyle style) {
+        this.attackStyle = style;
+        return this;
+    }
+
+    /**
+     * Set specific gear set to equip before combat (builder-style).
+     * Takes precedence over attackStyle if both are set.
+     *
+     * @param gearSet the gear set to equip
+     * @return this step for chaining
+     */
+    public CombatQuestStep withGearSet(GearSet gearSet) {
+        this.gearSet = gearSet;
+        return this;
+    }
+
+    /**
+     * Set spells to use for magic combat (builder-style).
+     * Automatically configures the combat for magic style and sets attack range to 10.
+     *
+     * <p>Example usage:
+     * <pre>{@code
+     * // Tutorial Island - cast Wind Strike on chicken
+     * new CombatQuestStep(NpcID.CHICKEN, "Cast Wind Strike")
+     *     .withSpells(StandardSpell.WIND_STRIKE);
+     *
+     * // Quest requiring multiple spells (Witch's House)
+     * new CombatQuestStep(NpcID.EXPERIMENT, "Kill experiment with all 4 strike spells")
+     *     .withSpells(
+     *         StandardSpell.WIND_STRIKE,
+     *         StandardSpell.WATER_STRIKE,
+     *         StandardSpell.EARTH_STRIKE,
+     *         StandardSpell.FIRE_STRIKE
+     *     );
+     *
+     * // Ancient Magicks combat
+     * new CombatQuestStep(NpcID.BOSS, "Kill boss with Ice Barrage")
+     *     .withSpells(AncientSpell.ICE_BARRAGE);
+     * }</pre>
+     *
+     * @param spells one or more spells to use
+     * @return this step for chaining
+     */
+    public CombatQuestStep withSpells(CombatSpell... spells) {
+        this.spells = Arrays.asList(spells);
+        // Auto-set attack style to MAGIC when using spells
+        if (this.attackStyle == null) {
+            this.attackStyle = AttackStyle.MAGIC;
         }
+        return this;
+    }
 
-        @Override
-        public boolean test(TaskContext ctx) {
-            // Check if player is idle (not in combat, not animating)
-            boolean playerIdle = !ctx.getPlayerState().isInCombat() 
-                    && !ctx.getPlayerState().isAnimating()
-                    && !ctx.getPlayerState().isInteracting();
-
-            if (playerIdle) {
-                ticksIdle++;
-                // Wait a few ticks of being idle to confirm combat is over
-                return ticksIdle >= 3;
-            }
-
-            ticksIdle = 0;
-            ticksInCombat++;
-
-            // Safety timeout - if we've been in combat for too long, assume it's done
-            return ticksInCombat > 100;
+    /**
+     * Set spells to use for magic combat (builder-style, list variant).
+     *
+     * @param spells list of spells to use
+     * @return this step for chaining
+     */
+    public CombatQuestStep withSpells(List<CombatSpell> spells) {
+        this.spells = new ArrayList<>(spells);
+        // Auto-set attack style to MAGIC when using spells
+        if (this.attackStyle == null) {
+            this.attackStyle = AttackStyle.MAGIC;
         }
+        return this;
+    }
 
-        @Override
-        public String describe() {
-            return "NpcDeath(" + npcId + ")";
-        }
+    /**
+     * Set whether to use autocast for magic combat (builder-style).
+     * Only works if the spell supports autocasting.
+     *
+     * @param useAutocast true to enable autocast
+     * @return this step for chaining
+     */
+    public CombatQuestStep withAutocast(boolean useAutocast) {
+        this.useAutocast = useAutocast;
+        return this;
+    }
+
+    /**
+     * Set spell cycle mode for multiple spells (builder-style).
+     *
+     * @param mode the cycle mode
+     * @return this step for chaining
+     */
+    public CombatQuestStep withSpellCycleMode(CombatTaskConfig.SpellCycleMode mode) {
+        this.spellCycleMode = mode;
+        return this;
+    }
+
+    /**
+     * Set required weapon attack style (builder-style).
+     * This takes precedence over XP goal if they conflict.
+     *
+     * <p>Example usage:
+     * <pre>{@code
+     * // Enemy weak to slash
+     * new CombatQuestStep(NpcID.KALPHITE, "Kill Kalphite")
+     *     .withWeaponStyle(WeaponStyle.STAB);
+     *
+     * // Need slash style but want strength XP
+     * new CombatQuestStep(NpcID.ZOMBIE, "Kill zombies")
+     *     .withWeaponStyle(WeaponStyle.SLASH)
+     *     .withXpGoal(XpGoal.STRENGTH);
+     * }</pre>
+     *
+     * @param style the weapon style (SLASH, STAB, CRUSH, etc.)
+     * @return this step for chaining
+     */
+    public CombatQuestStep withWeaponStyle(WeaponStyle style) {
+        this.weaponStyle = style;
+        return this;
+    }
+
+    /**
+     * Set XP training goal (builder-style).
+     * Must be compatible with weapon style - if not, weapon style takes precedence.
+     *
+     * <p>Compatibility:
+     * <ul>
+     *   <li>SLASH/STAB/CRUSH: ATTACK, STRENGTH, DEFENCE, SHARED</li>
+     *   <li>MAGIC: MAGIC, MAGIC_DEFENCE</li>
+     *   <li>RANGED: RANGED, RANGED_DEFENCE</li>
+     * </ul>
+     *
+     * @param goal the XP goal
+     * @return this step for chaining
+     */
+    public CombatQuestStep withXpGoal(XpGoal goal) {
+        this.xpGoal = goal;
+        return this;
     }
 }
-

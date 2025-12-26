@@ -1,5 +1,7 @@
 package com.rocinante.quest.impl;
 
+import com.rocinante.combat.AttackStyle;
+import com.rocinante.combat.spell.StandardSpell;
 import com.rocinante.quest.Quest;
 import com.rocinante.quest.conditions.VarbitCondition;
 import com.rocinante.quest.steps.*;
@@ -345,23 +347,23 @@ public class TutorialIsland implements Quest {
 
         // var 450: Attack rat (melee)
         steps.put(450, new CombatQuestStep(NPC_GIANT_RAT, "Attack the giant rat")
-                .withWaitForDeath(true));
+                .withAttackStyle(AttackStyle.MELEE));
 
         // var 460: Wait for rat to die (handled by combat step)
         steps.put(460, new CombatQuestStep(NPC_GIANT_RAT, "Kill the giant rat")
-                .withWaitForDeath(true));
+                .withAttackStyle(AttackStyle.MELEE));
 
         // var 470: Exit rat cage and talk to Combat Instructor
         steps.put(470, new NpcQuestStep(NPC_COMBAT_INSTRUCTOR, "Talk to the Combat Instructor")
                 .withDialogueExpected(true));
 
         // var 480: Equip bow and arrows, attack rat with ranged
-        steps.put(480, createRangedCombatStep());
+        steps.put(480, new CombatQuestStep(NPC_GIANT_RAT, "Equip bow and arrows, attack the rat")
+                .withAttackStyle(AttackStyle.RANGED));
 
         // var 490: Wait for rat to die
         steps.put(490, new CombatQuestStep(NPC_GIANT_RAT, "Kill the rat with ranged")
-                .withWaitForDeath(true)
-                .withAttackStyle(CombatQuestStep.AttackStyle.RANGED));
+                .withAttackStyle(AttackStyle.RANGED));
 
         // var 500: Exit combat area
         steps.put(500, new ObjectQuestStep(OBJECT_COMBAT_LADDER, "Climb-up", "Climb the ladder"));
@@ -431,7 +433,9 @@ public class TutorialIsland implements Quest {
                 .withDialogueExpected(true));
 
         // var 650: Kill chicken with Wind Strike
-        steps.put(650, createMagicCombatStep());
+        steps.put(650, new CombatQuestStep(NPC_CHICKEN, "Cast Wind Strike on the chicken")
+                .withSpells(StandardSpell.WIND_STRIKE)
+                .withAutocast(false));
 
         // var 670: Talk to Magic Instructor to teleport off island
         steps.put(670, new NpcQuestStep(NPC_MAGIC_INSTRUCTOR, "Talk to the Magic Instructor to leave")
@@ -501,44 +505,6 @@ public class TutorialIsland implements Quest {
         );
 
         return equipStep;
-    }
-
-    /**
-     * Create the step for ranged combat (equip bow + arrows, attack rat).
-     */
-    private QuestStep createRangedCombatStep() {
-        ConditionalQuestStep rangedStep = new ConditionalQuestStep("Equip bow and arrows, attack the rat");
-
-        // Equip shortbow if not equipped
-        rangedStep.when(
-                Conditions.hasEquipped(ITEM_SHORTBOW).not(),
-                ItemQuestStep.equip(ITEM_SHORTBOW, "Equip the shortbow")
-        );
-
-        // Equip arrows if not equipped
-        rangedStep.when(
-                Conditions.hasEquipped(ITEM_BRONZE_ARROW).not(),
-                ItemQuestStep.equip(ITEM_BRONZE_ARROW, "Equip the bronze arrows")
-        );
-
-        // Attack rat
-        rangedStep.otherwise(
-                new CombatQuestStep(NPC_GIANT_RAT, "Attack the rat with ranged")
-                        .withAttackStyle(CombatQuestStep.AttackStyle.RANGED)
-        );
-
-        return rangedStep;
-    }
-
-    /**
-     * Create the step for magic combat (cast Wind Strike on chicken).
-     */
-    private QuestStep createMagicCombatStep() {
-        // Select Wind Strike spell and cast on chicken
-        // This would typically involve selecting the spell, then clicking the NPC
-        return new CombatQuestStep(NPC_CHICKEN, "Cast Wind Strike on the chicken")
-                .withAttackStyle(CombatQuestStep.AttackStyle.MAGIC)
-                .withWaitForDeath(true);
     }
 }
 

@@ -1,5 +1,8 @@
 package com.rocinante.tasks;
 
+import com.rocinante.combat.CombatManager;
+import com.rocinante.combat.GearSwitcher;
+import com.rocinante.combat.TargetSelector;
 import com.rocinante.core.GameStateService;
 import com.rocinante.input.RobotKeyboardController;
 import com.rocinante.input.RobotMouseController;
@@ -13,6 +16,7 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import java.util.Map;
 import java.util.Optional;
@@ -56,6 +60,22 @@ public class TaskContext {
     private final HumanTimer humanTimer;
 
     // ========================================================================
+    // Combat System
+    // ========================================================================
+
+    @Getter
+    @Nullable
+    private final TargetSelector targetSelector;
+
+    @Getter
+    @Nullable
+    private final CombatManager combatManager;
+
+    @Getter
+    @Nullable
+    private final GearSwitcher gearSwitcher;
+
+    // ========================================================================
     // Task Variables
     // ========================================================================
 
@@ -90,13 +110,48 @@ public class TaskContext {
             GameStateService gameStateService,
             RobotMouseController mouseController,
             RobotKeyboardController keyboardController,
-            HumanTimer humanTimer) {
+            HumanTimer humanTimer,
+            @Nullable TargetSelector targetSelector,
+            @Nullable CombatManager combatManager,
+            @Nullable GearSwitcher gearSwitcher) {
         this.client = client;
         this.gameStateService = gameStateService;
         this.mouseController = mouseController;
         this.keyboardController = keyboardController;
         this.humanTimer = humanTimer;
+        this.targetSelector = targetSelector;
+        this.combatManager = combatManager;
+        this.gearSwitcher = gearSwitcher;
         log.debug("TaskContext created");
+    }
+
+    /**
+     * Constructor for TaskContext without gear switcher.
+     * Used for testing or when gear switching is not needed.
+     */
+    public TaskContext(
+            Client client,
+            GameStateService gameStateService,
+            RobotMouseController mouseController,
+            RobotKeyboardController keyboardController,
+            HumanTimer humanTimer,
+            @Nullable TargetSelector targetSelector,
+            @Nullable CombatManager combatManager) {
+        this(client, gameStateService, mouseController, keyboardController, humanTimer, 
+                targetSelector, combatManager, null);
+    }
+
+    /**
+     * Constructor for basic TaskContext without combat system.
+     * Used for testing or non-combat tasks.
+     */
+    public TaskContext(
+            Client client,
+            GameStateService gameStateService,
+            RobotMouseController mouseController,
+            RobotKeyboardController keyboardController,
+            HumanTimer humanTimer) {
+        this(client, gameStateService, mouseController, keyboardController, humanTimer, null, null, null);
     }
 
     // ========================================================================

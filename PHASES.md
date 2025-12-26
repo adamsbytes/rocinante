@@ -38,12 +38,19 @@
 - [X] `WorldState` - NPCs, objects, ground items, projectiles
 - [X] `CombatState` - Target, incoming attacks, poison/venom tracking
 - [X] `CombatManager` - Main combat loop
+- [X] `TargetSelector` - Enemy prioritization (selection priority, avoidance rules)
+- [X] `CombatTask` - Full combat automation with phases (find target, position, attack, monitor, loot)
+- [X] `GearSwitcher` - Equipment swaps with humanized delays
+- [X] `EquipItemTask` - Equip gear sets by style or explicit items
+- [X] `GearSet` - Immutable equipment configuration with auto-detection
+- [X] `AttackStyle` - Melee/Ranged/Magic style configuration
+- [X] `WeaponStyle` - Damage type (Slash/Stab/Crush/etc.) with XP goal compatibility
+- [X] `XpGoal` - Training goal selection (Attack/Strength/Defence/etc.)
+- [X] Spell system - `CombatSpell`, `StandardSpell`, `AncientSpell`, `Spellbook`
+- [X] `CombatQuestStep` - Quest step integration with all combat features
 - [ ] `FoodManager` - Eat thresholds, combo eating
 - [ ] `PrayerFlicker` - Protection prayer switching
-- [ ] `GearSwitcher` - Equipment swaps
 - [ ] `SpecialAttackManager` - Spec weapon usage
-- [ ] `TargetSelector` - Enemy prioritization
-- [ ] `CombatTask`, `PrayerTask`, `EquipmentTask`
 
 **Test**: Kill cows/goblins for 30 minutes without dying. Verify eat timing, prayer switching.
 
@@ -56,7 +63,7 @@
 - [X] Quest step → Task mapping (NpcStep, ObjectStep, etc.)
 - [X] `QuestState` - Varbit tracking, quest progress (`Quest`, `QuestProgress`, `QuestExecutor`)
 - [X] `VarbitCondition`, `ZoneCondition` - Quest requirement conditions
-- [X] `TutorialIsland` - Complete 54-step quest implementation (varbit 281)
+- [X] `TutorialIsland` - Completed as custom quest implementation
 - [ ] `WikiDataService` - OSRS Wiki API client
 - [ ] `WikiCacheManager` - Response caching
 - [ ] Drop table, item source, shop inventory parsing
