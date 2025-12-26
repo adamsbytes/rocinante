@@ -74,8 +74,15 @@ RUN apt-get update && apt-get install -y \
     unzip \
     # Process management
     procps \
-    # Font rendering
+    # Locale and timezone (anti-fingerprint: consistent locale data)
+    locales \
+    tzdata \
+    # Font rendering (anti-fingerprint: diverse fonts like real desktop)
     fonts-liberation \
+    fonts-dejavu-core \
+    fonts-freefont-ttf \
+    fonts-noto-core \
+    fontconfig \
     # Bolt dependencies (CEF/Chromium based)
     libnss3 \
     libatk1.0-0 \
@@ -99,7 +106,19 @@ RUN apt-get update && apt-get install -y \
     pulseaudio \
     # XDG utilities (xdg-mime, xdg-open, etc)
     xdg-utils \
+    # Machine ID generation (anti-fingerprint)
+    dbus \
     && rm -rf /var/lib/apt/lists/*
+
+# =============================================================================
+# Anti-fingerprint: Generate locale and machine-id (must be done as root)
+# =============================================================================
+# Generate en_US.UTF-8 locale for consistent locale fingerprint
+RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
+
+# Generate machine-id (many apps check this for identification)
+RUN dbus-uuidgen > /etc/machine-id 2>/dev/null || \
+    (cat /proc/sys/kernel/random/uuid | tr -d '-' > /etc/machine-id)
 
 # Create runelite user (non-root for security)
 RUN useradd -m -s /bin/bash runelite
@@ -109,6 +128,11 @@ WORKDIR /home/runelite
 # Set display environment
 ENV DISPLAY=:99
 ENV JAVA_HOME=/opt/java/openjdk
+
+# Anti-fingerprint: Consistent locale settings (matches generated locale)
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
+ENV LANGUAGE=en_US:en
 
 # Download and install Bolt launcher (native Linux launcher for OSRS/RuneLite)
 # Bolt handles Jagex account authentication without needing Wine
@@ -157,6 +181,16 @@ RUN mkdir -p .runelite/screenshots
 # These MUST exist so Docker volumes inherit correct ownership
 RUN mkdir -p .config/bolt-launcher \
     && mkdir -p .local/share/bolt-launcher
+
+# Anti-fingerprint: Create standard XDG user directories (looks like real desktop)
+RUN mkdir -p ~/Desktop ~/Documents ~/Downloads ~/Pictures ~/Music ~/Videos \
+    && mkdir -p ~/.config \
+    && echo 'XDG_DESKTOP_DIR="$HOME/Desktop"' > ~/.config/user-dirs.dirs \
+    && echo 'XDG_DOCUMENTS_DIR="$HOME/Documents"' >> ~/.config/user-dirs.dirs \
+    && echo 'XDG_DOWNLOAD_DIR="$HOME/Downloads"' >> ~/.config/user-dirs.dirs \
+    && echo 'XDG_PICTURES_DIR="$HOME/Pictures"' >> ~/.config/user-dirs.dirs \
+    && echo 'XDG_MUSIC_DIR="$HOME/Music"' >> ~/.config/user-dirs.dirs \
+    && echo 'XDG_VIDEOS_DIR="$HOME/Videos"' >> ~/.config/user-dirs.dirs
 
 # Copy Rocinante plugin from build stage
 COPY --from=rocinante-builder --chown=runelite:runelite /build/build/libs/rocinante-*.jar .runelite/plugins/

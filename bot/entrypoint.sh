@@ -51,6 +51,18 @@ sleep 1
 # Set a nice desktop background (dark gradient)
 xsetroot -solid "#1a1a2e"
 
+# =============================================================================
+# Anti-fingerprint: Configure display and fonts to look like real desktop
+# =============================================================================
+# Set standard DPI (96 is the universal default)
+xrandr --dpi 96 2>/dev/null || true
+
+# Rebuild font cache (ensures all fonts are properly indexed)
+fc-cache -f 2>/dev/null || true
+
+# Hide container indicators from environment
+unset container 2>/dev/null || true
+
 # Start PulseAudio for virtual sound (apps expect audio device)
 echo "Starting PulseAudio..."
 pulseaudio --start --exit-idle-time=-1 2>/dev/null || true

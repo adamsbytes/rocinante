@@ -6,6 +6,27 @@ const docker = new Docker({ socketPath: '/var/run/docker.sock' });
 const BOT_IMAGE = process.env.BOT_IMAGE || 'rocinante-bot:latest';
 const CONTAINER_PREFIX = 'rocinante_';
 
+// Anti-fingerprint: Generate realistic desktop-like hostnames
+// Real Linux hostnames often follow patterns like: desktop-abc123, user-pc, hostname-randomsuffix
+const HOSTNAME_PREFIXES = ['desktop', 'pc', 'linux', 'home', 'workstation', 'main'];
+
+function generateHostname(botId: string): string {
+  // Use a deterministic but realistic hostname based on bot ID
+  // Take first 6 chars of bot ID as a "random" suffix
+  const suffix = botId.replace(/-/g, '').substring(0, 6).toLowerCase();
+  const prefix = HOSTNAME_PREFIXES[Math.abs(hashCode(botId)) % HOSTNAME_PREFIXES.length];
+  return `${prefix}-${suffix}`;
+}
+
+function hashCode(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash |= 0; // Convert to 32bit integer
+  }
+  return hash;
+}
+
 // In-memory log storage per bot (survives container restarts)
 const botLogs = new Map<string, string[]>();
 const MAX_LOG_LINES = 2000;
@@ -188,9 +209,13 @@ export async function startBot(bot: BotConfig): Promise<void> {
   }
 
   // Create and start container
+  // Anti-fingerprint: Use realistic hostname instead of Docker's random hex ID
+  const hostname = generateHostname(bot.id);
+  
   const container = await docker.createContainer({
     Image: BOT_IMAGE,
     name: containerName,
+    Hostname: hostname,
     Env: env,
     HostConfig: {
       PortBindings: {
