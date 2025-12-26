@@ -2,6 +2,7 @@ package com.rocinante.core;
 
 import com.google.inject.Provides;
 import javax.inject.Inject;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.events.GameTick;
@@ -11,6 +12,15 @@ import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import com.rocinante.config.RocinanteConfig;
+import com.rocinante.input.RobotKeyboardController;
+import com.rocinante.input.RobotMouseController;
+import com.rocinante.tasks.Task;
+import com.rocinante.tasks.TaskContext;
+import com.rocinante.tasks.TaskExecutor;
+import com.rocinante.tasks.TaskPriority;
+import com.rocinante.timing.HumanTimer;
+
+import java.util.List;
 
 /**
  * Main plugin entry point for the Rocinante automation framework.
@@ -41,7 +51,28 @@ public class RocinantePlugin extends Plugin
     private EventBus eventBus;
 
     @Inject
+    @Getter
     private GameStateService gameStateService;
+
+    @Inject
+    @Getter
+    private RobotMouseController mouseController;
+
+    @Inject
+    @Getter
+    private RobotKeyboardController keyboardController;
+
+    @Inject
+    @Getter
+    private HumanTimer humanTimer;
+
+    @Inject
+    @Getter
+    private TaskContext taskContext;
+
+    @Inject
+    @Getter
+    private TaskExecutor taskExecutor;
 
     @Override
     protected void startUp() throws Exception
@@ -52,7 +83,16 @@ public class RocinantePlugin extends Plugin
         // GameStateService needs to receive events for state tracking
         eventBus.register(gameStateService);
 
-        log.info("Rocinante plugin started - GameStateService registered");
+        // Register TaskExecutor with the event bus
+        // TaskExecutor handles task execution on each GameTick
+        eventBus.register(taskExecutor);
+
+        // Configure TaskExecutor
+        taskExecutor.setOnTaskStuckCallback(this::onTaskStuck);
+
+        log.info("Rocinante plugin started - Services registered");
+        log.info("  GameStateService: registered");
+        log.info("  TaskExecutor: registered (stopped)");
     }
 
     @Override
@@ -60,36 +100,120 @@ public class RocinantePlugin extends Plugin
     {
         log.info("Rocinante plugin stopping...");
 
+        // Stop task execution first
+        taskExecutor.stop();
+
+        // Unregister TaskExecutor from the event bus
+        eventBus.unregister(taskExecutor);
+
         // Unregister GameStateService from the event bus
         eventBus.unregister(gameStateService);
 
         // Invalidate all cached state
         gameStateService.invalidateAllCaches();
 
-        log.info("Rocinante plugin stopped - GameStateService unregistered");
+        // Clear task context variables
+        taskContext.clearVariables();
+
+        log.info("Rocinante plugin stopped - Services unregistered");
     }
 
     /**
-     * Main automation tick handler.
-     * This runs on each game tick and will coordinate task execution.
-     * Currently a placeholder - task execution will be implemented in Phase 2.
-     */
-    @Subscribe
-    public void onGameTick(GameTick tick)
-    {
-        // Main automation tick - task execution will be implemented in Phase 2
-        // For now, we just let GameStateService handle state updates via its own subscription
-    }
-
-    /**
-     * Get the GameStateService for other components.
-     * This allows tasks and other services to access game state.
+     * Callback invoked when a task appears to be stuck (nearing timeout).
      *
-     * @return the game state service
+     * @param task the stuck task
      */
-    public GameStateService getGameStateService()
+    private void onTaskStuck(Task task)
     {
-        return gameStateService;
+        log.warn("Task appears stuck: {} (execution time exceeded 80% of timeout)",
+                task.getDescription());
+        // Could implement additional handling here:
+        // - Take screenshot for debugging
+        // - Attempt recovery actions
+        // - Notify monitoring system
+    }
+
+    // ========================================================================
+    // Task Management API
+    // ========================================================================
+
+    /**
+     * Start the task executor.
+     * Tasks will begin executing on each game tick.
+     */
+    public void startAutomation()
+    {
+        log.info("Starting automation...");
+        taskExecutor.start();
+    }
+
+    /**
+     * Stop the task executor.
+     * Current task will be aborted and queue will be preserved.
+     */
+    public void stopAutomation()
+    {
+        log.info("Stopping automation...");
+        taskExecutor.stop();
+    }
+
+    /**
+     * Check if automation is currently running.
+     *
+     * @return true if task executor is enabled
+     */
+    public boolean isAutomationRunning()
+    {
+        return taskExecutor.getEnabled().get();
+    }
+
+    /**
+     * Queue a task for execution.
+     *
+     * @param task the task to queue
+     */
+    public void queueTask(Task task)
+    {
+        taskExecutor.queueTask(task);
+    }
+
+    /**
+     * Queue a task with specific priority.
+     *
+     * @param task     the task to queue
+     * @param priority the priority level
+     */
+    public void queueTask(Task task, TaskPriority priority)
+    {
+        taskExecutor.queueTask(task, priority);
+    }
+
+    /**
+     * Queue multiple tasks for sequential execution.
+     *
+     * @param tasks the tasks to queue
+     */
+    public void queueTasks(List<Task> tasks)
+    {
+        taskExecutor.queueTasks(tasks);
+    }
+
+    /**
+     * Clear all pending tasks.
+     */
+    public void clearTaskQueue()
+    {
+        taskExecutor.clearQueue();
+    }
+
+    /**
+     * Get the current task status for debugging/UI.
+     *
+     * @return status string
+     */
+    public String getTaskStatus()
+    {
+        return taskExecutor.getStatus();
     }
 
     @Provides

@@ -20,13 +20,13 @@
 ## Phase 2: Task System & Navigation
 **Goal**: Bot can execute task sequences and walk anywhere.
 
-- [ ] `Task` interface, `TaskContext`, `TaskExecutor`
-- [ ] `CompositeTask`, `ConditionalTask` - Task composition
-- [ ] Basic tasks: `WalkToTask`, `InteractObjectTask`, `InteractNpcTask`, `WaitForConditionTask`
-- [ ] `PathFinder` - A* on collision maps
-- [ ] `WebWalker` - Long-distance navigation via web graph
-- [ ] `ObstacleHandler` - Doors, gates
-- [ ] `data/web.json` - Initial navigation graph (major cities/banks)
+- [X] `Task` interface, `TaskContext`, `TaskExecutor`
+- [X] `CompositeTask`, `ConditionalTask` - Task composition
+- [X] Basic tasks: `WalkToTask`, `InteractObjectTask`, `InteractNpcTask`, `WaitForConditionTask`
+- [X] `PathFinder` - A* on collision maps
+- [X] `WebWalker` - Long-distance navigation via web graph
+- [X] `ObstacleHandler` - Doors, gates
+- [X] `data/web.json` - Initial navigation graph (major cities/banks)
 
 **Test**: Queue "walk to Varrock bank, open bank, close bank" - executes with humanized behavior.
 

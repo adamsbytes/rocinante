@@ -1,0 +1,210 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://rocinante.com/schemas/web.json",
+  "title": "Navigation Web",
+  "description": "Navigation graph for OSRS pathfinding",
+  "type": "object",
+  "required": ["version", "nodes", "edges"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Schema version"
+    },
+    "nodes": {
+      "type": "array",
+      "description": "Navigation nodes (key locations)",
+      "items": {
+        "$ref": "#/definitions/node"
+      }
+    },
+    "edges": {
+      "type": "array",
+      "description": "Navigation edges (connections)",
+      "items": {
+        "$ref": "#/definitions/edge"
+      }
+    },
+    "regions": {
+      "type": "array",
+      "description": "Geographic regions grouping nodes",
+      "items": {
+        "$ref": "#/definitions/region"
+      }
+    }
+  },
+  "definitions": {
+    "node": {
+      "type": "object",
+      "required": ["id", "name", "x", "y", "plane", "type"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique node identifier (lowercase_with_underscores)",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable name"
+        },
+        "x": {
+          "type": "integer",
+          "description": "World X coordinate",
+          "minimum": 0
+        },
+        "y": {
+          "type": "integer",
+          "description": "World Y coordinate",
+          "minimum": 0
+        },
+        "plane": {
+          "type": "integer",
+          "description": "Plane (0-3)",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "type": {
+          "type": "string",
+          "description": "Node type category",
+          "enum": ["BANK", "TELEPORT", "QUEST", "SLAYER", "GENERIC", "TRANSPORT", "SHOP", "TRAINING"]
+        },
+        "tags": {
+          "type": "array",
+          "description": "Tags for filtering",
+          "items": {
+            "type": "string"
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Additional type-specific data",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "required": ["from", "to", "type", "cost_ticks"],
+      "properties": {
+        "from": {
+          "type": "string",
+          "description": "Source node ID"
+        },
+        "to": {
+          "type": "string",
+          "description": "Destination node ID"
+        },
+        "type": {
+          "type": "string",
+          "description": "Edge type",
+          "enum": ["WALK", "TELEPORT", "TRANSPORT", "AGILITY", "QUEST_LOCKED", "DOOR"]
+        },
+        "cost_ticks": {
+          "type": "integer",
+          "description": "Estimated travel cost in game ticks",
+          "minimum": 1
+        },
+        "bidirectional": {
+          "type": "boolean",
+          "description": "Whether edge can be traversed both ways",
+          "default": false
+        },
+        "requirements": {
+          "type": "array",
+          "description": "Requirements to traverse",
+          "items": {
+            "$ref": "#/definitions/requirement"
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Additional edge-specific data",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "requirement": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Requirement type",
+          "enum": ["MAGIC_LEVEL", "AGILITY_LEVEL", "QUEST", "ITEM", "RUNES", "SKILL", "COMBAT_LEVEL", "IRONMAN_RESTRICTION"]
+        },
+        "value": {
+          "type": "integer",
+          "description": "Numeric value (level, quantity)"
+        },
+        "identifier": {
+          "type": "string",
+          "description": "String identifier (skill name, quest ID)"
+        },
+        "item_id": {
+          "type": "integer",
+          "description": "Item ID for ITEM requirements"
+        },
+        "consumed": {
+          "type": "boolean",
+          "description": "Whether item is consumed"
+        },
+        "rune_costs": {
+          "type": "array",
+          "description": "Rune costs for RUNES requirement",
+          "items": {
+            "type": "object",
+            "required": ["item_id", "quantity"],
+            "properties": {
+              "item_id": {
+                "type": "integer"
+              },
+              "quantity": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        },
+        "quest_state": {
+          "type": "string",
+          "description": "Quest state required"
+        }
+      }
+    },
+    "region": {
+      "type": "object",
+      "required": ["id", "name", "nodes"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique region identifier"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable name"
+        },
+        "nodes": {
+          "type": "array",
+          "description": "Node IDs in this region",
+          "items": {
+            "type": "string"
+          }
+        },
+        "members_only": {
+          "type": "boolean",
+          "description": "Whether region is members-only",
+          "default": false
+        },
+        "wilderness": {
+          "type": "boolean",
+          "description": "Whether region contains wilderness",
+          "default": false
+        }
+      }
+    }
+  }
+}
+

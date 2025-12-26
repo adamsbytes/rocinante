@@ -390,6 +390,34 @@ public class Randomization {
     // ========================================================================
 
     /**
+     * Generate a random integer from a Gaussian distribution (static convenience method).
+     * Uses thread-local random.
+     *
+     * @param mean   the mean value
+     * @param stdDev the standard deviation
+     * @return a random integer
+     */
+    public static int gaussianInt(double mean, double stdDev) {
+        return (int) Math.round(mean + ThreadLocalRandom.current().nextGaussian() * stdDev);
+    }
+
+    /**
+     * Generate a 2D point from a bivariate Gaussian distribution (static convenience method).
+     * Uses thread-local random.
+     *
+     * @param centerX the mean X coordinate
+     * @param centerY the mean Y coordinate
+     * @param sigmaX  the standard deviation in X direction
+     * @param sigmaY  the standard deviation in Y direction
+     * @return an array [x, y] with the generated point
+     */
+    public static double[] staticGaussian2D(double centerX, double centerY, double sigmaX, double sigmaY) {
+        double x = centerX + ThreadLocalRandom.current().nextGaussian() * sigmaX;
+        double y = centerY + ThreadLocalRandom.current().nextGaussian() * sigmaY;
+        return new double[]{x, y};
+    }
+
+    /**
      * Clamp a value to a specified range.
      *
      * @param value the value to clamp

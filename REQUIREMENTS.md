@@ -253,7 +253,7 @@ Generate a unique behavioral "personality" per account that persists across sess
 - **Risk tolerance**: Conservative (flee early) vs. aggressive (maximize DPS before fleeing).
 
 **Implementation**: `BehavioralProfile` class tracks all traits above with per-account seeded RNG for consistency. Key methods:
-- `applySessionDrift()` - Adjusts all traits by ±5-10% each session (simulates habit evolution)
+- `applySessionDrift()` - Adjusts all traits by ±1-2% each session (simulates habit evolution)
 - `getSequenceWeight(ActionSequence)` - Returns weighted preference for action ordering
 - `getIdleAction()` - Selects idle behavior based on weighted preferences
 
