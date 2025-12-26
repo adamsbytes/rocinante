@@ -87,6 +87,13 @@ public class LoginFlowHandler {
     private static final int CONFIRM_CHILD = 74;  // 0x4a
 
     // ========================================================================
+    // Widget IDs for Experience Selection screen (Interface 929)
+    // "How familiar are you with Old School RuneScape?"
+    // ========================================================================
+    private static final int EXPERIENCE_SELECT_GROUP = 929;
+    private static final int BUTTON_EXPERIENCED_CHILD = 7;  // "I'm an experienced player"
+
+    // ========================================================================
     // Tutorial Island regions
     // ========================================================================
     private static final Set<Integer> TUTORIAL_ISLAND_REGIONS = Set.of(
@@ -102,6 +109,7 @@ public class LoginFlowHandler {
     private final AtomicBoolean nameEntered = new AtomicBoolean(false);
     private final AtomicBoolean nameLookedUp = new AtomicBoolean(false);
     private final AtomicBoolean characterCreated = new AtomicBoolean(false);
+    private final AtomicBoolean experienceSelected = new AtomicBoolean(false);
     private final AtomicBoolean actionInProgress = new AtomicBoolean(false);
     private final AtomicBoolean onTutorialIsland = new AtomicBoolean(false);
     
@@ -180,8 +188,17 @@ public class LoginFlowHandler {
             }
         }
         
-        // STEP 4: Name entered and character created - handle tutorial
-        if (nameEntered.get() && characterCreated.get()) {
+        // STEP 4: Check for experience selection ("How familiar are you with OSRS?")
+        if (!experienceSelected.get()) {
+            if (isExperienceSelectVisible()) {
+                log.info("[TUTORIAL] Experience selection screen detected - selecting 'Experienced'...");
+                handleExperienceSelection();
+                return;
+            }
+        }
+        
+        // STEP 5: All initial setup done - handle tutorial steps
+        if (nameEntered.get() && characterCreated.get() && experienceSelected.get()) {
             // TODO: Tutorial step handling
             // For now, just log that we're ready
             if (wasOnTutorial != isOnTutorial || System.currentTimeMillis() - lastStatusLogTime > 10000) {
@@ -210,14 +227,15 @@ public class LoginFlowHandler {
         }
         lastStatusLogTime = now;
         
-        log.info("[TUTORIAL STATUS] onTutorialIsland={}, nameEntered={}, characterCreated={}, actionInProgress={}",
-                onTutorialIsland.get(), nameEntered.get(), characterCreated.get(), actionInProgress.get());
+        log.info("[TUTORIAL STATUS] onTutorialIsland={}, nameEntered={}, characterCreated={}, experienceSelected={}, actionInProgress={}",
+                onTutorialIsland.get(), nameEntered.get(), characterCreated.get(), experienceSelected.get(), actionInProgress.get());
         
         // Also log what widgets we can see
         boolean displayNameVisible = isDisplayNameScreenVisible();
         boolean charCreationVisible = isCharacterCreationVisible();
-        log.info("[TUTORIAL STATUS] DisplayNameWidget={}, CharCreationWidget={}", 
-                displayNameVisible, charCreationVisible);
+        boolean experienceVisible = isExperienceSelectVisible();
+        log.info("[TUTORIAL STATUS] DisplayNameWidget={}, CharCreationWidget={}, ExperienceWidget={}", 
+                displayNameVisible, charCreationVisible, experienceVisible);
     }
 
     /**
@@ -517,6 +535,54 @@ public class LoginFlowHandler {
     }
 
     // ========================================================================
+    // Experience Selection Screen
+    // ========================================================================
+
+    private boolean isExperienceSelectVisible() {
+        Widget experienceWidget = client.getWidget(EXPERIENCE_SELECT_GROUP, 0);
+        boolean visible = experienceWidget != null && !experienceWidget.isHidden();
+        if (visible) {
+            log.debug("[TUTORIAL] Experience selection widget group {} is visible", EXPERIENCE_SELECT_GROUP);
+        }
+        return visible;
+    }
+
+    /**
+     * Handle the "How familiar are you with OSRS?" dialog.
+     * Always clicks "I'm an experienced player" (option 3).
+     */
+    private void handleExperienceSelection() {
+        Widget experiencedButton = client.getWidget(EXPERIENCE_SELECT_GROUP, BUTTON_EXPERIENCED_CHILD);
+        
+        if (experiencedButton == null || experiencedButton.isHidden()) {
+            log.warn("[TUTORIAL] Experienced button not found");
+            return;
+        }
+        
+        Rectangle bounds = experiencedButton.getBounds();
+        if (bounds == null || bounds.width <= 0) {
+            log.warn("[TUTORIAL] Invalid bounds for Experienced button");
+            return;
+        }
+        
+        log.info("[TUTORIAL] Clicking 'I'm an experienced player'...");
+        actionInProgress.set(true);
+        
+        humanTimer.sleep(DelayProfile.REACTION)
+            .thenCompose(v -> mouseController.click(bounds))
+            .thenRun(() -> {
+                log.info("[TUTORIAL] ✓ Experience level selected: Experienced");
+                experienceSelected.set(true);
+                actionInProgress.set(false);
+            })
+            .exceptionally(e -> {
+                log.error("[TUTORIAL] Failed to select experience level", e);
+                actionInProgress.set(false);
+                return null;
+            });
+    }
+
+    // ========================================================================
     // Public API
     // ========================================================================
 
@@ -532,16 +598,22 @@ public class LoginFlowHandler {
         return characterCreated.get();
     }
 
+    public boolean isExperienceSelectionComplete() {
+        return experienceSelected.get();
+    }
+
     public boolean isLoginFlowComplete() {
         return client.getGameState() == GameState.LOGGED_IN 
             && nameEntered.get() 
-            && characterCreated.get();
+            && characterCreated.get()
+            && experienceSelected.get();
     }
 
     public void reset() {
         nameEntered.set(false);
         nameLookedUp.set(false);
         characterCreated.set(false);
+        experienceSelected.set(false);
         actionInProgress.set(false);
         onTutorialIsland.set(false);
         log.debug("[LOGIN] State reset");
