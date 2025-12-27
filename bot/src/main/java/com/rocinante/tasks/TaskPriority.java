@@ -4,8 +4,9 @@ package com.rocinante.tasks;
  * Priority levels for task queue ordering.
  * Higher priority tasks are executed before lower priority tasks.
  *
- * Per REQUIREMENTS.md Section 5.5:
- * - URGENT interrupts current task (for combat reactions, death handling)
+ * Per REQUIREMENTS.md Section 5.5 and Phase 5 behavioral system:
+ * - URGENT interrupts current task (for combat reactions, death handling, emergencies)
+ * - BEHAVIORAL pauses current task for breaks and attention lapses
  * - NORMAL is the default priority for most tasks
  * - LOW is for background/optional tasks
  */
@@ -13,21 +14,28 @@ public enum TaskPriority {
 
     /**
      * Highest priority - interrupts current task immediately.
-     * Use for: combat reactions, death handling, emergency escapes.
+     * Use for: combat reactions, death handling, emergency escapes, poison cures.
      */
     URGENT(0),
+
+    /**
+     * Behavioral priority - pauses current task temporarily.
+     * Use for: breaks, attention lapses, session rituals.
+     * These can be interrupted by URGENT tasks but not NORMAL.
+     */
+    BEHAVIORAL(1),
 
     /**
      * Normal priority - default for most tasks.
      * Use for: quest steps, skilling actions, routine gameplay.
      */
-    NORMAL(1),
+    NORMAL(2),
 
     /**
      * Low priority - executed when nothing else is queued.
      * Use for: idle behaviors, optional optimizations, background tasks.
      */
-    LOW(2);
+    LOW(3);
 
     private final int ordinalValue;
 

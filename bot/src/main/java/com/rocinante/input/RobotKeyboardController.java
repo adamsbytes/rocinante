@@ -1,9 +1,12 @@
 package com.rocinante.input;
 
+import com.rocinante.behavior.PlayerProfile;
 import com.rocinante.util.Randomization;
 import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.awt.*;
@@ -146,6 +149,14 @@ public class RobotKeyboardController {
     private final InputProfile inputProfile;
     private final ScheduledExecutorService executor;
 
+    /**
+     * PlayerProfile for behavioral preferences.
+     * Takes precedence over InputProfile when set.
+     */
+    @Setter
+    @Nullable
+    private PlayerProfile playerProfile;
+
     // F-key learning tracking
     @Getter
     private final Map<Integer, Integer> fKeyUsageCount = new ConcurrentHashMap<>();
@@ -286,7 +297,7 @@ public class RobotKeyboardController {
      */
     private long calculateInterKeyDelay(char previousChar, char currentChar) {
         // Get base delay from profile
-        long baseDelay = inputProfile.getBaseTypingDelay();
+        long baseDelay = getEffectiveBaseTypingDelay();
 
         // Add randomization around the base
         double mean = (MIN_INTER_KEY_DELAY_MS + MAX_INTER_KEY_DELAY_MS) / 2.0;
@@ -294,7 +305,7 @@ public class RobotKeyboardController {
         long delay = randomization.gaussianRandomLong(mean, stdDev, MIN_INTER_KEY_DELAY_MS, MAX_INTER_KEY_DELAY_MS);
 
         // Adjust for typing speed from profile
-        delay = Math.round(delay * (60.0 / inputProfile.getTypingSpeedWPM()));
+        delay = Math.round(delay * (60.0 / getEffectiveTypingSpeedWPM()));
 
         // Apply bigram speed adjustment
         if (previousChar != '\0') {
@@ -310,10 +321,41 @@ public class RobotKeyboardController {
     }
 
     /**
+     * Get the effective base typing delay from PlayerProfile or InputProfile.
+     */
+    private long getEffectiveBaseTypingDelay() {
+        if (playerProfile != null) {
+            return playerProfile.getBaseTypingDelay();
+        }
+        return inputProfile.getBaseTypingDelay();
+    }
+
+    /**
+     * Get the effective typing speed WPM from PlayerProfile or InputProfile.
+     */
+    private int getEffectiveTypingSpeedWPM() {
+        if (playerProfile != null) {
+            return playerProfile.getTypingSpeedWPM();
+        }
+        return inputProfile.getTypingSpeedWPM();
+    }
+
+    /**
      * Check if a typo should be made.
      */
     private boolean shouldMakeTypo() {
-        return randomization.chance(inputProfile.getBaseTypoRate());
+        double typoRate = getEffectiveTypoRate();
+        return randomization.chance(typoRate);
+    }
+
+    /**
+     * Get the effective typo rate from PlayerProfile or InputProfile.
+     */
+    private double getEffectiveTypoRate() {
+        if (playerProfile != null) {
+            return playerProfile.getBaseTypoRate();
+        }
+        return inputProfile.getBaseTypoRate();
     }
 
     /**

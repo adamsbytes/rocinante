@@ -1,11 +1,15 @@
 package com.rocinante.input;
 
+import com.rocinante.behavior.FatigueModel;
+import com.rocinante.behavior.PlayerProfile;
 import com.rocinante.util.PerlinNoise;
 import com.rocinante.util.Randomization;
 import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.awt.*;
@@ -106,6 +110,22 @@ public class RobotMouseController {
     private final PerlinNoise perlinNoise;
     private final InputProfile inputProfile;
     private final ScheduledExecutorService executor;
+
+    /**
+     * FatigueModel for fatigue-based click variance adjustment.
+     * When set, click variance is multiplied by fatigue factor.
+     */
+    @Setter
+    @Nullable
+    private FatigueModel fatigueModel;
+
+    /**
+     * PlayerProfile for behavioral preferences (future use).
+     * Takes precedence over InputProfile when set.
+     */
+    @Setter
+    @Nullable
+    private PlayerProfile playerProfile;
 
     @Getter
     private volatile Point currentPosition;
@@ -686,16 +706,22 @@ public class RobotMouseController {
     /**
      * Generate click position within hitbox using 2D Gaussian distribution.
      * As per spec: center at 45-55% of dimensions, σ = 15% of dimension.
+     * 
+     * Fatigue effects:
+     * - Session click count > 200: legacy fatigue variance (1.1-1.3x)
+     * - FatigueModel: dynamic variance based on fatigue level
+     * 
+     * Per REQUIREMENTS.md 4.2.2: Click variance multiplier = 1.0 + (fatigue * 0.4)
      */
     private int[] generateClickPosition(Rectangle hitbox) {
         int[] basePosition = randomization.generateClickPosition(
                 hitbox.x, hitbox.y, hitbox.width, hitbox.height);
 
-        // Apply fatigue-based variance increase
-        if (sessionClickCount > CLICK_FATIGUE_THRESHOLD) {
-            double fatigueMultiplier = randomization.uniformRandom(
-                    MIN_FATIGUE_VARIANCE_MULTIPLIER, MAX_FATIGUE_VARIANCE_MULTIPLIER);
+        // Get combined fatigue variance multiplier
+        double fatigueMultiplier = getEffectiveClickVarianceMultiplier();
 
+        // Only apply if there's meaningful variance increase
+        if (fatigueMultiplier > 1.01) {
             // Increase spread from center
             int centerX = hitbox.x + hitbox.width / 2;
             int centerY = hitbox.y + hitbox.height / 2;
@@ -714,10 +740,57 @@ public class RobotMouseController {
     }
 
     /**
+     * Get the effective click variance multiplier combining FatigueModel and session click count.
+     */
+    private double getEffectiveClickVarianceMultiplier() {
+        double multiplier = 1.0;
+
+        // Apply FatigueModel multiplier if available
+        if (fatigueModel != null) {
+            multiplier = fatigueModel.getClickVarianceMultiplier();
+        }
+        // Fallback: apply session click count fatigue
+        else if (sessionClickCount > CLICK_FATIGUE_THRESHOLD) {
+            multiplier = randomization.uniformRandom(
+                    MIN_FATIGUE_VARIANCE_MULTIPLIER, MAX_FATIGUE_VARIANCE_MULTIPLIER);
+        }
+
+        return multiplier;
+    }
+
+    /**
      * Check if this click should be a misclick.
+     * Per REQUIREMENTS.md 4.2.2: Misclick probability multiplier = 1.0 + (fatigue * 2.0)
      */
     private boolean shouldMisclick() {
-        return randomization.chance(inputProfile.getBaseMisclickRate());
+        double baseMisclickRate = getEffectiveMisclickRate();
+        double misclickMultiplier = getEffectiveMisclickMultiplier();
+        double effectiveRate = baseMisclickRate * misclickMultiplier;
+        
+        // Cap at reasonable maximum (10%)
+        effectiveRate = Math.min(effectiveRate, 0.10);
+        
+        return randomization.chance(effectiveRate);
+    }
+
+    /**
+     * Get the base misclick rate from profile.
+     */
+    private double getEffectiveMisclickRate() {
+        if (playerProfile != null) {
+            return playerProfile.getBaseMisclickRate();
+        }
+        return inputProfile.getBaseMisclickRate();
+    }
+
+    /**
+     * Get the misclick probability multiplier from FatigueModel.
+     */
+    private double getEffectiveMisclickMultiplier() {
+        if (fatigueModel != null) {
+            return fatigueModel.getMisclickMultiplier();
+        }
+        return 1.0;
     }
 
     /**

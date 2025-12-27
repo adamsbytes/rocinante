@@ -77,16 +77,18 @@
 ## Phase 5: Behavioral Anti-Detection
 **Goal**: Bot behavior is statistically indistinguishable from human.
 
-- [ ] `FatigueModel` - Session fatigue accumulation/effects
-- [ ] `BreakScheduler` - Micro/short/long breaks
-- [ ] `AttentionModel` - Focus states, distraction simulation
-- [ ] `BehavioralProfile` - Per-account persistent fingerprints
+- [X] `FatigueModel` - Session fatigue accumulation/effects
+- [X] `BreakScheduler` - Micro/short/long breaks
+- [X] `AttentionModel` - Focus states, distraction simulation
+- [X] `PlayerProfile` - Per-account persistent fingerprints (consolidated from InputProfile + BehavioralProfile)
+- [X] `BotActivityTracker` - Activity type awareness, account type detection, HCIM safety checks
+- [X] `EmergencyHandler` - Poison/health emergency conditions with task interruption
+- [X] Session rituals, idle behaviors, XP checking patterns
+- [X] Long-term behavioral drift (via PlayerProfile session drift)
 - [ ] Action sequence randomization
 - [ ] Camera-mouse coupling
 - [ ] Intentional inefficiency injection
 - [ ] Logout behavior humanization
-- [ ] Long-term behavioral drift
-- [ ] Session rituals, idle behaviors, XP checking patterns
 
 **Test**: Record 2-hour session, run statistical analysis. No detectable patterns vs human baseline.
 

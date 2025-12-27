@@ -1,10 +1,14 @@
 package com.rocinante.tasks;
 
+import com.rocinante.behavior.BreakScheduler;
+import com.rocinante.behavior.EmergencyHandler;
 import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.events.GameTick;
 import net.runelite.client.eventbus.Subscribe;
 
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.time.Duration;
@@ -113,6 +117,32 @@ public class TaskExecutor {
      * Optional idle task supplier for when queue is empty.
      */
     private java.util.function.Supplier<Task> idleTaskSupplier;
+
+    /**
+     * Break scheduler for behavioral task injection.
+     */
+    @Setter
+    @Nullable
+    private BreakScheduler breakScheduler;
+
+    /**
+     * Emergency handler for urgent interrupt injection.
+     */
+    @Setter
+    @Nullable
+    private EmergencyHandler emergencyHandler;
+
+    /**
+     * Task that was paused for a behavioral task (to resume after).
+     */
+    private Task pausedTask;
+
+    /**
+     * Whether the current step of the task is complete (for behavioral interrupts).
+     */
+    @Getter
+    @Setter
+    private volatile boolean currentStepComplete = true;
 
     // ========================================================================
     // Constructor
@@ -305,6 +335,9 @@ public class TaskExecutor {
             taskContext.clearAbort();
         }
 
+        // Check for emergencies first (highest priority)
+        checkForEmergencies();
+
         // Handle urgent task interruption
         if (urgentPending && currentTask != null && currentTask.isInterruptible()) {
             QueuedTask urgent = peekUrgent();
@@ -319,6 +352,11 @@ public class TaskExecutor {
             }
         }
 
+        // Check for scheduled breaks (if current step is complete)
+        if (currentStepComplete) {
+            checkForScheduledBreaks();
+        }
+
         // Execute current task or get next one
         if (currentTask == null || currentTask.getState().isTerminal()) {
             if (currentTask != null) {
@@ -329,6 +367,73 @@ public class TaskExecutor {
 
         if (currentTask != null) {
             executeCurrentTask();
+        }
+    }
+
+    /**
+     * Check for emergency conditions and queue response tasks.
+     */
+    private void checkForEmergencies() {
+        if (emergencyHandler == null) {
+            return;
+        }
+
+        emergencyHandler.checkEmergencies(taskContext).ifPresent(emergencyTask -> {
+            log.warn("Queuing emergency task: {}", emergencyTask.getDescription());
+            queueTask(emergencyTask, TaskPriority.URGENT);
+        });
+    }
+
+    /**
+     * Check for scheduled breaks and queue behavioral tasks.
+     */
+    private void checkForScheduledBreaks() {
+        if (breakScheduler == null) {
+            return;
+        }
+
+        // Don't schedule breaks if there's already a behavioral task queued
+        if (hasBehavioralTaskQueued()) {
+            return;
+        }
+
+        breakScheduler.getScheduledBreak().ifPresent(breakTask -> {
+            log.debug("Queuing behavioral break task: {}", breakTask.getDescription());
+            
+            // Pause current task if running
+            if (currentTask != null && currentTask.getState() == TaskState.RUNNING) {
+                pauseCurrentTask();
+            }
+            
+            queueTask(breakTask, TaskPriority.BEHAVIORAL);
+        });
+    }
+
+    /**
+     * Check if there's already a behavioral task in the queue.
+     */
+    private boolean hasBehavioralTaskQueued() {
+        for (QueuedTask qt : taskQueue) {
+            if (qt.task.getPriority() == TaskPriority.BEHAVIORAL) {
+                return true;
+            }
+        }
+        return currentTask != null && currentTask.getPriority() == TaskPriority.BEHAVIORAL;
+    }
+
+    /**
+     * Pause the current task to run a behavioral task.
+     * The paused task will be resumed after the behavioral task completes.
+     */
+    private void pauseCurrentTask() {
+        if (currentTask != null && currentTask.getState() == TaskState.RUNNING) {
+            log.debug("Pausing task for behavioral interrupt: {}", currentTask.getDescription());
+            pausedTask = currentTask;
+            // Reset state to PENDING so it can be resumed
+            if (currentTask instanceof AbstractTask) {
+                ((AbstractTask) currentTask).state = TaskState.PENDING;
+            }
+            currentTask = null;
         }
     }
 
@@ -416,6 +521,18 @@ public class TaskExecutor {
             log.debug("Task completed successfully: {}",
                     currentTask != null ? currentTask.getDescription() : "null");
         }
+        
+        // Check if this was a behavioral task and we have a paused task to resume
+        if (currentTask != null && currentTask.getPriority() == TaskPriority.BEHAVIORAL) {
+            if (pausedTask != null) {
+                log.debug("Resuming paused task after behavioral break: {}", 
+                        pausedTask.getDescription());
+                // Re-queue the paused task to resume it
+                queueTask(pausedTask, pausedTask.getPriority());
+                pausedTask = null;
+            }
+        }
+        
         currentTask = null;
         currentRetryCount = 0;
         lastRetryTime = null;

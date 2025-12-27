@@ -1,10 +1,13 @@
 package com.rocinante.timing;
 
+import com.rocinante.behavior.AttentionModel;
+import com.rocinante.behavior.FatigueModel;
 import com.rocinante.util.Randomization;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.util.concurrent.*;
@@ -30,14 +33,30 @@ public class HumanTimer {
     private final ScheduledExecutorService executor;
 
     /**
-     * Fatigue multiplier applied to all delays.
+     * Legacy fatigue multiplier - deprecated, use FatigueModel instead.
+     * Kept for backwards compatibility.
      * Default: 1.0 (no fatigue effect)
-     * Updated by FatigueModel based on fatigue level.
-     * Per REQUIREMENTS 4.2.2: delay multiplier = 1.0 + (fatigueLevel * 0.5)
      */
     @Getter
     @Setter
+    @Deprecated
     private volatile double fatigueMultiplier = 1.0;
+
+    /**
+     * FatigueModel for dynamic fatigue effects.
+     * When set, fatigue multiplier is obtained from this model.
+     */
+    @Setter
+    @Nullable
+    private FatigueModel fatigueModel;
+
+    /**
+     * AttentionModel for attention state effects.
+     * When set, attention multiplier is obtained from this model.
+     */
+    @Setter
+    @Nullable
+    private AttentionModel attentionModel;
 
     @Inject
     public HumanTimer(Randomization randomization) {
@@ -59,6 +78,17 @@ public class HumanTimer {
     HumanTimer(Randomization randomization, ScheduledExecutorService executor) {
         this.randomization = randomization;
         this.executor = executor;
+    }
+
+    /**
+     * Constructor for testing with full model injection.
+     */
+    HumanTimer(Randomization randomization, ScheduledExecutorService executor,
+               @Nullable FatigueModel fatigueModel, @Nullable AttentionModel attentionModel) {
+        this.randomization = randomization;
+        this.executor = executor;
+        this.fatigueModel = fatigueModel;
+        this.attentionModel = attentionModel;
     }
 
     // ========================================================================
@@ -348,14 +378,57 @@ public class HumanTimer {
     }
 
     /**
-     * Apply fatigue multiplier to a base delay.
+     * Apply fatigue and attention modifiers to a base delay.
+     * 
+     * Order of application:
+     * 1. Fatigue multiplier (from FatigueModel or legacy field)
+     * 2. Attention multiplier (from AttentionModel)
+     * 
+     * Combined multiplier: baseDelay * fatigueMult * attentionMult
      */
-    private long applyFatigue(long baseDelay) {
-        if (fatigueMultiplier <= 0) {
-            log.warn("Invalid fatigue multiplier: {}, using 1.0", fatigueMultiplier);
+    private long applyModifiers(long baseDelay) {
+        double effectiveFatigueMultiplier = getEffectiveFatigueMultiplier();
+        double effectiveAttentionMultiplier = getEffectiveAttentionMultiplier();
+        
+        double combinedMultiplier = effectiveFatigueMultiplier * effectiveAttentionMultiplier;
+        
+        if (combinedMultiplier <= 0) {
+            log.warn("Invalid combined multiplier: {}, using 1.0", combinedMultiplier);
             return baseDelay;
         }
-        return Math.round(baseDelay * fatigueMultiplier);
+        
+        return Math.round(baseDelay * combinedMultiplier);
+    }
+
+    /**
+     * Get the effective fatigue multiplier.
+     * Uses FatigueModel if available, otherwise falls back to legacy field.
+     */
+    private double getEffectiveFatigueMultiplier() {
+        if (fatigueModel != null) {
+            return fatigueModel.getDelayMultiplier();
+        }
+        return fatigueMultiplier;
+    }
+
+    /**
+     * Get the effective attention multiplier.
+     * Uses AttentionModel if available, otherwise returns 1.0.
+     */
+    private double getEffectiveAttentionMultiplier() {
+        if (attentionModel != null) {
+            return attentionModel.getDelayMultiplier();
+        }
+        return 1.0;
+    }
+
+    /**
+     * Apply fatigue multiplier to a base delay.
+     * @deprecated Use applyModifiers instead for full behavioral support
+     */
+    @Deprecated
+    private long applyFatigue(long baseDelay) {
+        return applyModifiers(baseDelay);
     }
 
     // ========================================================================
@@ -394,10 +467,46 @@ public class HumanTimer {
 
     /**
      * Reset fatigue multiplier to default (1.0).
+     * @deprecated Use FatigueModel.reset() instead for full behavioral support
      */
+    @Deprecated
     public void resetFatigue() {
         this.fatigueMultiplier = 1.0;
         log.debug("Fatigue multiplier reset to 1.0");
+    }
+
+    /**
+     * Check if actions can be performed (not in AFK state).
+     * 
+     * @return true if actions can be taken
+     */
+    public boolean canAct() {
+        if (attentionModel != null) {
+            return attentionModel.canAct();
+        }
+        return true;
+    }
+
+    /**
+     * Get the current combined delay multiplier for debugging.
+     * 
+     * @return combined multiplier (fatigue * attention)
+     */
+    public double getCombinedMultiplier() {
+        return getEffectiveFatigueMultiplier() * getEffectiveAttentionMultiplier();
+    }
+
+    /**
+     * Get event processing lag based on attention state.
+     * When distracted, there's extra delay before responding to game events.
+     * 
+     * @return lag in milliseconds
+     */
+    public long getEventProcessingLag() {
+        if (attentionModel != null) {
+            return attentionModel.getEventProcessingLag();
+        }
+        return 0;
     }
 }
 

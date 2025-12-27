@@ -11,6 +11,15 @@ import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import com.rocinante.behavior.BotActivityTracker;
+import com.rocinante.behavior.BreakScheduler;
+import com.rocinante.behavior.BreakType;
+import com.rocinante.behavior.EmergencyHandler;
+import com.rocinante.behavior.FatigueModel;
+import com.rocinante.behavior.AttentionModel;
+import com.rocinante.behavior.PlayerProfile;
+import com.rocinante.behavior.emergencies.LowHealthEmergency;
+import com.rocinante.behavior.emergencies.PoisonEmergency;
 import com.rocinante.config.RocinanteConfig;
 import com.rocinante.input.RobotKeyboardController;
 import com.rocinante.input.RobotMouseController;
@@ -22,6 +31,7 @@ import com.rocinante.timing.HumanTimer;
 import com.rocinante.quest.QuestExecutor;
 
 import java.util.List;
+import java.util.function.Function;
 
 /**
  * Main plugin entry point for the Rocinante automation framework.
@@ -83,6 +93,35 @@ public class RocinantePlugin extends Plugin
     @Getter
     private QuestExecutor questExecutor;
 
+    // === Behavioral Components ===
+
+    @Inject
+    @Getter
+    private BotActivityTracker activityTracker;
+
+    @Inject
+    @Getter
+    private FatigueModel fatigueModel;
+
+    @Inject
+    @Getter
+    private AttentionModel attentionModel;
+
+    @Inject
+    @Getter
+    private PlayerProfile playerProfile;
+
+    @Inject
+    @Getter
+    private BreakScheduler breakScheduler;
+
+    @Inject
+    @Getter
+    private EmergencyHandler emergencyHandler;
+
+    @Inject
+    private Function<BreakType, Task> breakTaskFactory;
+
     @Override
     protected void startUp() throws Exception
     {
@@ -105,6 +144,27 @@ public class RocinantePlugin extends Plugin
         // QuestExecutor monitors quest progress and queues tasks
         eventBus.register(questExecutor);
 
+        // === Register Behavioral Components ===
+        
+        // Register BotActivityTracker - tracks current activity type
+        eventBus.register(activityTracker);
+        
+        // Register AttentionModel - manages attention state transitions
+        eventBus.register(attentionModel);
+        
+        // Register BreakScheduler - schedules behavioral breaks
+        eventBus.register(breakScheduler);
+        
+        // Wire up BreakScheduler with its task factory
+        breakScheduler.setBreakTaskFactory(breakTaskFactory);
+        
+        // Wire up TaskExecutor with behavioral components
+        taskExecutor.setBreakScheduler(breakScheduler);
+        taskExecutor.setEmergencyHandler(emergencyHandler);
+        
+        // Register emergency conditions
+        registerEmergencyConditions();
+        
         // Configure TaskExecutor
         taskExecutor.setOnTaskStuckCallback(this::onTaskStuck);
 
@@ -113,6 +173,35 @@ public class RocinantePlugin extends Plugin
         log.info("  LoginFlowHandler: registered (auto-active)");
         log.info("  TaskExecutor: registered (stopped)");
         log.info("  QuestExecutor: registered");
+        log.info("  BehavioralSystem: registered (activity={}, fatigue={}, attention={})",
+                activityTracker != null, fatigueModel != null, attentionModel != null);
+    }
+    
+    /**
+     * Register emergency conditions with the EmergencyHandler.
+     * These conditions are checked every game tick and can interrupt any task.
+     */
+    private void registerEmergencyConditions() {
+        // Low Health Emergency - triggers when HP is critically low
+        emergencyHandler.registerCondition(
+                new LowHealthEmergency(activityTracker, ctx -> {
+                    // Create flee/eat task based on context
+                    // This is a placeholder - actual implementation would use FoodManager
+                    log.warn("Low health emergency response - would eat/flee");
+                    return null; // TODO: Return actual flee/eat task
+                })
+        );
+        
+        // Poison Emergency - triggers when poisoned with low health
+        emergencyHandler.registerCondition(
+                new PoisonEmergency(activityTracker, ctx -> {
+                    // Create antidote task based on context
+                    log.warn("Poison emergency response - would use antidote");
+                    return null; // TODO: Return actual cure task
+                })
+        );
+        
+        log.info("Registered {} emergency conditions", emergencyHandler.getConditionCount());
     }
 
     @Override
@@ -122,6 +211,22 @@ public class RocinantePlugin extends Plugin
 
         // Stop task execution first
         taskExecutor.stop();
+        
+        // Save player profile before shutdown
+        try {
+            playerProfile.saveProfile();
+            log.info("Player profile saved");
+        } catch (Exception e) {
+            log.warn("Failed to save player profile: {}", e.getMessage());
+        }
+
+        // === Unregister Behavioral Components ===
+        eventBus.unregister(breakScheduler);
+        eventBus.unregister(attentionModel);
+        eventBus.unregister(activityTracker);
+        
+        // Clear emergency conditions
+        emergencyHandler.clearConditions();
 
         // Unregister QuestExecutor from the event bus
         eventBus.unregister(questExecutor);

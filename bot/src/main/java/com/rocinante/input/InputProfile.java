@@ -32,7 +32,14 @@ import java.util.Random;
  * - Dominant hand simulation (slight bias toward right-side screen interactions)
  *
  * Profiles persist across sessions with ±10% drift per session to simulate natural skill variation.
+ * 
+ * @deprecated Use {@link com.rocinante.behavior.PlayerProfile} instead.
+ *             PlayerProfile consolidates input characteristics with behavioral traits
+ *             and provides extended functionality for the behavioral anti-detection system.
+ *             This class is retained for backwards compatibility and will be removed
+ *             in a future release.
  */
+@Deprecated
 @Slf4j
 @Singleton
 public class InputProfile {
