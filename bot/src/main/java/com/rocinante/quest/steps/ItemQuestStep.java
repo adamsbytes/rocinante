@@ -2,9 +2,14 @@ package com.rocinante.quest.steps;
 
 import com.rocinante.tasks.Task;
 import com.rocinante.tasks.TaskContext;
+import com.rocinante.tasks.impl.EquipItemTask;
+import com.rocinante.tasks.impl.InventoryInteractTask;
+import com.rocinante.tasks.impl.UseItemOnItemTask;
+import com.rocinante.tasks.impl.UseItemOnObjectTask;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.experimental.Accessors;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -27,6 +32,7 @@ import java.util.List;
  * ItemQuestStep makeDough = ItemQuestStep.useOnItem(ItemID.BUCKET_OF_WATER, ItemID.POT_OF_FLOUR, "Make bread dough");
  * }</pre>
  */
+@Slf4j
 @Getter
 @Setter
 @Accessors(chain = true)
@@ -91,10 +97,70 @@ public class ItemQuestStep extends QuestStep {
     public List<Task> toTasks(TaskContext ctx) {
         List<Task> tasks = new ArrayList<>();
 
-        // Note: This will create appropriate tasks when WidgetInteractTask is implemented
-        // For equipping: click inventory slot -> equip
-        // For use on object: click item -> click object
-        // etc.
+        switch (action) {
+            case EQUIP:
+                log.debug("Creating EquipItemTask for item {}", itemId);
+                tasks.add(new EquipItemTask(itemId)
+                        .withDescription(getText()));
+                break;
+
+            case USE_ON_OBJECT:
+                if (targetObjectId < 0) {
+                    log.error("USE_ON_OBJECT requires a target object ID");
+                    throw new IllegalStateException("Target object ID not set for USE_ON_OBJECT action");
+                }
+                log.debug("Creating UseItemOnObjectTask for item {} on object {}", itemId, targetObjectId);
+                tasks.add(new UseItemOnObjectTask(itemId, targetObjectId)
+                        .withDescription(getText()));
+                break;
+
+            case USE_ON_ITEM:
+                if (targetItemId < 0) {
+                    log.error("USE_ON_ITEM requires a target item ID");
+                    throw new IllegalStateException("Target item ID not set for USE_ON_ITEM action");
+                }
+                log.debug("Creating UseItemOnItemTask for item {} on item {}", itemId, targetItemId);
+                tasks.add(new UseItemOnItemTask(itemId, targetItemId)
+                        .withDescription(getText()));
+                break;
+
+            case USE_ON_NPC:
+                if (targetNpcId < 0) {
+                    log.error("USE_ON_NPC requires a target NPC ID");
+                    throw new IllegalStateException("Target NPC ID not set for USE_ON_NPC action");
+                }
+                // TODO: Create UseItemOnNpcTask when needed
+                log.warn("USE_ON_NPC not yet implemented - item {} on NPC {}", itemId, targetNpcId);
+                break;
+
+            case EAT:
+                log.debug("Creating InventoryInteractTask (eat) for item {}", itemId);
+                tasks.add(new InventoryInteractTask(itemId, "eat")
+                        .withDescription(getText()));
+                break;
+
+            case DRINK:
+                log.debug("Creating InventoryInteractTask (drink) for item {}", itemId);
+                tasks.add(new InventoryInteractTask(itemId, "drink")
+                        .withDescription(getText()));
+                break;
+
+            case USE:
+                log.debug("Creating InventoryInteractTask (use) for item {}", itemId);
+                tasks.add(new InventoryInteractTask(itemId, "use")
+                        .withDescription(getText()));
+                break;
+
+            case DROP:
+                log.debug("Creating InventoryInteractTask (drop) for item {}", itemId);
+                tasks.add(new InventoryInteractTask(itemId, "drop")
+                        .withDescription(getText()));
+                break;
+
+            default:
+                log.warn("Unknown ItemAction: {}", action);
+                break;
+        }
 
         return tasks;
     }

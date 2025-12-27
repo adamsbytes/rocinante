@@ -87,6 +87,7 @@ public class TutorialIsland implements Quest {
     public static final int OBJECT_RANGE = 37728;
     public static final int OBJECT_BANK_BOOTH = 37959;
     public static final int OBJECT_POLL_BOOTH = 26815;
+    public static final int OBJECT_FIRE = 3769;
 
     // Doors
     public static final int OBJECT_GUIDE_DOOR = 9398;
@@ -462,9 +463,7 @@ public class TutorialIsland implements Quest {
      */
     private QuestStep createCookShrimpStep() {
         // Use raw shrimp on fire
-        // Note: Fire object ID may vary, this is a simplified version
-        return new ItemQuestStep(ITEM_RAW_SHRIMP, "Cook the shrimp on the fire")
-                .withAction(ItemQuestStep.ItemAction.USE);
+        return ItemQuestStep.useOn(ITEM_RAW_SHRIMP, OBJECT_FIRE, "Cook the shrimp on the fire");
     }
 
     /**
