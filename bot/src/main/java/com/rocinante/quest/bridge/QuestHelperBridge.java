@@ -76,32 +76,218 @@ public class QuestHelperBridge {
 
     /**
      * Extract quest metadata from the Quest Helper instance.
+     *
+     * <p>Metadata includes:
+     * <ul>
+     *   <li>Quest name (from QuestHelperQuest enum or class name)</li>
+     *   <li>Varbit or varp ID for progress tracking</li>
+     *   <li>Whether the quest uses varp instead of varbit</li>
+     *   <li>Completion value (varbit/varp value when quest is complete)</li>
+     * </ul>
      */
     private void extractMetadata() {
         try {
-            // Try to get quest name from class name
-            String className = questHelperInstance.getClass().getSimpleName();
-            String questName = className.replaceAll("([A-Z])", " $1").trim();
+            // Try to get quest name from QuestHelperQuest enum first
+            String questName = extractQuestName();
+            
+            // Fall back to class name parsing if enum not available
+            if (questName == null || questName.isEmpty()) {
+                String className = questHelperInstance.getClass().getSimpleName();
+                questName = className.replaceAll("([A-Z])", " $1").trim();
+            }
 
-            // Try to find varbit/varp ID via reflection
+            // Extract varbit/varp ID
             int varId = extractVarId();
+            
+            // Check if uses varp
+            boolean usesVarp = questUsesVarp();
+            
+            // Extract completion value
+            int completionValue = extractCompletionValue();
 
-            this.metadata = new QuestMetadata(questName, varId);
-            log.debug("Extracted metadata for quest: {} (varId: {})", questName, varId);
+            this.metadata = new QuestMetadata(questName, varId, usesVarp, completionValue);
+            log.debug("Extracted metadata for quest: {} (varId: {}, usesVarp: {}, completionValue: {})", 
+                    questName, varId, usesVarp, completionValue);
         } catch (Exception e) {
             log.warn("Failed to extract quest metadata", e);
             this.metadata = new QuestMetadata("Unknown Quest", -1);
         }
     }
+    
+    /**
+     * Extract the quest name from the QuestHelperQuest enum.
+     *
+     * @return the quest name, or null if not found
+     */
+    private String extractQuestName() {
+        try {
+            // Try to get the quest enum
+            Field questField = findField(questHelperInstance.getClass(), "quest");
+            if (questField != null) {
+                questField.setAccessible(true);
+                Object questEnum = questField.get(questHelperInstance);
+                if (questEnum != null) {
+                    // QuestHelperQuest has getName() method
+                    Method getNameMethod = questEnum.getClass().getMethod("getName");
+                    return (String) getNameMethod.invoke(questEnum);
+                }
+            }
+            
+            // Alternative: try getQuest().getName()
+            Method getQuestMethod = findMethod(questHelperInstance.getClass(), "getQuest");
+            if (getQuestMethod != null) {
+                getQuestMethod.setAccessible(true);
+                Object questEnum = getQuestMethod.invoke(questHelperInstance);
+                if (questEnum != null) {
+                    Method getNameMethod = questEnum.getClass().getMethod("getName");
+                    return (String) getNameMethod.invoke(questEnum);
+                }
+            }
+        } catch (Exception e) {
+            log.trace("Could not extract quest name from enum", e);
+        }
+        return null;
+    }
 
     /**
      * Extract the varbit/varp ID used by this quest.
+     *
+     * <p>Quest Helper stores quest progress tracking info in the QuestHelperQuest enum.
+     * Each quest has either a varbit or varp (varPlayer) ID that tracks progress.
+     * We need to find the enum entry that corresponds to this quest helper instance.
      */
     private int extractVarId() {
-        // This would need to be implemented based on how Quest Helper
-        // stores the var ID. For now, return -1 to indicate unknown.
-        // The actual implementation would use reflection to access
-        // the QuestHelperQuest enum that references this quest.
+        try {
+            // First, try to get the quest field from the helper instance
+            // BasicQuestHelper and its subclasses have a 'quest' field that is a QuestHelperQuest enum
+            Field questField = findField(questHelperInstance.getClass(), "quest");
+            if (questField != null) {
+                questField.setAccessible(true);
+                Object questEnum = questField.get(questHelperInstance);
+                if (questEnum != null) {
+                    return extractVarIdFromQuestEnum(questEnum);
+                }
+            }
+            
+            // Alternative: try to get quest via getQuest() method
+            Method getQuestMethod = findMethod(questHelperInstance.getClass(), "getQuest");
+            if (getQuestMethod != null) {
+                getQuestMethod.setAccessible(true);
+                Object questEnum = getQuestMethod.invoke(questHelperInstance);
+                if (questEnum != null) {
+                    return extractVarIdFromQuestEnum(questEnum);
+                }
+            }
+            
+        } catch (Exception e) {
+            log.debug("Could not extract varId from quest helper: {}", e.getMessage());
+        }
+        
+        return -1;
+    }
+    
+    /**
+     * Extract varbit or varp ID from a QuestHelperQuest enum entry.
+     *
+     * <p>QuestHelperQuest enum has fields:
+     * <ul>
+     *   <li>varbit: Varbit enum (has getId() method) - for varbit-based quests</li>
+     *   <li>varPlayer: VarPlayer enum (has getId() method) - for varp-based quests</li>
+     *   <li>completeValue: int - the value indicating quest completion</li>
+     * </ul>
+     *
+     * @param questEnum the QuestHelperQuest enum entry
+     * @return the varbit or varp ID, or -1 if not found
+     */
+    private int extractVarIdFromQuestEnum(Object questEnum) {
+        try {
+            // Try varbit field first (most quests use varbit)
+            Field varbitField = findField(questEnum.getClass(), "varbit");
+            if (varbitField != null) {
+                varbitField.setAccessible(true);
+                Object varbitEnum = varbitField.get(questEnum);
+                if (varbitEnum != null) {
+                    // Varbit enum has getId() method
+                    Method getIdMethod = varbitEnum.getClass().getMethod("getId");
+                    int varbitId = (int) getIdMethod.invoke(varbitEnum);
+                    log.debug("Extracted varbit ID: {}", varbitId);
+                    return varbitId;
+                }
+            }
+            
+            // Try varPlayer field (some older quests use varp)
+            Field varPlayerField = findField(questEnum.getClass(), "varPlayer");
+            if (varPlayerField != null) {
+                varPlayerField.setAccessible(true);
+                Object varPlayerEnum = varPlayerField.get(questEnum);
+                if (varPlayerEnum != null) {
+                    // VarPlayer enum has getId() method
+                    Method getIdMethod = varPlayerEnum.getClass().getMethod("getId");
+                    int varpId = (int) getIdMethod.invoke(varPlayerEnum);
+                    log.debug("Extracted varp ID: {}", varpId);
+                    // Mark that this uses varp - update metadata
+                    return varpId;
+                }
+            }
+            
+        } catch (Exception e) {
+            log.trace("Could not extract varId from QuestHelperQuest enum: {}", e.getMessage());
+        }
+        
+        return -1;
+    }
+    
+    /**
+     * Check if the quest uses varp (varPlayer) instead of varbit.
+     *
+     * @return true if quest uses varp, false if uses varbit (default)
+     */
+    private boolean questUsesVarp() {
+        try {
+            // Get the quest enum
+            Field questField = findField(questHelperInstance.getClass(), "quest");
+            if (questField != null) {
+                questField.setAccessible(true);
+                Object questEnum = questField.get(questHelperInstance);
+                if (questEnum != null) {
+                    // Check if varPlayer field is populated
+                    Field varPlayerField = findField(questEnum.getClass(), "varPlayer");
+                    if (varPlayerField != null) {
+                        varPlayerField.setAccessible(true);
+                        return varPlayerField.get(questEnum) != null;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.trace("Could not determine var type", e);
+        }
+        return false;
+    }
+    
+    /**
+     * Extract the completion value for the quest.
+     *
+     * @return the varbit/varp value that indicates quest completion, or -1 if unknown
+     */
+    private int extractCompletionValue() {
+        try {
+            Field questField = findField(questHelperInstance.getClass(), "quest");
+            if (questField != null) {
+                questField.setAccessible(true);
+                Object questEnum = questField.get(questHelperInstance);
+                if (questEnum != null) {
+                    Field completeValueField = findField(questEnum.getClass(), "completeValue");
+                    if (completeValueField != null) {
+                        completeValueField.setAccessible(true);
+                        int completeValue = completeValueField.getInt(questEnum);
+                        log.debug("Extracted completion value: {}", completeValue);
+                        return completeValue;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.trace("Could not extract completion value", e);
+        }
         return -1;
     }
 
@@ -175,6 +361,8 @@ public class QuestHelperBridge {
                     return translateNpcStep(qhStep);
                 case "NpcEmoteStep":
                     return translateNpcEmoteStep(qhStep);
+                case "NpcFollowerStep":
+                    return translateNpcFollowerStep(qhStep);
                 case "MultiNpcStep":
                     return translateMultiNpcStep(qhStep);
                 case "ObjectStep":
@@ -194,9 +382,24 @@ public class QuestHelperBridge {
                     return translateWidgetStep(qhStep);
                 case "PuzzleWrapperStep":
                     return translatePuzzleWrapperStep(qhStep);
+                case "PuzzleStep":
+                    return translatePuzzleStep(qhStep);
+                case "QuestSyncStep":
+                    return translateQuestSyncStep(qhStep);
+                case "DetailedOwnerStep":
+                    return translateDetailedOwnerStep(qhStep);
+                case "BoardShipStep":
+                case "SailStep":
+                    // These are for the Sailing skill (released December 2024) - intentionally skipped
+                    log.debug("Skipping {} - Sailing skill not yet supported", stepClassName);
+                    return null;
                 case "DetailedQuestStep":
                     return translateDetailedStep(qhStep);
                 default:
+                    // Check if step implements OwnerStep interface for recursive extraction
+                    if (implementsOwnerStep(qhStep)) {
+                        return translateOwnerStep(qhStep);
+                    }
                     log.debug("Unsupported step type: {}", stepClassName);
                     return translateGenericStep(qhStep);
             }
@@ -716,12 +919,233 @@ public class QuestHelperBridge {
         return translateConditionalStep(qhStep);
     }
 
+    /**
+     * Translate a PuzzleStep.
+     * PuzzleStep extends DetailedQuestStep and highlights widgets that need to be clicked.
+     * Since puzzles require algorithmic solving, we delegate to AI Director at runtime.
+     */
+    private QuestStep translatePuzzleStep(Object qhStep) throws Exception {
+        String text = getStepText(qhStep);
+        WorldPoint location = getWorldPoint(qhStep);
+        
+        // PuzzleStep uses ButtonHighlightCalculator to determine which buttons to click
+        // We can't extract this logic statically, so we create a placeholder step
+        // The AI Director will handle puzzle solving at runtime
+        
+        log.info("PuzzleStep encountered - puzzle solving requires AI Director: {}", text);
+        
+        // Create a widget step placeholder that indicates a puzzle needs solving
+        // The quest executor should detect this and engage the AI Director
+        if (location != null) {
+            return new WalkQuestStep(location, text + " (puzzle - requires AI Director)");
+        }
+        
+        // Return null to indicate this step needs special handling
+        return null;
+    }
+
+    /**
+     * Translate an NpcFollowerStep to NpcQuestStep with follower verification.
+     * NpcFollowerStep extends NpcStep and only highlights NPCs that are currently following the player.
+     */
+    private NpcQuestStep translateNpcFollowerStep(Object qhStep) throws Exception {
+        // NpcFollowerStep extends NpcStep, so get the base NPC data
+        int npcId = getIntField(qhStep, "npcID");
+        String text = getStepText(qhStep);
+        WorldPoint location = getWorldPoint(qhStep);
+        
+        NpcQuestStep step = new NpcQuestStep(npcId, text)
+                .withMenuAction(inferNpcMenuAction(text))
+                .withDialogueExpected(true);
+        
+        if (location != null) {
+            step.withWalkTo(location);
+        }
+        
+        // Extract alternate NPC IDs
+        List<Integer> alternateNpcs = extractAlternateIds(qhStep, "alternateNpcIDs", "alternateNpcs");
+        if (!alternateNpcs.isEmpty()) {
+            step.withAlternateIds(alternateNpcs);
+        }
+        
+        // Add a condition that checks if the NPC is a follower
+        // NpcFollowerStep uses varp 447 to check follower status
+        // The lower 16 bits of varp 447 contain the follower's NPC index
+        StateCondition followerCondition = ctx -> {
+            int followerVarp = ctx.getClient().getVarpValue(447);
+            int followerId = followerVarp & 0x0000FFFF;
+            // Follower ID > 0 means we have a follower
+            return followerId > 0;
+        };
+        step.withCondition(followerCondition);
+        
+        // Extract dialogue options
+        List<DialogueOptionResolver> dialogueResolvers = extractDialogueOptions(qhStep);
+        if (!dialogueResolvers.isEmpty()) {
+            step.withDialogueOptions(extractDialogueTexts(dialogueResolvers).toArray(new String[0]));
+        }
+        
+        log.debug("Translated NpcFollowerStep: npcId={}, text={}", npcId, text);
+        return step;
+    }
+
+    /**
+     * Translate a QuestSyncStep.
+     * QuestSyncStep is used to prompt the player to select a quest in the quest list.
+     * For the bot, we translate this as a widget step that opens the quest tab and selects the quest.
+     */
+    private WidgetQuestStep translateQuestSyncStep(Object qhStep) throws Exception {
+        String text = getStepText(qhStep);
+        
+        // QuestSyncStep has a 'quest' field (QuestHelperQuest enum)
+        Object questObj = getFieldValue(qhStep, "quest");
+        String questName = "Unknown Quest";
+        if (questObj != null) {
+            try {
+                Method getNameMethod = questObj.getClass().getMethod("getName");
+                questName = (String) getNameMethod.invoke(questObj);
+            } catch (Exception e) {
+                log.trace("Could not get quest name from QuestSyncStep", e);
+            }
+        }
+        
+        // QuestSyncStep highlights the quest in the quest list widget
+        // Widget 399 is the quest list, child 7 is the container
+        String fullText = text + " (Select quest: " + questName + ")";
+        WidgetQuestStep step = new WidgetQuestStep(399, 7, fullText);
+        
+        log.debug("Translated QuestSyncStep: quest={}, text={}", questName, text);
+        return step;
+    }
+
+    /**
+     * Translate a DetailedOwnerStep.
+     * DetailedOwnerStep extends QuestStep and implements OwnerStep to contain child steps.
+     * It delegates to a currentStep based on some internal logic.
+     */
+    private QuestStep translateDetailedOwnerStep(Object qhStep) throws Exception {
+        String text = getStepText(qhStep);
+        
+        // DetailedOwnerStep has getSteps() that returns child steps
+        // We need to translate all child steps and wrap in a conditional
+        Collection<Object> childSteps = extractOwnerSteps(qhStep);
+        
+        if (childSteps == null || childSteps.isEmpty()) {
+            log.debug("DetailedOwnerStep has no child steps: {}", text);
+            return translateDetailedStep(qhStep);
+        }
+        
+        // Create a conditional step that will evaluate child steps
+        ConditionalQuestStep wrapper = new ConditionalQuestStep(text);
+        
+        for (Object childStep : childSteps) {
+            if (childStep != null) {
+                QuestStep translated = translateStep(childStep);
+                if (translated != null) {
+                    // DetailedOwnerStep doesn't expose conditions, so add as alternatives
+                    wrapper.otherwise(translated);
+                    break; // Use first valid step as default
+                }
+            }
+        }
+        
+        log.debug("Translated DetailedOwnerStep: text={}, childSteps={}", text, childSteps.size());
+        return wrapper;
+    }
+
+    /**
+     * Translate any step that implements the OwnerStep interface.
+     * OwnerStep provides getSteps() to access child steps.
+     */
+    private QuestStep translateOwnerStep(Object qhStep) throws Exception {
+        String text = getStepText(qhStep);
+        Collection<Object> childSteps = extractOwnerSteps(qhStep);
+        
+        if (childSteps == null || childSteps.isEmpty()) {
+            log.debug("OwnerStep has no child steps: {}", text);
+            return null;
+        }
+        
+        // Translate child steps
+        List<QuestStep> translatedSteps = new ArrayList<>();
+        for (Object childStep : childSteps) {
+            if (childStep != null) {
+                QuestStep translated = translateStep(childStep);
+                if (translated != null) {
+                    translatedSteps.add(translated);
+                }
+            }
+        }
+        
+        if (translatedSteps.isEmpty()) {
+            return null;
+        }
+        
+        // If only one step, return it directly
+        if (translatedSteps.size() == 1) {
+            return translatedSteps.get(0);
+        }
+        
+        // Multiple steps - wrap in conditional
+        ConditionalQuestStep wrapper = new ConditionalQuestStep(text);
+        wrapper.otherwise(translatedSteps.get(0));
+        
+        log.debug("Translated OwnerStep: text={}, childSteps={}", text, translatedSteps.size());
+        return wrapper;
+    }
+
+    /**
+     * Extract child steps from an OwnerStep implementation.
+     */
+    @SuppressWarnings("unchecked")
+    private Collection<Object> extractOwnerSteps(Object ownerStep) {
+        try {
+            Method getStepsMethod = findMethod(ownerStep.getClass(), "getSteps");
+            if (getStepsMethod != null) {
+                getStepsMethod.setAccessible(true);
+                Object result = getStepsMethod.invoke(ownerStep);
+                if (result instanceof Collection) {
+                    return (Collection<Object>) result;
+                }
+            }
+        } catch (Exception e) {
+            log.trace("Could not extract steps from OwnerStep", e);
+        }
+        return null;
+    }
+
+    /**
+     * Check if a step implements the OwnerStep interface.
+     */
+    private boolean implementsOwnerStep(Object step) {
+        for (Class<?> iface : step.getClass().getInterfaces()) {
+            if (iface.getSimpleName().equals("OwnerStep")) {
+                return true;
+            }
+        }
+        // Check superclasses too
+        Class<?> superClass = step.getClass().getSuperclass();
+        while (superClass != null) {
+            for (Class<?> iface : superClass.getInterfaces()) {
+                if (iface.getSimpleName().equals("OwnerStep")) {
+                    return true;
+                }
+            }
+            superClass = superClass.getSuperclass();
+        }
+        return false;
+    }
+
     // ========================================================================
     // Dialogue Option Extraction
     // ========================================================================
 
     /**
      * Extract dialogue options from a Quest Helper step.
+     *
+     * <p>Quest Helper stores dialogue choices in the 'choices' field which is a
+     * DialogChoiceSteps object containing a list of DialogChoiceStep instances.
+     * Additionally, some steps use addDialogStep() which appends to this list.
      *
      * @param qhStep the step to extract from
      * @return list of DialogueOptionResolvers
@@ -737,18 +1161,52 @@ public class QuestHelperBridge {
                 Object dialogChoiceSteps = choicesField.get(qhStep);
 
                 if (dialogChoiceSteps != null) {
-                    // Get the list of DialogChoiceStep from DialogChoiceSteps
+                    // DialogChoiceSteps has a 'choices' field that is a List<DialogChoiceStep>
+                    // Try getChoices() method first
+                    List<Object> choices = null;
                     Method getChoicesMethod = findMethod(dialogChoiceSteps.getClass(), "getChoices");
                     if (getChoicesMethod != null) {
                         getChoicesMethod.setAccessible(true);
                         @SuppressWarnings("unchecked")
-                        List<Object> choices = (List<Object>) getChoicesMethod.invoke(dialogChoiceSteps);
+                        List<Object> result = (List<Object>) getChoicesMethod.invoke(dialogChoiceSteps);
+                        choices = result;
+                    }
+                    
+                    // If method not found, try direct field access
+                    if (choices == null) {
+                        Field innerChoicesField = findField(dialogChoiceSteps.getClass(), "choices");
+                        if (innerChoicesField != null) {
+                            innerChoicesField.setAccessible(true);
+                            @SuppressWarnings("unchecked")
+                            List<Object> result = (List<Object>) innerChoicesField.get(dialogChoiceSteps);
+                            choices = result;
+                        }
+                    }
 
+                    if (choices != null) {
                         for (Object choice : choices) {
                             DialogueOptionResolver resolver = translateDialogueChoice(choice);
                             if (resolver != null) {
                                 resolvers.add(resolver);
                             }
+                        }
+                    }
+                }
+            }
+            
+            // Also check widgetChoices field for widget-based choices
+            Field widgetChoicesField = findField(qhStep.getClass(), "widgetChoices");
+            if (widgetChoicesField != null) {
+                widgetChoicesField.setAccessible(true);
+                Object widgetChoiceSteps = widgetChoicesField.get(qhStep);
+                
+                if (widgetChoiceSteps != null) {
+                    // Similar extraction for WidgetChoiceSteps
+                    List<Object> widgetChoices = extractChoicesFromStepsObject(widgetChoiceSteps);
+                    for (Object choice : widgetChoices) {
+                        DialogueOptionResolver resolver = translateDialogueChoice(choice);
+                        if (resolver != null) {
+                            resolvers.add(resolver);
                         }
                     }
                 }
@@ -759,68 +1217,152 @@ public class QuestHelperBridge {
 
         return resolvers;
     }
+    
+    /**
+     * Extract choices list from a DialogChoiceSteps or WidgetChoiceSteps object.
+     */
+    @SuppressWarnings("unchecked")
+    private List<Object> extractChoicesFromStepsObject(Object stepsObject) {
+        try {
+            // Try getChoices() method first
+            Method getChoicesMethod = findMethod(stepsObject.getClass(), "getChoices");
+            if (getChoicesMethod != null) {
+                getChoicesMethod.setAccessible(true);
+                Object result = getChoicesMethod.invoke(stepsObject);
+                if (result instanceof List) {
+                    return (List<Object>) result;
+                }
+            }
+            
+            // Try direct field access
+            Field choicesField = findField(stepsObject.getClass(), "choices");
+            if (choicesField != null) {
+                choicesField.setAccessible(true);
+                Object result = choicesField.get(stepsObject);
+                if (result instanceof List) {
+                    return (List<Object>) result;
+                }
+            }
+        } catch (Exception e) {
+            log.trace("Could not extract choices from steps object", e);
+        }
+        return Collections.emptyList();
+    }
 
     /**
-     * Translate a Quest Helper DialogChoiceStep to our DialogueOptionResolver.
+     * Translate a Quest Helper DialogChoiceStep/WidgetChoiceStep to our DialogueOptionResolver.
+     *
+     * <p>WidgetChoiceStep (parent of DialogChoiceStep) supports multiple ways to select an option:
+     * <ul>
+     *   <li>Text match: 'choice' field contains exact text to match</li>
+     *   <li>Pattern match: 'pattern' field contains regex Pattern</li>
+     *   <li>Index match: 'choiceById' field contains 0-based option index</li>
+     *   <li>Varbit-based: 'varbitId' + 'varbitValueToAnswer' map for dynamic selection</li>
+     * </ul>
+     *
+     * <p>DialogChoiceStep adds:
+     * <ul>
+     *   <li>Context matching: 'expectedPreviousLine' for context-dependent options</li>
+     * </ul>
+     *
+     * <p>Both support exclusions via 'excludedStrings' field.
      */
     private DialogueOptionResolver translateDialogueChoice(Object dialogChoiceStep) {
         try {
-            // Get the choice text
+            // Get the choice text (direct text match)
             String choiceText = getStringField(dialogChoiceStep, "choice");
 
             // Get regex pattern if present
             Object patternObj = getFieldValue(dialogChoiceStep, "pattern");
-            Pattern pattern = patternObj instanceof Pattern ? (Pattern) patternObj : null;
+            Pattern pattern = null;
+            if (patternObj instanceof Pattern) {
+                pattern = (Pattern) patternObj;
+            } else if (patternObj != null) {
+                // It might be stored as a string pattern
+                String patternStr = patternObj.toString();
+                if (patternStr != null && !patternStr.isEmpty()) {
+                    try {
+                        pattern = Pattern.compile(patternStr);
+                    } catch (Exception e) {
+                        log.trace("Invalid pattern string: {}", patternStr);
+                    }
+                }
+            }
 
-            // Get choice by ID
+            // Get choice by ID (0-based index)
             int choiceById = getIntFieldSafe(dialogChoiceStep, "choiceById", -1);
 
-            // Get varbit-based options
+            // Get varbit-based options (dynamic selection based on game state)
             int varbitId = getIntFieldSafe(dialogChoiceStep, "varbitId", -1);
             @SuppressWarnings("unchecked")
             Map<Integer, String> varbitValueToAnswer = (Map<Integer, String>) 
                     getFieldValue(dialogChoiceStep, "varbitValueToAnswer");
+            
+            // Also check for single varbit value (some steps use this pattern)
+            int varbitValue = getIntFieldSafe(dialogChoiceStep, "varbitValue", -1);
 
-            // Get expected previous line for context-dependent options
+            // Get expected previous line for context-dependent options (DialogChoiceStep specific)
             String expectedPreviousLine = getStringField(dialogChoiceStep, "expectedPreviousLine");
 
-            // Get exclusions
-            String exclusionText = null;
+            // Get exclusions - text that should NOT trigger this choice
             @SuppressWarnings("unchecked")
             List<String> excludedStrings = (List<String>) getFieldValue(dialogChoiceStep, "excludedStrings");
-            if (excludedStrings != null && !excludedStrings.isEmpty()) {
-                exclusionText = excludedStrings.get(0); // Use first exclusion
-            }
 
-            // Create appropriate resolver
-            DialogueOptionResolver resolver;
+            // Get widget group/child IDs for validation
+            int groupId = getIntFieldSafe(dialogChoiceStep, "groupId", -1);
+            int childId = getIntFieldSafe(dialogChoiceStep, "childId", -1);
 
-            if (varbitId != -1 && varbitValueToAnswer != null) {
+            // Determine the resolver type based on available data
+            // Priority: varbit > pattern > index+text > index > text
+            DialogueOptionResolver resolver = null;
+
+            if (varbitId != -1 && varbitValueToAnswer != null && !varbitValueToAnswer.isEmpty()) {
+                // Varbit-based dynamic selection
                 resolver = DialogueOptionResolver.varbitBased(varbitId, varbitValueToAnswer);
+                log.trace("Created varbit-based resolver: varbitId={}, options={}", varbitId, varbitValueToAnswer.size());
             } else if (pattern != null) {
+                // Regex pattern matching
                 resolver = DialogueOptionResolver.pattern(pattern);
-            } else if (choiceById != -1) {
-                resolver = DialogueOptionResolver.index(choiceById);
-            } else if (choiceText != null) {
+                log.trace("Created pattern resolver: {}", pattern.pattern());
+            } else if (choiceById != -1 && choiceText != null) {
+                // Index + text verification (most precise)
+                // Use text-based but with index hint - for now just use text
                 resolver = DialogueOptionResolver.text(choiceText);
+                log.trace("Created text resolver with index hint: text={}, index={}", choiceText, choiceById);
+            } else if (choiceById != -1) {
+                // Pure index-based selection
+                resolver = DialogueOptionResolver.index(choiceById);
+                log.trace("Created index resolver: {}", choiceById);
+            } else if (choiceText != null && !choiceText.isEmpty()) {
+                // Simple text matching
+                resolver = DialogueOptionResolver.text(choiceText);
+                log.trace("Created text resolver: {}", choiceText);
             } else {
+                // No valid selection criteria
+                log.trace("DialogChoiceStep has no valid selection criteria");
                 return null;
             }
 
-            // Apply context requirements
+            // Apply context requirements (DialogChoiceStep specific)
             if (expectedPreviousLine != null && !expectedPreviousLine.isEmpty()) {
-                resolver.withExpectedPreviousLine(expectedPreviousLine);
+                resolver = resolver.withExpectedPreviousLine(expectedPreviousLine);
+                log.trace("Added context requirement: {}", expectedPreviousLine);
             }
 
-            // Apply exclusions
-            if (exclusionText != null && !exclusionText.isEmpty()) {
-                resolver.withExclusion(exclusionText);
+            // Apply exclusions - if multiple, apply each
+            if (excludedStrings != null && !excludedStrings.isEmpty()) {
+                for (String exclusion : excludedStrings) {
+                    if (exclusion != null && !exclusion.isEmpty()) {
+                        resolver = resolver.withExclusion(exclusion);
+                        log.trace("Added exclusion: {}", exclusion);
+                    }
+                }
             }
 
             return resolver;
 
         } catch (Exception e) {
-            log.debug("Could not translate dialogue choice", e);
+            log.debug("Could not translate dialogue choice: {}", e.getMessage());
             return null;
         }
     }

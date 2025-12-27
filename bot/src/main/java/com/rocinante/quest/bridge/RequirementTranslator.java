@@ -67,6 +67,9 @@ public class RequirementTranslator {
                     return translateZoneRequirement(qhRequirement);
                 case "ItemRequirement":
                 case "ItemRequirements":
+                case "TeleportItemRequirement":
+                case "KeyringRequirement":
+                case "FollowerItemRequirement":
                     return translateItemRequirement(qhRequirement);
                 case "Conditions":
                     return translateCompositeRequirement(qhRequirement);
@@ -77,13 +80,61 @@ public class RequirementTranslator {
                 case "ObjectCondition":
                     return translateObjectCondition(qhRequirement);
                 case "NpcCondition":
+                case "NpcRequirement":
+                case "NpcInteractingRequirement":
+                case "NpcInteractingWithNpcRequirement":
+                case "NpcHintArrowRequirement":
                     return translateNpcCondition(qhRequirement);
+                case "FollowerRequirement":
+                case "NoFollowerRequirement":
+                    return translateFollowerRequirement(qhRequirement);
                 case "ChatMessageCondition":
-                    // Chat conditions need special runtime handling
-                    return StateCondition.always();
+                case "ChatMessageRequirement":
+                case "MultiChatMessageRequirement":
+                    // Chat conditions need special runtime handling - track via event system
+                    return translateChatMessageRequirement(qhRequirement);
+                case "DialogRequirement":
+                    return translateDialogRequirement(qhRequirement);
+                case "RuneliteRequirement":
+                case "PlayerQuestStateRequirement":
+                    return translateRuneliteRequirement(qhRequirement);
+                case "ManualRequirement":
+                    return translateManualRequirement(qhRequirement);
+                case "MesBoxRequirement":
+                    return translateMesBoxRequirement(qhRequirement);
                 case "WidgetTextRequirement":
                 case "WidgetPresenceRequirement":
+                case "WidgetSpriteRequirement":
+                case "WidgetModelRequirement":
                     return translateWidgetRequirement(qhRequirement);
+                case "FreeInventorySlotRequirement":
+                    return translateFreeInventoryRequirement(qhRequirement);
+                case "InInstanceRequirement":
+                    return translateInInstanceRequirement(qhRequirement);
+                case "TileIsLoadedRequirement":
+                    return translateTileLoadedRequirement(qhRequirement);
+                case "CombatLevelRequirement":
+                    return translateCombatLevelRequirement(qhRequirement);
+                case "PrayerRequirement":
+                case "PrayerPointRequirement":
+                    return translatePrayerRequirement(qhRequirement);
+                case "SpellbookRequirement":
+                    return translateSpellbookRequirement(qhRequirement);
+                case "WeightRequirement":
+                    return translateWeightRequirement(qhRequirement);
+                case "VarComparisonRequirement":
+                    return translateVarComparisonRequirement(qhRequirement);
+                case "ItemOnTileRequirement":
+                case "ItemOnTileConsideringSceneLoadRequirement":
+                    return translateItemOnTileRequirement(qhRequirement);
+                case "NoItemRequirement":
+                    return translateNoItemRequirement(qhRequirement);
+                case "StepIsActiveRequirement":
+                    // Step state tracking - always true as a baseline
+                    return StateCondition.always();
+                case "ConfigRequirement":
+                    // Config-based requirements are RuneLite client settings
+                    return StateCondition.always();
                 default:
                     log.debug("Unsupported requirement type: {}", className);
                     return StateCondition.always();
@@ -359,6 +410,430 @@ public class RequirementTranslator {
     }
 
     // ========================================================================
+    // Dialog Requirements
+    // ========================================================================
+
+    /**
+     * Translate a DialogRequirement.
+     *
+     * <p>DialogRequirement checks if specific dialogue text has been seen.
+     * It tracks dialogue via ChatMessage events of type DIALOG.
+     *
+     * <p>Fields:
+     * <ul>
+     *   <li>talkerName: Optional NPC name filter</li>
+     *   <li>text: List of text strings to match</li>
+     *   <li>mustBeActive: If true, dialogue must currently be visible</li>
+     *   <li>hasSeenDialog: Runtime state tracking</li>
+     * </ul>
+     */
+    private StateCondition translateDialogRequirement(Object req) {
+        try {
+            @SuppressWarnings("unchecked")
+            List<String> textList = (List<String>) getFieldValue(req, "text");
+            String talkerName = getStringFieldSafe(req, "talkerName", null);
+            boolean mustBeActive = getBoolFieldSafe(req, "mustBeActive", false);
+            
+            if (textList == null || textList.isEmpty()) {
+                return StateCondition.always();
+            }
+            
+            // For mustBeActive, we need to check current dialogue widget
+            if (mustBeActive) {
+                return ctx -> {
+                    // Check if dialogue widget is visible and contains expected text
+                    net.runelite.api.widgets.Widget dialogWidget = ctx.getClient().getWidget(231, 4);
+                    if (dialogWidget == null || dialogWidget.isHidden()) {
+                        return false;
+                    }
+                    String dialogText = dialogWidget.getText();
+                    if (dialogText == null) {
+                        return false;
+                    }
+                    // Check talker name if specified
+                    if (talkerName != null) {
+                        net.runelite.api.widgets.Widget nameWidget = ctx.getClient().getWidget(231, 3);
+                        if (nameWidget == null || !talkerName.equals(nameWidget.getText())) {
+                            return false;
+                        }
+                    }
+                    // Check if any expected text is present
+                    for (String text : textList) {
+                        if (dialogText.contains(text)) {
+                            return true;
+                        }
+                    }
+                    return false;
+                };
+            }
+            
+            // For non-active, we'd need event tracking - return always for now
+            // The bot should track dialogue history via events
+            log.debug("DialogRequirement with mustBeActive=false requires event tracking: {}", textList);
+            return StateCondition.always();
+            
+        } catch (Exception e) {
+            log.debug("Could not translate DialogRequirement: {}", e.getMessage());
+            return StateCondition.always();
+        }
+    }
+
+    // ========================================================================
+    // RuneLite Requirements
+    // ========================================================================
+
+    /**
+     * Translate a RuneliteRequirement.
+     *
+     * <p>RuneliteRequirement stores state in RuneLite's config system with:
+     * <ul>
+     *   <li>runeliteIdentifier: Config key</li>
+     *   <li>expectedValue: Value to check for</li>
+     *   <li>requirements: Map of value -> Requirement for validation</li>
+     * </ul>
+     *
+     * <p>This is used for persisting quest progress state that isn't tracked by varbits.
+     */
+    private StateCondition translateRuneliteRequirement(Object req) {
+        try {
+            String identifier = getStringFieldSafe(req, "runeliteIdentifier", null);
+            String expectedValue = getStringFieldSafe(req, "expectedValue", "true");
+            
+            if (identifier == null) {
+                return StateCondition.always();
+            }
+            
+            // RuneLite requirements check config manager - we can't access that
+            // Instead, if there are nested requirements, translate those
+            @SuppressWarnings("unchecked")
+            java.util.Map<String, Object> requirements = 
+                    (java.util.Map<String, Object>) getFieldValue(req, "requirements");
+            
+            if (requirements != null && !requirements.isEmpty()) {
+                // Get the requirement for the expected value
+                Object nestedReq = requirements.get(expectedValue);
+                if (nestedReq != null) {
+                    return translate(nestedReq);
+                }
+            }
+            
+            log.debug("RuneliteRequirement uses config storage, cannot directly evaluate: {}", identifier);
+            return StateCondition.always();
+            
+        } catch (Exception e) {
+            log.debug("Could not translate RuneliteRequirement: {}", e.getMessage());
+            return StateCondition.always();
+        }
+    }
+
+    // ========================================================================
+    // Manual Requirements
+    // ========================================================================
+
+    /**
+     * Translate a ManualRequirement.
+     *
+     * <p>ManualRequirement is a simple boolean flag that is set programmatically.
+     * Since we can't track external state changes, we check the current value.
+     */
+    private StateCondition translateManualRequirement(Object req) {
+        try {
+            boolean shouldPass = getBoolFieldSafe(req, "shouldPass", false);
+            return shouldPass ? StateCondition.always() : StateCondition.never();
+        } catch (Exception e) {
+            return StateCondition.always();
+        }
+    }
+
+    // ========================================================================
+    // MesBox Requirements
+    // ========================================================================
+
+    /**
+     * Translate a MesBoxRequirement.
+     *
+     * <p>MesBoxRequirement extends ChatMessageRequirement and checks for
+     * MESBOX type chat messages (game message boxes).
+     */
+    private StateCondition translateMesBoxRequirement(Object req) {
+        try {
+            @SuppressWarnings("unchecked")
+            List<String> messages = (List<String>) getFieldValue(req, "messages");
+            
+            if (messages == null || messages.isEmpty()) {
+                return StateCondition.always();
+            }
+            
+            // Check if message box widget is visible with expected text
+            return ctx -> {
+                // MESBOX is typically widget group 229
+                net.runelite.api.widgets.Widget mesBoxWidget = ctx.getClient().getWidget(229, 1);
+                if (mesBoxWidget == null || mesBoxWidget.isHidden()) {
+                    return false;
+                }
+                String text = mesBoxWidget.getText();
+                if (text == null) {
+                    return false;
+                }
+                for (String message : messages) {
+                    if (text.contains(message)) {
+                        return true;
+                    }
+                }
+                return false;
+            };
+            
+        } catch (Exception e) {
+            log.debug("Could not translate MesBoxRequirement: {}", e.getMessage());
+            return StateCondition.always();
+        }
+    }
+
+    // ========================================================================
+    // Chat Message Requirements
+    // ========================================================================
+
+    /**
+     * Translate chat message based requirements.
+     * These require event tracking and are evaluated based on historical chat messages.
+     */
+    private StateCondition translateChatMessageRequirement(Object req) {
+        // Chat message requirements need event-based tracking
+        // For now, return always-true as the bot should handle this via event system
+        log.debug("ChatMessageRequirement requires event tracking");
+        return StateCondition.always();
+    }
+
+    // ========================================================================
+    // Follower Requirements
+    // ========================================================================
+
+    /**
+     * Translate follower requirements.
+     *
+     * <p>FollowerRequirement checks if player has a follower.
+     * NoFollowerRequirement checks if player does NOT have a follower.
+     * Varp 447 tracks the current follower (lower 16 bits = NPC index).
+     */
+    private StateCondition translateFollowerRequirement(Object req) {
+        String className = req.getClass().getSimpleName();
+        boolean requiresFollower = !className.contains("No");
+        
+        return ctx -> {
+            int followerVarp = ctx.getClient().getVarpValue(447);
+            int followerId = followerVarp & 0x0000FFFF;
+            boolean hasFollower = followerId > 0;
+            return requiresFollower ? hasFollower : !hasFollower;
+        };
+    }
+
+    // ========================================================================
+    // Inventory Requirements
+    // ========================================================================
+
+    /**
+     * Translate FreeInventorySlotRequirement.
+     */
+    private StateCondition translateFreeInventoryRequirement(Object req) {
+        int slotsRequired = getIntFieldSafe(req, "numSlots", 1);
+        
+        return ctx -> {
+            int freeSlots = ctx.getInventoryState().getFreeSlots();
+            return freeSlots >= slotsRequired;
+        };
+    }
+
+    /**
+     * Translate ItemOnTileRequirement - checks if an item is on the ground.
+     *
+     * <p>Ground item checking requires scene scanning which is expensive.
+     * For now, we return always-true and let the step execution handle
+     * ground item detection at runtime.
+     */
+    private StateCondition translateItemOnTileRequirement(Object req) {
+        try {
+            int itemId = getIntFieldSafe(req, "itemID", -1);
+            if (itemId < 0) {
+                return StateCondition.always();
+            }
+            
+            // Ground item checking requires TileItem scanning at runtime
+            // The step execution will handle this via GroundItemQuestStep
+            log.debug("ItemOnTileRequirement for itemId={} - requires runtime scanning", itemId);
+            return StateCondition.always();
+        } catch (Exception e) {
+            return StateCondition.always();
+        }
+    }
+
+    /**
+     * Translate NoItemRequirement - checks player does NOT have an item.
+     */
+    private StateCondition translateNoItemRequirement(Object req) {
+        try {
+            int itemId = getIntFieldSafe(req, "id", -1);
+            if (itemId < 0) {
+                return StateCondition.always();
+            }
+            
+            return ctx -> !ctx.getInventoryState().hasItem(itemId, 1);
+        } catch (Exception e) {
+            return StateCondition.always();
+        }
+    }
+
+    // ========================================================================
+    // Instance/Location Requirements
+    // ========================================================================
+
+    /**
+     * Translate InInstanceRequirement - checks if player is in an instanced area.
+     */
+    private StateCondition translateInInstanceRequirement(Object req) {
+        return ctx -> ctx.getClient().isInInstancedRegion();
+    }
+
+    /**
+     * Translate TileIsLoadedRequirement - checks if a tile is loaded in the scene.
+     */
+    private StateCondition translateTileLoadedRequirement(Object req) {
+        try {
+            Object worldPointObj = getFieldValue(req, "worldPoint");
+            if (worldPointObj instanceof WorldPoint) {
+                WorldPoint wp = (WorldPoint) worldPointObj;
+                return ctx -> {
+                    WorldPoint localWp = WorldPoint.fromLocalInstance(ctx.getClient(), 
+                            ctx.getClient().getLocalPlayer().getLocalLocation());
+                    // Check if on same plane and within loaded region
+                    return localWp.getPlane() == wp.getPlane() &&
+                           Math.abs(localWp.getX() - wp.getX()) < 104 &&
+                           Math.abs(localWp.getY() - wp.getY()) < 104;
+                };
+            }
+        } catch (Exception e) {
+            log.trace("Could not translate TileIsLoadedRequirement", e);
+        }
+        return StateCondition.always();
+    }
+
+    // ========================================================================
+    // Combat/Stats Requirements
+    // ========================================================================
+
+    /**
+     * Translate CombatLevelRequirement.
+     */
+    private StateCondition translateCombatLevelRequirement(Object req) {
+        int requiredLevel = getIntFieldSafe(req, "combatLevel", 3);
+        
+        return ctx -> ctx.getClient().getLocalPlayer().getCombatLevel() >= requiredLevel;
+    }
+
+    /**
+     * Translate PrayerRequirement or PrayerPointRequirement.
+     */
+    private StateCondition translatePrayerRequirement(Object req) {
+        String className = req.getClass().getSimpleName();
+        
+        if (className.contains("Point")) {
+            // PrayerPointRequirement - checks current prayer points
+            int requiredPoints = getIntFieldSafe(req, "prayerPoints", 1);
+            return ctx -> ctx.getClient().getBoostedSkillLevel(net.runelite.api.Skill.PRAYER) >= requiredPoints;
+        } else {
+            // PrayerRequirement - checks if a specific prayer is active
+            Object prayerObj = getFieldValue(req, "prayer");
+            if (prayerObj != null) {
+                try {
+                    int prayerVarbit = (int) prayerObj.getClass().getMethod("getVarbit").invoke(prayerObj);
+                    return ctx -> ctx.getClient().getVarbitValue(prayerVarbit) == 1;
+                } catch (Exception e) {
+                    log.trace("Could not get prayer varbit", e);
+                }
+            }
+        }
+        return StateCondition.always();
+    }
+
+    /**
+     * Translate SpellbookRequirement.
+     */
+    private StateCondition translateSpellbookRequirement(Object req) {
+        try {
+            Object spellbookObj = getFieldValue(req, "spellbook");
+            if (spellbookObj != null) {
+                String spellbookName = spellbookObj.toString();
+                // Spellbook is tracked via varbit 4070
+                // 0 = Normal, 1 = Ancient, 2 = Lunar, 3 = Arceuus
+                int expectedValue = 0;
+                switch (spellbookName.toUpperCase()) {
+                    case "ANCIENT": expectedValue = 1; break;
+                    case "LUNAR": expectedValue = 2; break;
+                    case "ARCEUUS": expectedValue = 3; break;
+                }
+                int finalExpected = expectedValue;
+                return ctx -> ctx.getClient().getVarbitValue(4070) == finalExpected;
+            }
+        } catch (Exception e) {
+            log.trace("Could not translate SpellbookRequirement", e);
+        }
+        return StateCondition.always();
+    }
+
+    /**
+     * Translate WeightRequirement.
+     */
+    private StateCondition translateWeightRequirement(Object req) {
+        int maxWeight = getIntFieldSafe(req, "weight", 0);
+        Object operationObj = getFieldValue(req, "operation");
+        String operation = operationObj != null ? operationObj.toString() : "LESS_EQUAL";
+        
+        return ctx -> {
+            int currentWeight = ctx.getClient().getWeight();
+            switch (operation) {
+                case "LESS": return currentWeight < maxWeight;
+                case "LESS_EQUAL": return currentWeight <= maxWeight;
+                case "GREATER": return currentWeight > maxWeight;
+                case "GREATER_EQUAL": return currentWeight >= maxWeight;
+                case "EQUAL": return currentWeight == maxWeight;
+                case "NOT_EQUAL": return currentWeight != maxWeight;
+                default: return currentWeight <= maxWeight;
+            }
+        };
+    }
+
+    /**
+     * Translate VarComparisonRequirement - compares two varbits/varps.
+     */
+    private StateCondition translateVarComparisonRequirement(Object req) {
+        try {
+            int varbitIdA = getIntFieldSafe(req, "varbitIdA", -1);
+            int varbitIdB = getIntFieldSafe(req, "varbitIdB", -1);
+            Object operationObj = getFieldValue(req, "operation");
+            String operation = operationObj != null ? operationObj.toString() : "EQUAL";
+            
+            if (varbitIdA < 0 || varbitIdB < 0) {
+                return StateCondition.always();
+            }
+            
+            return ctx -> {
+                int valueA = ctx.getClient().getVarbitValue(varbitIdA);
+                int valueB = ctx.getClient().getVarbitValue(varbitIdB);
+                switch (operation) {
+                    case "EQUAL": return valueA == valueB;
+                    case "NOT_EQUAL": return valueA != valueB;
+                    case "GREATER": return valueA > valueB;
+                    case "GREATER_EQUAL": return valueA >= valueB;
+                    case "LESS": return valueA < valueB;
+                    case "LESS_EQUAL": return valueA <= valueB;
+                    default: return valueA == valueB;
+                }
+            };
+        } catch (Exception e) {
+            return StateCondition.always();
+        }
+    }
+
+    // ========================================================================
     // Reflection Utilities
     // ========================================================================
 
@@ -394,6 +869,20 @@ public class RequirementTranslator {
         } catch (Exception e) {
             return defaultValue;
         }
+    }
+
+    private String getStringFieldSafe(Object obj, String fieldName, String defaultValue) {
+        try {
+            Field field = findField(obj.getClass(), fieldName);
+            if (field != null) {
+                field.setAccessible(true);
+                Object value = field.get(obj);
+                return value != null ? value.toString() : defaultValue;
+            }
+        } catch (Exception e) {
+            // Ignore
+        }
+        return defaultValue;
     }
 
     private Object getFieldValue(Object obj, String fieldName) {
