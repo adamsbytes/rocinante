@@ -448,9 +448,29 @@ public class InteractNpcTask extends AbstractTask {
     // ========================================================================
 
     private void executeRotateCamera(TaskContext ctx) {
-        // STUB: Camera rotation will be implemented with input system
-        log.debug("STUB: Would rotate camera toward NPC at {}", lastNpcPosition);
-        phase = NpcInteractionPhase.MOVE_MOUSE;
+        if (lastNpcPosition == null) {
+            phase = NpcInteractionPhase.MOVE_MOUSE;
+            return;
+        }
+        
+        // Use MouseCameraCoupler to ensure target is visible
+        var coupler = ctx.getMouseCameraCoupler();
+        if (coupler != null) {
+            CompletableFuture<Void> rotateFuture = coupler.ensureTargetVisible(lastNpcPosition);
+            rotateFuture.whenComplete((v, ex) -> {
+                if (ex != null) {
+                    log.trace("Camera rotation failed: {}", ex.getMessage());
+                }
+                phase = NpcInteractionPhase.MOVE_MOUSE;
+            });
+            
+            // Don't block - camera rotation happens async while we continue
+            // The movement will happen concurrently which is natural
+            log.debug("Rotating camera toward NPC at {}", lastNpcPosition);
+        } else {
+            log.debug("No camera coupler available, skipping rotation");
+            phase = NpcInteractionPhase.MOVE_MOUSE;
+        }
     }
 
     // ========================================================================

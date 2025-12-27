@@ -78,6 +78,12 @@ public class BotActivityTracker {
     private final Client client;
     private final Supplier<CombatState> combatStateSupplier;
     private final Supplier<Task> currentTaskSupplier;
+    
+    /**
+     * IronmanState for authoritative account type.
+     */
+    @Nullable
+    private final com.rocinante.state.IronmanState ironmanState;
 
     @Getter
     private volatile ActivityType currentActivity = ActivityType.IDLE;
@@ -85,6 +91,9 @@ public class BotActivityTracker {
     @Getter
     private volatile ActivityType explicitActivity = null;
     
+    /**
+     * Cached account type (updated from IronmanState or varbit).
+     */
     @Getter
     private volatile AccountType accountType = AccountType.NORMAL;
     
@@ -102,9 +111,11 @@ public class BotActivityTracker {
 
     @Inject
     public BotActivityTracker(Client client,
+                              @Nullable com.rocinante.state.IronmanState ironmanState,
                               @Nullable TaskExecutor taskExecutor,
                               @Nullable com.rocinante.core.GameStateService gameStateService) {
         this.client = client;
+        this.ironmanState = ironmanState;
         
         // Create suppliers that safely handle null dependencies
         this.combatStateSupplier = () -> {
@@ -131,6 +142,7 @@ public class BotActivityTracker {
                               Supplier<CombatState> combatStateSupplier,
                               Supplier<Task> currentTaskSupplier) {
         this.client = client;
+        this.ironmanState = null;
         this.combatStateSupplier = combatStateSupplier;
         this.currentTaskSupplier = currentTaskSupplier;
     }
@@ -166,11 +178,17 @@ public class BotActivityTracker {
     // ========================================================================
 
     private void updateAccountType() {
-        try {
-            int varbitValue = client.getVarbitValue(ACCOUNT_TYPE_VARBIT);
-            accountType = AccountType.fromVarbit(varbitValue);
-        } catch (Exception e) {
-            log.trace("Could not read account type varbit: {}", e.getMessage());
+        // Delegate to IronmanState for authoritative account type
+        if (ironmanState != null) {
+            accountType = ironmanState.getEffectiveType();
+        } else {
+            // Fallback: read varbit directly
+            try {
+                int varbitValue = client.getVarbitValue(ACCOUNT_TYPE_VARBIT);
+                accountType = AccountType.fromVarbit(varbitValue);
+            } catch (Exception e) {
+                log.trace("Could not read account type varbit: {}", e.getMessage());
+            }
         }
     }
 

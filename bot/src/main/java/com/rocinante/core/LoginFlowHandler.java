@@ -111,6 +111,7 @@ public class LoginFlowHandler {
     private final Randomization randomization;
     private final Provider<QuestExecutor> questExecutorProvider;
     private final Provider<TaskExecutor> taskExecutorProvider;
+    private final com.rocinante.state.IronmanState ironmanState;
 
     private final AtomicBoolean nameEntered = new AtomicBoolean(false);
     private final AtomicBoolean nameLookedUp = new AtomicBoolean(false);
@@ -138,7 +139,8 @@ public class LoginFlowHandler {
             HumanTimer humanTimer,
             Randomization randomization,
             Provider<QuestExecutor> questExecutorProvider,
-            Provider<TaskExecutor> taskExecutorProvider) {
+            Provider<TaskExecutor> taskExecutorProvider,
+            com.rocinante.state.IronmanState ironmanState) {
         this.client = client;
         this.mouseController = mouseController;
         this.keyboardController = keyboardController;
@@ -146,11 +148,13 @@ public class LoginFlowHandler {
         this.randomization = randomization;
         this.questExecutorProvider = questExecutorProvider;
         this.taskExecutorProvider = taskExecutorProvider;
+        this.ironmanState = ironmanState;
         
         this.characterName = System.getenv("CHARACTER_NAME");
         
-        log.info("LoginFlowHandler initialized. CHARACTER_NAME={}", 
-                characterName != null ? characterName : "<not set>");
+        log.info("LoginFlowHandler initialized. CHARACTER_NAME={}, ironman intended={}", 
+                characterName != null ? characterName : "<not set>",
+                ironmanState != null ? ironmanState.getIntendedType() : "unknown");
     }
 
     @Subscribe
@@ -259,7 +263,7 @@ public class LoginFlowHandler {
             
             // Start the Tutorial Island quest
             QuestExecutor questExecutor = questExecutorProvider.get();
-            TutorialIsland tutorialIsland = new TutorialIsland();
+            TutorialIsland tutorialIsland = new TutorialIsland(ironmanState);
             questExecutor.startQuest(tutorialIsland);
             
             log.info("[TUTORIAL] Tutorial Island quest activated - QuestExecutor will handle remaining steps");

@@ -15,6 +15,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Deque;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.PriorityBlockingQueue;
@@ -133,9 +135,10 @@ public class TaskExecutor {
     private EmergencyHandler emergencyHandler;
 
     /**
-     * Task that was paused for a behavioral task (to resume after).
+     * Stack of tasks paused for behavioral interruptions (to resume after).
+     * Using a stack allows nested behavioral breaks to preserve all paused tasks.
      */
-    private Task pausedTask;
+    private final Deque<Task> pausedTaskStack = new LinkedList<>();
 
     /**
      * Whether the current step of the task is complete (for behavioral interrupts).
@@ -400,7 +403,7 @@ public class TaskExecutor {
         breakScheduler.getScheduledBreak().ifPresent(breakTask -> {
             log.debug("Queuing behavioral break task: {}", breakTask.getDescription());
             
-            // Pause current task if running
+            // Pause current task if running (stack handles nesting)
             if (currentTask != null && currentTask.getState() == TaskState.RUNNING) {
                 pauseCurrentTask();
             }
@@ -424,11 +427,15 @@ public class TaskExecutor {
     /**
      * Pause the current task to run a behavioral task.
      * The paused task will be resumed after the behavioral task completes.
+     * Using a stack allows nested behavioral interruptions.
      */
     private void pauseCurrentTask() {
         if (currentTask != null && currentTask.getState() == TaskState.RUNNING) {
             log.debug("Pausing task for behavioral interrupt: {}", currentTask.getDescription());
-            pausedTask = currentTask;
+            
+            // Push current task onto the stack
+            pausedTaskStack.push(currentTask);
+            
             // Reset state to PENDING so it can be resumed
             if (currentTask instanceof AbstractTask) {
                 ((AbstractTask) currentTask).state = TaskState.PENDING;
@@ -450,8 +457,15 @@ public class TaskExecutor {
                 }
             }
 
+            // Mark step as incomplete while executing
+            currentStepComplete = false;
+
             // Execute the task
             currentTask.execute(taskContext);
+            
+            // Record action for fatigue/break tracking
+            // Each task tick counts as an action for behavioral modeling
+            recordActionIfNeeded();
 
             // Check if task is now complete or failed
             TaskState state = currentTask.getState();
@@ -468,6 +482,19 @@ public class TaskExecutor {
             currentTask.onFail(taskContext, e);
             handleTaskFailure();
         }
+    }
+    
+    /**
+     * Record action for fatigue and break tracking.
+     * Called each task tick. Behavioral tasks don't count as actions.
+     */
+    private void recordActionIfNeeded() {
+        // Don't record actions for behavioral tasks (breaks, rituals, etc.)
+        if (currentTask != null && currentTask.getPriority() == TaskPriority.BEHAVIORAL) {
+            return;
+        }
+        
+        taskContext.recordAction();
     }
 
     // ========================================================================
@@ -524,18 +551,21 @@ public class TaskExecutor {
         
         // Check if this was a behavioral task and we have a paused task to resume
         if (currentTask != null && currentTask.getPriority() == TaskPriority.BEHAVIORAL) {
-            if (pausedTask != null) {
+            if (!pausedTaskStack.isEmpty()) {
+                Task pausedTask = pausedTaskStack.pop();
                 log.debug("Resuming paused task after behavioral break: {}", 
                         pausedTask.getDescription());
                 // Re-queue the paused task to resume it
                 queueTask(pausedTask, pausedTask.getPriority());
-                pausedTask = null;
             }
         }
         
         currentTask = null;
         currentRetryCount = 0;
         lastRetryTime = null;
+        
+        // Reset step completion flag to allow breaks between tasks
+        currentStepComplete = true;
     }
 
     /**

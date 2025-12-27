@@ -1,13 +1,19 @@
 package com.rocinante.tasks;
 
+import com.rocinante.behavior.ActionSequencer;
+import com.rocinante.behavior.BreakScheduler;
+import com.rocinante.behavior.InefficiencyInjector;
+import com.rocinante.behavior.LogoutHandler;
 import com.rocinante.behavior.PlayerProfile;
 import com.rocinante.combat.CombatManager;
 import com.rocinante.combat.GearSwitcher;
 import com.rocinante.combat.TargetSelector;
 import com.rocinante.core.GameStateService;
+import com.rocinante.input.CameraController;
 import com.rocinante.input.GroundItemClickHelper;
 import com.rocinante.input.InventoryClickHelper;
 import com.rocinante.input.MenuHelper;
+import com.rocinante.input.MouseCameraCoupler;
 import com.rocinante.input.RobotKeyboardController;
 import com.rocinante.input.RobotMouseController;
 import com.rocinante.input.WidgetClickHelper;
@@ -20,6 +26,7 @@ import com.rocinante.state.InventoryState;
 import com.rocinante.state.PlayerState;
 import com.rocinante.state.WorldState;
 import com.rocinante.timing.HumanTimer;
+import com.rocinante.util.Randomization;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
@@ -115,6 +122,34 @@ public class TaskContext {
     @Nullable
     private final PlayerProfile playerProfile;
 
+    @Getter
+    @Nullable
+    private final CameraController cameraController;
+
+    @Getter
+    @Nullable
+    private final MouseCameraCoupler mouseCameraCoupler;
+
+    @Getter
+    @Nullable
+    private final ActionSequencer actionSequencer;
+
+    @Getter
+    @Nullable
+    private final InefficiencyInjector inefficiencyInjector;
+
+    @Getter
+    @Nullable
+    private final LogoutHandler logoutHandler;
+    
+    @Getter
+    @Nullable
+    private final BreakScheduler breakScheduler;
+
+    @Getter
+    @Nullable
+    private final Randomization randomization;
+
     // ========================================================================
     // Puzzle System
     // ========================================================================
@@ -168,7 +203,14 @@ public class TaskContext {
             @Nullable MenuHelper menuHelper,
             @Nullable UnlockTracker unlockTracker,
             @Nullable PlayerProfile playerProfile,
-            @Nullable PuzzleSolverRegistry puzzleSolverRegistry) {
+            @Nullable PuzzleSolverRegistry puzzleSolverRegistry,
+            @Nullable CameraController cameraController,
+            @Nullable MouseCameraCoupler mouseCameraCoupler,
+            @Nullable ActionSequencer actionSequencer,
+            @Nullable InefficiencyInjector inefficiencyInjector,
+            @Nullable LogoutHandler logoutHandler,
+            @Nullable BreakScheduler breakScheduler,
+            @Nullable Randomization randomization) {
         this.client = client;
         this.gameStateService = gameStateService;
         this.mouseController = mouseController;
@@ -184,6 +226,13 @@ public class TaskContext {
         this.unlockTracker = unlockTracker;
         this.playerProfile = playerProfile;
         this.puzzleSolverRegistry = puzzleSolverRegistry;
+        this.cameraController = cameraController;
+        this.mouseCameraCoupler = mouseCameraCoupler;
+        this.actionSequencer = actionSequencer;
+        this.inefficiencyInjector = inefficiencyInjector;
+        this.logoutHandler = logoutHandler;
+        this.breakScheduler = breakScheduler;
+        this.randomization = randomization;
         log.debug("TaskContext created");
     }
 
@@ -200,7 +249,8 @@ public class TaskContext {
             @Nullable TargetSelector targetSelector,
             @Nullable CombatManager combatManager) {
         this(client, gameStateService, mouseController, keyboardController, humanTimer, 
-                targetSelector, combatManager, null, null, null, null, null, null, null, null);
+                targetSelector, combatManager, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null);
     }
 
     /**
@@ -213,7 +263,9 @@ public class TaskContext {
             RobotMouseController mouseController,
             RobotKeyboardController keyboardController,
             HumanTimer humanTimer) {
-        this(client, gameStateService, mouseController, keyboardController, humanTimer, null, null, null, null, null, null, null, null, null, null);
+        this(client, gameStateService, mouseController, keyboardController, humanTimer, 
+                null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null);
     }
 
     // ========================================================================
@@ -276,6 +328,16 @@ public class TaskContext {
      */
     public BankState getBankState() {
         return gameStateService.getBankState();
+    }
+
+    /**
+     * Get the ironman state (account type and restrictions).
+     *
+     * @return the ironman state, or null if not available
+     */
+    @javax.annotation.Nullable
+    public com.rocinante.state.IronmanState getIronmanState() {
+        return gameStateService.getIronmanState();
     }
 
     /**
@@ -445,6 +507,24 @@ public class TaskContext {
     public void clearAbort() {
         this.abortRequested = false;
         this.abortReason = null;
+    }
+
+    // ========================================================================
+    // Action Recording
+    // ========================================================================
+
+    /**
+     * Record an action for fatigue and break tracking.
+     * Should be called after each significant action (click, interaction, movement).
+     * 
+     * Integrates with behavioral anti-detection:
+     * - Increments action count for micro-pause scheduling
+     * - Accumulates fatigue in FatigueModel
+     */
+    public void recordAction() {
+        if (breakScheduler != null) {
+            breakScheduler.recordAction();
+        }
     }
 
     // ========================================================================

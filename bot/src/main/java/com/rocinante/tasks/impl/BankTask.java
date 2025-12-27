@@ -296,6 +296,17 @@ public class BankTask extends AbstractTask {
     @Setter
     private static int lastXQuantity = 0;
 
+    /**
+     * Counter for redundant bank open/close actions.
+     * Per REQUIREMENTS.md 3.4.4: 3% of bank trips open/close bank twice before transaction.
+     */
+    private int redundantActionsRemaining = 0;
+
+    /**
+     * Whether we've checked for redundant action injection.
+     */
+    private boolean redundantActionChecked = false;
+
     // ========================================================================
     // Constructors
     // ========================================================================
@@ -671,6 +682,16 @@ public class BankTask extends AbstractTask {
     // ========================================================================
 
     private void executeOpenBank(TaskContext ctx) {
+        // Check for redundant action injection (3% chance per REQUIREMENTS.md 3.4.4)
+        if (!redundantActionChecked) {
+            redundantActionChecked = true;
+            var inefficiency = ctx.getInefficiencyInjector();
+            if (inefficiency != null && inefficiency.shouldPerformRedundantAction()) {
+                redundantActionsRemaining = inefficiency.getRedundantRepetitions();
+                log.debug("Injecting {} redundant bank open/close actions", redundantActionsRemaining);
+            }
+        }
+        
         log.debug("Clicking to open bank");
 
         operationPending = true;
@@ -697,6 +718,21 @@ public class BankTask extends AbstractTask {
 
         if (isBankOpen(client)) {
             log.debug("Bank opened successfully");
+            
+            // Handle redundant action: close and reopen bank
+            if (redundantActionsRemaining > 0) {
+                redundantActionsRemaining--;
+                log.debug("Performing redundant bank close/reopen ({} remaining)", redundantActionsRemaining);
+                
+                // Close the bank and go back to OPEN_BANK phase
+                closeBank(ctx);
+                ctx.getHumanTimer().sleep(ctx.getRandomization().uniformRandomLong(300, 800))
+                    .thenRun(() -> {
+                        phase = BankPhase.OPEN_BANK;
+                    });
+                return;
+            }
+            
             if (operation == BankOperation.OPEN_ONLY) {
                 complete();
                 return;
@@ -1268,6 +1304,19 @@ public class BankTask extends AbstractTask {
                                     .thenRun(this::complete);
                         }
                     }
+                    return null;
+                });
+    }
+    
+    /**
+     * Close the bank interface without completing the task.
+     * Used for redundant action injection (close and reopen).
+     */
+    private void closeBank(TaskContext ctx) {
+        // Press Escape to close bank (more human-like than clicking X)
+        ctx.getKeyboardController().pressKey(java.awt.event.KeyEvent.VK_ESCAPE)
+                .exceptionally(e -> {
+                    log.trace("Failed to close bank via ESC: {}", e.getMessage());
                     return null;
                 });
     }

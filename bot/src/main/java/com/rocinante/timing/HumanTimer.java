@@ -19,11 +19,11 @@ import java.util.concurrent.*;
  * action gaps, and various gameplay interactions. Supports:
  * - Named delay profiles (REACTION, ACTION_GAP, MENU_SELECT, etc.)
  * - Custom delays with configurable distributions
- * - Fatigue multiplier integration (for FatigueModel in Phase 5)
+ * - Fatigue multiplier integration via FatigueModel
  * - Async sleep methods for non-blocking delays
  *
  * All delays are multiplied by the fatigue multiplier before being returned.
- * FatigueModel (Phase 5) will update the multiplier based on session fatigue.
+ * FatigueModel updates the multiplier based on session fatigue and attention state.
  */
 @Slf4j
 @Singleton

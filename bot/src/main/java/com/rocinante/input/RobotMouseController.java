@@ -127,6 +127,22 @@ public class RobotMouseController {
     @Nullable
     private PlayerProfile playerProfile;
 
+    /**
+     * MouseCameraCoupler for coordinated camera+mouse movements.
+     * When set, long movements may trigger camera adjustments.
+     */
+    @Setter
+    @Nullable
+    private MouseCameraCoupler cameraCoupler;
+
+    /**
+     * InefficiencyInjector for hesitation and other inefficiencies.
+     * When set, may add hesitation delays before clicks.
+     */
+    @Setter
+    @Nullable
+    private com.rocinante.behavior.InefficiencyInjector inefficiencyInjector;
+
     @Getter
     private volatile Point currentPosition;
 
@@ -349,6 +365,17 @@ public class RobotMouseController {
         if (distance < 1) {
             isMoving = false;
             return; // Already at target
+        }
+
+        // Camera coupling for long movements (>500px, 30% chance for 5-20° rotation)
+        // This runs asynchronously - camera moves while mouse moves
+        if (cameraCoupler != null && distance > 500) {
+            try {
+                cameraCoupler.onBeforeMouseMove(start.x, start.y, targetX, targetY);
+                // Note: Camera rotation happens concurrently, we don't wait
+            } catch (Exception e) {
+                log.trace("Camera coupling failed: {}", e.getMessage());
+            }
         }
 
         // Generate Bezier curve control points
@@ -611,6 +638,17 @@ public class RobotMouseController {
     }
 
     /**
+     * Move to specific screen coordinates and click.
+     *
+     * @param screenX X coordinate in screen coordinates
+     * @param screenY Y coordinate in screen coordinates
+     * @return CompletableFuture that completes when click is done
+     */
+    public CompletableFuture<Void> clickAt(int screenX, int screenY) {
+        return moveToScreen(screenX, screenY).thenCompose(v -> click());
+    }
+
+    /**
      * Right-click at a random point within hitbox.
      * 
      * NOTE: The hitbox is assumed to be in CANVAS-RELATIVE coordinates (from widget bounds).
@@ -654,6 +692,13 @@ public class RobotMouseController {
 
         executor.execute(() -> {
             try {
+                // Check for hesitation before click (5% chance, 500-1500ms hover)
+                if (inefficiencyInjector != null && inefficiencyInjector.shouldHesitate()) {
+                    long hesitationDelay = inefficiencyInjector.getAdjustedHesitationDelay();
+                    log.trace("Hesitating for {}ms before click", hesitationDelay);
+                    Thread.sleep(hesitationDelay);
+                }
+                
                 // First click
                 performSingleClick(buttonMask);
                 sessionClickCount++;

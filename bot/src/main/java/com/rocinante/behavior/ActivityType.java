@@ -9,7 +9,7 @@ import lombok.Getter;
  * - Fatigue accumulation rate (multiplier applied to base rates)
  * - Interruptibility (whether behavioral tasks can interrupt)
  * 
- * Per REQUIREMENTS.md Section 4.2 and Phase 5 behavioral anti-detection.
+ * Per REQUIREMENTS.md Section 4.2 - Controls fatigue accumulation and behavioral interruption.
  */
 @Getter
 public enum ActivityType {

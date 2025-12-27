@@ -146,7 +146,9 @@ public class EmergencyHandler {
     public void emergencyResolved(String emergencyId) {
         if (emergencyId.equals(activeEmergencyId)) {
             activeEmergencyId = null;
-            log.debug("Emergency resolved: {}", emergencyId);
+            // Clear cooldown so emergency can retrigger if conditions occur again
+            cooldowns.remove(emergencyId);
+            log.debug("Emergency resolved: {} (cooldown cleared)", emergencyId);
         }
     }
 

@@ -1,5 +1,9 @@
 package com.rocinante.core;
 
+import com.rocinante.behavior.AttentionModel;
+import com.rocinante.behavior.BreakScheduler;
+import com.rocinante.behavior.FatigueModel;
+import com.rocinante.behavior.PlayerProfile;
 import com.rocinante.state.BankStateManager;
 import com.rocinante.state.EquipmentState;
 import com.rocinante.state.InventoryState;
@@ -47,13 +51,27 @@ public class GameStateServiceTest {
 
     @Mock
     private BankStateManager bankStateManager;
+    
+    @Mock
+    private PlayerProfile playerProfile;
+    
+    @Mock
+    private FatigueModel fatigueModel;
+    
+    @Mock
+    private BreakScheduler breakScheduler;
+    
+    @Mock
+    private AttentionModel attentionModel;
 
     private GameStateService gameStateService;
 
     @Before
     public void setUp() {
         MockitoAnnotations.openMocks(this);
-        gameStateService = new GameStateService(client, itemManager, bankStateManager);
+        gameStateService = new GameStateService(client, itemManager, bankStateManager, 
+                null,  // ironmanState
+                playerProfile, fatigueModel, breakScheduler, attentionModel);
     }
 
     // ========================================================================
@@ -100,6 +118,22 @@ public class GameStateServiceTest {
 
         assertTrue(gameStateService.isLoggedIn());
     }
+    
+    @Test
+    public void testOnGameStateChanged_Login_InitializesPlayerProfile() {
+        setupMockPlayer();
+        when(localPlayer.getName()).thenReturn("TestPlayer");
+        
+        GameStateChanged event = new GameStateChanged();
+        event.setGameState(GameState.LOGGED_IN);
+        
+        gameStateService.onGameStateChanged(event);
+        
+        // Note: PlayerProfile.initializeForAccount is called on client thread,
+        // so we can't directly verify in unit test without RuneLite test harness
+        // This test verifies the handler executes without error
+        assertTrue(gameStateService.isLoggedIn());
+    }
 
     @Test
     public void testOnGameStateChanged_Logout() {
@@ -115,6 +149,26 @@ public class GameStateServiceTest {
 
         assertFalse(gameStateService.isLoggedIn());
         assertEquals(0, gameStateService.getCurrentTick());
+    }
+    
+    @Test
+    public void testOnGameStateChanged_Logout_CallsSessionEndMethods() {
+        // First login
+        setupMockPlayer();
+        when(localPlayer.getName()).thenReturn("TestPlayer");
+        GameStateChanged loginEvent = new GameStateChanged();
+        loginEvent.setGameState(GameState.LOGGED_IN);
+        gameStateService.onGameStateChanged(loginEvent);
+        
+        // Then logout
+        GameStateChanged logoutEvent = new GameStateChanged();
+        logoutEvent.setGameState(GameState.LOGIN_SCREEN);
+        gameStateService.onGameStateChanged(logoutEvent);
+        
+        // Verify session end methods called
+        verify(fatigueModel, times(1)).onSessionEnd();
+        verify(breakScheduler, times(1)).onSessionEnd();
+        verify(playerProfile, times(1)).recordLogout();
     }
 
     @Test

@@ -1,5 +1,9 @@
 package com.rocinante.core;
 
+import com.rocinante.behavior.AttentionModel;
+import com.rocinante.behavior.BreakScheduler;
+import com.rocinante.behavior.FatigueModel;
+import com.rocinante.behavior.PlayerProfile;
 import com.rocinante.state.*;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -36,6 +40,7 @@ import net.runelite.api.events.StatChanged;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.game.ItemManager;
 
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.util.ArrayList;
@@ -78,6 +83,29 @@ public class GameStateService {
     private final Client client;
     private final ItemManager itemManager;
     private final BankStateManager bankStateManager;
+
+    // ========================================================================
+    // State Components
+    // ========================================================================
+
+    @Nullable
+    private final com.rocinante.state.IronmanState ironmanState;
+
+    // ========================================================================
+    // Behavioral Components
+    // ========================================================================
+
+    @Nullable
+    private final PlayerProfile playerProfile;
+    
+    @Nullable
+    private final FatigueModel fatigueModel;
+    
+    @Nullable
+    private final BreakScheduler breakScheduler;
+    
+    @Nullable
+    private final AttentionModel attentionModel;
 
     // ========================================================================
     // Cached State Snapshots
@@ -141,10 +169,22 @@ public class GameStateService {
     private static final int VARBIT_MULTICOMBAT = 4605;
 
     @Inject
-    public GameStateService(Client client, ItemManager itemManager, BankStateManager bankStateManager) {
+    public GameStateService(Client client, 
+                           ItemManager itemManager, 
+                           BankStateManager bankStateManager,
+                           @Nullable com.rocinante.state.IronmanState ironmanState,
+                           @Nullable PlayerProfile playerProfile,
+                           @Nullable FatigueModel fatigueModel,
+                           @Nullable BreakScheduler breakScheduler,
+                           @Nullable AttentionModel attentionModel) {
         this.client = client;
         this.itemManager = itemManager;
         this.bankStateManager = bankStateManager;
+        this.ironmanState = ironmanState;
+        this.playerProfile = playerProfile;
+        this.fatigueModel = fatigueModel;
+        this.breakScheduler = breakScheduler;
+        this.attentionModel = attentionModel;
 
         // Initialize caches with appropriate policies
         this.playerStateCache = new CachedValue<>("PlayerState", CachePolicy.TICK_CACHED);
@@ -153,7 +193,8 @@ public class GameStateService {
         this.worldStateCache = new CachedValue<>("WorldState", CachePolicy.EXPENSIVE_COMPUTED);
         this.combatStateCache = new CachedValue<>("CombatState", CachePolicy.TICK_CACHED);
 
-        log.info("GameStateService initialized");
+        log.info("GameStateService initialized (behavioral components: {})", 
+                playerProfile != null && fatigueModel != null && breakScheduler != null && attentionModel != null);
     }
 
     // ========================================================================
@@ -172,6 +213,11 @@ public class GameStateService {
 
         currentTick++;
         long startTime = System.nanoTime();
+
+        // Update IronmanState from varbit (tracks actual account type)
+        if (ironmanState != null) {
+            ironmanState.updateFromVarbit();
+        }
 
         // Update tick on BankStateManager for freshness tracking
         bankStateManager.setCurrentTick(currentTick);
@@ -198,6 +244,7 @@ public class GameStateService {
 
     /**
      * Handle game state changes (login/logout).
+     * Manages behavioral component session lifecycle.
      */
     @Subscribe
     public void onGameStateChanged(GameStateChanged event) {
@@ -210,10 +257,109 @@ public class GameStateService {
             inventoryDirty = true;
             equipmentDirty = true;
             statsDirty = true;
+            
+            // Initialize behavioral components for this session
+            initializeSessionBehaviors();
         } else if (state == GameState.LOGIN_SCREEN || state == GameState.CONNECTION_LOST) {
             loggedIn = false;
             log.info("Player logged out - resetting state caches");
+            
+            // End behavioral session
+            endSessionBehaviors();
+            
             resetAllCaches();
+        }
+    }
+    
+    /**
+     * Initialize behavioral components when player logs in.
+     * Loads player profile and resets behavioral tracking for new session.
+     */
+    private void initializeSessionBehaviors() {
+        // Get player name for profile loading
+        Player localPlayer = client.getLocalPlayer();
+        if (localPlayer == null) {
+            log.warn("Cannot initialize session behaviors: local player is null");
+            // Will retry on first game tick when player is available
+            return;
+        }
+        
+        String accountName = localPlayer.getName();
+        if (accountName == null || accountName.isEmpty()) {
+            log.warn("Cannot initialize session behaviors: account name is null");
+            return;
+        }
+        
+        log.info("Initializing behavioral session for account: {}", accountName);
+        
+        // Detect account type for profile generation
+        com.rocinante.behavior.AccountType accountType = detectAccountType();
+        
+        // Initialize PlayerProfile (loads or creates profile)
+        if (playerProfile != null) {
+            playerProfile.initializeForAccount(accountName, accountType);
+        }
+        
+        // Start fatigue tracking
+        if (fatigueModel != null) {
+            fatigueModel.onSessionStart();
+        }
+        
+        // Start break scheduling
+        if (breakScheduler != null) {
+            breakScheduler.onSessionStart();
+        }
+        
+        // Reset attention model to fresh state
+        if (attentionModel != null) {
+            attentionModel.reset();
+        }
+        
+        log.info("Behavioral session initialized for account type: {}", accountType);
+    }
+    
+    /**
+     * Detect the account type to use for profile generation.
+     * Uses IronmanState which handles intended vs actual type reconciliation.
+     * 
+     * @return account type for profile generation
+     */
+    private com.rocinante.behavior.AccountType detectAccountType() {
+        if (ironmanState != null) {
+            // IronmanState handles intended vs actual type logic
+            return ironmanState.getEffectiveType();
+        }
+        
+        // Fallback: read varbit directly
+        try {
+            int varbitValue = client.getVarbitValue(1777); // ACCOUNT_TYPE varbit
+            return com.rocinante.behavior.AccountType.fromVarbit(varbitValue);
+        } catch (Exception e) {
+            log.debug("Could not detect account type: {}", e.getMessage());
+            return com.rocinante.behavior.AccountType.NORMAL;
+        }
+    }
+    
+    /**
+     * End behavioral session when player logs out.
+     * Saves profile and records session statistics.
+     */
+    private void endSessionBehaviors() {
+        log.info("Ending behavioral session");
+        
+        // End fatigue session (logs stats)
+        if (fatigueModel != null) {
+            fatigueModel.onSessionEnd();
+        }
+        
+        // End break scheduler session
+        if (breakScheduler != null) {
+            breakScheduler.onSessionEnd();
+        }
+        
+        // Record logout time and save profile
+        if (playerProfile != null) {
+            playerProfile.recordLogout();
         }
     }
 
@@ -430,6 +576,16 @@ public class GameStateService {
         }
 
         return bankStateManager.getBankState();
+    }
+
+    /**
+     * Get the ironman state (account type and restrictions).
+     * 
+     * @return ironman state, or null if not available
+     */
+    @Nullable
+    public com.rocinante.state.IronmanState getIronmanState() {
+        return ironmanState;
     }
 
     /**

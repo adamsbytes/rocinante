@@ -3,6 +3,7 @@ package com.rocinante.behavior.tasks;
 import com.rocinante.behavior.BreakScheduler;
 import com.rocinante.behavior.BreakType;
 import com.rocinante.behavior.FatigueModel;
+import com.rocinante.behavior.LogoutHandler;
 import com.rocinante.behavior.PlayerProfile;
 import com.rocinante.tasks.TaskContext;
 import com.rocinante.tasks.TaskState;
@@ -12,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * A long break (5-20 minutes) with extended idle or logout.
@@ -120,15 +122,27 @@ public class LongBreakTask extends BehavioralTask {
     private void initiateLogout(TaskContext ctx) {
         logoutInitiated = true;
         
-        // TODO: Implement actual logout sequence
-        // For now, just simulate the delay a logout would take
-        log.debug("Would initiate logout here (not implemented)");
+        LogoutHandler logoutHandler = ctx.getLogoutHandler();
+        if (logoutHandler == null) {
+            log.warn("LogoutHandler not available, skipping logout");
+            return;
+        }
         
-        // In actual implementation:
-        // 1. Press ESC or click logout button (randomized)
-        // 2. Confirm logout
-        // 3. Wait for disconnect
-        // 4. On reconnect, login again
+        log.debug("Initiating humanized logout");
+        
+        // Execute logout with normal context (break time)
+        CompletableFuture<Boolean> logoutFuture = logoutHandler.executeLogout(
+                LogoutHandler.LogoutContext.NORMAL);
+        
+        logoutFuture.whenComplete((success, ex) -> {
+            if (ex != null) {
+                log.warn("Logout failed: {}", ex.getMessage());
+            } else if (success) {
+                log.info("Logout completed successfully");
+            } else {
+                log.warn("Logout returned false");
+            }
+        });
     }
 
     @Override

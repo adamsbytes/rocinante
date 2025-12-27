@@ -138,7 +138,7 @@ public class BreakScheduler {
         scheduleNextMicroPause();
         scheduleNextShortBreak();
         scheduleNextLongBreak();
-        scheduleSessionEnd();
+        // Note: scheduleSessionEnd() is called in onSessionStart() after sessionStartTime is set
     }
 
     /**
@@ -165,6 +165,9 @@ public class BreakScheduler {
         pendingBreak = null;
         
         initializeThresholds();
+        
+        // Schedule session end AFTER sessionStartTime is set (fixes timing bug)
+        scheduleSessionEnd();
         
         log.info("Break scheduler session started, session end scheduled at {}",
                 sessionEndTime);
@@ -364,7 +367,7 @@ public class BreakScheduler {
         // Create the task
         Task breakTask = createBreakTask(breakType);
         if (breakTask == null) {
-            log.warn("Could not create task for break type: {}", breakType);
+            log.warn("Break task factory returned null for type: {}", breakType);
             return Optional.empty();
         }
         

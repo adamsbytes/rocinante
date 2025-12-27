@@ -382,10 +382,28 @@ public class InteractObjectTask extends AbstractTask {
     // ========================================================================
 
     protected void executeRotateCamera(TaskContext ctx) {
-        // STUB: Camera rotation will be implemented with input system
-        // For now, skip to mouse movement
-        log.debug("STUB: Would rotate camera toward object at {}", targetPosition);
-        phase = InteractionPhase.MOVE_MOUSE;
+        if (targetPosition == null) {
+            phase = InteractionPhase.MOVE_MOUSE;
+            return;
+        }
+        
+        // Use MouseCameraCoupler to ensure target is visible
+        var coupler = ctx.getMouseCameraCoupler();
+        if (coupler != null) {
+            CompletableFuture<Void> rotateFuture = coupler.ensureTargetVisible(targetPosition);
+            rotateFuture.whenComplete((v, ex) -> {
+                if (ex != null) {
+                    log.trace("Camera rotation failed: {}", ex.getMessage());
+                }
+                phase = InteractionPhase.MOVE_MOUSE;
+            });
+            
+            // Don't block - camera rotation happens async while we continue
+            log.debug("Rotating camera toward object at {}", targetPosition);
+        } else {
+            log.debug("No camera coupler available, skipping rotation");
+            phase = InteractionPhase.MOVE_MOUSE;
+        }
     }
 
     // ========================================================================

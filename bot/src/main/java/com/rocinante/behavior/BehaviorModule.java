@@ -4,11 +4,16 @@ import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.Singleton;
 import com.rocinante.behavior.tasks.*;
+import com.rocinante.input.CameraController;
+import com.rocinante.input.MouseCameraCoupler;
 import com.rocinante.tasks.Task;
 import com.rocinante.timing.HumanTimer;
+import com.rocinante.util.PerlinNoise;
 import com.rocinante.util.Randomization;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.Client;
 
+import java.awt.AWTException;
 import java.util.function.Function;
 
 /**
@@ -79,6 +84,63 @@ public class BehaviorModule extends AbstractModule {
     @Provides
     public IdleBehaviorTask provideIdleBehaviorTask(Randomization randomization) {
         return new IdleBehaviorTask(randomization);
+    }
+
+    // ========================================================================
+    // Anti-Detection Components
+    // ========================================================================
+
+    /**
+     * Provides the CameraController for humanized camera manipulation.
+     */
+    @Provides
+    @Singleton
+    public CameraController provideCameraController(Client client, Randomization randomization, 
+                                                     PerlinNoise perlinNoise) {
+        try {
+            return new CameraController(client, randomization, perlinNoise);
+        } catch (AWTException e) {
+            log.error("Failed to create CameraController", e);
+            throw new RuntimeException("Failed to create CameraController", e);
+        }
+    }
+
+    /**
+     * Provides the MouseCameraCoupler for coordinated mouse+camera movements.
+     */
+    @Provides
+    @Singleton
+    public MouseCameraCoupler provideMouseCameraCoupler(Client client, CameraController cameraController,
+                                                         Randomization randomization) {
+        return new MouseCameraCoupler(client, cameraController, randomization);
+    }
+
+    /**
+     * Provides the ActionSequencer for randomizing action sequences.
+     */
+    @Provides
+    @Singleton
+    public ActionSequencer provideActionSequencer(Randomization randomization) {
+        return new ActionSequencer(randomization);
+    }
+
+    /**
+     * Provides the InefficiencyInjector for humanizing bot behavior.
+     */
+    @Provides
+    @Singleton
+    public InefficiencyInjector provideInefficiencyInjector(Randomization randomization) {
+        return new InefficiencyInjector(randomization);
+    }
+
+    /**
+     * Provides the LogoutHandler for humanized logout behavior.
+     */
+    @Provides
+    @Singleton
+    public LogoutHandler provideLogoutHandler(Client client, Randomization randomization, 
+                                               HumanTimer humanTimer) {
+        return new LogoutHandler(client, randomization, humanTimer);
     }
 }
 

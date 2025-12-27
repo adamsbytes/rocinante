@@ -18,6 +18,7 @@ import com.rocinante.behavior.EmergencyHandler;
 import com.rocinante.behavior.FatigueModel;
 import com.rocinante.behavior.AttentionModel;
 import com.rocinante.behavior.PlayerProfile;
+import com.rocinante.behavior.emergencies.EmergencyTask;
 import com.rocinante.behavior.emergencies.LowHealthEmergency;
 import com.rocinante.behavior.emergencies.PoisonEmergency;
 import com.rocinante.config.RocinanteConfig;
@@ -100,6 +101,12 @@ public class RocinantePlugin extends Plugin
     @Getter
     private QuestExecutor questExecutor;
 
+    // === State Components ===
+
+    @Inject
+    @Getter
+    private com.rocinante.state.IronmanState ironmanState;
+
     // === Behavioral Components ===
 
     @Inject
@@ -129,6 +136,28 @@ public class RocinantePlugin extends Plugin
     @Inject
     private Function<BreakType, Task> breakTaskFactory;
 
+    // === Behavioral Anti-Detection Components ===
+
+    @Inject
+    @Getter
+    private com.rocinante.input.CameraController cameraController;
+
+    @Inject
+    @Getter
+    private com.rocinante.input.MouseCameraCoupler mouseCameraCoupler;
+
+    @Inject
+    @Getter
+    private com.rocinante.behavior.ActionSequencer actionSequencer;
+
+    @Inject
+    @Getter
+    private com.rocinante.behavior.InefficiencyInjector inefficiencyInjector;
+
+    @Inject
+    @Getter
+    private com.rocinante.behavior.LogoutHandler logoutHandler;
+
     @Override
     protected void startUp() throws Exception
     {
@@ -156,11 +185,17 @@ public class RocinantePlugin extends Plugin
         // Register BotActivityTracker - tracks current activity type
         eventBus.register(activityTracker);
         
+        // Register FatigueModel - tracks fatigue accumulation over time
+        eventBus.register(fatigueModel);
+        
         // Register AttentionModel - manages attention state transitions
         eventBus.register(attentionModel);
         
         // Register BreakScheduler - schedules behavioral breaks
         eventBus.register(breakScheduler);
+        
+        // Register MouseCameraCoupler - idle camera behaviors
+        eventBus.register(mouseCameraCoupler);
         
         // Wire up BreakScheduler with its task factory
         breakScheduler.setBreakTaskFactory(breakTaskFactory);
@@ -168,6 +203,40 @@ public class RocinantePlugin extends Plugin
         // Wire up TaskExecutor with behavioral components
         taskExecutor.setBreakScheduler(breakScheduler);
         taskExecutor.setEmergencyHandler(emergencyHandler);
+        
+        // === Wire behavioral components to input controllers ===
+        
+        // Wire camera controller with player profile
+        cameraController.setPlayerProfile(playerProfile);
+        
+        // Wire mouse camera coupler with player profile and attention model
+        mouseCameraCoupler.setPlayerProfile(playerProfile);
+        mouseCameraCoupler.setAttentionModel(attentionModel);
+        
+        // Wire action sequencer with player profile
+        actionSequencer.setPlayerProfile(playerProfile);
+        
+        // Wire inefficiency injector with player profile and fatigue model
+        inefficiencyInjector.setPlayerProfile(playerProfile);
+        inefficiencyInjector.setFatigueModel(fatigueModel);
+        
+        // Wire logout handler with controllers and profile
+        logoutHandler.setMouseController(mouseController);
+        logoutHandler.setKeyboardController(keyboardController);
+        logoutHandler.setPlayerProfile(playerProfile);
+        
+        // Wire mouse controller with camera coupler and inefficiency injector
+        mouseController.setCameraCoupler(mouseCameraCoupler);
+        mouseController.setInefficiencyInjector(inefficiencyInjector);
+        
+        // Wire behavioral models to input controllers
+        mouseController.setFatigueModel(fatigueModel);
+        mouseController.setPlayerProfile(playerProfile);
+        
+        keyboardController.setPlayerProfile(playerProfile);
+        
+        humanTimer.setFatigueModel(fatigueModel);
+        humanTimer.setAttentionModel(attentionModel);
         
         // Register emergency conditions
         registerEmergencyConditions();
@@ -182,6 +251,9 @@ public class RocinantePlugin extends Plugin
         log.info("  QuestExecutor: registered");
         log.info("  BehavioralSystem: registered (activity={}, fatigue={}, attention={})",
                 activityTracker != null, fatigueModel != null, attentionModel != null);
+        log.info("  Anti-Detection: registered (camera={}, coupler={}, sequencer={}, inefficiency={}, logout={})",
+                cameraController != null, mouseCameraCoupler != null, actionSequencer != null,
+                inefficiencyInjector != null, logoutHandler != null);
     }
     
     /**
@@ -191,15 +263,29 @@ public class RocinantePlugin extends Plugin
     private void registerEmergencyConditions() {
         // Low Health Emergency - triggers when HP is critically low
         emergencyHandler.registerCondition(
-                new LowHealthEmergency(activityTracker, ctx -> createEatFoodTask(ctx))
+                new LowHealthEmergency(activityTracker, ctx -> wrapEmergencyTask("LOW_HEALTH_EMERGENCY", createEatFoodTask(ctx)))
         );
         
         // Poison Emergency - triggers when poisoned with low health
         emergencyHandler.registerCondition(
-                new PoisonEmergency(activityTracker, ctx -> createDrinkAntidoteTask(ctx))
+                new PoisonEmergency(activityTracker, ctx -> wrapEmergencyTask("POISON_EMERGENCY", createDrinkAntidoteTask(ctx)))
         );
         
         log.info("Registered {} emergency conditions", emergencyHandler.getConditionCount());
+    }
+    
+    /**
+     * Wrap an emergency response task with EmergencyTask to ensure proper cleanup.
+     * 
+     * @param emergencyId the unique ID of the emergency
+     * @param responseTask the task that handles the emergency (or null if no response)
+     * @return wrapped emergency task, or null if responseTask is null
+     */
+    private Task wrapEmergencyTask(String emergencyId, Task responseTask) {
+        if (responseTask == null) {
+            return null;
+        }
+        return new EmergencyTask(responseTask, emergencyHandler, emergencyId);
     }
 
     /**
@@ -315,6 +401,7 @@ public class RocinantePlugin extends Plugin
         }
 
         // === Unregister Behavioral Components ===
+        eventBus.unregister(mouseCameraCoupler);
         eventBus.unregister(breakScheduler);
         eventBus.unregister(attentionModel);
         eventBus.unregister(activityTracker);

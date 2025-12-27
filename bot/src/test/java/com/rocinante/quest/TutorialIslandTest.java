@@ -109,7 +109,10 @@ public class TutorialIslandTest {
             630, // Open spell book
             640, // Talk to Magic Instructor (after opening spells)
             650, // Kill Chicken with Air Strike
-            670  // Magic Instructor is ready to teleport the player off
+            670, // Magic Instructor is ready to teleport the player off
+            
+            // Tutorial completion marker
+            1000 // Tutorial Island complete - mark in IronmanState
     );
 
     @Before

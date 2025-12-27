@@ -23,9 +23,12 @@ export const BotForm: Component<BotFormProps> = (props) => {
   const [proxyUser, setProxyUser] = createSignal(props.initialData?.proxy?.user ?? '');
   const [proxyPass, setProxyPass] = createSignal(props.initialData?.proxy?.pass ?? '');
 
-  // Ironman
-  const [ironmanEnabled, setIronmanEnabled] = createSignal(props.initialData?.ironman.enabled ?? false);
-  const [ironmanType, setIronmanType] = createSignal(props.initialData?.ironman.type ?? 'STANDARD_IRONMAN');
+  // Ironman - single dropdown for account type
+  const getInitialAccountType = () => {
+    if (!props.initialData?.ironman.enabled) return 'NORMAL';
+    return props.initialData.ironman.type ?? 'NORMAL';
+  };
+  const [accountType, setAccountType] = createSignal<'NORMAL' | 'STANDARD_IRONMAN' | 'HARDCORE_IRONMAN' | 'ULTIMATE_IRONMAN'>(getInitialAccountType());
   const [hcimSafety, setHcimSafety] = createSignal(props.initialData?.ironman.hcimSafetyLevel ?? 'NORMAL');
 
   // Resources
@@ -50,9 +53,9 @@ export const BotForm: Component<BotFormProps> = (props) => {
           }
         : null,
       ironman: {
-        enabled: ironmanEnabled(),
-        type: ironmanEnabled() ? ironmanType() : null,
-        hcimSafetyLevel: ironmanEnabled() && ironmanType() === 'HARDCORE_IRONMAN' ? hcimSafety() : null,
+        enabled: accountType() !== 'NORMAL',
+        type: accountType() !== 'NORMAL' ? accountType() : null,
+        hcimSafetyLevel: accountType() === 'HARDCORE_IRONMAN' ? hcimSafety() : null,
       },
       resources: {
         cpuLimit: cpuLimit(),
@@ -210,48 +213,43 @@ export const BotForm: Component<BotFormProps> = (props) => {
         )}
       </section>
 
-      {/* Ironman */}
+      {/* Account Type */}
       <section class="space-y-4">
-        <div class="flex items-center gap-3 border-b border-[var(--border)] pb-2">
-          <h3 class="text-lg font-semibold">Ironman Mode</h3>
-          <label class="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={ironmanEnabled()}
-              onChange={(e) => setIronmanEnabled(e.currentTarget.checked)}
-              class="rounded"
-            />
-            Enable
-          </label>
+        <h3 class="text-lg font-semibold border-b border-[var(--border)] pb-2">Account Type</h3>
+        <div>
+          <label class={labelClass}>Account Mode</label>
+          <select
+            value={accountType()}
+            onChange={(e) => setAccountType(e.currentTarget.value as any)}
+            class={inputClass}
+          >
+            <option value="NORMAL">Normal Account</option>
+            <option value="STANDARD_IRONMAN">Standard Ironman</option>
+            <option value="HARDCORE_IRONMAN">Hardcore Ironman</option>
+            <option value="ULTIMATE_IRONMAN">Ultimate Ironman</option>
+          </select>
+          <p class="text-xs text-[var(--text-secondary)] mt-1">
+            {accountType() === 'NORMAL' && 'Standard account with full trading and Grand Exchange access.'}
+            {accountType() === 'STANDARD_IRONMAN' && 'Self-sufficient gameplay - no trading or GE. Can be downgraded to Normal.'}
+            {accountType() === 'HARDCORE_IRONMAN' && 'Standard Ironman with permadeath. Extra safety protocols enabled. Can be downgraded to Standard Ironman or Normal.'}
+            {accountType() === 'ULTIMATE_IRONMAN' && 'Standard Ironman without banking. Most challenging mode. Can be downgraded to Standard Ironman or Normal.'}
+          </p>
         </div>
-        {ironmanEnabled() && (
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class={labelClass}>Type</label>
-              <select
-                value={ironmanType() ?? ''}
-                onChange={(e) => setIronmanType(e.currentTarget.value as any)}
-                class={inputClass}
-              >
-                <option value="STANDARD_IRONMAN">Standard Ironman</option>
-                <option value="HARDCORE_IRONMAN">Hardcore Ironman</option>
-                <option value="ULTIMATE_IRONMAN">Ultimate Ironman</option>
-              </select>
-            </div>
-            {ironmanType() === 'HARDCORE_IRONMAN' && (
-              <div>
-                <label class={labelClass}>HCIM Safety Level</label>
-                <select
-                  value={hcimSafety() ?? ''}
-                  onChange={(e) => setHcimSafety(e.currentTarget.value as any)}
-                  class={inputClass}
-                >
-                  <option value="NORMAL">Normal</option>
-                  <option value="CAUTIOUS">Cautious</option>
-                  <option value="PARANOID">Paranoid</option>
-                </select>
-              </div>
-            )}
+        {accountType() === 'HARDCORE_IRONMAN' && (
+          <div>
+            <label class={labelClass}>HCIM Safety Level</label>
+            <select
+              value={hcimSafety()}
+              onChange={(e) => setHcimSafety(e.currentTarget.value as any)}
+              class={inputClass}
+            >
+              <option value="NORMAL">Normal - Standard flee thresholds</option>
+              <option value="CAUTIOUS">Cautious - Flee earlier, avoid more risks</option>
+              <option value="PARANOID">Paranoid - Maximum safety, flee very early</option>
+            </select>
+            <p class="text-xs text-[var(--text-secondary)] mt-1">
+              Safety level affects flee thresholds and risk tolerance for combat activities.
+            </p>
           </div>
         )}
       </section>

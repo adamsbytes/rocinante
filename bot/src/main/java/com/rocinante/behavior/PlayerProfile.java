@@ -22,6 +22,7 @@ import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -76,6 +77,12 @@ public class PlayerProfile {
     private final Gson gson;
     private final ScheduledExecutorService saveExecutor;
     
+    /**
+     * Handle to the scheduled save task.
+     * Tracked to prevent creating multiple schedulers on re-login.
+     */
+    private ScheduledFuture<?> saveTask = null;
+    
     @Getter
     private ProfileData profileData;
     
@@ -121,8 +128,9 @@ public class PlayerProfile {
      * Called when a user logs in to the game.
      *
      * @param accountName the account/username to load profile for
+     * @param accountType the account type (for new profile generation), or null if unknown
      */
-    public void initializeForAccount(String accountName) {
+    public void initializeForAccount(String accountName, com.rocinante.behavior.AccountType accountType) {
         this.accountHash = hashAccountName(accountName);
         this.sessionStartTime = Instant.now();
 
@@ -131,7 +139,7 @@ public class PlayerProfile {
             loadProfile(profilePath);
             applySessionDrift();
         } else {
-            generateNewProfile(accountName);
+            generateNewProfile(accountName, accountType);
         }
         
         // Update session tracking
@@ -143,8 +151,8 @@ public class PlayerProfile {
         schedulePersistence();
         
         loaded = true;
-        log.info("PlayerProfile initialized for account hash: {} (session #{})", 
-                accountHash, profileData.sessionCount);
+        log.info("PlayerProfile initialized for account hash: {} (session #{}, type={})", 
+                accountHash, profileData.sessionCount, accountType);
     }
 
     /**
@@ -153,7 +161,7 @@ public class PlayerProfile {
     public void initializeDefault() {
         this.accountHash = "default";
         this.sessionStartTime = Instant.now();
-        generateNewProfile("default");
+        generateNewProfile("default", null);
         profileData.lastSessionStart = Instant.now();
         loaded = true;
         log.info("Default PlayerProfile initialized");
@@ -166,8 +174,11 @@ public class PlayerProfile {
     /**
      * Generate a new profile from account name as seed.
      * Creates a deterministic but unique behavioral fingerprint.
+     * 
+     * @param accountName the account name to generate profile for
+     * @param accountType optional account type for type-specific defaults (null = unknown/normal)
      */
-    private void generateNewProfile(String accountName) {
+    private void generateNewProfile(String accountName, com.rocinante.behavior.AccountType accountType) {
         long seed = generateSeed(accountName);
         Random seededRandom = new Random(seed);
         Randomization seededRandomization = new Randomization(seed);
@@ -210,6 +221,11 @@ public class PlayerProfile {
         profileData.pitchPreference = selectPitchPreference(seededRandom);
         profileData.cameraChangeFrequency = 5.0 + seededRandom.nextDouble() * 15.0;  // 5-20 per hour
         
+        // === Camera hold preferences (fidgeting behavior) ===
+        profileData.cameraHoldFrequency = 0.05 + seededRandom.nextDouble() * 0.25;  // 5-30%
+        profileData.cameraHoldPreferredDirection = selectCameraHoldDirection(seededRandom);
+        profileData.cameraHoldSpeedPreference = selectCameraHoldSpeed(seededRandom);
+        
         // === Session patterns ===
         profileData.sessionRituals = selectSessionRituals(seededRandom);
         profileData.ritualExecutionProbability = 0.70 + seededRandom.nextDouble() * 0.20;  // 70-90%
@@ -222,9 +238,9 @@ public class PlayerProfile {
         profileData.combatPrepSequenceWeights = generateSequenceWeights(seededRandom,
                 Arrays.asList("TYPE_A", "TYPE_B", "TYPE_C"));
         
-        // === Teleport preferences ===
-        profileData.teleportMethodWeights = generateTeleportWeights(seededRandom);
-        profileData.lawRuneAversion = seededRandom.nextDouble() * 0.5;  // 0-50% aversion
+        // === Teleport preferences (account-type aware) ===
+        profileData.teleportMethodWeights = generateTeleportWeights(seededRandom, accountType);
+        profileData.lawRuneAversion = generateLawRuneAversion(seededRandom, accountType);
 
         // === Interface interaction preferences ===
         // ~60% of players prefer hotkeys, ~40% are habitual clickers
@@ -461,9 +477,17 @@ public class PlayerProfile {
 
     /**
      * Schedule periodic saves every 5 minutes.
+     * Cancels any previous scheduled save task to prevent memory leak.
      */
     private void schedulePersistence() {
-        saveExecutor.scheduleAtFixedRate(
+        // Cancel previous save task if it exists
+        if (saveTask != null && !saveTask.isCancelled()) {
+            saveTask.cancel(false);
+            log.trace("Cancelled previous save task");
+        }
+        
+        // Schedule new save task
+        saveTask = saveExecutor.scheduleAtFixedRate(
                 this::save,
                 SAVE_INTERVAL_MINUTES,
                 SAVE_INTERVAL_MINUTES,
@@ -485,11 +509,11 @@ public class PlayerProfile {
                         path, loaded.sessionCount, String.format("%.1f", loaded.totalPlaytimeHours));
             } else {
                 log.warn("Invalid profile data at {}, regenerating", path);
-                generateNewProfile(accountHash);
+                generateNewProfile(accountHash, null);
             }
         } catch (IOException e) {
             log.warn("Failed to load profile, generating new: {}", e.getMessage());
-            generateNewProfile(accountHash);
+            generateNewProfile(accountHash, null);
         }
     }
 
@@ -591,6 +615,20 @@ public class PlayerProfile {
         return "LOW";
     }
 
+    private String selectCameraHoldDirection(Random seededRandom) {
+        double roll = seededRandom.nextDouble();
+        if (roll < 0.35) return "LEFT_BIAS";
+        if (roll < 0.70) return "RIGHT_BIAS";
+        return "NO_PREFERENCE";
+    }
+
+    private String selectCameraHoldSpeed(Random seededRandom) {
+        double roll = seededRandom.nextDouble();
+        if (roll < 0.25) return "SLOW";
+        if (roll < 0.75) return "MEDIUM";
+        return "FAST";
+    }
+
     private List<String> selectSessionRituals(Random seededRandom) {
         List<String> allRituals = Arrays.asList(
                 "BANK_CHECK", "SKILL_TAB_CHECK", "FRIENDS_LIST_CHECK",
@@ -662,22 +700,67 @@ public class PlayerProfile {
         return weights;
     }
 
-    private Map<String, Double> generateTeleportWeights(Random seededRandom) {
+    /**
+     * Generate teleport method weights based on account type.
+     * Per REQUIREMENTS.md 3.6:
+     * - HCIM: fairy_ring: 0.70, house_portal: 0.20, teleport_tablet: 0.10
+     * - Ironman: fairy_ring: 0.50, spellbook: 0.25, house_portal: 0.15, teleport_tablet: 0.10
+     * - Normal: Random distribution
+     */
+    private Map<String, Double> generateTeleportWeights(Random seededRandom, com.rocinante.behavior.AccountType accountType) {
         Map<String, Double> weights = new LinkedHashMap<>();
+        
+        if (accountType != null && accountType.isHardcore()) {
+            // HCIM: Strongly prefer law-rune-free methods
+            weights.put("FAIRY_RING", 0.70);
+            weights.put("HOUSE_PORTAL", 0.20);
+            weights.put("TABLETS", 0.10);
+            weights.put("SPELLBOOK", 0.0);
+            weights.put("JEWELRY", 0.0);
+            weights.put("SPIRIT_TREE", 0.0);
+        } else if (accountType != null && accountType.isIronman()) {
+            // Ironman: Bias toward law-rune-free but can use spellbook
+            weights.put("FAIRY_RING", 0.50);
+            weights.put("SPELLBOOK", 0.25);
+            weights.put("HOUSE_PORTAL", 0.15);
+            weights.put("TABLETS", 0.10);
+            weights.put("JEWELRY", 0.0);
+            weights.put("SPIRIT_TREE", 0.0);
+        } else {
+            // Normal account: Random distribution
         weights.put("SPELLBOOK", 0.15 + seededRandom.nextDouble() * 0.25);
         weights.put("JEWELRY", 0.15 + seededRandom.nextDouble() * 0.25);
         weights.put("FAIRY_RING", 0.10 + seededRandom.nextDouble() * 0.20);
         weights.put("SPIRIT_TREE", 0.05 + seededRandom.nextDouble() * 0.15);
         weights.put("HOUSE_PORTAL", 0.10 + seededRandom.nextDouble() * 0.20);
         weights.put("TABLETS", 0.10 + seededRandom.nextDouble() * 0.15);
+        }
         
         // Normalize
         double total = weights.values().stream().mapToDouble(Double::doubleValue).sum();
+        if (total > 0) {
         for (String key : weights.keySet()) {
             weights.put(key, weights.get(key) / total);
+            }
         }
         
         return weights;
+    }
+    
+    /**
+     * Generate law rune aversion based on account type.
+     * - HCIM: 1.0 (maximum aversion - law runes dangerous to obtain)
+     * - Ironman: 0.6 (high aversion but can use when available)
+     * - Normal: 0.0-0.3 (random low aversion)
+     */
+    private double generateLawRuneAversion(Random seededRandom, com.rocinante.behavior.AccountType accountType) {
+        if (accountType != null && accountType.isHardcore()) {
+            return 1.0;  // HCIM: Maximum aversion
+        } else if (accountType != null && accountType.isIronman()) {
+            return 0.6;  // Ironman: High aversion
+        } else {
+            return seededRandom.nextDouble() * 0.3;  // Normal: 0-30% aversion
+        }
     }
 
     // ========================================================================
@@ -909,6 +992,23 @@ public class PlayerProfile {
         double preferredCompassAngle = 0.0;
         String pitchPreference = "MEDIUM";
         double cameraChangeFrequency = 10.0;
+        
+        // === Camera hold preferences (fidgeting behavior) ===
+        /**
+         * Frequency of camera hold during idle periods (0.05-0.30 = 5-30%).
+         * Camera hold is when player holds arrow key to spin camera out of boredom.
+         */
+        double cameraHoldFrequency = 0.15;
+        
+        /**
+         * Preferred direction for camera hold: "LEFT_BIAS", "RIGHT_BIAS", or "NO_PREFERENCE".
+         */
+        String cameraHoldPreferredDirection = "NO_PREFERENCE";
+        
+        /**
+         * Speed preference for camera hold: "SLOW", "MEDIUM", or "FAST".
+         */
+        String cameraHoldSpeedPreference = "MEDIUM";
 
         // === Session patterns ===
         List<String> sessionRituals = new ArrayList<>();

@@ -83,10 +83,10 @@
 - [X] `EmergencyHandler` - Poison/health emergency conditions with task interruption
 - [X] Session rituals, idle behaviors, XP checking patterns
 - [X] Long-term behavioral drift (via PlayerProfile session drift)
-- [ ] Action sequence randomization
-- [ ] Camera-mouse coupling
-- [ ] Intentional inefficiency injection
-- [ ] Logout behavior humanization
+- [X] Action sequence randomization
+- [X] Camera-mouse coupling
+- [X] Intentional inefficiency injection
+- [X] Logout behavior humanization
 
 **Test**: Record 2-hour session, run statistical analysis. No detectable patterns vs human baseline.
 
@@ -112,7 +112,7 @@
 
 - [ ] `AccountGoalPlanner` - Goal types and dependencies
 - [ ] `SkillPlanner` - Training method selection
-- [ ] `ItemAcquisitonPlanner` - Complex methods to obtain items, such as recognizing "I need iron bars, I don't have those, but I have iron ore and 15 smithing"
+- [ ] `ItemAcquisitonPlanner` - Complex methods to obtain items, such as recognizing "I need iron bars, I don't have those, but I have iron ore and 15 smithing" or some items are not tradeable, such as breadcrumbs
 - [ ] `QuestOrderPlanner` - Optimal quest ordering
 - [ ] `GearProgressionPlanner` - Equipment upgrade paths
 - [X] `UnlockTracker` - Teleports, areas, features (integrated with WebWalker)
@@ -131,6 +131,7 @@
 - [ ] Create/edit/delete goals (feeds into `AccountGoalPlanner`)
 - [ ] Drag-drop priority override (default: bot-optimized via planners)
 - [ ] Goals auto-start, persist in bot config
+- [ ] "Goalsets" can be saved/etc so other bots can use a similar foundational set of goals
 
 **Manual Task UI:**
 - [ ] Skill training task input
@@ -159,7 +160,7 @@
 ## Phase 9: Ironman & HCIM Support
 **Goal**: Full ironman support with HCIM death prevention.
 
-- [ ] `IronmanState` - Account type detection
+- [X] `IronmanState` - Account type detection
 - [ ] `IronmanRestrictions` - GE/trade blocking
 - [ ] `SelfSufficiencyPlanner` - Item acquisition without GE
 - [ ] `ResourceGatheringPlanner` - Supply chain planning
@@ -177,6 +178,7 @@
 ## Phase 10: Advanced Features
 **Goal**: Make it awesome.
 
+- [ ] "Full Self Recovery" - awareness and retries such that it's VERY hard to get stuck, even when things go wrong
 - [ ] `ClaudeAPIClient` - Anthropic API integration
 - [ ] `AIDirector` - Decision layer for ambiguous situations
 
@@ -189,4 +191,3 @@ Each phase complete when:
 2. Unit tests pass (>80% coverage on new code)
 3. Integration test for phase goal passes
 4. No regressions in previous phases
-

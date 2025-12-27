@@ -1,13 +1,18 @@
 package com.rocinante.quest.impl;
 
+import com.rocinante.behavior.AccountType;
 import com.rocinante.combat.AttackStyle;
 import com.rocinante.combat.spell.StandardSpell;
 import com.rocinante.quest.Quest;
 import com.rocinante.quest.conditions.VarbitCondition;
 import com.rocinante.quest.steps.*;
 import com.rocinante.state.Conditions;
+import com.rocinante.state.IronmanState;
 import com.rocinante.state.StateCondition;
+import com.rocinante.tasks.impl.DialogueTask;
+import com.rocinante.tasks.impl.IronmanSelectionTask;
 
+import javax.annotation.Nullable;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,6 +47,37 @@ import java.util.Map;
 public class TutorialIsland implements Quest {
 
     // ========================================================================
+    // Dependencies
+    // ========================================================================
+    
+    /**
+     * IronmanState for reading intended account type.
+     * If null, assumes NORMAL account (no ironman selection needed).
+     */
+    @Nullable
+    private final IronmanState ironmanState;
+
+    // ========================================================================
+    // Constructors
+    // ========================================================================
+    
+    /**
+     * Create Tutorial Island quest with IronmanState support.
+     * 
+     * @param ironmanState ironman state (null = normal account)
+     */
+    public TutorialIsland(@Nullable IronmanState ironmanState) {
+        this.ironmanState = ironmanState;
+    }
+    
+    /**
+     * Default constructor for normal accounts.
+     */
+    public TutorialIsland() {
+        this(null);
+    }
+
+    // ========================================================================
     // Constants - Varp (VarPlayer)
     // ========================================================================
 
@@ -69,6 +105,7 @@ public class TutorialIsland implements Quest {
     public static final int NPC_COMBAT_INSTRUCTOR = 3307;
     public static final int NPC_ACCOUNT_GUIDE = 3310;
     public static final int NPC_BROTHER_BRACE = 3319;
+    public static final int NPC_IRONMAN_TUTOR = 9486;  // Paul - between Prayer and Magic
     public static final int NPC_MAGIC_INSTRUCTOR = 3309;
     public static final int NPC_GIANT_RAT = 3313;
     public static final int NPC_CHICKEN = 3316;
@@ -417,6 +454,43 @@ public class TutorialIsland implements Quest {
         steps.put(610, new ObjectQuestStep(OBJECT_PRAYER_EXIT, "Open", "Exit the chapel"));
 
         // ====================================================================
+        // Section 8.5: Paul - Ironman Tutor (Optional - var 611-619)
+        // ====================================================================
+        // Paul appears on the path between Prayer chapel and Magic instructor.
+        // Only talk to him if ironman mode is desired.
+        //
+        // Dialogue flow (from OSRS Wiki):
+        // 1. Talk to Paul → "Hello, [player name]. I'm Paul, the Ironman tutor. What can I do for you?"
+        // 2. Select an Option → "Tell me about Ironman"
+        // 3. Ironman tutor: *tons of info about ironman mode*
+        // 4. Select an Option → "I'd like to change my Ironman mode"
+        // 5. (Ironman interface opens - group 890)
+        // 6. Click appropriate button (Standard/Hardcore/Ultimate)
+        // 7. Interface closes and varbit 1777 updates
+        
+        if (shouldSelectIronmanMode()) {
+            // var 611: Talk to Paul
+            steps.put(611, new NpcQuestStep(NPC_IRONMAN_TUTOR, "Talk to Paul, the Ironman tutor")
+                    .withDialogueExpected(true));
+            
+            // var 612: Select "Tell me about Ironman"
+            steps.put(612, new DialogueQuestStep("Select: Tell me about Ironman")
+                    .withOptionText("Tell me about Ironman"));
+            
+            // var 613: Paul explains ironman mode (click through)
+            steps.put(613, new DialogueQuestStep("Listen to Paul explain Ironman mode")
+                    .withClickThrough(true));
+            
+            // var 614: Select "I'd like to change my Ironman mode"
+            steps.put(614, new DialogueQuestStep("Select: I'd like to change my Ironman mode")
+                    .withOptionText("change my Ironman mode"));
+            
+            // var 615: Select ironman type in interface (890)
+            steps.put(615, new CustomQuestStep("Select ironman type in interface", 
+                    ctx -> new IronmanSelectionTask(ironmanState)));
+        }
+
+        // ====================================================================
         // Section 9: Magic Instructor (var 620-1000)
         // ====================================================================
 
@@ -440,8 +514,56 @@ public class TutorialIsland implements Quest {
         steps.put(670, new NpcQuestStep(NPC_MAGIC_INSTRUCTOR, "Talk to the Magic Instructor to leave")
                 .withDialogueExpected(true)
                 .withDialogueOptions("Yes", "No, I'm not ready"));
+        
+        // var 1000: Tutorial complete - mark in IronmanState
+        steps.put(1000, new CustomQuestStep("Tutorial Island complete", ctx -> {
+            if (ironmanState != null) {
+                ironmanState.markTutorialCompleted();
+            }
+            // Return a no-op task that completes immediately
+            return new com.rocinante.tasks.AbstractTask() {
+                {
+                    this.timeout = java.time.Duration.ofSeconds(1);
+                }
+                
+                @Override
+                public String getDescription() {
+                    return "Mark tutorial complete";
+                }
+                
+                @Override
+                public boolean canExecute(com.rocinante.tasks.TaskContext context) {
+                    return true;
+                }
+                
+                @Override
+                protected void executeImpl(com.rocinante.tasks.TaskContext context) {
+                    complete();
+                }
+            };
+        }));
 
         return steps;
+    }
+
+    // ========================================================================
+    // Helper Methods
+    // ========================================================================
+    
+    /**
+     * Check if ironman mode should be selected during tutorial.
+     * 
+     * @return true if player should talk to Paul and select ironman mode
+     */
+    private boolean shouldSelectIronmanMode() {
+        if (ironmanState == null) {
+            return false;
+        }
+        
+        AccountType intendedType = ironmanState.getIntendedType();
+        
+        // Only select ironman if intended type is an ironman variant
+        return intendedType.isIronman();
     }
 
     // ========================================================================

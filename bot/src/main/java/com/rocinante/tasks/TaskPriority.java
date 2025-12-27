@@ -4,7 +4,7 @@ package com.rocinante.tasks;
  * Priority levels for task queue ordering.
  * Higher priority tasks are executed before lower priority tasks.
  *
- * Per REQUIREMENTS.md Section 5.5 and Phase 5 behavioral system:
+ * Per REQUIREMENTS.md Section 5.5:
  * - URGENT interrupts current task (for combat reactions, death handling, emergencies)
  * - BEHAVIORAL pauses current task for breaks and attention lapses
  * - NORMAL is the default priority for most tasks
