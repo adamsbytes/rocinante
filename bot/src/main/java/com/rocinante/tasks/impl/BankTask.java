@@ -4,6 +4,7 @@ import com.rocinante.state.InventoryState;
 import com.rocinante.state.PlayerState;
 import com.rocinante.tasks.AbstractTask;
 import com.rocinante.tasks.TaskContext;
+import com.rocinante.timing.DelayProfile;
 import com.rocinante.util.Randomization;
 import lombok.Builder;
 import lombok.Getter;
@@ -11,6 +12,7 @@ import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.GameObject;
+import net.runelite.api.MenuEntry;
 import net.runelite.api.NPC;
 import net.runelite.api.ObjectComposition;
 import net.runelite.api.Scene;
@@ -20,6 +22,7 @@ import net.runelite.api.widgets.Widget;
 
 import java.awt.Point;
 import java.awt.Rectangle;
+import java.awt.event.KeyEvent;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -118,6 +121,42 @@ public class BankTask extends AbstractTask {
     public static final int WIDGET_QUANTITY_10 = 34;
     public static final int WIDGET_QUANTITY_X = 36;
     public static final int WIDGET_QUANTITY_ALL = 38;
+
+    // ========================================================================
+    // Chatbox Widget Constants (for X quantity input)
+    // ========================================================================
+
+    /**
+     * Chatbox widget group ID.
+     */
+    public static final int WIDGET_CHATBOX_GROUP = 162;
+
+    /**
+     * Chatbox input child widget.
+     */
+    public static final int WIDGET_CHATBOX_INPUT = 45;
+
+    /**
+     * Chatbox title text child (shows "Enter amount:" or similar).
+     */
+    public static final int WIDGET_CHATBOX_TITLE = 44;
+
+    // ========================================================================
+    // Menu Entry Options
+    // ========================================================================
+
+    /**
+     * Withdraw menu option prefix for exact quantities.
+     */
+    private static final String MENU_WITHDRAW_X = "Withdraw-X";
+    private static final String MENU_WITHDRAW_ALL = "Withdraw-All";
+    private static final String MENU_WITHDRAW_ALL_BUT_1 = "Withdraw-All-but-1";
+
+    /**
+     * Deposit menu option prefix for exact quantities.
+     */
+    private static final String MENU_DEPOSIT_X = "Deposit-X";
+    private static final String MENU_DEPOSIT_ALL = "Deposit-All";
 
     // ========================================================================
     // Common Bank Object/NPC IDs
@@ -234,6 +273,29 @@ public class BankTask extends AbstractTask {
      */
     private static final int OPERATION_TIMEOUT = 10;
 
+    /**
+     * Maximum ticks to wait for chatbox input to appear.
+     */
+    private static final int CHATBOX_TIMEOUT = 10;
+
+    /**
+     * Whether we need to enter a quantity in chatbox.
+     */
+    private boolean awaitingQuantityInput = false;
+
+    /**
+     * The target widget for right-click menu operations.
+     */
+    private Widget rightClickTarget = null;
+
+    /**
+     * Whether we've already set the X quantity for this session.
+     * RuneLite remembers the last X value, so we only need to enter it once.
+     */
+    @Getter
+    @Setter
+    private static int lastXQuantity = 0;
+
     // ========================================================================
     // Constructors
     // ========================================================================
@@ -315,6 +377,39 @@ public class BankTask extends AbstractTask {
         return task;
     }
 
+    /**
+     * Create a task to withdraw items using X-mode.
+     * This sets the default quantity mode to X, allowing fast left-click withdrawals.
+     * Ideal for bulk operations like withdrawing 14 herbs and 14 vials.
+     *
+     * <p>Usage:
+     * <pre>{@code
+     * // Set X mode to 14 and withdraw herbs
+     * BankTask withdrawHerbs = BankTask.withdrawX(ItemID.GUAM_LEAF, 14);
+     * // Subsequent withdraws with same quantity can use simple left-clicks
+     * BankTask withdrawVials = BankTask.withdraw(ItemID.VIAL_OF_WATER, WithdrawQuantity.X);
+     * }</pre>
+     *
+     * @param itemId   the item to withdraw
+     * @param quantity the X quantity to set
+     * @return bank task configured for X-mode withdrawal
+     */
+    public static BankTask withdrawX(int itemId, int quantity) {
+        BankTask task = new BankTask(BankOperation.WITHDRAW, itemId, quantity, WithdrawQuantity.X);
+        return task;
+    }
+
+    /**
+     * Create a task to deposit items using X-mode.
+     *
+     * @param itemId   the item to deposit
+     * @param quantity the X quantity to set
+     * @return bank task configured for X-mode deposit
+     */
+    public static BankTask depositX(int itemId, int quantity) {
+        return new BankTask(BankOperation.DEPOSIT, itemId, quantity, WithdrawQuantity.X);
+    }
+
     // ========================================================================
     // Builder Methods
     // ========================================================================
@@ -384,6 +479,18 @@ public class BankTask extends AbstractTask {
                 break;
             case PERFORM_OPERATION:
                 executePerformOperation(ctx);
+                break;
+            case WAIT_MENU_OPEN:
+                executeWaitMenuOpen(ctx);
+                break;
+            case SELECT_MENU_ENTRY:
+                executeSelectMenuEntry(ctx);
+                break;
+            case WAIT_CHATBOX_INPUT:
+                executeWaitChatboxInput(ctx);
+                break;
+            case ENTER_QUANTITY:
+                executeEnterQuantity(ctx);
                 break;
             case WAIT_OPERATION:
                 executeWaitOperation(ctx);
@@ -618,31 +725,54 @@ public class BankTask extends AbstractTask {
             return;
         }
 
-        // For exact quantities, we use right-click menu, skip quantity button
+        // For exact quantities (one-off right-click), skip quantity button
         if (quantityMode == WithdrawQuantity.EXACT) {
             phase = BankPhase.PERFORM_OPERATION;
             return;
         }
 
-        // Click the appropriate quantity button
+        // For X mode with specific quantity, check if we need to set it
+        if (quantityMode == WithdrawQuantity.X && quantity > 0) {
+            // If the last X quantity matches, we can skip the input dialog
+            if (lastXQuantity == quantity) {
+                log.debug("X quantity already set to {}, using left-click mode", quantity);
+                // Just click the X button to ensure mode is active, then left-click items
+                clickQuantityButton(ctx, WIDGET_QUANTITY_X, BankPhase.PERFORM_OPERATION);
+                return;
+            }
+            // Need to set a new X value - click X button and wait for input dialog
+            log.debug("Setting X quantity to {} (was {})", quantity, lastXQuantity);
+            awaitingQuantityInput = true;
+            clickQuantityButton(ctx, WIDGET_QUANTITY_X, BankPhase.WAIT_CHATBOX_INPUT);
+            return;
+        }
+
+        // Click the appropriate quantity button for other modes
         int quantityWidget = getQuantityWidget(quantityMode);
         if (quantityWidget < 0) {
             phase = BankPhase.PERFORM_OPERATION;
             return;
         }
 
+        clickQuantityButton(ctx, quantityWidget, BankPhase.PERFORM_OPERATION);
+    }
+
+    /**
+     * Click a quantity button and transition to the next phase.
+     */
+    private void clickQuantityButton(TaskContext ctx, int widgetChildId, BankPhase nextPhase) {
         Client client = ctx.getClient();
-        Widget qtyWidget = client.getWidget(WIDGET_BANK_GROUP, quantityWidget);
+        Widget qtyWidget = client.getWidget(WIDGET_BANK_GROUP, widgetChildId);
 
         if (qtyWidget == null || qtyWidget.isHidden()) {
-            log.debug("Quantity widget not found, proceeding with operation");
-            phase = BankPhase.PERFORM_OPERATION;
+            log.debug("Quantity widget {} not found, proceeding", widgetChildId);
+            phase = nextPhase;
             return;
         }
 
         Rectangle bounds = qtyWidget.getBounds();
         if (bounds == null || bounds.width == 0) {
-            phase = BankPhase.PERFORM_OPERATION;
+            phase = nextPhase;
             return;
         }
 
@@ -653,12 +783,13 @@ public class BankTask extends AbstractTask {
                 .thenCompose(v -> ctx.getMouseController().click())
                 .thenRun(() -> {
                     operationPending = false;
-                    phase = BankPhase.PERFORM_OPERATION;
+                    waitTicks = 0;
+                    phase = nextPhase;
                 })
                 .exceptionally(e -> {
                     operationPending = false;
-                    log.debug("Failed to set quantity mode, proceeding anyway");
-                    phase = BankPhase.PERFORM_OPERATION;
+                    log.debug("Failed to click quantity button, proceeding anyway");
+                    phase = nextPhase;
                     return null;
                 });
     }
@@ -806,16 +937,254 @@ public class BankTask extends AbstractTask {
                 });
     }
 
+    /**
+     * Perform a right-click deposit with exact quantity.
+     * Opens context menu, selects "Deposit-X", and enters quantity in chatbox.
+     */
     private void rightClickDeposit(TaskContext ctx, Widget widget) {
-        // TODO: Implement right-click menu selection for exact quantities
-        // For now, just left-click
-        clickWidget(ctx, widget, "Deposit item");
+        rightClickTarget = widget;
+        awaitingQuantityInput = true;
+        
+        Rectangle bounds = widget.getBounds();
+        if (bounds == null || bounds.width == 0) {
+            fail("Widget has no bounds for right-click");
+            return;
+        }
+
+        Point clickPoint = calculateClickPoint(bounds);
+        operationPending = true;
+
+        log.debug("Right-clicking to deposit {} of item {}", quantity, itemId);
+
+        // Move to widget and right-click
+        ctx.getMouseController().moveToCanvas(clickPoint.x, clickPoint.y)
+                .thenCompose(v -> ctx.getHumanTimer().sleep(DelayProfile.REACTION))
+                .thenCompose(v -> {
+                    Rectangle hitbox = new Rectangle(
+                            clickPoint.x - 5, clickPoint.y - 5, 10, 10);
+                    return ctx.getMouseController().rightClick(hitbox);
+                })
+                .thenRun(() -> {
+                    operationPending = false;
+                    waitTicks = 0;
+                    phase = BankPhase.WAIT_MENU_OPEN;
+                })
+                .exceptionally(e -> {
+                    operationPending = false;
+                    log.error("Failed to right-click for deposit", e);
+                    fail("Right-click failed");
+                    return null;
+                });
     }
 
+    /**
+     * Perform a right-click withdrawal with exact quantity.
+     * Opens context menu, selects "Withdraw-X", and enters quantity in chatbox.
+     */
     private void rightClickWithdraw(TaskContext ctx, Widget widget) {
-        // TODO: Implement right-click menu selection for exact quantities
-        // For now, just left-click
-        clickWidget(ctx, widget, "Withdraw item");
+        rightClickTarget = widget;
+        awaitingQuantityInput = true;
+        
+        Rectangle bounds = widget.getBounds();
+        if (bounds == null || bounds.width == 0) {
+            fail("Widget has no bounds for right-click");
+            return;
+        }
+
+        Point clickPoint = calculateClickPoint(bounds);
+        operationPending = true;
+
+        log.debug("Right-clicking to withdraw {} of item {}", quantity, itemId);
+
+        // Move to widget and right-click
+        ctx.getMouseController().moveToCanvas(clickPoint.x, clickPoint.y)
+                .thenCompose(v -> ctx.getHumanTimer().sleep(DelayProfile.REACTION))
+                .thenCompose(v -> {
+                    Rectangle hitbox = new Rectangle(
+                            clickPoint.x - 5, clickPoint.y - 5, 10, 10);
+                    return ctx.getMouseController().rightClick(hitbox);
+                })
+                .thenRun(() -> {
+                    operationPending = false;
+                    waitTicks = 0;
+                    phase = BankPhase.WAIT_MENU_OPEN;
+                })
+                .exceptionally(e -> {
+                    operationPending = false;
+                    log.error("Failed to right-click for withdraw", e);
+                    fail("Right-click failed");
+                    return null;
+                });
+    }
+
+    // ========================================================================
+    // Phase: Wait for Menu to Open
+    // ========================================================================
+
+    private void executeWaitMenuOpen(TaskContext ctx) {
+        Client client = ctx.getClient();
+        
+        // Check if menu is open
+        if (client.isMenuOpen()) {
+            log.debug("Context menu opened");
+            phase = BankPhase.SELECT_MENU_ENTRY;
+            return;
+        }
+
+        waitTicks++;
+        if (waitTicks > 5) {
+            log.warn("Context menu didn't open, falling back to left-click");
+            // Fallback to simple click
+            if (rightClickTarget != null) {
+                clickWidget(ctx, rightClickTarget, operation == BankOperation.DEPOSIT ? "Deposit item" : "Withdraw item");
+            } else {
+                fail("Lost target widget");
+            }
+        }
+    }
+
+    // ========================================================================
+    // Phase: Select Menu Entry
+    // ========================================================================
+
+    private void executeSelectMenuEntry(TaskContext ctx) {
+        Client client = ctx.getClient();
+        
+        if (!client.isMenuOpen()) {
+            log.warn("Menu closed unexpectedly");
+            phase = BankPhase.PERFORM_OPERATION;
+            return;
+        }
+
+        // Find the appropriate menu entry
+        String targetOption = (operation == BankOperation.DEPOSIT) ? MENU_DEPOSIT_X : MENU_WITHDRAW_X;
+        MenuEntry[] entries = client.getMenuEntries();
+        
+        Rectangle menuBounds = null;
+        int targetIndex = -1;
+        
+        for (int i = 0; i < entries.length; i++) {
+            MenuEntry entry = entries[i];
+            if (entry != null && entry.getOption() != null) {
+                if (entry.getOption().equals(targetOption)) {
+                    targetIndex = i;
+                    break;
+                }
+            }
+        }
+
+        if (targetIndex < 0) {
+            log.warn("Could not find {} in menu, closing menu", targetOption);
+            // Press escape to close menu
+            operationPending = true;
+            ctx.getKeyboardController().pressKey(KeyEvent.VK_ESCAPE)
+                    .thenRun(() -> {
+                        operationPending = false;
+                        // Fallback to simple click
+                        phase = BankPhase.PERFORM_OPERATION;
+                    });
+            return;
+        }
+
+        // Calculate menu entry position
+        // Menu entries are typically 15 pixels high, starting from menu top
+        // The menu is drawn bottom-to-top from client.getMenuEntries(), so we need to calculate
+        int menuX = client.getMenuX();
+        int menuY = client.getMenuY();
+        int menuWidth = client.getMenuWidth();
+        int menuHeight = client.getMenuHeight();
+
+        // Calculate entry position (entries are stored bottom-to-top, displayed top-to-bottom)
+        int entryHeight = 15;
+        int headerHeight = 19; // Menu header
+        int entryY = menuY + headerHeight + (entries.length - 1 - targetIndex) * entryHeight + entryHeight / 2;
+        int entryX = menuX + menuWidth / 2;
+
+        // Add some randomization
+        double[] offset = Randomization.staticGaussian2D(0, 0, menuWidth / 6.0, entryHeight / 4.0);
+        int clickX = (int) (entryX + offset[0]);
+        int clickY = (int) (entryY + offset[1]);
+
+        log.debug("Clicking menu entry '{}' at ({}, {})", targetOption, clickX, clickY);
+
+        operationPending = true;
+        ctx.getMouseController().moveToCanvas(clickX, clickY)
+                .thenCompose(v -> ctx.getHumanTimer().sleep(DelayProfile.MENU_SELECT))
+                .thenCompose(v -> ctx.getMouseController().click())
+                .thenRun(() -> {
+                    operationPending = false;
+                    waitTicks = 0;
+                    phase = BankPhase.WAIT_CHATBOX_INPUT;
+                })
+                .exceptionally(e -> {
+                    operationPending = false;
+                    log.error("Failed to click menu entry", e);
+                    fail("Menu click failed");
+                    return null;
+                });
+    }
+
+    // ========================================================================
+    // Phase: Wait for Chatbox Input
+    // ========================================================================
+
+    private void executeWaitChatboxInput(TaskContext ctx) {
+        Client client = ctx.getClient();
+
+        // Check if chatbox input is visible
+        Widget chatboxInput = client.getWidget(WIDGET_CHATBOX_GROUP, WIDGET_CHATBOX_INPUT);
+        if (chatboxInput != null && !chatboxInput.isHidden()) {
+            log.debug("Chatbox input appeared");
+            phase = BankPhase.ENTER_QUANTITY;
+            return;
+        }
+
+        waitTicks++;
+        if (waitTicks > CHATBOX_TIMEOUT) {
+            log.warn("Chatbox input didn't appear, assuming operation proceeded");
+            // Maybe the operation didn't need X input (like if clicking Withdraw-All)
+            phase = BankPhase.WAIT_OPERATION;
+        }
+    }
+
+    // ========================================================================
+    // Phase: Enter Quantity in Chatbox
+    // ========================================================================
+
+    private void executeEnterQuantity(TaskContext ctx) {
+        Client client = ctx.getClient();
+
+        // Verify chatbox is still open
+        Widget chatboxInput = client.getWidget(WIDGET_CHATBOX_GROUP, WIDGET_CHATBOX_INPUT);
+        if (chatboxInput == null || chatboxInput.isHidden()) {
+            log.warn("Chatbox closed unexpectedly");
+            phase = BankPhase.WAIT_OPERATION;
+            return;
+        }
+
+        String quantityStr = String.valueOf(quantity);
+        log.debug("Entering quantity: {}", quantityStr);
+
+        operationPending = true;
+        
+        // Type the quantity and press Enter
+        ctx.getKeyboardController().type(quantityStr)
+                .thenCompose(v -> ctx.getHumanTimer().sleep(DelayProfile.REACTION))
+                .thenCompose(v -> ctx.getKeyboardController().pressEnter())
+                .thenRun(() -> {
+                    operationPending = false;
+                    // Remember this X value for future operations
+                    lastXQuantity = quantity;
+                    waitTicks = 0;
+                    phase = BankPhase.WAIT_OPERATION;
+                    log.debug("Quantity entered, waiting for operation to complete");
+                })
+                .exceptionally(e -> {
+                    operationPending = false;
+                    log.error("Failed to enter quantity", e);
+                    fail("Quantity entry failed");
+                    return null;
+                });
     }
 
     // ========================================================================
@@ -985,6 +1354,10 @@ public class BankTask extends AbstractTask {
         WAIT_BANK_OPEN,
         SET_QUANTITY_MODE,
         PERFORM_OPERATION,
+        WAIT_MENU_OPEN,
+        SELECT_MENU_ENTRY,
+        WAIT_CHATBOX_INPUT,
+        ENTER_QUANTITY,
         WAIT_OPERATION,
         CLOSE_BANK
     }

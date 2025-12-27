@@ -63,7 +63,7 @@
 - [X] `QuestState` - Varbit tracking, quest progress (`Quest`, `QuestProgress`, `QuestExecutor`)
 - [X] `VarbitCondition`, `ZoneCondition` - Quest requirement conditions
 - [X] `TutorialIsland` - Completed as custom quest implementation
-- [ ] `BankState` - Player's bank state for quest items/planning/etc
+- [X] `BankState` - Player's bank state for quest items/planning/etc
 - [ ] `WikiDataService` - OSRS Wiki API client
 - [ ] `WikiCacheManager` - Response caching
 - [ ] Drop table, item source, shop inventory parsing

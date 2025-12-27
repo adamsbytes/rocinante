@@ -12,6 +12,7 @@ import com.rocinante.input.RobotKeyboardController;
 import com.rocinante.input.RobotMouseController;
 import com.rocinante.input.WidgetClickHelper;
 import com.rocinante.progression.UnlockTracker;
+import com.rocinante.state.BankState;
 import com.rocinante.state.CombatState;
 import com.rocinante.state.EquipmentState;
 import com.rocinante.state.InventoryState;
@@ -253,6 +254,17 @@ public class TaskContext {
      */
     public CombatState getCombatState() {
         return gameStateService.getCombatState();
+    }
+
+    /**
+     * Get the current bank state snapshot.
+     * Bank state persists across bank interface closures and is loaded from disk on login.
+     * Returns UNKNOWN state if the bank has never been opened/captured.
+     *
+     * @return immutable BankState
+     */
+    public BankState getBankState() {
+        return gameStateService.getBankState();
     }
 
     /**

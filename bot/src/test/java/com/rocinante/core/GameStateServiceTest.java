@@ -1,5 +1,6 @@
 package com.rocinante.core;
 
+import com.rocinante.state.BankStateManager;
 import com.rocinante.state.EquipmentState;
 import com.rocinante.state.InventoryState;
 import com.rocinante.state.PlayerState;
@@ -44,12 +45,15 @@ public class GameStateServiceTest {
     @Mock
     private ItemManager itemManager;
 
+    @Mock
+    private BankStateManager bankStateManager;
+
     private GameStateService gameStateService;
 
     @Before
     public void setUp() {
         MockitoAnnotations.openMocks(this);
-        gameStateService = new GameStateService(client, itemManager);
+        gameStateService = new GameStateService(client, itemManager, bankStateManager);
     }
 
     // ========================================================================

@@ -1,5 +1,6 @@
 package com.rocinante.quest.bridge;
 
+import com.rocinante.state.BankState;
 import com.rocinante.state.InventoryState;
 import com.rocinante.tasks.Task;
 import com.rocinante.tasks.TaskContext;
@@ -17,7 +18,7 @@ import java.util.stream.Collectors;
  * <p>This planner determines how to acquire items needed for a quest by:
  * <ol>
  *   <li>Checking if items are already in inventory</li>
- *   <li>Checking if items are in bank (requires BankState)</li>
+ *   <li>Checking if items are in bank (using {@link BankState})</li>
  *   <li>Determining shop purchase if bank doesn't have item</li>
  * </ol>
  *
@@ -25,6 +26,13 @@ import java.util.stream.Collectors;
  * <ul>
  *   <li>Bank withdrawals are batched into single bank visit</li>
  *   <li>Shop purchases are grouped by shopkeeper</li>
+ * </ul>
+ *
+ * <p>Bank state handling:
+ * <ul>
+ *   <li>If bank state is unknown (never opened), assumes items might be in bank</li>
+ *   <li>If bank state is known, checks actual quantities</li>
+ *   <li>Prefers bank withdrawal over shop purchase when item is in bank</li>
  * </ul>
  *
  * <p>Example usage:
@@ -86,13 +94,13 @@ public class ItemProcurementPlanner {
 
             int needed = req.getQuantity() - currentCount;
 
-            // Check bank first (if we have bank state - for now assume bank has it)
-            // TODO: Integrate with BankState when available
-            boolean inBank = canGetFromBank(req, ctx);
+            // Check bank first using BankState
+            int bankCount = countItemWithAlternatesInBank(ctx.getBankState(), req);
+            boolean inBank = canGetFromBank(req, needed, bankCount, ctx);
 
             if (inBank) {
                 needFromBank.add(req);
-                log.debug("Will withdraw {} from bank (need {})", req.getName(), needed);
+                log.debug("Will withdraw {} from bank (need {}, bank has {})", req.getName(), needed, bankCount);
             } else if (req.hasKnownShop()) {
                 needFromShop.add(req);
                 log.debug("Will buy {} from shop (need {})", req.getName(), needed);
@@ -122,7 +130,7 @@ public class ItemProcurementPlanner {
     }
 
     /**
-     * Count how many of an item (including alternates) the player has.
+     * Count how many of an item (including alternates) the player has in inventory.
      */
     private int countItemWithAlternates(InventoryState inventory, ItemRequirementInfo req) {
         int count = 0;
@@ -133,13 +141,61 @@ public class ItemProcurementPlanner {
     }
 
     /**
-     * Check if the item can be obtained from bank.
-     * TODO: This needs proper BankState integration.
+     * Count how many of an item (including alternates) the player has in bank.
      */
-    private boolean canGetFromBank(ItemRequirementInfo req, TaskContext ctx) {
-        // For now, assume all non-shop items can come from bank
-        // In a real implementation, we'd check BankState
-        return !req.hasKnownShop() || true; // Prefer bank over shop
+    private int countItemWithAlternatesInBank(BankState bank, ItemRequirementInfo req) {
+        if (bank == null || bank.isUnknown()) {
+            return 0;
+        }
+        int count = 0;
+        for (int id : req.getAllIds()) {
+            count += bank.countItem(id);
+        }
+        return count;
+    }
+
+    /**
+     * Check if the item can be obtained from bank.
+     * 
+     * <p>Decision logic:
+     * <ul>
+     *   <li>If bank state is unknown, assume item might be in bank (optimistic)</li>
+     *   <li>If bank has sufficient quantity, return true</li>
+     *   <li>If bank has some but not enough, still try bank first (partial withdrawal)</li>
+     *   <li>If bank has none and shop is known, prefer shop</li>
+     * </ul>
+     *
+     * @param req       the item requirement
+     * @param needed    the quantity needed
+     * @param bankCount the quantity in bank (0 if bank unknown)
+     * @param ctx       the task context
+     * @return true if should attempt bank withdrawal
+     */
+    private boolean canGetFromBank(ItemRequirementInfo req, int needed, int bankCount, TaskContext ctx) {
+        BankState bank = ctx.getBankState();
+        
+        // If bank state is unknown, be optimistic and assume item might be in bank
+        // This avoids unnecessary shop purchases when we haven't checked bank yet
+        if (bank.isUnknown()) {
+            log.debug("Bank state unknown, assuming {} might be in bank", req.getName());
+            return true;
+        }
+        
+        // If bank has any of this item, try to withdraw from bank first
+        if (bankCount > 0) {
+            return true;
+        }
+        
+        // Bank doesn't have the item
+        // If there's a known shop, prefer shop; otherwise still try bank
+        // (player might have deposited since last bank state capture)
+        if (req.hasKnownShop()) {
+            log.debug("Bank has no {}, will try shop instead", req.getName());
+            return false;
+        }
+        
+        // No known shop, so try bank anyway (state might be stale)
+        return true;
     }
 
     /**

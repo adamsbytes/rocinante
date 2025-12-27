@@ -77,6 +77,7 @@ public class GameStateService {
 
     private final Client client;
     private final ItemManager itemManager;
+    private final BankStateManager bankStateManager;
 
     // ========================================================================
     // Cached State Snapshots
@@ -140,9 +141,10 @@ public class GameStateService {
     private static final int VARBIT_MULTICOMBAT = 4605;
 
     @Inject
-    public GameStateService(Client client, ItemManager itemManager) {
+    public GameStateService(Client client, ItemManager itemManager, BankStateManager bankStateManager) {
         this.client = client;
         this.itemManager = itemManager;
+        this.bankStateManager = bankStateManager;
 
         // Initialize caches with appropriate policies
         this.playerStateCache = new CachedValue<>("PlayerState", CachePolicy.TICK_CACHED);
@@ -170,6 +172,9 @@ public class GameStateService {
 
         currentTick++;
         long startTime = System.nanoTime();
+
+        // Update tick on BankStateManager for freshness tracking
+        bankStateManager.setCurrentTick(currentTick);
 
         // Always refresh tick-cached state
         refreshPlayerState();
@@ -410,6 +415,30 @@ public class GameStateService {
         }
 
         return refreshCombatState();
+    }
+
+    /**
+     * Get the current bank state snapshot.
+     * Bank state persists across bank interface closures and is loaded from disk on login.
+     * Returns UNKNOWN state if the bank has never been opened/captured.
+     *
+     * @return immutable BankState snapshot
+     */
+    public BankState getBankState() {
+        if (!loggedIn) {
+            return BankState.UNKNOWN;
+        }
+
+        return bankStateManager.getBankState();
+    }
+
+    /**
+     * Get the BankStateManager for direct access to bank operations.
+     *
+     * @return the BankStateManager instance
+     */
+    public BankStateManager getBankStateManager() {
+        return bankStateManager;
     }
 
     // ========================================================================
