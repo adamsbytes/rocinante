@@ -8,6 +8,7 @@ import com.rocinante.input.GroundItemClickHelper;
 import com.rocinante.input.InventoryClickHelper;
 import com.rocinante.input.RobotKeyboardController;
 import com.rocinante.input.RobotMouseController;
+import com.rocinante.input.WidgetClickHelper;
 import com.rocinante.state.CombatState;
 import com.rocinante.state.EquipmentState;
 import com.rocinante.state.InventoryState;
@@ -85,6 +86,10 @@ public class TaskContext {
     @Nullable
     private final GroundItemClickHelper groundItemClickHelper;
 
+    @Getter
+    @Nullable
+    private final WidgetClickHelper widgetClickHelper;
+
     // ========================================================================
     // Task Variables
     // ========================================================================
@@ -125,7 +130,8 @@ public class TaskContext {
             @Nullable CombatManager combatManager,
             @Nullable GearSwitcher gearSwitcher,
             @Nullable InventoryClickHelper inventoryClickHelper,
-            @Nullable GroundItemClickHelper groundItemClickHelper) {
+            @Nullable GroundItemClickHelper groundItemClickHelper,
+            @Nullable WidgetClickHelper widgetClickHelper) {
         this.client = client;
         this.gameStateService = gameStateService;
         this.mouseController = mouseController;
@@ -136,6 +142,7 @@ public class TaskContext {
         this.gearSwitcher = gearSwitcher;
         this.inventoryClickHelper = inventoryClickHelper;
         this.groundItemClickHelper = groundItemClickHelper;
+        this.widgetClickHelper = widgetClickHelper;
         log.debug("TaskContext created");
     }
 
@@ -152,7 +159,7 @@ public class TaskContext {
             @Nullable TargetSelector targetSelector,
             @Nullable CombatManager combatManager) {
         this(client, gameStateService, mouseController, keyboardController, humanTimer, 
-                targetSelector, combatManager, null, null, null);
+                targetSelector, combatManager, null, null, null, null);
     }
 
     /**
@@ -165,7 +172,7 @@ public class TaskContext {
             RobotMouseController mouseController,
             RobotKeyboardController keyboardController,
             HumanTimer humanTimer) {
-        this(client, gameStateService, mouseController, keyboardController, humanTimer, null, null, null, null, null);
+        this(client, gameStateService, mouseController, keyboardController, humanTimer, null, null, null, null, null, null);
     }
 
     // ========================================================================

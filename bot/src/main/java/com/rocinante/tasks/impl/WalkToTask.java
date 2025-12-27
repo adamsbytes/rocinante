@@ -1,5 +1,6 @@
 package com.rocinante.tasks.impl;
 
+import com.rocinante.input.WidgetClickHelper;
 import com.rocinante.navigation.*;
 import com.rocinante.state.PlayerState;
 import com.rocinante.tasks.AbstractTask;
@@ -108,6 +109,18 @@ public class WalkToTask extends AbstractTask {
      */
     private static final int STUCK_THRESHOLD_TICKS = 8;
 
+    /**
+     * Orbs widget group ID (minimap orbs).
+     * Per RuneLite InterfaceID.Orbs (group 160 = 0x00a0).
+     */
+    private static final int ORBS_GROUP_ID = 160;
+
+    /**
+     * Run energy orb widget child ID.
+     * Per RuneLite InterfaceID.Orbs.ORB_RUNENERGY (child 27).
+     */
+    private static final int RUN_ORB_CHILD = 27;
+
     // ========================================================================
     // Destination Configuration
     // ========================================================================
@@ -207,6 +220,11 @@ public class WalkToTask extends AbstractTask {
      * Maximum re-path attempts.
      */
     private static final int MAX_REPATH_ATTEMPTS = 3;
+
+    /**
+     * Whether we're waiting for a run toggle click to complete.
+     */
+    private boolean runTogglePending = false;
 
     // ========================================================================
     // Constructors
@@ -668,18 +686,63 @@ public class WalkToTask extends AbstractTask {
     // ========================================================================
 
     private void handleRunEnergy(TaskContext ctx, PlayerState player) {
+        // Don't toggle if we're already waiting for a click
+        if (runTogglePending) {
+            return;
+        }
+
         int runEnergy = player.getRunEnergy();
         Client client = ctx.getClient();
 
-        // Check if run is currently enabled
+        // Check if run is currently enabled via varp 173
         boolean runEnabled = client.getVarpValue(173) == 1;
 
+        WidgetClickHelper widgetClickHelper = ctx.getWidgetClickHelper();
+        if (widgetClickHelper == null) {
+            // No widget click helper available - log once and skip
+            log.trace("WidgetClickHelper not available, cannot toggle run");
+            return;
+        }
+
         if (runEnergy >= RUN_ENABLE_THRESHOLD && !runEnabled) {
-            // TODO: Click run orb to enable running
-            log.debug("Run energy {}% >= {}%, should enable run", runEnergy, RUN_ENABLE_THRESHOLD);
+            // Enable running when energy is above threshold
+            log.debug("Run energy {}% >= {}%, enabling run", runEnergy, RUN_ENABLE_THRESHOLD);
+            runTogglePending = true;
+
+            widgetClickHelper.clickWidget(ORBS_GROUP_ID, RUN_ORB_CHILD, "Enable run")
+                    .thenAccept(success -> {
+                        runTogglePending = false;
+                        if (success) {
+                            log.debug("Run enabled successfully");
+                        } else {
+                            log.warn("Failed to enable run");
+                        }
+                    })
+                    .exceptionally(e -> {
+                        runTogglePending = false;
+                        log.error("Error enabling run: {}", e.getMessage());
+                        return null;
+                    });
+
         } else if (runEnergy < RUN_DISABLE_THRESHOLD && runEnabled) {
-            // TODO: Click run orb to disable running
-            log.debug("Run energy {}% < {}%, should disable run", runEnergy, RUN_DISABLE_THRESHOLD);
+            // Disable running when energy is below threshold to conserve energy
+            log.debug("Run energy {}% < {}%, disabling run", runEnergy, RUN_DISABLE_THRESHOLD);
+            runTogglePending = true;
+
+            widgetClickHelper.clickWidget(ORBS_GROUP_ID, RUN_ORB_CHILD, "Disable run")
+                    .thenAccept(success -> {
+                        runTogglePending = false;
+                        if (success) {
+                            log.debug("Run disabled successfully");
+                        } else {
+                            log.warn("Failed to disable run");
+                        }
+                    })
+                    .exceptionally(e -> {
+                        runTogglePending = false;
+                        log.error("Error disabling run: {}", e.getMessage());
+                        return null;
+                    });
         }
     }
 
