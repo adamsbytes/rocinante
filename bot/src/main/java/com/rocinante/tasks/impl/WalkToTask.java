@@ -893,13 +893,19 @@ public class WalkToTask extends AbstractTask {
         // Create PathFinder
         pathFinder = new PathFinder(client);
 
-        // Create WebWalker (null UnlockTracker - basic requirement checking only)
-        webWalker = new WebWalker(client, null);
+        // Create WebWalker with UnlockTracker from context for edge requirement checking
+        // UnlockTracker enables proper checking of:
+        // - Magic level requirements for teleport edges
+        // - Quest completion requirements for shortcuts/areas
+        // - Agility level requirements for obstacles
+        // - Item requirements (runes, etc.)
+        webWalker = new WebWalker(client, ctx.getUnlockTracker());
 
         // Create ObstacleHandler
         obstacleHandler = new ObstacleHandler(client);
 
-        log.debug("Navigation services initialized");
+        log.debug("Navigation services initialized (UnlockTracker: {})", 
+                ctx.getUnlockTracker() != null ? "available" : "not available");
     }
 
     // ========================================================================

@@ -2,6 +2,7 @@ package com.rocinante.tasks.impl;
 
 import com.rocinante.tasks.AbstractTask;
 import com.rocinante.tasks.TaskContext;
+import com.rocinante.timing.DelayProfile;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -116,20 +117,6 @@ public class DialogueTask extends AbstractTask {
     @Getter
     @Setter
     private int maxContinueClicks = 20;
-
-    /**
-     * Base reading delay in milliseconds.
-     */
-    @Getter
-    @Setter
-    private int baseReadingDelayMs = 1200;
-
-    /**
-     * Additional delay per word in milliseconds.
-     */
-    @Getter
-    @Setter
-    private int perWordDelayMs = 50;
 
     /**
      * Custom description.
@@ -344,12 +331,17 @@ public class DialogueTask extends AbstractTask {
             return;
         }
 
-        // Calculate reading delay based on text length
+        // Calculate reading delay using HumanTimer for proper humanization
+        // HumanTimer.getDialogueDelay() provides:
+        // - Gaussian distribution based on reading WPM
+        // - Word count scaling
+        // - Fatigue and attention modifiers from PlayerProfile
         String dialogueText = getDialogueText(client);
-        int readingDelay = calculateReadingDelay(dialogueText);
+        int wordCount = countWords(dialogueText);
+        long readingDelay = ctx.getHumanTimer().getDialogueDelay(wordCount);
 
-        log.debug("Pressing SPACE to continue (delay: {}ms, text: '{}')",
-                readingDelay, truncateText(dialogueText, 50));
+        log.debug("Pressing SPACE to continue (delay: {}ms, words: {}, text: '{}')",
+                readingDelay, wordCount, truncateText(dialogueText, 50));
 
         // Press spacebar to continue (like a real player)
         pressKeyWithDelay(ctx, KeyEvent.VK_SPACE, readingDelay);
@@ -421,7 +413,9 @@ public class DialogueTask extends AbstractTask {
         int keyCode = KeyEvent.VK_1 + (selectedIndex - 1);
         log.debug("Pressing key '{}' to select option {}", selectedIndex, selectedIndex);
         
-        pressKeyWithDelay(ctx, keyCode, 200); // Small delay before pressing
+        // Use REACTION delay profile for option selection (Poisson λ=250ms)
+        long selectionDelay = ctx.getHumanTimer().getDelay(DelayProfile.REACTION);
+        pressKeyWithDelay(ctx, keyCode, selectionDelay);
 
         // Advance sequence if applicable
         if (!optionSequence.isEmpty() && sequenceIndex < optionSequence.size()) {
@@ -483,33 +477,27 @@ public class DialogueTask extends AbstractTask {
         return optionText;
     }
 
-    private int calculateReadingDelay(String text) {
+    /**
+     * Count words in text for dialogue delay calculation.
+     */
+    private int countWords(String text) {
         if (text == null || text.isEmpty()) {
-            return baseReadingDelayMs;
+            return 0;
         }
-
-        // Count words (rough approximation)
-        int wordCount = text.split("\\s+").length;
-        return baseReadingDelayMs + (wordCount * perWordDelayMs);
+        return text.split("\\s+").length;
     }
 
     /**
      * Press a key with a humanized pre-delay.
      * This is how real players handle dialogue - spacebar for continue, numbers for options.
+     * Uses HumanTimer for proper delay distribution with fatigue/attention modifiers.
      */
-    private void pressKeyWithDelay(TaskContext ctx, int keyCode, int preDelay) {
+    private void pressKeyWithDelay(TaskContext ctx, int keyCode, long delayMs) {
         clickPending = true;
 
-        // Add humanized pre-delay (reading time)
-        int actualDelay = Math.max(100, preDelay / 2 + (int) (Math.random() * preDelay / 2));
-        
-        CompletableFuture.runAsync(() -> {
-            try {
-                Thread.sleep(actualDelay);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }).thenCompose(v -> ctx.getKeyboardController().pressKey(keyCode))
+        // Use HumanTimer.sleep() for proper async sleep with humanized timing
+        ctx.getHumanTimer().sleep(delayMs)
+                .thenCompose(v -> ctx.getKeyboardController().pressKey(keyCode))
           .thenRun(() -> {
               clickPending = false;
               waitTicks = 0;
