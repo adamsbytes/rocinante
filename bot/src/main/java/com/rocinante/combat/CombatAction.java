@@ -156,6 +156,12 @@ public class CombatAction {
     @Builder.Default
     int potionId = -1;
 
+    /**
+     * Item ID of consumed item (for tracking brews/restores/food).
+     */
+    @Builder.Default
+    int itemId = -1;
+
     // ========================================================================
     // Convenience Methods
     // ========================================================================

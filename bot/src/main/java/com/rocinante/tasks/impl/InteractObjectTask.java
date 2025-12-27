@@ -509,6 +509,13 @@ public class InteractObjectTask extends AbstractTask {
             return; // Click in progress
         }
 
+        // Re-validate object still exists
+        if (targetObject == null || targetObject.getClickbox() == null) {
+            log.warn("Target object despawned before click, re-finding");
+            phase = InteractionPhase.FIND_OBJECT;
+            return;
+        }
+
         log.debug("Left-clicking object {} (action '{}' is default)", objectId, menuAction);
 
         // Start async click
@@ -542,6 +549,18 @@ public class InteractObjectTask extends AbstractTask {
             log.error("MenuHelper not available for menu selection");
             fail("MenuHelper not available");
             return;
+        }
+
+        // Recalculate fresh clickbox in case camera rotated
+        if (targetObject != null) {
+            Shape clickable = targetObject.getClickbox();
+            if (clickable != null) {
+                cachedClickbox = clickable.getBounds();
+            } else {
+                log.warn("Target object despawned before menu selection, re-finding");
+                phase = InteractionPhase.FIND_OBJECT;
+                return;
+            }
         }
 
         if (cachedClickbox == null) {

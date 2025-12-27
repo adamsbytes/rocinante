@@ -4,13 +4,19 @@ import com.rocinante.core.GameStateService;
 import com.rocinante.input.GroundItemClickHelper;
 import com.rocinante.input.InventoryClickHelper;
 import com.rocinante.input.RobotMouseController;
+import com.rocinante.input.MenuHelper;
+import com.rocinante.input.RobotKeyboardController;
 import com.rocinante.input.WidgetClickHelper;
+
+import java.awt.event.KeyEvent;
+
 import com.rocinante.state.AggressorInfo;
 import com.rocinante.state.CombatState;
 import com.rocinante.state.EquipmentState;
 import com.rocinante.state.GroundItemSnapshot;
 import com.rocinante.state.InventoryState;
 import com.rocinante.state.NpcSnapshot;
+import com.rocinante.state.PoisonState;
 import com.rocinante.state.PlayerState;
 import com.rocinante.state.WorldState;
 // Use explicit import to avoid conflict with com.rocinante.combat.AttackStyle
@@ -21,6 +27,7 @@ import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.NPC;
+import net.runelite.api.Prayer;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.eventbus.Subscribe;
@@ -65,6 +72,8 @@ public class CombatManager {
     private final InventoryClickHelper inventoryClickHelper;
     private final GroundItemClickHelper groundItemClickHelper;
     private final WidgetClickHelper widgetClickHelper;
+    private final RobotKeyboardController keyboardController;
+    private final MenuHelper menuHelper;
     private final RobotMouseController mouseController;
     private final GearSwitcher gearSwitcher;
     private final HumanTimer humanTimer;
@@ -170,6 +179,8 @@ public class CombatManager {
             InventoryClickHelper inventoryClickHelper,
             GroundItemClickHelper groundItemClickHelper,
             WidgetClickHelper widgetClickHelper,
+            RobotKeyboardController keyboardController,
+            MenuHelper menuHelper,
             RobotMouseController mouseController,
             GearSwitcher gearSwitcher,
             HumanTimer humanTimer,
@@ -182,6 +193,8 @@ public class CombatManager {
         this.inventoryClickHelper = inventoryClickHelper;
         this.groundItemClickHelper = groundItemClickHelper;
         this.widgetClickHelper = widgetClickHelper;
+        this.keyboardController = keyboardController;
+        this.menuHelper = menuHelper;
         this.mouseController = mouseController;
         this.gearSwitcher = gearSwitcher;
         this.humanTimer = humanTimer;
@@ -243,6 +256,13 @@ public class CombatManager {
         if (eatAction != null) {
             executeAction(eatAction);
             return; // Eating takes priority
+        }
+
+        // Step 1.5: Check poison/venom → cure if poisoned and have antipoison
+        CombatAction cureAction = checkPoisonCure(combatState, inventoryState);
+        if (cureAction != null) {
+            executeAction(cureAction);
+            return; // Curing takes priority
         }
 
         // Step 2: Check prayer → restore or toggle prayers (delegated to PrayerFlicker)
@@ -388,6 +408,104 @@ public class CombatManager {
     }
 
     // ========================================================================
+    // Poison/Venom Cure Check
+    // ========================================================================
+
+    /**
+     * Common antipoison item IDs.
+     */
+    private static final int[] ANTIPOISON_IDS = {
+            175, 177, 179, 181,       // Antipoison(4-1)
+            2448, 2450, 2452, 2454,   // Superantipoison(4-1)
+            5952, 5954, 5956, 5958,   // Antidote+(4-1)
+            5945, 5947, 5949, 5951    // Antidote++(4-1)
+    };
+
+    /**
+     * Anti-venom item IDs.
+     */
+    private static final int[] ANTIVENOM_IDS = {
+            12907, 12909, 12911, 12913,  // Anti-venom(4-1)
+            12917, 12919, 12921, 12923   // Anti-venom+(4-1)
+    };
+
+    /**
+     * Check if player is poisoned/venomed and should drink cure.
+     * Per REQUIREMENTS.md, venom takes priority and should trigger flee at critical levels.
+     */
+    private CombatAction checkPoisonCure(CombatState combatState, InventoryState inventoryState) {
+        PoisonState poisonState = combatState.getPoisonState();
+        
+        if (!poisonState.isPoisoned() && !poisonState.isVenomed()) {
+            return null; // Not poisoned
+        }
+
+        // Check for anti-venom first if venomed
+        if (poisonState.isVenomed()) {
+            int antivenomSlot = findAntivenom(inventoryState);
+            if (antivenomSlot >= 0) {
+                log.debug("Drinking anti-venom for venom damage {}", poisonState.getCurrentDamage());
+                return createPotionAction(antivenomSlot, inventoryState);
+            }
+            // No anti-venom - log warning (HCIM safety will handle flee)
+            log.warn("Venomed with no anti-venom! Damage: {}", poisonState.getCurrentDamage());
+        }
+
+        // Check for antipoison if poisoned
+        int antipoisonSlot = findAntipoison(inventoryState);
+        if (antipoisonSlot >= 0) {
+            log.debug("Drinking antipoison for poison damage {}", poisonState.getCurrentDamage());
+            return createPotionAction(antipoisonSlot, inventoryState);
+        }
+
+        // No cure available
+        if (poisonState.isPoisoned()) {
+            log.debug("Poisoned with no antipoison, damage: {}", poisonState.getCurrentDamage());
+        }
+
+        return null;
+    }
+
+    /**
+     * Find an antipoison in inventory.
+     */
+    private int findAntipoison(InventoryState inventoryState) {
+        for (int id : ANTIPOISON_IDS) {
+            int slot = inventoryState.getSlotOf(id);
+            if (slot >= 0) return slot;
+        }
+        return -1;
+    }
+
+    /**
+     * Find an anti-venom in inventory.
+     */
+    private int findAntivenom(InventoryState inventoryState) {
+        for (int id : ANTIVENOM_IDS) {
+            int slot = inventoryState.getSlotOf(id);
+            if (slot >= 0) return slot;
+        }
+        return -1;
+    }
+
+    /**
+     * Create a potion drinking action.
+     */
+    private CombatAction createPotionAction(int slot, InventoryState inventoryState) {
+        int itemId = inventoryState.getItemInSlot(slot)
+                .map(item -> item.getId())
+                .orElse(-1);
+        
+        return CombatAction.builder()
+                .type(CombatAction.Type.DRINK_POTION)
+                .primarySlot(slot)
+                .potionId(itemId)
+                .itemId(itemId)
+                .priority(CombatAction.Priority.HIGH)
+                .build();
+    }
+
+    // ========================================================================
     // Step 5: Loot Check (Section 10.7)
     // ========================================================================
 
@@ -490,8 +608,18 @@ public class CombatManager {
                 return;
             }
             
-            // Notify FoodManager of successful eat
+            // Notify FoodManager of successful eat and track brew/restore
+            int itemId = action.getItemId();
             foodManager.onFoodEaten(currentTick);
+            
+            // Track Saradomin brew usage
+            if (foodManager.isSaradominBrew(itemId)) {
+                foodManager.onBrewUsed();
+            }
+            // Track super restore usage
+            else if (foodManager.isSuperRestore(itemId)) {
+                foodManager.onRestoreUsed();
+            }
             
             // If combo eating, wait 1 tick then click karambwan at secondary slot
             // Per Section 10.1.2: support food + karambwan tick eating when low
@@ -511,6 +639,27 @@ public class CombatManager {
                 });
             }
         });
+    }
+
+    /**
+     * Map a Prayer enum to its widget child ID.
+     */
+    private int getPrayerWidgetChild(Prayer prayer) {
+        if (prayer == null) return PRAYER_PROTECT_MELEE_CHILD;
+        
+        switch (prayer) {
+            case PROTECT_FROM_MAGIC:
+                return PRAYER_PROTECT_MAGIC_CHILD;
+            case PROTECT_FROM_MISSILES:
+                return PRAYER_PROTECT_MISSILES_CHILD;
+            case PROTECT_FROM_MELEE:
+                return PRAYER_PROTECT_MELEE_CHILD;
+            default:
+                // For other prayers, calculate based on prayer ordinal
+                // Prayers are ordered: 0=Thick Skin, ..., 17=Protect Magic, 18=Protect Missiles, 19=Protect Melee
+                // Widget children start at 4 for first prayer
+                return 4 + prayer.ordinal();
+        }
     }
 
     private void executePrayerSwitch(CombatAction action) {
@@ -536,25 +685,49 @@ public class CombatManager {
                 break;
             case UNKNOWN:
             default:
-                // Deactivate - click current active prayer to toggle off
-                // For now, we'll click melee protection as a safe default for deactivation
-                // The PrayerFlicker tracks which prayer is active and will handle this
-                log.debug("Deactivating protection prayer");
-                prayerChildId = PRAYER_PROTECT_MELEE_CHILD;
-                prayerName = "Deactivate prayer";
+                // Deactivate - click currently active protection prayer to toggle off
+                Prayer activePrayer = prayerFlicker.getActiveProtectionPrayer();
+                if (activePrayer == null) {
+                    log.debug("No active protection prayer to deactivate");
+                    return;
+                }
+                // Map active prayer to widget child ID
+                prayerChildId = getPrayerWidgetChild(activePrayer);
+                prayerName = "Deactivate " + activePrayer.name();
+                log.debug("Deactivating active prayer: {}", activePrayer.name());
                 break;
         }
         
         log.debug("Switching protection prayer: {} (widget {}:{})", 
                 prayerName, PRAYERBOOK_GROUP_ID, prayerChildId);
         
-        // Check if prayer tab is open, if not we need to click via quick prayers or open tab
+        // Check if prayer tab is open
         Widget prayerWidget = client.getWidget(PRAYERBOOK_GROUP_ID, prayerChildId);
         
         if (prayerWidget == null || prayerWidget.isHidden()) {
-            // Prayer tab not open - attempt to click anyway as RuneLite may handle tab switching
-            // or the widget might become visible after the click request
-            log.debug("Prayer widget not visible, attempting click anyway");
+            // Prayer tab not open - press F5 to open it first
+            log.debug("Prayer widget not visible, opening prayer tab with F5");
+            
+            // Capture final vars for lambda
+            final int finalPrayerChildId = prayerChildId;
+            final String finalPrayerName = prayerName;
+            
+            // Press F5 and then wait for tab to open
+            keyboardController.pressKey(KeyEvent.VK_F5).thenCompose(v -> {
+                // Wait 50-100ms for tab to open
+                long tabOpenDelay = 50 + random.nextInt(50);
+                return humanTimer.sleep(tabOpenDelay);
+            }).thenRun(() -> {
+                widgetClickHelper.clickWidget(PRAYERBOOK_GROUP_ID, finalPrayerChildId, finalPrayerName)
+                        .thenAccept(success -> {
+                            if (success) {
+                                log.debug("Prayer switch to {} completed (after tab open)", finalPrayerName);
+                            } else {
+                                log.warn("Failed to switch prayer to {} after tab open", finalPrayerName);
+                            }
+                        });
+            });
+            return;
         }
         
         widgetClickHelper.clickWidget(PRAYERBOOK_GROUP_ID, prayerChildId, prayerName)
@@ -802,15 +975,91 @@ public class CombatManager {
             // Item not in inventory - check if equipped (jewelry)
             EquipmentState equipment = gameStateService.getEquipmentState();
             if (equipment.hasEquipped(itemId)) {
-                log.warn("FLEE: Teleport item {} is equipped - need to use equipment interface", itemId);
-                // For equipped jewelry, we'd need to right-click and select teleport
-                // This is more complex - fall back to run and logout for safety
-                executeRunAndLogout();
+                log.warn("FLEE: Teleport item {} is equipped - using equipment menu", itemId);
+                executeEquippedTeleport(itemId, equipment);
             } else {
                 log.error("FLEE: Teleport item {} not found - trying backup method", itemId);
                 executeRunAndLogout();
             }
         }
+    }
+
+    /**
+     * Execute teleport using equipped jewelry via menu interaction.
+     * Per Section 12A.3.3: Handles ring of wealth, amulet of glory, etc.
+     */
+    private void executeEquippedTeleport(int itemId, EquipmentState equipment) {
+        // Equipment widget group and slot constants
+        int equipmentGroup = 387; // Equipment tab widget group
+        
+        // Determine which slot the item is in
+        int slotChildId = getEquipmentSlotChildId(itemId, equipment);
+        if (slotChildId < 0) {
+            log.error("FLEE: Could not determine equipment slot for item {}", itemId);
+            executeRunAndLogout();
+            return;
+        }
+        
+        // Get the widget bounds for the equipment slot
+        Widget slotWidget = client.getWidget(equipmentGroup, slotChildId);
+        if (slotWidget == null || slotWidget.isHidden()) {
+            log.error("FLEE: Equipment slot widget not visible - trying run and logout");
+            executeRunAndLogout();
+            return;
+        }
+        
+        Rectangle hitbox = slotWidget.getBounds();
+        
+        // Use menu helper to select teleport option
+        // Common teleport options: "Edgeville", "Grand Exchange", "Duel Arena", etc.
+        // The exact option depends on the item - try common ones
+        menuHelper.selectMenuEntry(hitbox, "Edgeville")
+                .thenCompose(success -> {
+                    if (success) {
+                        log.warn("FLEE: Equipped teleport to Edgeville successful");
+                        return CompletableFuture.completedFuture(true);
+                    }
+                    // Try Grand Exchange as fallback
+                    return menuHelper.selectMenuEntry(hitbox, "Grand Exchange");
+                })
+                .thenAccept(success -> {
+                    if (success) {
+                        log.warn("FLEE: Equipped teleport completed");
+                        fleeing = false;
+                    } else {
+                        log.error("FLEE: All equipped teleport options failed - trying run and logout");
+                        executeRunAndLogout();
+                    }
+                })
+                .exceptionally(e -> {
+                    log.error("FLEE: Equipped teleport error: {}", e.getMessage());
+                    executeRunAndLogout();
+                    return null;
+                });
+    }
+
+    /**
+     * Get the equipment widget child ID for the slot containing the item.
+     */
+    private int getEquipmentSlotChildId(int itemId, EquipmentState equipment) {
+        // Equipment widget child IDs in group 387
+        // These map equipment slot constants to widget child IDs
+        Optional<Integer> slotOpt = equipment.getSlotOf(itemId);
+        if (slotOpt.isEmpty()) {
+            return -1;
+        }
+        
+        int slot = slotOpt.get();
+        
+        // Map equipment slot to widget child ID
+        return switch (slot) {
+            case EquipmentState.SLOT_RING -> 13;
+            case EquipmentState.SLOT_AMULET -> 6;
+            case EquipmentState.SLOT_GLOVES -> 12;
+            case EquipmentState.SLOT_CAPE -> 4;
+            case EquipmentState.SLOT_WEAPON -> 8;
+            default -> -1;
+        };
     }
 
     /**

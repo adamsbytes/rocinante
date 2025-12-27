@@ -1,0 +1,115 @@
+{
+  "_meta": {
+    "description": "Projectile data for incoming attack style detection",
+    "format_version": 1
+  },
+  "projectiles": {
+    "393": {
+      "name": "Dragonfire",
+      "attackStyle": "MAGIC",
+      "sources": ["Black dragon", "Blue dragon", "Red dragon", "Green dragon", "Bronze dragon", "Iron dragon", "Steel dragon", "Mithril dragon", "Adamant dragon", "Rune dragon"]
+    },
+    "394": {
+      "name": "Dragonfire (KBD)",
+      "attackStyle": "MAGIC",
+      "sources": ["King Black Dragon"]
+    },
+    "1200": {
+      "name": "Graardor ranged",
+      "attackStyle": "RANGED",
+      "sources": ["General Graardor"]
+    },
+    "1225": {
+      "name": "Kril magic",
+      "attackStyle": "MAGIC",
+      "sources": ["Kril Tsutsaroth"]
+    },
+    "1471": {
+      "name": "Vorkath ranged",
+      "attackStyle": "RANGED",
+      "sources": ["Vorkath"]
+    },
+    "1472": {
+      "name": "Vorkath magic",
+      "attackStyle": "MAGIC",
+      "sources": ["Vorkath"]
+    },
+    "1483": {
+      "name": "Vorkath acid",
+      "attackStyle": "MAGIC",
+      "isSpecial": true,
+      "sources": ["Vorkath"]
+    },
+    "1044": {
+      "name": "Zulrah snakeling",
+      "attackStyle": "RANGED",
+      "sources": ["Zulrah"]
+    },
+    "1046": {
+      "name": "Zulrah magic",
+      "attackStyle": "MAGIC",
+      "sources": ["Zulrah"]
+    },
+    "1373": {
+      "name": "Cerberus lava pool",
+      "attackStyle": "MAGIC",
+      "isSpecial": true,
+      "sources": ["Cerberus"]
+    },
+    "1242": {
+      "name": "Cerberus ghost (melee)",
+      "attackStyle": "MELEE",
+      "sources": ["Cerberus"]
+    },
+    "1243": {
+      "name": "Cerberus ghost (ranged)",
+      "attackStyle": "RANGED",
+      "sources": ["Cerberus"]
+    },
+    "1244": {
+      "name": "Cerberus ghost (magic)",
+      "attackStyle": "MAGIC",
+      "sources": ["Cerberus"]
+    },
+    "500": {
+      "name": "Magic arrow (generic)",
+      "attackStyle": "MAGIC",
+      "sources": ["Various"]
+    },
+    "27": {
+      "name": "Arrow projectile",
+      "attackStyle": "RANGED",
+      "sources": ["Various ranged NPCs"]
+    },
+    "11": {
+      "name": "Generic ranged attack",
+      "attackStyle": "RANGED",
+      "sources": ["Various"]
+    },
+    "1339": {
+      "name": "Kraken tentacle",
+      "attackStyle": "MAGIC",
+      "sources": ["Kraken"]
+    },
+    "473": {
+      "name": "Fire wave",
+      "attackStyle": "MAGIC",
+      "sources": ["Various magic NPCs"]
+    },
+    "163": {
+      "name": "Fire bolt",
+      "attackStyle": "MAGIC",
+      "sources": ["Various magic NPCs"]
+    },
+    "1120": {
+      "name": "Ahrim magic",
+      "attackStyle": "MAGIC",
+      "sources": ["Ahrim the Blighted"]
+    },
+    "1122": {
+      "name": "Karil ranged",
+      "attackStyle": "RANGED",
+      "sources": ["Karil the Tainted"]
+    }
+  }
+}

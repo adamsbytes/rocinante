@@ -115,6 +115,22 @@ public class TaskContext {
     private final UnlockTracker unlockTracker;
 
     // ========================================================================
+    // Navigation System
+    // ========================================================================
+
+    @Getter
+    @Nullable
+    private final com.rocinante.navigation.PathFinder pathFinder;
+
+    @Getter
+    @Nullable
+    private final com.rocinante.navigation.WebWalker webWalker;
+
+    @Getter
+    @Nullable
+    private final com.rocinante.navigation.ObstacleHandler obstacleHandler;
+
+    // ========================================================================
     // Behavioral System
     // ========================================================================
 
@@ -210,7 +226,10 @@ public class TaskContext {
             @Nullable InefficiencyInjector inefficiencyInjector,
             @Nullable LogoutHandler logoutHandler,
             @Nullable BreakScheduler breakScheduler,
-            @Nullable Randomization randomization) {
+            @Nullable Randomization randomization,
+            @Nullable com.rocinante.navigation.PathFinder pathFinder,
+            @Nullable com.rocinante.navigation.WebWalker webWalker,
+            @Nullable com.rocinante.navigation.ObstacleHandler obstacleHandler) {
         this.client = client;
         this.gameStateService = gameStateService;
         this.mouseController = mouseController;
@@ -233,6 +252,9 @@ public class TaskContext {
         this.logoutHandler = logoutHandler;
         this.breakScheduler = breakScheduler;
         this.randomization = randomization;
+        this.pathFinder = pathFinder;
+        this.webWalker = webWalker;
+        this.obstacleHandler = obstacleHandler;
         log.debug("TaskContext created");
     }
 
@@ -250,7 +272,7 @@ public class TaskContext {
             @Nullable CombatManager combatManager) {
         this(client, gameStateService, mouseController, keyboardController, humanTimer, 
                 targetSelector, combatManager, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null);
     }
 
     /**
@@ -265,7 +287,7 @@ public class TaskContext {
             HumanTimer humanTimer) {
         this(client, gameStateService, mouseController, keyboardController, humanTimer, 
                 null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null);
     }
 
     // ========================================================================

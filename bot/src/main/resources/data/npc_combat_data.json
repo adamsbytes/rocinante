@@ -1,0 +1,193 @@
+{
+  "_meta": {
+    "description": "NPC combat data for attack style detection and timing",
+    "format_version": 1
+  },
+  "npcs": {
+    "1": {
+      "name": "Man",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "attackAnimations": [422]
+    },
+    "2": {
+      "name": "Woman",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "attackAnimations": [422]
+    },
+    "100": {
+      "name": "Goblin",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "attackAnimations": [6184]
+    },
+    "3021": {
+      "name": "Guard",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "attackAnimations": [390]
+    },
+    "2266": {
+      "name": "Moss giant",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "attackAnimations": [4658]
+    },
+    "2267": {
+      "name": "Ice giant",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "attackAnimations": [4652]
+    },
+    "2268": {
+      "name": "Fire giant",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "attackAnimations": [4652]
+    },
+    "2269": {
+      "name": "Hill giant",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "attackAnimations": [4652]
+    },
+    "239": {
+      "name": "Black dragon",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 17,
+      "attackAnimations": [91],
+      "rangedAttack": {
+        "projectileId": 393,
+        "attackStyle": "MAGIC"
+      }
+    },
+    "252": {
+      "name": "Blue dragon",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 9,
+      "attackAnimations": [91],
+      "rangedAttack": {
+        "projectileId": 393,
+        "attackStyle": "MAGIC"
+      }
+    },
+    "265": {
+      "name": "General Graardor",
+      "attackSpeed": 6,
+      "attackStyle": "MELEE",
+      "maxHit": 60,
+      "attackAnimations": [7018, 7020, 7021],
+      "rangedAttack": {
+        "projectileId": 1200,
+        "attackStyle": "RANGED",
+        "maxHit": 35
+      }
+    },
+    "2215": {
+      "name": "Kril Tsutsaroth",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 49,
+      "attackAnimations": [6948, 6950],
+      "magicAttack": {
+        "projectileId": 1225,
+        "attackStyle": "MAGIC",
+        "maxHit": 30
+      }
+    },
+    "3162": {
+      "name": "Kreearra",
+      "attackSpeed": 4,
+      "attackStyle": "RANGED",
+      "maxHit": 71,
+      "attackAnimations": [6978],
+      "meleeAttack": {
+        "attackStyle": "MELEE",
+        "maxHit": 21
+      }
+    },
+    "2205": {
+      "name": "Commander Zilyana",
+      "attackSpeed": 2,
+      "attackStyle": "MELEE",
+      "maxHit": 31,
+      "attackAnimations": [6964, 6967],
+      "magicAttack": {
+        "attackStyle": "MAGIC",
+        "maxHit": 10
+      }
+    },
+    "2042": {
+      "name": "Zulrah (green)",
+      "attackSpeed": 4,
+      "attackStyle": "RANGED",
+      "maxHit": 41,
+      "attackAnimations": [5069]
+    },
+    "2043": {
+      "name": "Zulrah (red)",
+      "attackSpeed": 4,
+      "attackStyle": "RANGED",
+      "maxHit": 41,
+      "attackAnimations": [5069]
+    },
+    "2044": {
+      "name": "Zulrah (blue)",
+      "attackSpeed": 4,
+      "attackStyle": "MAGIC",
+      "maxHit": 41,
+      "attackAnimations": [5069]
+    },
+    "319": {
+      "name": "Corporeal Beast",
+      "attackSpeed": 4,
+      "attackStyle": "MAGIC",
+      "maxHit": 65,
+      "attackAnimations": [1680],
+      "meleeAttack": {
+        "attackStyle": "MELEE",
+        "maxHit": 51
+      }
+    },
+    "2668": {
+      "name": "Lesser demon",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 8,
+      "attackAnimations": [64]
+    },
+    "2669": {
+      "name": "Greater demon",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 10,
+      "attackAnimations": [64]
+    },
+    "7397": {
+      "name": "Vorkath",
+      "attackSpeed": 5,
+      "attackStyle": "MAGIC",
+      "maxHit": 32,
+      "attackAnimations": [7952, 7960],
+      "rangedAttack": {
+        "projectileId": 1471,
+        "attackStyle": "RANGED",
+        "maxHit": 32
+      },
+      "specialAttacks": [
+        {"name": "acid pool", "projectileId": 1483},
+        {"name": "zombified spawn", "animation": 7960}
+      ]
+    },
+    "494": {
+      "name": "Kraken",
+      "attackSpeed": 4,
+      "attackStyle": "MAGIC",
+      "maxHit": 28,
+      "attackAnimations": [7135]
+    }
+  }
+}

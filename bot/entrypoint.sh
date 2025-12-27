@@ -9,8 +9,9 @@ echo "================================================="
 # Export display for GUI tools
 export DISPLAY=:99
 
-# Set a common timezone (appears more normal)
-export TZ="America/New_York"
+# Set timezone (allow override, default to NY which matches common bot profiles)
+# This affects Java, Python, and system calls via glibc
+export TZ="${TZ:-America/New_York}"
 
 # Clean up stale Xvfb processes and lock files from previous runs
 # This is necessary when container is restarted (not recreated)

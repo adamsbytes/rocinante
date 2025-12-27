@@ -147,6 +147,16 @@ public class CombatTask extends AbstractTask {
     private static final int MAX_IDLE_TICKS = 10;
 
     /**
+     * Maximum attempts to drag NPC away from safe spot.
+     */
+    private static final int MAX_SAFESPOT_DRAG_ATTEMPTS = 5;
+
+    /**
+     * Counter for safe spot drag attempts.
+     */
+    private int safeSpotDragAttempts = 0;
+
+    /**
      * Ground items to loot after kill.
      */
     private List<GroundItemSnapshot> pendingLoot;
@@ -256,6 +266,13 @@ public class CombatTask extends AbstractTask {
             log.info("CombatTask started: {}", config.getSummary());
         }
 
+        // Coordinate with CombatManager: skip if a click is already in progress
+        // This prevents race conditions on the same game tick
+        if (ctx.getMouseController().isClickInProgress()) {
+            log.trace("Deferring CombatTask action - click already in progress");
+            return;
+        }
+
         // Check completion conditions
         if (isCompleted(ctx)) {
             completeTask(ctx);
@@ -362,8 +379,31 @@ public class CombatTask extends AbstractTask {
         int distanceFromSafeSpot = playerPos.distanceTo(safeSpot);
         
         if (distanceFromSafeSpot <= config.getSafeSpotMaxDistance()) {
+            // Check if safe spot is blocked by aggro NPC targeting us
+            if (isSafeSpotBlockedByAggro(ctx, safeSpot)) {
+                safeSpotDragAttempts++;
+                
+                // Check if we've exceeded drag attempt limit
+                if (safeSpotDragAttempts > MAX_SAFESPOT_DRAG_ATTEMPTS) {
+                    log.warn("Safe spot still blocked after {} drag attempts, attacking anyway", 
+                            MAX_SAFESPOT_DRAG_ATTEMPTS);
+                    safeSpotDragAttempts = 0;
+                    phase = CombatPhase.ATTACK;
+                    return;
+                }
+                
+                log.debug("Safe spot blocked by aggro NPC, dragging away (attempt {}/{})", 
+                        safeSpotDragAttempts, MAX_SAFESPOT_DRAG_ATTEMPTS);
+                // Walk 3-5 tiles away to drag NPC, then return
+                WorldPoint dragPosition = calculateDragPosition(playerPos, safeSpot);
+                activeSubTask = new WalkToTask(dragPosition);
+                phaseWaitTicks = 0;
+                return;
+            }
+            
             // We're in position, proceed to attack
             phaseWaitTicks = 0;
+            safeSpotDragAttempts = 0; // Reset drag counter
             phase = CombatPhase.ATTACK;
             return;
         }
@@ -383,6 +423,62 @@ public class CombatTask extends AbstractTask {
             phase = CombatPhase.ATTACK;
         }
     }
+    
+    /**
+     * Check if safe spot is blocked by an aggro NPC that's targeting us.
+     */
+    private boolean isSafeSpotBlockedByAggro(TaskContext ctx, WorldPoint safeSpot) {
+        WorldState world = ctx.getWorldState();
+        CombatState combat = ctx.getCombatState();
+        
+        // Get all NPCs at safe spot location
+        for (NpcSnapshot npc : world.getNearbyNpcs()) {
+            WorldPoint npcPos = npc.getWorldPosition();
+            if (npcPos.equals(safeSpot)) {
+                // Check if this NPC is aggressive and targeting us
+                // Compare NPC index with aggressors list
+                int npcIndex = npc.getIndex();
+                boolean isAggressive = combat.getAggressiveNpcs().stream()
+                    .anyMatch(aggressor -> aggressor.getNpcIndex() == npcIndex);
+                if (isAggressive) {
+                    log.debug("Safe spot blocked by aggro NPC: {}", npc.getName());
+                    return true;
+                }
+                // Non-aggro NPCs or players are fine - ignore them
+            }
+        }
+
+        
+        return false;
+    }
+    
+    /**
+     * Calculate a position to drag aggro NPC away from safe spot.
+     */
+    private WorldPoint calculateDragPosition(WorldPoint playerPos, WorldPoint safeSpot) {
+        // Calculate direction away from safe spot
+        int dx = playerPos.getX() - safeSpot.getX();
+        int dy = playerPos.getY() - safeSpot.getY();
+        
+        // Normalize and extend by 3-5 tiles
+        double mag = Math.sqrt(dx * dx + dy * dy);
+        if (mag == 0) {
+            // Player is exactly on safe spot, pick random direction
+            double angle = Math.random() * 2 * Math.PI;
+            dx = (int) Math.round(Math.cos(angle) * 4);
+            dy = (int) Math.round(Math.sin(angle) * 4);
+        } else {
+            int dragDistance = 3 + (int) (Math.random() * 3); // 3-5 tiles
+            dx = (int) Math.round(dx / mag * dragDistance);
+            dy = (int) Math.round(dy / mag * dragDistance);
+        }
+        
+        return new WorldPoint(
+            playerPos.getX() + dx,
+            playerPos.getY() + dy,
+            playerPos.getPlane()
+        );
+    }
 
     // ========================================================================
     // Phase: Cast Spell (Magic Combat)
@@ -395,6 +491,14 @@ public class CombatTask extends AbstractTask {
     private void executeCastSpell(TaskContext ctx) {
         if (movePending || clickPending) {
             return; // Wait for pending actions
+        }
+
+        // Check for phase timeout
+        phaseWaitTicks++;
+        if (phaseWaitTicks > MAX_WAIT_TICKS) {
+            log.warn("Spell selection timed out after {} ticks", MAX_WAIT_TICKS);
+            fail("Could not select spell - timed out");
+            return;
         }
 
         // Get the current spell to cast

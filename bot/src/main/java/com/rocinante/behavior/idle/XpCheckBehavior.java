@@ -31,10 +31,8 @@ import java.util.concurrent.CompletableFuture;
 @Slf4j
 public class XpCheckBehavior extends AbstractTask {
 
-    // === Check method probabilities (per REQUIREMENTS.md) ===
-    private static final double SKILL_ORB_PROBABILITY = 0.70;
-    private static final double SKILLS_TAB_PROBABILITY = 0.25;
-    // XP tracker gets the remaining 5%
+    // === Check method probabilities (from PlayerProfile) ===
+    // Now configurable per-account via PlayerProfile preferences
 
     // === View duration range (per REQUIREMENTS.md) ===
     private static final long MIN_VIEW_DURATION_MS = 300;
@@ -184,10 +182,15 @@ public class XpCheckBehavior extends AbstractTask {
     private void selectMethod() {
         double roll = randomization.uniformRandom(0, 1);
         
-        if (roll < SKILL_ORB_PROBABILITY) {
+        // Use per-account preferences from PlayerProfile
+        double orbProb = playerProfile.getXpCheckOrbProbability();
+        double tabProb = playerProfile.getXpCheckTabProbability();
+        // Tracker gets the remainder
+        
+        if (roll < orbProb) {
             selectedMethod = CheckMethod.SKILL_ORB;
             phase = Phase.HOVERING_ORB;
-        } else if (roll < SKILL_ORB_PROBABILITY + SKILLS_TAB_PROBABILITY) {
+        } else if (roll < orbProb + tabProb) {
             selectedMethod = CheckMethod.SKILLS_TAB;
             phase = Phase.OPENING_TAB;
         } else {
@@ -195,7 +198,11 @@ public class XpCheckBehavior extends AbstractTask {
             phase = Phase.HOVERING_XP_TRACKER;
         }
         
-        log.trace("Selected XP check method: {}", selectedMethod);
+        log.trace("Selected XP check method: {} (orb={}%, tab={}%, tracker={}%)", 
+                  selectedMethod,
+                  String.format("%.0f", orbProb * 100), 
+                  String.format("%.0f", tabProb * 100), 
+                  String.format("%.0f", (1.0 - orbProb - tabProb) * 100));
     }
 
     private void executeOrbHover(TaskContext ctx) {

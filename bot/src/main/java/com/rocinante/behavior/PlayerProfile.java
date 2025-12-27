@@ -232,6 +232,24 @@ public class PlayerProfile {
         profileData.xpCheckFrequency = seededRandom.nextDouble() * 15.0;  // 0-15 per hour
         profileData.playerInspectionFrequency = seededRandom.nextDouble() * 5.0;  // 0-5 per hour
         
+        // === XP check method preferences ===
+        // Generate random distribution that sums to 1.0
+        // Some players exclusively use tab, others prefer orb, etc.
+        double xpOrb = seededRandom.nextDouble();
+        double xpTab = seededRandom.nextDouble();
+        double xpTotal = xpOrb + xpTab + 0.01; // Add small amount for tracker
+        profileData.xpCheckOrbProbability = xpOrb / xpTotal;
+        profileData.xpCheckTabProbability = xpTab / xpTotal;
+        // Tracker is implicit: 1.0 - orb - tab
+        
+        // === Player inspection target preferences ===
+        // Nearby probability clamped to 30-80%
+        profileData.inspectionNearbyProbability = 0.30 + seededRandom.nextDouble() * 0.50;
+        // High/low split the remainder randomly
+        double remainingProb = 1.0 - profileData.inspectionNearbyProbability;
+        profileData.inspectionHighLevelProbability = seededRandom.nextDouble() * remainingProb;
+        // Low level is implicit: 1.0 - nearby - high
+        
         // === Action sequencing ===
         profileData.bankingSequenceWeights = generateSequenceWeights(seededRandom, 
                 Arrays.asList("TYPE_A", "TYPE_B", "TYPE_C"));
@@ -926,6 +944,42 @@ public class PlayerProfile {
     public double getPlayerInspectionFrequency() {
         return profileData.playerInspectionFrequency;
     }
+    
+    // === XP check method preferences ===
+    
+    public double getXpCheckOrbProbability() {
+        return profileData.xpCheckOrbProbability;
+    }
+    
+    public double getXpCheckTabProbability() {
+        return profileData.xpCheckTabProbability;
+    }
+    
+    /**
+     * Get the probability of using XP tracker overlay.
+     * This is the remainder after orb and tab probabilities.
+     */
+    public double getXpCheckTrackerProbability() {
+        return Math.max(0, 1.0 - profileData.xpCheckOrbProbability - profileData.xpCheckTabProbability);
+    }
+    
+    // === Player inspection target preferences ===
+    
+    public double getInspectionNearbyProbability() {
+        return profileData.inspectionNearbyProbability;
+    }
+    
+    public double getInspectionHighLevelProbability() {
+        return profileData.inspectionHighLevelProbability;
+    }
+    
+    /**
+     * Get the probability of inspecting low-level players.
+     * This is the remainder after nearby and high-level probabilities.
+     */
+    public double getInspectionLowLevelProbability() {
+        return Math.max(0, 1.0 - profileData.inspectionNearbyProbability - profileData.inspectionHighLevelProbability);
+    }
 
     public Map<String, Double> getTeleportMethodWeights() {
         return Collections.unmodifiableMap(profileData.teleportMethodWeights);
@@ -1015,6 +1069,40 @@ public class PlayerProfile {
         double ritualExecutionProbability = 0.80;
         double xpCheckFrequency = 5.0;
         double playerInspectionFrequency = 2.0;
+        
+        // === XP Check method preferences (must sum to 1.0) ===
+        /**
+         * Probability of checking XP via skill orb hover.
+         */
+        double xpCheckOrbProbability = 0.70;
+        
+        /**
+         * Probability of checking XP via skills tab.
+         */
+        double xpCheckTabProbability = 0.25;
+        
+        /**
+         * Probability of checking XP via XP tracker overlay.
+         * Calculated as 1.0 - orb - tab, not stored.
+         */
+        // Note: tracker probability is implicit (1 - orb - tab)
+        
+        // === Player inspection target preferences ===
+        /**
+         * Probability of inspecting random nearby players (30-80%).
+         */
+        double inspectionNearbyProbability = 0.60;
+        
+        /**
+         * Probability of inspecting high-level players.
+         */
+        double inspectionHighLevelProbability = 0.30;
+        
+        /**
+         * Probability of inspecting low-level players.
+         * Calculated as 1.0 - nearby - high, not stored.
+         */
+        // Note: lowLevel probability is implicit (1 - nearby - high)
 
         // === Action sequencing ===
         Map<String, Double> bankingSequenceWeights = new LinkedHashMap<>();

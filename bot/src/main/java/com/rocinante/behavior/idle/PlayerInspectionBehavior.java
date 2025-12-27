@@ -38,10 +38,9 @@ import java.util.stream.Collectors;
 @Slf4j
 public class PlayerInspectionBehavior extends AbstractTask {
 
-    // === Target selection probabilities (per REQUIREMENTS.md 3.5.2) ===
-    private static final double RANDOM_NEARBY_PROBABILITY = 0.60;
-    private static final double HIGH_LEVEL_PROBABILITY = 0.30;
-    // Low-level gets the remaining 10%
+    // === Target selection probabilities (from PlayerProfile) ===
+    // Now configurable per-account via PlayerProfile preferences
+    // Nearby clamped to 30-80%, high/low can be any remaining distribution
 
     // === Inspection duration range (per REQUIREMENTS.md 3.5.2) ===
     private static final long MIN_INSPECT_DURATION_MS = 500;
@@ -162,18 +161,25 @@ public class PlayerInspectionBehavior extends AbstractTask {
         // Set hover duration for this inspection
         hoverDuration = randomization.uniformRandomLong(MIN_INSPECT_DURATION_MS, MAX_INSPECT_DURATION_MS);
         
-        // Determine target selection category based on REQUIREMENTS.md probabilities
+        // Use per-account preferences from PlayerProfile
+        double nearbyProb = playerProfile.getInspectionNearbyProbability();
+        double highLevelProb = playerProfile.getInspectionHighLevelProbability();
+        // Low-level gets the remainder
+        
         double roll = randomization.uniformRandom(0, 1);
-        if (roll < RANDOM_NEARBY_PROBABILITY) {
+        if (roll < nearbyProb) {
             targetCategory = TargetCategory.RANDOM_NEARBY;
-        } else if (roll < RANDOM_NEARBY_PROBABILITY + HIGH_LEVEL_PROBABILITY) {
+        } else if (roll < nearbyProb + highLevelProb) {
             targetCategory = TargetCategory.HIGH_LEVEL;
         } else {
             targetCategory = TargetCategory.LOW_LEVEL;
         }
         
-        log.debug("Initiating player inspection (category: {}, duration: {}ms)", 
-                 targetCategory, hoverDuration);
+        log.debug("Initiating player inspection (category: {}, duration: {}ms, probs: nearby={}%, high={}%, low={}%)", 
+                 targetCategory, hoverDuration,
+                 String.format("%.0f", nearbyProb * 100), 
+                 String.format("%.0f", highLevelProb * 100), 
+                 String.format("%.0f", (1.0 - nearbyProb - highLevelProb) * 100));
         
         phase = Phase.SELECTING_TARGET;
     }

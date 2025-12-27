@@ -132,20 +132,20 @@ public class FoodManager {
         // Check food availability
         if (!inventoryState.hasFood() && !hasSaradominBrew(inventoryState)) {
             if (healthPercent < panicThreshold) {
-                log.warn("Low health ({:.0f}%) with no food - should flee!", healthPercent * 100);
+                log.warn("Low health ({}%) with no food - should flee!", healthPercent * 100);
             }
             return null;
         }
 
         // Panic eat - immediately
         if (healthPercent < panicThreshold) {
-            log.info("Panic eating at {:.0f}% health", healthPercent * 100);
+            log.info("Panic eating at {}% health", healthPercent * 100);
             return createEatAction(inventoryState, playerState, true);
         }
 
         // Normal eat threshold
         if (healthPercent < eatThreshold) {
-            log.debug("Eating at {:.0f}% health (threshold: {:.0f}%)", 
+            log.debug("Eating at {}% health (threshold: {}%)", 
                     healthPercent * 100, eatThreshold * 100);
             return createEatAction(inventoryState, playerState, false);
         }
@@ -153,7 +153,7 @@ public class FoodManager {
         // Humanization: occasional panic eat in extra range
         if (config.isInPanicEatRange(healthPercent)) {
             if (random.nextDouble() < config.getPanicEatExtraProbability()) {
-                log.debug("Humanized panic eat at {:.0f}% health", healthPercent * 100);
+                log.debug("Humanized panic eat at {}% health", healthPercent * 100);
                 return createEatAction(inventoryState, playerState, false);
             }
         }
@@ -185,7 +185,7 @@ public class FoodManager {
 
         if (healthPercent < config.getPreEatThreshold()) {
             if (inventoryState.hasFood() || hasSaradominBrew(inventoryState)) {
-                log.debug("HCIM pre-eating at {:.0f}% health before engaging", healthPercent * 100);
+                log.debug("HCIM pre-eating at {}% health before engaging", healthPercent * 100);
                 return createEatAction(inventoryState, playerState, false);
             }
         }
@@ -240,11 +240,17 @@ public class FoodManager {
             }
         }
 
+        // Get item ID for tracking
+        int foodItemId = inventoryState.getItemInSlot(foodSlot)
+                .map(item -> item.getId())
+                .orElse(-1);
+
         return CombatAction.builder()
                 .type(CombatAction.Type.EAT)
                 .primarySlot(foodSlot)
                 .secondarySlot(shouldCombo ? karambwanSlot : -1)
                 .comboEat(shouldCombo)
+                .itemId(foodItemId)
                 .priority(isPanic ? CombatAction.Priority.URGENT : CombatAction.Priority.HIGH)
                 .build();
     }
@@ -264,11 +270,17 @@ public class FoodManager {
         log.debug("Using Saradomin brew (sips since restore: {}, will restore: {})", 
                 brewSipsSinceRestore, restoreSlot >= 0);
 
+        // Get brew item ID for tracking
+        int brewItemId = inventoryState.getItemInSlot(brewSlot)
+                .map(item -> item.getId())
+                .orElse(-1);
+
         return CombatAction.builder()
                 .type(CombatAction.Type.EAT)
                 .primarySlot(brewSlot)
                 .secondarySlot(restoreSlot)
                 .comboEat(restoreSlot >= 0)
+                .itemId(brewItemId)
                 .priority(CombatAction.Priority.HIGH)
                 .build();
     }
@@ -346,6 +358,32 @@ public class FoodManager {
     public void onRestoreUsed() {
         brewSipsSinceRestore = 0;
         log.debug("Brew sip count reset after restore");
+    }
+
+    /**
+     * Check if an item is a Saradomin brew.
+     *
+     * @param itemId the item ID to check
+     * @return true if this is a Saradomin brew
+     */
+    public boolean isSaradominBrew(int itemId) {
+        for (int brewId : SARADOMIN_BREW_IDS) {
+            if (itemId == brewId) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Check if an item is a super restore.
+     *
+     * @param itemId the item ID to check
+     * @return true if this is a super restore
+     */
+    public boolean isSuperRestore(int itemId) {
+        for (int restoreId : SUPER_RESTORE_IDS) {
+            if (itemId == restoreId) return true;
+        }
+        return false;
     }
 
     // ========================================================================

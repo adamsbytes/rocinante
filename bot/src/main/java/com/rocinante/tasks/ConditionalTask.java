@@ -218,7 +218,23 @@ public class ConditionalTask extends AbstractTask {
     protected void executeImpl(TaskContext ctx) {
         // Evaluate condition (once or dynamically)
         if (!evaluated || dynamicEvaluation) {
+            boolean previousResult = conditionResult;
             conditionResult = condition.test(ctx);
+            
+            // If dynamic evaluation and condition flipped while branch task is running, abort current branch
+            if (dynamicEvaluation && evaluated && selectedTask != null && 
+                    selectedTask.getState() == TaskState.RUNNING && 
+                    previousResult != conditionResult) {
+                log.warn("Conditional branch flipped mid-execution ({} -> {}), aborting current branch",
+                        previousResult, conditionResult);
+                if (selectedTask instanceof AbstractTask) {
+                    ((AbstractTask) selectedTask).abort();
+                }
+                selectedTask = null;
+                evaluated = false;  // Re-evaluate next tick
+                return;
+            }
+            
             selectedTask = conditionResult ? ifTrueTask : ifFalseTask;
 
             if (!evaluated) {

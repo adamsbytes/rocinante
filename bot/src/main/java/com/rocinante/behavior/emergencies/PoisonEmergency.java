@@ -110,6 +110,11 @@ public class PoisonEmergency implements EmergencyCondition {
         return 10000; // 10 second cooldown to allow cure to take effect
     }
 
+    @Override
+    public int getSeverity() {
+        return 70; // High severity - poison can be lethal if uncured
+    }
+
     /**
      * Factory interface for creating cure tasks.
      */

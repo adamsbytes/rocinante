@@ -58,5 +58,16 @@ public interface EmergencyCondition {
     default long getCooldownMs() {
         return 5000; // 5 second default cooldown
     }
+    
+    /**
+     * Get the severity/priority of this emergency.
+     * Higher values = more severe = higher priority.
+     * Used to determine which emergency to handle first when multiple trigger.
+     * 
+     * @return severity level (0-100, default 50)
+     */
+    default int getSeverity() {
+        return 50; // Default medium severity
+    }
 }
 

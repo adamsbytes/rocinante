@@ -128,6 +128,14 @@ public class RobotMouseController {
     private PlayerProfile playerProfile;
 
     /**
+     * Flag indicating a click operation is currently in progress.
+     * Used to coordinate between CombatTask and CombatManager to prevent
+     * race conditions on the same game tick.
+     */
+    @Getter
+    private volatile boolean clickInProgress = false;
+
+    /**
      * MouseCameraCoupler for coordinated camera+mouse movements.
      * When set, long movements may trigger camera adjustments.
      */
@@ -689,6 +697,9 @@ public class RobotMouseController {
      */
     private CompletableFuture<Void> executeClick(int buttonMask, boolean doubleClick) {
         CompletableFuture<Void> future = new CompletableFuture<>();
+        
+        // Set flag to indicate click is in progress
+        clickInProgress = true;
 
         executor.execute(() -> {
             try {
@@ -712,8 +723,10 @@ public class RobotMouseController {
                     sessionClickCount++;
                 }
 
+                clickInProgress = false;
                 future.complete(null);
             } catch (Exception e) {
+                clickInProgress = false;
                 log.error("Click failed", e);
                 future.completeExceptionally(e);
             }

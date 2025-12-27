@@ -347,6 +347,17 @@ public class TaskExecutor {
             if (urgent != null) {
                 log.info("Interrupting task '{}' for urgent task '{}'",
                         currentTask.getDescription(), urgent.task.getDescription());
+                
+                // Special handling for behavioral task interruption
+                // Preserve the paused task stack by NOT completing the behavioral task normally
+                if (currentTask.getPriority() == TaskPriority.BEHAVIORAL) {
+                    log.debug("URGENT interrupted BEHAVIORAL task - preserving pause stack");
+                    // Just cancel the behavioral task - pause stack remains intact
+                    currentTask = null;
+                    urgentPending = checkForMoreUrgent();
+                    return;
+                }
+                
                 // Re-queue current task if it's still runnable
                 if (currentTask.getState() == TaskState.RUNNING) {
                     requeueCurrentTask();
@@ -436,9 +447,9 @@ public class TaskExecutor {
             // Push current task onto the stack
             pausedTaskStack.push(currentTask);
             
-            // Reset state to PENDING so it can be resumed
+            // Transition to PAUSED state
             if (currentTask instanceof AbstractTask) {
-                ((AbstractTask) currentTask).state = TaskState.PENDING;
+                ((AbstractTask) currentTask).transitionTo(TaskState.PAUSED);
             }
             currentTask = null;
         }

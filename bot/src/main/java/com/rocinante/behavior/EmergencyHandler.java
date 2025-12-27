@@ -89,10 +89,11 @@ public class EmergencyHandler {
     // ========================================================================
 
     /**
-     * Check all registered conditions and return an emergency task if triggered.
+     * Check all registered conditions and return emergency tasks if triggered.
+     * Handles multiple simultaneous emergencies by prioritizing by severity.
      * 
      * @param ctx task context
-     * @return Optional containing emergency task, or empty if no emergency
+     * @return Optional containing composite emergency task, or empty if no emergency
      */
     public Optional<Task> checkEmergencies(TaskContext ctx) {
         if (suppressed) {
@@ -100,6 +101,7 @@ public class EmergencyHandler {
         }
         
         Instant now = Instant.now();
+        List<EmergencyResponse> triggeredEmergencies = new ArrayList<>();
         
         for (EmergencyCondition condition : conditions) {
             // Skip if on cooldown
@@ -118,14 +120,12 @@ public class EmergencyHandler {
                 if (condition.isTriggered(ctx)) {
                     log.warn("Emergency triggered: {}", condition.getDescription());
                     
-                    // Set cooldown
-                    cooldowns.put(conditionId, now.plusMillis(condition.getCooldownMs()));
-                    activeEmergencyId = conditionId;
-                    
                     // Create response task
                     Task responseTask = condition.createResponseTask(ctx);
                     if (responseTask != null) {
-                        return Optional.of(responseTask);
+                        triggeredEmergencies.add(new EmergencyResponse(
+                            condition, responseTask, conditionId, condition.getSeverity()
+                        ));
                     }
                 }
             } catch (Exception e) {
@@ -134,7 +134,52 @@ public class EmergencyHandler {
             }
         }
         
-        return Optional.empty();
+        if (triggeredEmergencies.isEmpty()) {
+            return Optional.empty();
+        }
+        
+        // Sort by severity (highest first)
+        triggeredEmergencies.sort((a, b) -> Integer.compare(b.severity, a.severity));
+        
+        // Set cooldowns and active emergency for all triggered
+        for (EmergencyResponse emergency : triggeredEmergencies) {
+            cooldowns.put(emergency.id, now.plusMillis(emergency.condition.getCooldownMs()));
+        }
+        
+        // Set the highest severity as active
+        activeEmergencyId = triggeredEmergencies.get(0).id;
+        
+        // If only one emergency, return it directly
+        if (triggeredEmergencies.size() == 1) {
+            return Optional.of(triggeredEmergencies.get(0).task);
+        }
+        
+        // Multiple emergencies - create parallel composite
+        log.warn("Multiple emergencies triggered ({}), executing in parallel", triggeredEmergencies.size());
+        List<Task> emergencyTasks = triggeredEmergencies.stream()
+            .map(e -> e.task)
+            .collect(java.util.stream.Collectors.toList());
+        
+        return Optional.of(com.rocinante.tasks.CompositeTask.parallel(emergencyTasks.toArray(new Task[0]))
+            .withDescription("Multiple Emergencies")
+            .withFailurePolicy(com.rocinante.tasks.FailurePolicy.FAIL_SILENT));
+    }
+    
+    /**
+     * Helper class to hold emergency response data for priority sorting.
+     */
+    private static class EmergencyResponse {
+        final EmergencyCondition condition;
+        final Task task;
+        final String id;
+        final int severity;
+        
+        EmergencyResponse(EmergencyCondition condition, Task task, String id, int severity) {
+            this.condition = condition;
+            this.task = task;
+            this.id = id;
+            this.severity = severity;
+        }
     }
 
     /**

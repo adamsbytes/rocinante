@@ -74,6 +74,17 @@ RUN apt-get update && apt-get install -y \
     unzip \
     # Process management
     procps \
+    # System utilities (standard on desktops, missing in minimal containers)
+    lsb-release \
+    pciutils \
+    usbutils \
+    lshw \
+    net-tools \
+    iproute2 \
+    mesa-utils \
+    # Themes and icons (makes Java/AWT look more native)
+    gnome-themes-extra \
+    adwaita-icon-theme \
     # Locale and timezone (anti-fingerprint: consistent locale data)
     locales \
     tzdata \

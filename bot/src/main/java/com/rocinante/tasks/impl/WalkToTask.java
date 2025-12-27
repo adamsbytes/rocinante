@@ -160,12 +160,17 @@ public class WalkToTask extends AbstractTask {
     private String description;
 
     // ========================================================================
-    // Navigation Services (injected via context)
+    // Navigation Services (retrieved from context)
     // ========================================================================
 
     private PathFinder pathFinder;
     private WebWalker webWalker;
     private ObstacleHandler obstacleHandler;
+    
+    /**
+     * Whether navigation services have been initialized.
+     */
+    private boolean servicesInitialized = false;
 
     // ========================================================================
     // Execution State
@@ -333,7 +338,7 @@ public class WalkToTask extends AbstractTask {
     @Override
     protected void executeImpl(TaskContext ctx) {
         // Initialize navigation services on first execution
-        if (pathFinder == null) {
+        if (!servicesInitialized) {
             initializeServices(ctx);
         }
 
@@ -355,6 +360,9 @@ public class WalkToTask extends AbstractTask {
                 break;
             case BACKTRACKING:
                 executeBacktracking(ctx);
+                break;
+            case BACKTRACK_WAIT:
+                executeBacktrackWait(ctx);
                 break;
             case ARRIVED:
                 complete();
@@ -546,6 +554,15 @@ public class WalkToTask extends AbstractTask {
 
         PlayerState player = ctx.getPlayerState();
         WorldPoint playerPos = player.getWorldPosition();
+
+        // Detect teleport (position changed drastically without movement)
+        if (lastPosition != null && !player.isMoving() && playerPos != null &&
+                playerPos.distanceTo(lastPosition) > 20) {
+            log.debug("Detected teleport from {} to {}, recalculating path", lastPosition, playerPos);
+            phase = WalkPhase.CALCULATE_PATH;
+            ticksSinceMove = 0;
+            return;
+        }
 
         // Check if arrived at final destination
         if (playerPos != null && destination != null &&
@@ -765,33 +782,26 @@ public class WalkToTask extends AbstractTask {
             destination.getPlane()
         );
         
-        log.debug("Backtracking: walking {} tiles past destination to {}", backtrackDistance, overshootDest);
-        
-        // Update destination to overshoot point
-        destination = overshootDest;
-        isBacktrackWalk = false; // This overshoot walk isn't a backtrack
-        
-        // Mark that we'll need to walk back
-        // We'll detect arrival at overshoot and then walk back
-        phase = WalkPhase.CALCULATE_PATH;
-        
-        // After arriving at overshoot, we need to schedule the return walk
-        // This is handled by the normal arrival check - but we need to track state
-        // After this walk completes, destination will be the overshoot, 
-        // and we need to walk back to originalDestination
-        
-        // Actually, let's handle this differently - complete this phase and 
-        // let the parent task handle the return journey if needed
-        // For simplicity, just log and complete - the human-like pause already happened
-        // by checking for backtracking
+        log.debug("Backtracking: pausing briefly to simulate hesitation");
         
         // Simpler approach: just pause briefly and continue to ARRIVED
-        // The "walking past" effect is simulated by the pause
+        // This simulates the "walking past and realizing" without actual overshoot movement
         ctx.getHumanTimer().sleep(ctx.getRandomization().uniformRandomLong(500, 1500))
             .thenRun(() -> {
                 log.debug("Backtrack pause complete");
                 phase = WalkPhase.ARRIVED;
             });
+        
+        // Transition to wait phase to avoid executing other logic while waiting
+        phase = WalkPhase.BACKTRACK_WAIT;
+    }
+    
+    /**
+     * Wait for backtrack pause to complete.
+     */
+    private void executeBacktrackWait(TaskContext ctx) {
+        // Just wait for the async sleep to complete and set phase to ARRIVED
+        // No action needed here - phase will be updated by the sleep callback
     }
 
     // ========================================================================
@@ -1001,24 +1011,41 @@ public class WalkToTask extends AbstractTask {
     // ========================================================================
 
     private void initializeServices(TaskContext ctx) {
-        Client client = ctx.getClient();
+        // Get services from context (singleton instances)
+        pathFinder = ctx.getPathFinder();
+        webWalker = ctx.getWebWalker();
+        obstacleHandler = ctx.getObstacleHandler();
 
-        // Create PathFinder
-        pathFinder = new PathFinder(client);
+        // If not available in context, create fallback instances
+        if (pathFinder == null) {
+            log.warn("PathFinder not available in TaskContext, creating instance");
+            pathFinder = new PathFinder(ctx.getClient());
+        }
 
-        // Create WebWalker with UnlockTracker from context for edge requirement checking
-        // UnlockTracker enables proper checking of:
-        // - Magic level requirements for teleport edges
-        // - Quest completion requirements for shortcuts/areas
-        // - Agility level requirements for obstacles
-        // - Item requirements (runes, etc.)
-        webWalker = new WebWalker(client, ctx.getUnlockTracker());
+        if (webWalker == null) {
+            log.warn("WebWalker not available in TaskContext, creating instance");
+            webWalker = new WebWalker(ctx.getClient(), ctx.getUnlockTracker());
+        }
 
-        // Create ObstacleHandler
-        obstacleHandler = new ObstacleHandler(client);
+        if (obstacleHandler == null) {
+            log.warn("ObstacleHandler not available in TaskContext, creating instance");
+            obstacleHandler = new ObstacleHandler(ctx.getClient());
+        }
 
-        log.debug("Navigation services initialized (UnlockTracker: {})", 
-                ctx.getUnlockTracker() != null ? "available" : "not available");
+        // Set ironman state on WebWalker if available
+        if (webWalker != null && ctx.getIronmanState() != null) {
+            webWalker.setIronman(ctx.getIronmanState().isIronman());
+            webWalker.setHardcoreIronman(ctx.getIronmanState().isHardcore());
+            log.debug("WebWalker configured for ironman mode: {}, hardcore: {}",
+                    ctx.getIronmanState().isIronman(), ctx.getIronmanState().isHardcore());
+        }
+
+        servicesInitialized = true;
+        log.debug("Navigation services initialized (UnlockTracker: {}, PathFinder: {}, WebWalker: {}, ObstacleHandler: {})",
+                ctx.getUnlockTracker() != null ? "available" : "not available",
+                pathFinder != null ? "available" : "not available",
+                webWalker != null ? "available" : "not available",
+                obstacleHandler != null ? "available" : "not available");
     }
 
     // ========================================================================
@@ -1061,6 +1088,7 @@ public class WalkToTask extends AbstractTask {
         WALKING,
         HANDLE_OBSTACLE,
         BACKTRACKING,
+        BACKTRACK_WAIT,
         ARRIVED
     }
 }

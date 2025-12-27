@@ -4,6 +4,9 @@ import com.rocinante.behavior.AttentionModel;
 import com.rocinante.behavior.BreakScheduler;
 import com.rocinante.behavior.FatigueModel;
 import com.rocinante.behavior.PlayerProfile;
+import com.rocinante.combat.WeaponDataService;
+import com.rocinante.data.NpcCombatDataLoader;
+import com.rocinante.data.ProjectileDataLoader;
 import com.rocinante.state.*;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -36,6 +39,7 @@ import net.runelite.api.events.ItemDespawned;
 import net.runelite.api.events.NpcSpawned;
 import net.runelite.api.events.NpcDespawned;
 import net.runelite.api.events.ProjectileMoved;
+import net.runelite.api.events.AnimationChanged;
 import net.runelite.api.events.StatChanged;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.game.ItemManager;
@@ -108,6 +112,19 @@ public class GameStateService {
     private final AttentionModel attentionModel;
 
     // ========================================================================
+    // Data Services
+    // ========================================================================
+
+    @Nullable
+    private final WeaponDataService weaponDataService;
+
+    @Nullable
+    private final NpcCombatDataLoader npcCombatDataLoader;
+
+    @Nullable
+    private final ProjectileDataLoader projectileDataLoader;
+
+    // ========================================================================
     // Cached State Snapshots
     // ========================================================================
 
@@ -176,7 +193,10 @@ public class GameStateService {
                            @Nullable PlayerProfile playerProfile,
                            @Nullable FatigueModel fatigueModel,
                            @Nullable BreakScheduler breakScheduler,
-                           @Nullable AttentionModel attentionModel) {
+                           @Nullable AttentionModel attentionModel,
+                           @Nullable WeaponDataService weaponDataService,
+                           @Nullable NpcCombatDataLoader npcCombatDataLoader,
+                           @Nullable ProjectileDataLoader projectileDataLoader) {
         this.client = client;
         this.itemManager = itemManager;
         this.bankStateManager = bankStateManager;
@@ -185,6 +205,9 @@ public class GameStateService {
         this.fatigueModel = fatigueModel;
         this.breakScheduler = breakScheduler;
         this.attentionModel = attentionModel;
+        this.weaponDataService = weaponDataService;
+        this.npcCombatDataLoader = npcCombatDataLoader;
+        this.projectileDataLoader = projectileDataLoader;
 
         // Initialize caches with appropriate policies
         this.playerStateCache = new CachedValue<>("PlayerState", CachePolicy.TICK_CACHED);
@@ -376,7 +399,9 @@ public class GameStateService {
             log.trace("Inventory marked dirty");
         } else if (containerId == InventoryID.EQUIPMENT.getId()) {
             equipmentDirty = true;
-            log.trace("Equipment marked dirty");
+            // Invalidate combat state cache too - weapon speed/style may have changed
+            combatStateCache.invalidate();
+            log.trace("Equipment marked dirty, combat state invalidated");
         }
     }
 
@@ -387,6 +412,29 @@ public class GameStateService {
     @Subscribe
     public void onStatChanged(StatChanged event) {
         statsDirty = true;
+    }
+
+    /**
+     * Handle animation changes to detect player attacks.
+     * Per REQUIREMENTS.md Section 10.6.5, we need to record player attack timing.
+     */
+    @Subscribe
+    public void onAnimationChanged(AnimationChanged event) {
+        if (event.getActor() != client.getLocalPlayer()) {
+            return;
+        }
+        
+        int animationId = event.getActor().getAnimation();
+        if (animationId == -1) {
+            return; // Animation ended, not started
+        }
+        
+        // Check if this is an attack animation using WeaponDataService
+        int weaponId = getEquippedWeaponId();
+        if (weaponDataService != null && weaponDataService.isPlayerAttackAnimation(weaponId, animationId)) {
+            recordPlayerAttack();
+            log.trace("Player attack recorded, animation {}", animationId);
+        }
     }
 
     /**
@@ -794,10 +842,14 @@ public class GameStateService {
         // Special attack energy
         int specEnergy = client.getVarpValue(VARP_SPECIAL_ATTACK) / 10;
 
-        // Attack style and weapon speed (from equipped weapon)
-        AttackStyle attackStyle = AttackStyle.MELEE; // Default
-        int weaponSpeed = 4; // Default 4-tick weapon
-        // Note: Actual weapon speed should come from WikiDataService per REQUIREMENTS.md 10.6.1
+        // Attack style and weapon speed (from equipped weapon via WeaponDataService)
+        int weaponId = getEquippedWeaponId();
+        AttackStyle attackStyle = AttackStyle.MELEE;
+        int weaponSpeed = 4;
+        if (weaponDataService != null) {
+            attackStyle = weaponDataService.getAttackStyle(weaponId);
+            weaponSpeed = weaponDataService.getWeaponSpeed(weaponId);
+        }
 
         // Boosted combat stats
         Map<Skill, Integer> boostedStats = new EnumMap<>(Skill.class);
@@ -824,8 +876,11 @@ public class GameStateService {
         int ticksUntilLands = -1;
         Optional<ProjectileSnapshot> incomingProjectile = findIncomingProjectile(localPlayer);
         if (incomingProjectile.isPresent()) {
-            // Would need projectile ID -> attack style mapping
-            incomingStyle = AttackStyle.UNKNOWN; // Need projectile data to determine
+            int projectileId = incomingProjectile.get().getId();
+            // Use ProjectileDataLoader to determine attack style
+            if (projectileDataLoader != null) {
+                incomingStyle = projectileDataLoader.getAttackStyle(projectileId);
+            }
             ticksUntilLands = incomingProjectile.get().getTicksUntilImpact(client.getGameCycle());
         }
 
@@ -849,6 +904,23 @@ public class GameStateService {
                 .ticksSinceLastAttack(ticksSinceAttack)
                 .canAttack(canAttack)
                 .build();
+    }
+
+    /**
+     * Get the currently equipped weapon ID.
+     * @return weapon item ID, or -1 if unarmed
+     */
+    private int getEquippedWeaponId() {
+        ItemContainer equipment = client.getItemContainer(InventoryID.EQUIPMENT);
+        if (equipment == null) {
+            return -1;
+        }
+        Item[] items = equipment.getItems();
+        // Weapon slot is index 3
+        if (items.length > 3 && items[3] != null) {
+            return items[3].getId();
+        }
+        return -1;
     }
 
     /**
@@ -896,36 +968,54 @@ public class GameStateService {
 
             // This NPC is targeting the player
             int npcIndex = npc.getIndex();
+            int npcId = npc.getId();
             Integer lastAttackTick = npcLastAttackTicks.get(npcIndex);
             int ticksUntilNext = -1;
 
-            // Estimate attack timing (rough - would need NPC attack speed data)
-            if (lastAttackTick != null) {
-                int ticksSince = currentTick - lastAttackTick;
-                int estimatedAttackSpeed = 4; // Default assumption
-                ticksUntilNext = Math.max(0, estimatedAttackSpeed - ticksSince);
+            // Get NPC attack data from data loader
+            int npcAttackSpeed = 4; // Default
+            AttackStyle npcAttackStyle = AttackStyle.MELEE; // Default
+            int npcMaxHit = AggressorInfo.estimateMaxHit(npc.getCombatLevel());
+            
+            if (npcCombatDataLoader != null) {
+                npcAttackSpeed = npcCombatDataLoader.getAttackSpeed(npcId);
+                npcAttackStyle = npcCombatDataLoader.getAttackStyle(npcId);
+                var npcData = npcCombatDataLoader.getNpcData(npcId);
+                if (npcData != null && npcData.maxHit() > 0) {
+                    npcMaxHit = npcData.maxHit();
+                }
             }
 
-            // Estimate max hit based on combat level
-            int estimatedMaxHit = AggressorInfo.estimateMaxHit(npc.getCombatLevel());
+            // Estimate attack timing using NPC data
+            if (lastAttackTick != null) {
+                int ticksSince = currentTick - lastAttackTick;
+                ticksUntilNext = Math.max(0, npcAttackSpeed - ticksSince);
+            }
 
-            // Detect if currently animating an attack
-            boolean isAttacking = npc.getAnimation() != -1;
+            // Detect if currently animating an attack (use data loader if available)
+            int animationId = npc.getAnimation();
+            boolean isAttacking = false;
+            if (npcCombatDataLoader != null && npcCombatDataLoader.isAttackAnimation(npcId, animationId)) {
+                isAttacking = true;
+            } else if (animationId > 0) {
+                // Fallback: assume any positive animation could be an attack
+                isAttacking = true;
+            }
 
-            // Update last attack tick if animating
+            // Update last attack tick if attacking
             if (isAttacking && (lastAttackTick == null || currentTick - lastAttackTick > 2)) {
                 npcLastAttackTicks.put(npcIndex, currentTick);
             }
 
             aggressors.add(AggressorInfo.builder()
                     .npcIndex(npcIndex)
-                    .npcId(npc.getId())
+                    .npcId(npcId)
                     .npcName(npc.getName())
                     .combatLevel(npc.getCombatLevel())
                     .ticksUntilNextAttack(ticksUntilNext)
-                    .expectedMaxHit(estimatedMaxHit)
-                    .attackStyle(-1) // Would need NPC data to determine
-                    .attackSpeed(-1) // Would need NPC data
+                    .expectedMaxHit(npcMaxHit)
+                    .attackStyle(npcAttackStyle.ordinal())
+                    .attackSpeed(npcAttackSpeed)
                     .lastAttackTick(lastAttackTick != null ? lastAttackTick : -1)
                     .isAttacking(isAttacking)
                     .build());

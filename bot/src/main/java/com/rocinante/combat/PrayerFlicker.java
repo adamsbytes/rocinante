@@ -225,7 +225,7 @@ public class PrayerFlicker {
         if (config.isDisableWhenLowPoints() && prayerPercent < config.getLowPointsThreshold()) {
             // Check if we have restores
             if (!hasPrayerRestore(inventoryState)) {
-                log.warn("Prayer points critically low ({:.0f}%) with no restore - disabling prayers",
+                log.warn("Prayer points critically low ({}%) with no restore - disabling prayers",
                         prayerPercent * 100);
                 return createDisablePrayersAction();
             }
@@ -235,7 +235,7 @@ public class PrayerFlicker {
         if (prayerPercent < config.getPrayerRestoreThreshold()) {
             int restoreSlot = getPrayerRestoreSlot(inventoryState);
             if (restoreSlot >= 0) {
-                log.debug("Prayer low ({:.0f}%), restoring", prayerPercent * 100);
+                log.debug("Prayer low ({}%), restoring", prayerPercent * 100);
                 return CombatAction.builder()
                         .type(CombatAction.Type.DRINK_POTION)
                         .primarySlot(restoreSlot)
@@ -494,11 +494,17 @@ public class PrayerFlicker {
         activeOffensivePrayer = requiredPrayer;
         log.debug("Activating offensive prayer: {}", requiredPrayer);
 
-        // For offensive prayers, we don't use PRAYER_SWITCH type
-        // This would need a different action type or extend the existing one
-        // For now, log and return null - the actual activation would be handled
-        // by clicking the prayer in the prayer tab
-        return null;
+        // Create a prayer switch action for the offensive prayer
+        // We use PRAYER_SWITCH with UNKNOWN style to indicate this is an offensive prayer activation
+        // CombatManager will need to check the action and handle offensive prayers specially
+        activeOffensivePrayer = requiredPrayer;
+        
+        return CombatAction.builder()
+                .type(CombatAction.Type.PRAYER_SWITCH)
+                .attackStyle(style) // Keep attack style for reference
+                .priority(CombatAction.Priority.NORMAL)
+                .primarySlot(requiredPrayer.ordinal()) // Store prayer ordinal in slot for lookup
+                .build();
     }
 
     // ========================================================================

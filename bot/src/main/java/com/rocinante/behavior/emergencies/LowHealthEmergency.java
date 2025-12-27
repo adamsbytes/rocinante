@@ -124,6 +124,11 @@ public class LowHealthEmergency implements EmergencyCondition {
         return 3000; // 3 second cooldown - need to react quickly
     }
 
+    @Override
+    public int getSeverity() {
+        return 90; // Very high severity - health is life-threatening
+    }
+
     /**
      * Factory interface for creating flee/eat tasks.
      */

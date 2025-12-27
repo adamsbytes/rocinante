@@ -104,7 +104,9 @@ public abstract class AbstractTask implements Task {
             case PENDING:
                 return to == TaskState.RUNNING || to == TaskState.FAILED;
             case RUNNING:
-                return to == TaskState.COMPLETED || to == TaskState.FAILED;
+                return to == TaskState.COMPLETED || to == TaskState.FAILED || to == TaskState.PAUSED;
+            case PAUSED:
+                return to == TaskState.RUNNING || to == TaskState.FAILED;
             case COMPLETED:
             case FAILED:
                 // Terminal states - no further transitions
@@ -161,6 +163,12 @@ public abstract class AbstractTask implements Task {
                 log.debug("Task '{}' preconditions not met, skipping execution", getDescription());
                 return;
             }
+            transitionTo(TaskState.RUNNING);
+        }
+
+        // Resume from PAUSED state
+        if (state == TaskState.PAUSED) {
+            log.debug("Task '{}' resuming from PAUSED state", getDescription());
             transitionTo(TaskState.RUNNING);
         }
 

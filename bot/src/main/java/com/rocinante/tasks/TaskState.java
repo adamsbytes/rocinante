@@ -3,7 +3,7 @@ package com.rocinante.tasks;
 /**
  * Represents the execution state of a task.
  * Tasks transition through states as they execute:
- * PENDING -> RUNNING -> COMPLETED or FAILED
+ * PENDING -> RUNNING -> PAUSED (for behavioral interrupts) -> RUNNING -> COMPLETED or FAILED
  *
  * Per REQUIREMENTS.md Section 5.1
  */
@@ -20,6 +20,12 @@ public enum TaskState {
      * Only one task can be in RUNNING state at a time (per executor).
      */
     RUNNING,
+
+    /**
+     * Task is paused for behavioral interruption (break, ritual, etc.).
+     * Will be resumed after the behavioral task completes.
+     */
+    PAUSED,
 
     /**
      * Task has completed successfully.
@@ -48,7 +54,7 @@ public enum TaskState {
      * @return true if the task can continue executing
      */
     public boolean canContinue() {
-        return this == PENDING || this == RUNNING;
+        return this == PENDING || this == RUNNING || this == PAUSED;
     }
 }
 
