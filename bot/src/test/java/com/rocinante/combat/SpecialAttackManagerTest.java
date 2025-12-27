@@ -1,9 +1,13 @@
 package com.rocinante.combat;
 
 import com.rocinante.core.GameStateService;
+import com.rocinante.data.WikiDataService;
+import com.rocinante.data.model.WeaponInfo;
 import com.rocinante.state.*;
 import net.runelite.api.Client;
+import net.runelite.api.ItemComposition;
 import net.runelite.api.ItemID;
+import net.runelite.client.game.ItemManager;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -12,6 +16,7 @@ import org.mockito.junit.MockitoJUnitRunner;
 
 import java.util.Collections;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
@@ -32,6 +37,12 @@ public class SpecialAttackManagerTest {
     private GearSwitcher gearSwitcher;
 
     @Mock
+    private WikiDataService wikiDataService;
+
+    @Mock
+    private ItemManager itemManager;
+
+    @Mock
     private CombatState combatState;
 
     @Mock
@@ -40,16 +51,29 @@ public class SpecialAttackManagerTest {
     @Mock
     private InventoryState inventoryState;
 
+    @Mock
+    private ItemComposition itemComposition;
+
     private SpecialAttackManager specManager;
 
     @Before
     public void setUp() {
-        specManager = new SpecialAttackManager(client, gameStateService, gearSwitcher);
+        specManager = new SpecialAttackManager(client, gameStateService, gearSwitcher, wikiDataService, itemManager);
         specManager.setConfig(SpecialAttackConfig.DEFAULT);
 
         when(gameStateService.getCombatState()).thenReturn(combatState);
         when(gameStateService.getEquipmentState()).thenReturn(equipmentState);
         when(gameStateService.getInventoryState()).thenReturn(inventoryState);
+
+        // Default mock for item composition
+        when(itemManager.getItemComposition(anyInt())).thenReturn(itemComposition);
+        when(itemComposition.getName()).thenReturn("Test Item");
+
+        // Default mock for wiki service
+        when(wikiDataService.getWeaponInfo(anyInt(), anyString()))
+                .thenReturn(CompletableFuture.completedFuture(WeaponInfo.EMPTY));
+        when(wikiDataService.getWeaponInfoSync(anyInt(), anyString()))
+                .thenReturn(WeaponInfo.EMPTY);
     }
 
     // ========================================================================
@@ -414,6 +438,93 @@ public class SpecialAttackManagerTest {
 
         assertEquals(51, specManager.getLastSpecTick());
         assertEquals(2, specManager.getSpecsUsedInSequence());
+    }
+
+    // ========================================================================
+    // WikiDataService Integration Tests
+    // ========================================================================
+
+    @Test
+    public void testGetWeaponAttackSpeed_DefaultValue() {
+        // When no wiki data available, should return default (4)
+        assertEquals(WeaponInfo.SPEED_AVERAGE, specManager.getWeaponAttackSpeed(ItemID.BRONZE_SWORD));
+    }
+
+    @Test
+    public void testGetWeaponAttackSpeed_FromWiki() {
+        // Mock wiki service to return weapon info
+        WeaponInfo whipInfo = WeaponInfo.builder()
+                .itemId(ItemID.ABYSSAL_WHIP)
+                .itemName("Abyssal whip")
+                .attackSpeed(4)
+                .hasSpecialAttack(true)
+                .specialAttackCost(50)
+                .build();
+        when(wikiDataService.getWeaponInfoSync(eq(ItemID.ABYSSAL_WHIP), anyString()))
+                .thenReturn(whipInfo);
+
+        int speed = specManager.getWeaponAttackSpeed(ItemID.ABYSSAL_WHIP);
+
+        assertEquals(4, speed);
+    }
+
+    @Test
+    public void testGetWeaponInfo_CachesResult() {
+        WeaponInfo ddsInfo = WeaponInfo.builder()
+                .itemId(ItemID.DRAGON_DAGGER)
+                .itemName("Dragon dagger")
+                .attackSpeed(4)
+                .hasSpecialAttack(true)
+                .specialAttackCost(25)
+                .build();
+        when(wikiDataService.getWeaponInfoSync(eq(ItemID.DRAGON_DAGGER), anyString()))
+                .thenReturn(ddsInfo);
+
+        // First call should query wiki
+        WeaponInfo first = specManager.getWeaponInfo(ItemID.DRAGON_DAGGER);
+        // Second call should use cache
+        WeaponInfo second = specManager.getWeaponInfo(ItemID.DRAGON_DAGGER);
+
+        assertEquals(ddsInfo.itemId(), first.itemId());
+        assertEquals(ddsInfo.itemId(), second.itemId());
+        // Should only call wiki service once
+        verify(wikiDataService, times(1)).getWeaponInfoSync(eq(ItemID.DRAGON_DAGGER), anyString());
+    }
+
+    @Test
+    public void testClearWeaponInfoCache() {
+        WeaponInfo ddsInfo = WeaponInfo.builder()
+                .itemId(ItemID.DRAGON_DAGGER)
+                .itemName("Dragon dagger")
+                .attackSpeed(4)
+                .hasSpecialAttack(true)
+                .specialAttackCost(25)
+                .build();
+        when(wikiDataService.getWeaponInfoSync(eq(ItemID.DRAGON_DAGGER), anyString()))
+                .thenReturn(ddsInfo);
+
+        // Populate cache
+        specManager.getWeaponInfo(ItemID.DRAGON_DAGGER);
+
+        // Clear cache
+        specManager.clearWeaponInfoCache();
+
+        // Should query wiki again
+        specManager.getWeaponInfo(ItemID.DRAGON_DAGGER);
+
+        verify(wikiDataService, times(2)).getWeaponInfoSync(eq(ItemID.DRAGON_DAGGER), anyString());
+    }
+
+    @Test
+    public void testPrefetchWeaponInfo() {
+        when(wikiDataService.getWeaponInfo(anyInt(), anyString()))
+                .thenReturn(CompletableFuture.completedFuture(WeaponInfo.EMPTY));
+
+        specManager.prefetchWeaponInfo(ItemID.DRAGON_DAGGER, ItemID.ABYSSAL_WHIP);
+
+        // Should trigger async fetch for both items
+        verify(wikiDataService, times(1)).getWeaponInfo(eq(ItemID.DRAGON_DAGGER), anyString());
+        verify(wikiDataService, times(1)).getWeaponInfo(eq(ItemID.ABYSSAL_WHIP), anyString());
     }
 }
 

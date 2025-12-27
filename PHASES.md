@@ -64,9 +64,9 @@
 - [X] `VarbitCondition`, `ZoneCondition` - Quest requirement conditions
 - [X] `TutorialIsland` - Completed as custom quest implementation
 - [X] `BankState` - Player's bank state for quest items/planning/etc
-- [ ] `WikiDataService` - OSRS Wiki API client
-- [ ] `WikiCacheManager` - Response caching
-- [ ] Drop table, item source, shop inventory parsing
+- [X] `WikiDataService` - OSRS Wiki API client
+- [X] `WikiCacheManager` - Response caching
+- [X] Drop table, item source, shop inventory parsing
 
 **Test**: Select a simple quest in Quest Helper, bot executes first 5 steps automatically.
 
@@ -112,6 +112,7 @@
 
 - [ ] `AccountGoalPlanner` - Goal types and dependencies
 - [ ] `SkillPlanner` - Training method selection
+- [ ] `ItemAcquisitonPlanner` - Complex methods to obtain items, such as recognizing "I need iron bars, I don't have those, but I have iron ore and 15 smithing"
 - [ ] `QuestOrderPlanner` - Optimal quest ordering
 - [ ] `GearProgressionPlanner` - Equipment upgrade paths
 - [X] `UnlockTracker` - Teleports, areas, features (integrated with WebWalker)
@@ -145,7 +146,7 @@
 **Real-time Status Display:**
 - [ ] Current task with collapsible detail
 - [ ] Session stats (runtime, breaks, XP gained)
-- [ ] Account stats (levels, quest points)
+- [ ] Account stats (levels, quest points) formatted in "runescape style"
 
 **Communication Layer:**
 - [ ] File-based command dispatch (goals/tasks → bot)

@@ -1,17 +1,22 @@
 package com.rocinante.combat;
 
 import com.rocinante.core.GameStateService;
+import com.rocinante.data.WikiDataService;
+import com.rocinante.data.model.WeaponInfo;
 import com.rocinante.state.*;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
+import net.runelite.client.game.ItemManager;
 
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Manages special attack usage during combat.
@@ -41,7 +46,15 @@ public class SpecialAttackManager {
     private final Client client;
     private final GameStateService gameStateService;
     private final GearSwitcher gearSwitcher;
+    private final WikiDataService wikiDataService;
+    private final ItemManager itemManager;
     private final Random random = new Random();
+
+    /**
+     * Cache for weapon info from WikiDataService.
+     * Maps item ID to WeaponInfo.
+     */
+    private final Map<Integer, WeaponInfo> weaponInfoCache = new ConcurrentHashMap<>();
 
     // ========================================================================
     // Configuration
@@ -98,11 +111,18 @@ public class SpecialAttackManager {
     // ========================================================================
 
     @Inject
-    public SpecialAttackManager(Client client, GameStateService gameStateService, GearSwitcher gearSwitcher) {
+    public SpecialAttackManager(
+            Client client,
+            GameStateService gameStateService,
+            GearSwitcher gearSwitcher,
+            WikiDataService wikiDataService,
+            ItemManager itemManager) {
         this.client = client;
         this.gameStateService = gameStateService;
         this.gearSwitcher = gearSwitcher;
-        log.info("SpecialAttackManager initialized");
+        this.wikiDataService = wikiDataService;
+        this.itemManager = itemManager;
+        log.info("SpecialAttackManager initialized with WikiDataService");
     }
 
     // ========================================================================
@@ -436,32 +456,187 @@ public class SpecialAttackManager {
     }
 
     // ========================================================================
-    // Weapon Info (WikiDataService TODO)
+    // Weapon Info (WikiDataService Integration)
     // ========================================================================
 
     /**
      * Get the spec energy cost for an item.
-     * TODO: Query WikiDataService for dynamic data.
+     * Queries WikiDataService with fallback to hardcoded SpecialWeapon enum.
      *
      * @param itemId the item ID
      * @return energy cost, or -1 if not a spec weapon
      */
     public int getSpecEnergyCost(int itemId) {
-        // TODO: Query WikiDataService for spec cost
-        // For now, use hardcoded SpecialWeapon enum
-        return SpecialWeapon.getEnergyCost(itemId);
+        // Check local cache first
+        WeaponInfo cached = weaponInfoCache.get(itemId);
+        if (cached != null && cached.canSpecial()) {
+            return cached.specialAttackCost();
+        }
+
+        // Try hardcoded fallback (fast path)
+        int fallbackCost = SpecialWeapon.getEnergyCost(itemId);
+        if (fallbackCost > 0) {
+            return fallbackCost;
+        }
+
+        // Query WikiDataService asynchronously and cache result
+        // For this call, return fallback while fetching in background
+        String itemName = getItemName(itemId);
+        if (itemName != null && !itemName.isEmpty()) {
+            wikiDataService.getWeaponInfo(itemId, itemName)
+                    .thenAccept(info -> {
+                        if (info != null && info.isValid()) {
+                            weaponInfoCache.put(itemId, info);
+                            log.debug("Cached weapon info from wiki for {}: spec cost = {}",
+                                    itemName, info.specialAttackCost());
+                        }
+                    });
+        }
+
+        return fallbackCost;
     }
 
     /**
      * Check if an item has a special attack.
-     * TODO: Query WikiDataService for dynamic data.
+     * Queries WikiDataService with fallback to hardcoded SpecialWeapon enum.
      *
      * @param itemId the item ID
      * @return true if item has spec
      */
     public boolean hasSpecialAttack(int itemId) {
-        // TODO: Query WikiDataService
-        return SpecialWeapon.hasSpecialAttack(itemId);
+        // Check local cache first
+        WeaponInfo cached = weaponInfoCache.get(itemId);
+        if (cached != null) {
+            return cached.hasSpecialAttack();
+        }
+
+        // Try hardcoded fallback (fast path)
+        if (SpecialWeapon.hasSpecialAttack(itemId)) {
+            return true;
+        }
+
+        // Query WikiDataService asynchronously and cache result
+        String itemName = getItemName(itemId);
+        if (itemName != null && !itemName.isEmpty()) {
+            wikiDataService.getWeaponInfo(itemId, itemName)
+                    .thenAccept(info -> {
+                        if (info != null && info.isValid()) {
+                            weaponInfoCache.put(itemId, info);
+                            log.debug("Cached weapon info from wiki for {}: has spec = {}",
+                                    itemName, info.hasSpecialAttack());
+                        }
+                    });
+        }
+
+        return false;
+    }
+
+    /**
+     * Get weapon attack speed in game ticks.
+     * Per REQUIREMENTS.md Section 10.6.1, weapon speeds should be queried dynamically.
+     *
+     * @param itemId the item ID
+     * @return attack speed in ticks, or 4 (default) if unknown
+     */
+    public int getWeaponAttackSpeed(int itemId) {
+        // Check local cache first
+        WeaponInfo cached = weaponInfoCache.get(itemId);
+        if (cached != null && cached.hasKnownAttackSpeed()) {
+            return cached.attackSpeed();
+        }
+
+        // Query WikiDataService synchronously for combat-critical data
+        String itemName = getItemName(itemId);
+        if (itemName != null && !itemName.isEmpty()) {
+            WeaponInfo info = wikiDataService.getWeaponInfoSync(itemId, itemName);
+            if (info != null && info.isValid()) {
+                weaponInfoCache.put(itemId, info);
+                if (info.hasKnownAttackSpeed()) {
+                    return info.attackSpeed();
+                }
+            }
+        }
+
+        // Default attack speed (4 ticks = average weapon)
+        return WeaponInfo.SPEED_AVERAGE;
+    }
+
+    /**
+     * Get detailed weapon information.
+     *
+     * @param itemId the item ID
+     * @return weapon info (may be empty if not found)
+     */
+    public WeaponInfo getWeaponInfo(int itemId) {
+        // Check local cache first
+        WeaponInfo cached = weaponInfoCache.get(itemId);
+        if (cached != null) {
+            return cached;
+        }
+
+        // Query WikiDataService
+        String itemName = getItemName(itemId);
+        if (itemName != null && !itemName.isEmpty()) {
+            WeaponInfo info = wikiDataService.getWeaponInfoSync(itemId, itemName);
+            if (info != null && info.isValid()) {
+                weaponInfoCache.put(itemId, info);
+                return info;
+            }
+        }
+
+        return WeaponInfo.EMPTY;
+    }
+
+    /**
+     * Prefetch weapon info for items in inventory/equipment.
+     * Called during combat setup to warm the cache.
+     *
+     * @param itemIds list of item IDs to prefetch
+     */
+    public void prefetchWeaponInfo(int... itemIds) {
+        for (int itemId : itemIds) {
+            if (itemId <= 0 || weaponInfoCache.containsKey(itemId)) {
+                continue;
+            }
+            String itemName = getItemName(itemId);
+            if (itemName != null && !itemName.isEmpty()) {
+                wikiDataService.getWeaponInfo(itemId, itemName)
+                        .thenAccept(info -> {
+                            if (info != null && info.isValid()) {
+                                weaponInfoCache.put(itemId, info);
+                            }
+                        });
+            }
+        }
+    }
+
+    /**
+     * Get item name from ItemManager.
+     *
+     * @param itemId the item ID
+     * @return item name, or null if not found
+     */
+    @Nullable
+    private String getItemName(int itemId) {
+        if (itemId <= 0) {
+            return null;
+        }
+        try {
+            var composition = itemManager.getItemComposition(itemId);
+            return composition != null ? composition.getName() : null;
+        } catch (Exception e) {
+            log.trace("Failed to get item name for ID {}: {}", itemId, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Clear the weapon info cache.
+     * Called on logout or when data may be stale.
+     */
+    public void clearWeaponInfoCache() {
+        weaponInfoCache.clear();
+        log.debug("Weapon info cache cleared");
     }
 
     // ========================================================================

@@ -16,8 +16,12 @@ import java.util.Map;
  *   <li>Each weapon has specific special attack effects</li>
  * </ul>
  *
- * Note: This is a fallback for when WikiDataService is not available.
- * TODO: Query WikiDataService for spec costs when service is implemented.
+ * <p>This enum provides hardcoded fallback data for special attack weapons.
+ * {@link com.rocinante.data.WikiDataService} queries the wiki for dynamic data
+ * and falls back to this enum when the wiki is unavailable or for fast lookups.
+ *
+ * @see com.rocinante.data.WikiDataService#getWeaponInfo(int, String)
+ * @see com.rocinante.combat.SpecialAttackManager#getSpecEnergyCost(int)
  */
 @Getter
 public enum SpecialWeapon {
