@@ -58,7 +58,7 @@
 ## Phase 4: Integrations (Quest Helper + Wiki + AI)
 **Goal**: Bot can read Quest Helper state and query external data.
 
-- [ ] `QuestHelperBridge` - Plugin detection, state extraction
+- [X] `QuestHelperBridge` - Plugin detection, state extraction
 - [X] Quest step → Task mapping (NpcStep, ObjectStep, etc.)
 - [X] `QuestState` - Varbit tracking, quest progress (`Quest`, `QuestProgress`, `QuestExecutor`)
 - [X] `VarbitCondition`, `ZoneCondition` - Quest requirement conditions
@@ -117,8 +117,8 @@
 - [ ] `GearProgressionPlanner` - Equipment upgrade paths
 - [X] `UnlockTracker` - Teleports, areas, features (integrated with WebWalker)
 - [ ] `TeleportTask` with behavioral profile preferences
-- [ ] `BankTask`, `InventoryTask`
-- [X] `DialogueTask`, `WidgetInteractTask`
+- [ ] `InventoryTask`
+- [X] `BankTask`, `DialogueTask`, `WidgetInteractTask`
 
 **Test**: Give goal "complete Recipe for Disaster" - bot generates valid plan and begins execution.
 

@@ -4,12 +4,14 @@ import com.rocinante.tasks.Task;
 import com.rocinante.tasks.TaskContext;
 import com.rocinante.tasks.impl.DialogueTask;
 import com.rocinante.tasks.impl.InteractNpcTask;
+import com.rocinante.tasks.impl.WalkToTask;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.experimental.Accessors;
 import net.runelite.api.coords.WorldPoint;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -71,6 +73,12 @@ public class NpcQuestStep extends QuestStep {
     private List<String> dialogueOptions = new ArrayList<>();
 
     /**
+     * Alternate NPC IDs that also satisfy this step.
+     * Quest Helper uses addAlternateNpcs() for this.
+     */
+    private List<Integer> alternateNpcIds = new ArrayList<>();
+
+    /**
      * Create an NPC quest step.
      *
      * @param npcId the NPC ID
@@ -100,8 +108,12 @@ public class NpcQuestStep extends QuestStep {
     public List<Task> toTasks(TaskContext ctx) {
         List<Task> tasks = new ArrayList<>();
 
-        // Optionally walk to location first
-        // Note: Walking task would be added here if walkToLocation is set
+        // If walkToLocation is set, prepend a WalkToTask
+        if (walkToLocation != null) {
+            WalkToTask walkTask = new WalkToTask(walkToLocation);
+            walkTask.setDescription("Walk to " + getText());
+            tasks.add(walkTask);
+        }
 
         // Create the NPC interaction task
         InteractNpcTask npcTask = new InteractNpcTask(npcId, menuAction)
@@ -111,6 +123,11 @@ public class NpcQuestStep extends QuestStep {
 
         if (npcName != null) {
             npcTask.withNpcName(npcName);
+        }
+
+        // Pass alternate NPC IDs if any
+        if (!alternateNpcIds.isEmpty()) {
+            npcTask.withAlternateIds(alternateNpcIds);
         }
 
         tasks.add(npcTask);
@@ -201,6 +218,29 @@ public class NpcQuestStep extends QuestStep {
         for (String opt : options) {
             this.dialogueOptions.add(opt);
         }
+        return this;
+    }
+
+    /**
+     * Add alternate NPC IDs that also satisfy this step (builder-style).
+     * Quest Helper uses this for NPCs that have multiple IDs based on state.
+     *
+     * @param ids the alternate NPC IDs
+     * @return this step for chaining
+     */
+    public NpcQuestStep withAlternateIds(Integer... ids) {
+        this.alternateNpcIds.addAll(Arrays.asList(ids));
+        return this;
+    }
+
+    /**
+     * Add alternate NPC IDs from a list (builder-style).
+     *
+     * @param ids the alternate NPC IDs
+     * @return this step for chaining
+     */
+    public NpcQuestStep withAlternateIds(List<Integer> ids) {
+        this.alternateNpcIds.addAll(ids);
         return this;
     }
 }

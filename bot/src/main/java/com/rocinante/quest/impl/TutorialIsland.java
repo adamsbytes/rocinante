@@ -199,8 +199,8 @@ public class TutorialIsland implements Quest {
                 .withMenuAction("Talk-to")
                 .withDialogueExpected(true));
 
-        // var 3: Open settings menu
-        steps.put(3, WidgetQuestStep.openSettings("Open the settings menu"));
+        // var 3: Open settings menu (Tutorial Island teaches clicking tabs, not hotkeys)
+        steps.put(3, WidgetQuestStep.openSettingsByClick("Open the settings menu"));
 
         // var 7: Talk to Gielinor Guide after opening settings
         steps.put(7, new NpcQuestStep(NPC_GIELINOR_GUIDE, "Talk to the Gielinor Guide again")
@@ -217,16 +217,16 @@ public class TutorialIsland implements Quest {
         steps.put(20, new NpcQuestStep(NPC_SURVIVAL_EXPERT, "Talk to the Survival Expert")
                 .withDialogueExpected(true));
 
-        // var 30: Open inventory
-        steps.put(30, WidgetQuestStep.openInventory("Open your inventory"));
+        // var 30: Open inventory (Tutorial Island teaches clicking tabs, not hotkeys)
+        steps.put(30, WidgetQuestStep.openInventoryByClick("Open your inventory"));
 
         // var 40: Fish at fishing spot
         steps.put(40, new NpcQuestStep(NPC_FISHING_SPOT, "Net fish at the fishing spot")
                 .withMenuAction("Net")
                 .withDialogueExpected(false));
 
-        // var 50: Open skills tab
-        steps.put(50, WidgetQuestStep.openSkills("Open the skills tab"));
+        // var 50: Open skills tab (Tutorial Island teaches clicking tabs, not hotkeys)
+        steps.put(50, WidgetQuestStep.openSkillsByClick("Open the skills tab"));
 
         // var 60: Talk to Survival Expert again
         steps.put(60, new NpcQuestStep(NPC_SURVIVAL_EXPERT, "Talk to the Survival Expert again")
@@ -275,8 +275,8 @@ public class TutorialIsland implements Quest {
         steps.put(220, new NpcQuestStep(NPC_QUEST_GUIDE, "Talk to the Quest Guide")
                 .withDialogueExpected(true));
 
-        // var 230: Open quest tab
-        steps.put(230, WidgetQuestStep.openQuests("Open the quest journal"));
+        // var 230: Open quest tab (Tutorial Island teaches clicking tabs, not hotkeys)
+        steps.put(230, WidgetQuestStep.openQuestsByClick("Open the quest journal"));
 
         // var 240: Talk to Quest Guide again
         steps.put(240, new NpcQuestStep(NPC_QUEST_GUIDE, "Talk to the Quest Guide again")
@@ -323,8 +323,8 @@ public class TutorialIsland implements Quest {
         steps.put(370, new NpcQuestStep(NPC_COMBAT_INSTRUCTOR, "Talk to the Combat Instructor")
                 .withDialogueExpected(true));
 
-        // var 390: Open equipment tab
-        steps.put(390, WidgetQuestStep.openEquipment("Open the equipment tab"));
+        // var 390: Open equipment tab (Tutorial Island teaches clicking tabs, not hotkeys)
+        steps.put(390, WidgetQuestStep.openEquipmentByClick("Open the equipment tab"));
 
         // var 400: Open equipment stats
         steps.put(400, new WidgetQuestStep(387, 17, "View equipment stats")
@@ -340,8 +340,8 @@ public class TutorialIsland implements Quest {
         // var 420: Equip sword and shield
         steps.put(420, createEquipSwordShieldStep());
 
-        // var 430: Open combat styles tab
-        steps.put(430, WidgetQuestStep.openCombatStyles("Open the combat styles tab"));
+        // var 430: Open combat styles tab (Tutorial Island teaches clicking tabs, not hotkeys)
+        steps.put(430, WidgetQuestStep.openCombatStylesByClick("Open the combat styles tab"));
 
         // var 440: Enter rat cage
         steps.put(440, new ObjectQuestStep(OBJECT_RAT_GATE, "Open", "Enter the rat cage"));
@@ -383,8 +383,8 @@ public class TutorialIsland implements Quest {
         steps.put(530, new NpcQuestStep(NPC_ACCOUNT_GUIDE, "Talk to the Account Guide")
                 .withDialogueExpected(true));
 
-        // var 531: Open account management tab
-        steps.put(531, WidgetQuestStep.openAccountManagement("Open the account management tab"));
+        // var 531: Open account management tab (Tutorial Island teaches clicking tabs, not hotkeys)
+        steps.put(531, WidgetQuestStep.openAccountManagementByClick("Open the account management tab"));
 
         // var 532: Talk to Account Guide again
         steps.put(532, new NpcQuestStep(NPC_ACCOUNT_GUIDE, "Talk to the Account Guide again")
@@ -401,15 +401,15 @@ public class TutorialIsland implements Quest {
         steps.put(550, new NpcQuestStep(NPC_BROTHER_BRACE, "Talk to Brother Brace")
                 .withDialogueExpected(true));
 
-        // var 560: Open prayer tab
-        steps.put(560, WidgetQuestStep.openPrayer("Open the prayer tab"));
+        // var 560: Open prayer tab (Tutorial Island teaches clicking tabs, not hotkeys)
+        steps.put(560, WidgetQuestStep.openPrayerByClick("Open the prayer tab"));
 
         // var 570: Talk to Brother Brace again
         steps.put(570, new NpcQuestStep(NPC_BROTHER_BRACE, "Talk to Brother Brace again")
                 .withDialogueExpected(true));
 
-        // var 580: Open friends list
-        steps.put(580, WidgetQuestStep.openFriendsList("Open your friends list"));
+        // var 580: Open friends list (Tutorial Island teaches clicking tabs, not hotkeys)
+        steps.put(580, WidgetQuestStep.openFriendsListByClick("Open your friends list"));
 
         // var 600: Talk to Brother Brace again
         steps.put(600, new NpcQuestStep(NPC_BROTHER_BRACE, "Talk to Brother Brace")
@@ -426,8 +426,8 @@ public class TutorialIsland implements Quest {
         steps.put(620, new NpcQuestStep(NPC_MAGIC_INSTRUCTOR, "Talk to the Magic Instructor")
                 .withDialogueExpected(true));
 
-        // var 630: Open spellbook
-        steps.put(630, WidgetQuestStep.openSpellbook("Open your spellbook"));
+        // var 630: Open spellbook (Tutorial Island teaches clicking tabs, not hotkeys)
+        steps.put(630, WidgetQuestStep.openSpellbookByClick("Open your spellbook"));
 
         // var 640: Talk to Magic Instructor again
         steps.put(640, new NpcQuestStep(NPC_MAGIC_INSTRUCTOR, "Talk to the Magic Instructor again")

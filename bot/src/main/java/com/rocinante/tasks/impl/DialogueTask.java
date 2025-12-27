@@ -13,7 +13,9 @@ import java.awt.event.KeyEvent;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.regex.Pattern;
 
 /**
  * Task for handling NPC dialogue windows.
@@ -135,6 +137,17 @@ public class DialogueTask extends AbstractTask {
      */
     private int sequenceIndex = 0;
 
+    /**
+     * List of option resolvers for dynamic/complex dialogue selection.
+     * Supports varbit-based, context-dependent, and pattern-matched options.
+     */
+    private List<DialogueOptionResolver> optionResolvers = new ArrayList<>();
+
+    /**
+     * Current index in resolver sequence.
+     */
+    private int resolverIndex = 0;
+
     // ========================================================================
     // Execution State
     // ========================================================================
@@ -222,6 +235,81 @@ public class DialogueTask extends AbstractTask {
         for (String opt : options) {
             this.optionSequence.add(opt);
         }
+        return this;
+    }
+
+    /**
+     * Add a dynamic option resolver (builder-style).
+     * Resolvers are evaluated in order when selecting dialogue options.
+     *
+     * @param resolver the option resolver
+     * @return this task for chaining
+     */
+    public DialogueTask withResolver(DialogueOptionResolver resolver) {
+        this.optionResolvers.add(resolver);
+        return this;
+    }
+
+    /**
+     * Add multiple option resolvers (builder-style).
+     *
+     * @param resolvers the resolvers in order
+     * @return this task for chaining
+     */
+    public DialogueTask withResolvers(DialogueOptionResolver... resolvers) {
+        for (DialogueOptionResolver r : resolvers) {
+            this.optionResolvers.add(r);
+        }
+        return this;
+    }
+
+    /**
+     * Add a varbit-dependent option (builder-style).
+     * Convenience method for common varbit-based dialogue selections.
+     *
+     * @param varbitId       the varbit ID to check
+     * @param valueToOption  map of varbit values to option text
+     * @return this task for chaining
+     */
+    public DialogueTask withVarbitOption(int varbitId, Map<Integer, String> valueToOption) {
+        this.optionResolvers.add(DialogueOptionResolver.varbitBased(varbitId, valueToOption));
+        return this;
+    }
+
+    /**
+     * Add a regex pattern-matched option (builder-style).
+     *
+     * @param pattern the regex pattern to match
+     * @return this task for chaining
+     */
+    public DialogueTask withPatternOption(String pattern) {
+        this.optionResolvers.add(DialogueOptionResolver.pattern(pattern));
+        return this;
+    }
+
+    /**
+     * Add a regex pattern-matched option (builder-style).
+     *
+     * @param pattern the compiled regex pattern
+     * @return this task for chaining
+     */
+    public DialogueTask withPatternOption(Pattern pattern) {
+        this.optionResolvers.add(DialogueOptionResolver.pattern(pattern));
+        return this;
+    }
+
+    /**
+     * Add a context-dependent option (builder-style).
+     * Only selects this option if previous dialogue contained the expected text.
+     *
+     * @param option               the option text to select
+     * @param expectedPreviousLine text that must be in previous dialogue
+     * @return this task for chaining
+     */
+    public DialogueTask withContextOption(String option, String expectedPreviousLine) {
+        this.optionResolvers.add(
+                DialogueOptionResolver.text(option).withExpectedPreviousLine(expectedPreviousLine)
+        );
         return this;
     }
 
@@ -372,28 +460,31 @@ public class DialogueTask extends AbstractTask {
             return;
         }
 
-        // Determine which option to select
-        String targetOption = getNextOptionToSelect();
-        int targetIndex = optionIndex;
+        // Build a list of available options for logging/debugging
+        List<String> availableOptions = new ArrayList<>();
+        for (Widget child : children) {
+            if (child != null && child.getText() != null) {
+                availableOptions.add(child.getText());
+            }
+        }
+        log.debug("Available dialogue options: {}", availableOptions);
+
         int selectedIndex = -1;
 
-        // Search by text to find the index
-        if (targetOption != null) {
-            for (int i = 0; i < children.length; i++) {
-                Widget child = children[i];
-                if (child == null) continue;
-                String text = child.getText();
-                if (text != null && text.toLowerCase().contains(targetOption.toLowerCase())) {
-                    selectedIndex = i + 1; // 1-based
-                    log.debug("Found matching option at index {}: '{}'", selectedIndex, text);
-                    break;
-                }
+        // Priority 1: Check resolvers (supports varbit, patterns, context-dependent)
+        selectedIndex = resolveWithResolvers(ctx, children);
+
+        // Priority 2: Check static option text
+        if (selectedIndex < 0) {
+            String targetOption = getNextOptionToSelect();
+            if (targetOption != null) {
+                selectedIndex = findOptionByText(children, targetOption);
             }
         }
 
-        // Fall back to specified index
-        if (selectedIndex < 0 && targetIndex > 0 && targetIndex <= children.length) {
-            selectedIndex = targetIndex;
+        // Priority 3: Fall back to specified index
+        if (selectedIndex < 0 && optionIndex > 0 && optionIndex <= children.length) {
+            selectedIndex = optionIndex;
             log.debug("Using specified index: {}", selectedIndex);
         }
 
@@ -417,12 +508,138 @@ public class DialogueTask extends AbstractTask {
         long selectionDelay = ctx.getHumanTimer().getDelay(DelayProfile.REACTION);
         pressKeyWithDelay(ctx, keyCode, selectionDelay);
 
-        // Advance sequence if applicable
+        // Advance sequence/resolver indices
+        advanceSequenceIndex();
+
+        phase = DialoguePhase.WAIT_FOR_CHANGE;
+    }
+
+    /**
+     * Attempt to resolve option using configured resolvers.
+     *
+     * @param ctx      task context
+     * @param children option widgets
+     * @return 1-based index of matched option, or -1 if no match
+     */
+    private int resolveWithResolvers(TaskContext ctx, Widget[] children) {
+        if (optionResolvers.isEmpty()) {
+            return -1;
+        }
+
+        // Get the current resolver (if following a sequence)
+        DialogueOptionResolver currentResolver = getCurrentResolver();
+        if (currentResolver != null) {
+            int result = tryResolver(ctx, children, currentResolver);
+            if (result > 0) {
+                return result;
+            }
+        }
+
+        // Try all resolvers that match context
+        for (DialogueOptionResolver resolver : optionResolvers) {
+            // Check context requirement
+            if (!resolver.shouldApply(lastDialogueText)) {
+                log.trace("Resolver {} skipped - context mismatch", resolver);
+                continue;
+            }
+
+            // Check exclusions
+            String visibleText = getVisibleOptionsText(children);
+            if (resolver.shouldExclude(visibleText)) {
+                log.trace("Resolver {} excluded", resolver);
+                continue;
+            }
+
+            int result = tryResolver(ctx, children, resolver);
+            if (result > 0) {
+                return result;
+            }
+        }
+
+        return -1;
+    }
+
+    /**
+     * Try to match a single resolver against available options.
+     */
+    private int tryResolver(TaskContext ctx, Widget[] children, DialogueOptionResolver resolver) {
+        // Handle index-based resolver
+        if (resolver.getType() == DialogueOptionResolver.ResolverType.INDEX) {
+            int idx = resolver.getOptionIndex();
+            if (idx > 0 && idx <= children.length) {
+                log.debug("Resolver matched by index: {}", idx);
+                return idx;
+            }
+            return -1;
+        }
+
+        // Search through options for a match
+        for (int i = 0; i < children.length; i++) {
+            Widget child = children[i];
+            if (child == null) continue;
+            String text = child.getText();
+            if (text != null && resolver.matches(text, ctx)) {
+                log.debug("Resolver {} matched option at index {}: '{}'", resolver, i + 1, text);
+                return i + 1; // 1-based
+            }
+        }
+
+        return -1;
+    }
+
+    /**
+     * Find option by simple text matching.
+     */
+    private int findOptionByText(Widget[] children, String targetOption) {
+        for (int i = 0; i < children.length; i++) {
+            Widget child = children[i];
+            if (child == null) continue;
+            String text = child.getText();
+            if (text != null && text.toLowerCase().contains(targetOption.toLowerCase())) {
+                log.debug("Found matching option at index {}: '{}'", i + 1, text);
+                return i + 1; // 1-based
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Get concatenated text of all visible options (for exclusion checking).
+     */
+    private String getVisibleOptionsText(Widget[] children) {
+        StringBuilder sb = new StringBuilder();
+        for (Widget child : children) {
+            if (child != null && child.getText() != null) {
+                sb.append(child.getText()).append(" ");
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Get the current resolver if following a sequence.
+     */
+    private DialogueOptionResolver getCurrentResolver() {
+        if (optionResolvers.isEmpty()) {
+            return null;
+        }
+        // If we have multiple resolvers and are tracking sequence
+        if (resolverIndex < optionResolvers.size()) {
+            return optionResolvers.get(resolverIndex);
+        }
+        return null;
+    }
+
+    /**
+     * Advance the sequence index after selecting an option.
+     */
+    private void advanceSequenceIndex() {
         if (!optionSequence.isEmpty() && sequenceIndex < optionSequence.size()) {
             sequenceIndex++;
         }
-
-        phase = DialoguePhase.WAIT_FOR_CHANGE;
+        if (!optionResolvers.isEmpty() && resolverIndex < optionResolvers.size()) {
+            resolverIndex++;
+        }
     }
 
     // ========================================================================

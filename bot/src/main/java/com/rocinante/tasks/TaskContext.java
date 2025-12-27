@@ -1,11 +1,13 @@
 package com.rocinante.tasks;
 
+import com.rocinante.behavior.PlayerProfile;
 import com.rocinante.combat.CombatManager;
 import com.rocinante.combat.GearSwitcher;
 import com.rocinante.combat.TargetSelector;
 import com.rocinante.core.GameStateService;
 import com.rocinante.input.GroundItemClickHelper;
 import com.rocinante.input.InventoryClickHelper;
+import com.rocinante.input.MenuHelper;
 import com.rocinante.input.RobotKeyboardController;
 import com.rocinante.input.RobotMouseController;
 import com.rocinante.input.WidgetClickHelper;
@@ -91,6 +93,10 @@ public class TaskContext {
     @Nullable
     private final WidgetClickHelper widgetClickHelper;
 
+    @Getter
+    @Nullable
+    private final MenuHelper menuHelper;
+
     // ========================================================================
     // Progression System
     // ========================================================================
@@ -98,6 +104,14 @@ public class TaskContext {
     @Getter
     @Nullable
     private final UnlockTracker unlockTracker;
+
+    // ========================================================================
+    // Behavioral System
+    // ========================================================================
+
+    @Getter
+    @Nullable
+    private final PlayerProfile playerProfile;
 
     // ========================================================================
     // Task Variables
@@ -141,7 +155,9 @@ public class TaskContext {
             @Nullable InventoryClickHelper inventoryClickHelper,
             @Nullable GroundItemClickHelper groundItemClickHelper,
             @Nullable WidgetClickHelper widgetClickHelper,
-            @Nullable UnlockTracker unlockTracker) {
+            @Nullable MenuHelper menuHelper,
+            @Nullable UnlockTracker unlockTracker,
+            @Nullable PlayerProfile playerProfile) {
         this.client = client;
         this.gameStateService = gameStateService;
         this.mouseController = mouseController;
@@ -153,7 +169,9 @@ public class TaskContext {
         this.inventoryClickHelper = inventoryClickHelper;
         this.groundItemClickHelper = groundItemClickHelper;
         this.widgetClickHelper = widgetClickHelper;
+        this.menuHelper = menuHelper;
         this.unlockTracker = unlockTracker;
+        this.playerProfile = playerProfile;
         log.debug("TaskContext created");
     }
 
@@ -170,7 +188,7 @@ public class TaskContext {
             @Nullable TargetSelector targetSelector,
             @Nullable CombatManager combatManager) {
         this(client, gameStateService, mouseController, keyboardController, humanTimer, 
-                targetSelector, combatManager, null, null, null, null, null);
+                targetSelector, combatManager, null, null, null, null, null, null, null);
     }
 
     /**
@@ -183,7 +201,7 @@ public class TaskContext {
             RobotMouseController mouseController,
             RobotKeyboardController keyboardController,
             HumanTimer humanTimer) {
-        this(client, gameStateService, mouseController, keyboardController, humanTimer, null, null, null, null, null, null, null);
+        this(client, gameStateService, mouseController, keyboardController, humanTimer, null, null, null, null, null, null, null, null, null);
     }
 
     // ========================================================================

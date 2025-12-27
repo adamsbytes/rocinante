@@ -3,12 +3,14 @@ package com.rocinante.quest.steps;
 import com.rocinante.tasks.Task;
 import com.rocinante.tasks.TaskContext;
 import com.rocinante.tasks.impl.InteractObjectTask;
+import com.rocinante.tasks.impl.WalkToTask;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.experimental.Accessors;
 import net.runelite.api.coords.WorldPoint;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -66,6 +68,12 @@ public class ObjectQuestStep extends QuestStep {
     private boolean waitForIdle = true;
 
     /**
+     * Alternate object IDs that also satisfy this step.
+     * Quest Helper uses addAlternateObjects() for this.
+     */
+    private List<Integer> alternateObjectIds = new ArrayList<>();
+
+    /**
      * Create an object quest step.
      *
      * @param objectId   the object ID
@@ -99,6 +107,13 @@ public class ObjectQuestStep extends QuestStep {
     public List<Task> toTasks(TaskContext ctx) {
         List<Task> tasks = new ArrayList<>();
 
+        // If walkToLocation is set, prepend a WalkToTask
+        if (walkToLocation != null) {
+            WalkToTask walkTask = new WalkToTask(walkToLocation);
+            walkTask.setDescription("Walk to " + getText());
+            tasks.add(walkTask);
+        }
+
         // Create the object interaction task
         InteractObjectTask objectTask = new InteractObjectTask(objectId, menuAction)
                 .withSearchRadius(searchRadius)
@@ -107,6 +122,11 @@ public class ObjectQuestStep extends QuestStep {
 
         if (successAnimationId > 0) {
             objectTask.withSuccessAnimation(successAnimationId);
+        }
+
+        // Pass alternate object IDs if any
+        if (!alternateObjectIds.isEmpty()) {
+            objectTask.withAlternateIds(alternateObjectIds);
         }
 
         tasks.add(objectTask);
@@ -159,6 +179,29 @@ public class ObjectQuestStep extends QuestStep {
      */
     public ObjectQuestStep withWaitForIdle(boolean wait) {
         this.waitForIdle = wait;
+        return this;
+    }
+
+    /**
+     * Add alternate object IDs that also satisfy this step (builder-style).
+     * Quest Helper uses this for objects that have multiple IDs based on state.
+     *
+     * @param ids the alternate object IDs
+     * @return this step for chaining
+     */
+    public ObjectQuestStep withAlternateIds(Integer... ids) {
+        this.alternateObjectIds.addAll(Arrays.asList(ids));
+        return this;
+    }
+
+    /**
+     * Add alternate object IDs from a list (builder-style).
+     *
+     * @param ids the alternate object IDs
+     * @return this step for chaining
+     */
+    public ObjectQuestStep withAlternateIds(List<Integer> ids) {
+        this.alternateObjectIds.addAll(ids);
         return this;
     }
 }

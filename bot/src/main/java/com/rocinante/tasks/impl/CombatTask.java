@@ -2,6 +2,7 @@ package com.rocinante.tasks.impl;
 
 import com.rocinante.combat.CombatManager;
 import com.rocinante.combat.TargetSelector;
+import com.rocinante.combat.spell.CombatSpell;
 import com.rocinante.state.*;
 import com.rocinante.tasks.AbstractTask;
 import com.rocinante.tasks.Task;
@@ -17,6 +18,7 @@ import net.runelite.api.Client;
 import net.runelite.api.NPC;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
+import net.runelite.api.widgets.Widget;
 
 import java.awt.Point;
 import java.awt.Rectangle;
@@ -161,6 +163,25 @@ public class CombatTask extends AbstractTask {
     private Task activeSubTask;
 
     // ========================================================================
+    // Magic Combat State
+    // ========================================================================
+
+    /**
+     * Current spell index when cycling through multiple spells.
+     */
+    private int currentSpellIndex = 0;
+
+    /**
+     * Widget group ID for the spellbook tab.
+     */
+    private static final int WIDGET_SPELLBOOK = 218;
+
+    /**
+     * Whether we've clicked the spell and are waiting to click the target.
+     */
+    private boolean spellSelected = false;
+
+    // ========================================================================
     // Constructor
     // ========================================================================
 
@@ -266,6 +287,9 @@ public class CombatTask extends AbstractTask {
             case POSITION:
                 executePosition(ctx);
                 break;
+            case CAST_SPELL:
+                executeCastSpell(ctx);
+                break;
             case ATTACK:
                 executeAttack(ctx);
                 break;
@@ -361,6 +385,151 @@ public class CombatTask extends AbstractTask {
     }
 
     // ========================================================================
+    // Phase: Cast Spell (Magic Combat)
+    // ========================================================================
+
+    /**
+     * Execute spell selection phase for manual magic combat.
+     * Opens spellbook if needed and clicks the spell widget.
+     */
+    private void executeCastSpell(TaskContext ctx) {
+        if (movePending || clickPending) {
+            return; // Wait for pending actions
+        }
+
+        // Get the current spell to cast
+        CombatSpell spell = getCurrentSpell();
+        if (spell == null) {
+            log.warn("No spell configured for magic combat, falling back to melee");
+            spellSelected = false;
+            phase = CombatPhase.ATTACK;
+            return;
+        }
+
+        Client client = ctx.getClient();
+
+        // Check if spellbook tab is visible
+        Widget spellbookWidget = client.getWidget(WIDGET_SPELLBOOK, 0);
+        if (spellbookWidget == null || spellbookWidget.isHidden()) {
+            // Open spellbook tab using F6 key
+            log.debug("Opening spellbook tab to cast {}", spell.getSpellName());
+            clickPending = true;
+            
+            ctx.getKeyboardController().pressKey(java.awt.event.KeyEvent.VK_F6)
+                    .thenRun(() -> {
+                        clickPending = false;
+                        phaseWaitTicks = 0;
+                    })
+                    .exceptionally(e -> {
+                        clickPending = false;
+                        log.error("Failed to open spellbook", e);
+                        return null;
+                    });
+            return;
+        }
+
+        // Spellbook is open, click on the spell
+        int packedWidgetId = spell.getWidgetId();
+        int groupId = packedWidgetId >> 16;
+        int childId = packedWidgetId & 0xFFFF;
+
+        Widget spellWidget = client.getWidget(groupId, childId);
+        if (spellWidget == null || spellWidget.isHidden()) {
+            log.warn("Spell widget not found for {} (widget {}:{})", 
+                    spell.getSpellName(), groupId, childId);
+            phaseWaitTicks++;
+            if (phaseWaitTicks > MAX_WAIT_TICKS / 2) {
+                // Spell not available, maybe wrong spellbook or level
+                log.error("Cannot find spell {}, falling back to melee", spell.getSpellName());
+                spellSelected = false;
+                phase = CombatPhase.ATTACK;
+            }
+            return;
+        }
+
+        // Calculate click point on spell widget
+        Rectangle bounds = spellWidget.getBounds();
+        if (bounds == null || bounds.width == 0 || bounds.height == 0) {
+            log.warn("Spell widget has invalid bounds");
+            phaseWaitTicks++;
+            return;
+        }
+
+        // Humanized click position within spell icon
+        int clickX = bounds.x + bounds.width / 2 + ThreadLocalRandom.current().nextInt(-3, 4);
+        int clickY = bounds.y + bounds.height / 2 + ThreadLocalRandom.current().nextInt(-3, 4);
+
+        log.debug("Clicking spell {} at ({}, {})", spell.getSpellName(), clickX, clickY);
+
+        movePending = true;
+        ctx.getMouseController().moveToCanvas(clickX, clickY)
+                .thenCompose(v -> {
+                    movePending = false;
+                    clickPending = true;
+                    return ctx.getMouseController().click();
+                })
+                .thenRun(() -> {
+                    clickPending = false;
+                    spellSelected = true;
+                    phaseWaitTicks = 0;
+                    // Advance spell index for cycling
+                    advanceSpellIndex();
+                    // Now proceed to click the target
+                    phase = CombatPhase.ATTACK;
+                })
+                .exceptionally(e -> {
+                    movePending = false;
+                    clickPending = false;
+                    log.error("Failed to click spell", e);
+                    return null;
+                });
+    }
+
+    /**
+     * Get the current spell to cast based on spell cycle mode.
+     */
+    private CombatSpell getCurrentSpell() {
+        if (!config.isMagicCombat()) {
+            return null;
+        }
+
+        List<CombatSpell> spells = config.getSpells();
+        if (spells == null || spells.isEmpty()) {
+            return null;
+        }
+
+        // Ensure index is valid
+        if (currentSpellIndex >= spells.size()) {
+            currentSpellIndex = 0;
+        }
+
+        switch (config.getSpellCycleMode()) {
+            case RANDOM:
+                return spells.get(ThreadLocalRandom.current().nextInt(spells.size()));
+            case HIGHEST_AVAILABLE:
+                // For now, just return the last spell (assumed highest tier)
+                // Full implementation would check runes and level
+                return spells.get(spells.size() - 1);
+            case IN_ORDER:
+            case SEQUENTIAL:
+            default:
+                return spells.get(currentSpellIndex);
+        }
+    }
+
+    /**
+     * Advance spell index for IN_ORDER cycling.
+     */
+    private void advanceSpellIndex() {
+        if (config.getSpellCycleMode() == CombatTaskConfig.SpellCycleMode.IN_ORDER) {
+            List<CombatSpell> spells = config.getSpells();
+            if (spells != null && !spells.isEmpty()) {
+                currentSpellIndex = (currentSpellIndex + 1) % spells.size();
+            }
+        }
+    }
+
+    // ========================================================================
     // Phase: Attack
     // ========================================================================
 
@@ -374,6 +543,7 @@ public class CombatTask extends AbstractTask {
         if (!isTargetValid(ctx)) {
             log.debug("Target no longer valid, finding new target");
             currentTarget = null;
+            spellSelected = false;
             phase = CombatPhase.FIND_TARGET;
             return;
         }
@@ -386,6 +556,7 @@ public class CombatTask extends AbstractTask {
 
         // Check if we're already attacking this target
         if (player.isInCombat() && player.getTargetNpcIndex() == currentTarget.getIndex()) {
+            spellSelected = false;
             phase = CombatPhase.MONITOR_COMBAT;
             return;
         }
@@ -399,6 +570,12 @@ public class CombatTask extends AbstractTask {
                 phase = CombatPhase.POSITION;
                 return;
             }
+        }
+
+        // For magic combat with manual casting, need to select spell first
+        if (config.isMagicCombat() && !config.isUseAutocast() && !spellSelected) {
+            phase = CombatPhase.CAST_SPELL;
+            return;
         }
 
         // Move mouse to target and click
@@ -455,6 +632,8 @@ public class CombatTask extends AbstractTask {
                 .thenRun(() -> {
                     clickPending = false;
                     phaseWaitTicks = 0;
+                    // Reset spell selection after attack (next attack needs new spell click)
+                    spellSelected = false;
                     phase = CombatPhase.MONITOR_COMBAT;
                 })
                 .exceptionally(e -> {
@@ -481,6 +660,9 @@ public class CombatTask extends AbstractTask {
             log.info("Target {} killed! Total kills: {}", currentTarget.getName(), killsCompleted + 1);
             killsCompleted++;
             
+            // Reset spell state for next target
+            spellSelected = false;
+            
             // Prepare to loot
             if (config.isLootEnabled()) {
                 prepareLoot(ctx);
@@ -501,6 +683,7 @@ public class CombatTask extends AbstractTask {
             if (phaseWaitTicks > MAX_WAIT_TICKS / 2) {
                 log.debug("Lost combat target, finding new one");
                 currentTarget = null;
+                spellSelected = false;
                 phase = CombatPhase.FIND_TARGET;
             }
             return;
@@ -799,6 +982,11 @@ public class CombatTask extends AbstractTask {
          * Moving to safe-spot position.
          */
         POSITION,
+
+        /**
+         * Selecting spell from spellbook (magic combat only).
+         */
+        CAST_SPELL,
 
         /**
          * Initiating attack on target.

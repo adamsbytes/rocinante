@@ -5,6 +5,7 @@ import com.rocinante.tasks.TaskContext;
 import com.rocinante.tasks.impl.EquipItemTask;
 import com.rocinante.tasks.impl.InventoryInteractTask;
 import com.rocinante.tasks.impl.UseItemOnItemTask;
+import com.rocinante.tasks.impl.UseItemOnNpcTask;
 import com.rocinante.tasks.impl.UseItemOnObjectTask;
 import lombok.Getter;
 import lombok.Setter;
@@ -129,8 +130,9 @@ public class ItemQuestStep extends QuestStep {
                     log.error("USE_ON_NPC requires a target NPC ID");
                     throw new IllegalStateException("Target NPC ID not set for USE_ON_NPC action");
                 }
-                // TODO: Create UseItemOnNpcTask when needed
-                log.warn("USE_ON_NPC not yet implemented - item {} on NPC {}", itemId, targetNpcId);
+                log.debug("Creating UseItemOnNpcTask for item {} on NPC {}", itemId, targetNpcId);
+                tasks.add(new UseItemOnNpcTask(itemId, targetNpcId)
+                        .withDescription(getText()));
                 break;
 
             case EAT:

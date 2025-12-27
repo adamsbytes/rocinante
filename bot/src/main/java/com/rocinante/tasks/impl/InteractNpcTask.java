@@ -20,6 +20,8 @@ import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.Shape;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -160,6 +162,13 @@ public class InteractNpcTask extends AbstractTask {
     @Setter
     private String npcName;
 
+    /**
+     * Alternate NPC IDs that also satisfy this task.
+     * Quest Helper uses addAlternateNpcs() for NPCs with multiple IDs.
+     */
+    @Getter
+    private List<Integer> alternateNpcIds = new ArrayList<>();
+
     // ========================================================================
     // Execution State
     // ========================================================================
@@ -208,6 +217,16 @@ public class InteractNpcTask extends AbstractTask {
      * Maximum re-targeting attempts.
      */
     private static final int MAX_RETARGET_ATTEMPTS = 3;
+
+    /**
+     * Whether menu selection is currently pending (async).
+     */
+    private boolean menuSelectionPending = false;
+
+    /**
+     * Cached clickbox for menu selection.
+     */
+    private Rectangle cachedClickbox = null;
 
     // ========================================================================
     // Constructor
@@ -317,6 +336,31 @@ public class InteractNpcTask extends AbstractTask {
         return this;
     }
 
+    /**
+     * Add alternate NPC IDs that also satisfy this task (builder-style).
+     * Quest Helper uses this for NPCs with multiple IDs based on state.
+     *
+     * @param ids the alternate NPC IDs
+     * @return this task for chaining
+     */
+    public InteractNpcTask withAlternateIds(List<Integer> ids) {
+        this.alternateNpcIds.addAll(ids);
+        return this;
+    }
+
+    /**
+     * Add alternate NPC IDs (varargs builder-style).
+     *
+     * @param ids the alternate NPC IDs
+     * @return this task for chaining
+     */
+    public InteractNpcTask withAlternateIds(Integer... ids) {
+        for (Integer id : ids) {
+            this.alternateNpcIds.add(id);
+        }
+        return this;
+    }
+
     // ========================================================================
     // Task Implementation
     // ========================================================================
@@ -341,8 +385,14 @@ public class InteractNpcTask extends AbstractTask {
             case HOVER_DELAY:
                 executeHoverDelay(ctx);
                 break;
+            case CHECK_MENU:
+                executeCheckMenu(ctx);
+                break;
             case CLICK:
                 executeClick(ctx);
+                break;
+            case SELECT_MENU:
+                executeSelectMenu(ctx);
                 break;
             case WAIT_RESPONSE:
                 executeWaitResponse(ctx);
@@ -471,12 +521,52 @@ public class InteractNpcTask extends AbstractTask {
         int hoverMs = HOVER_DELAY_MIN + (int) (Math.random() * (HOVER_DELAY_MAX - HOVER_DELAY_MIN));
         log.debug("Hovering for {}ms before click", hoverMs);
 
-        // Proceed to click
-        phase = NpcInteractionPhase.CLICK;
+        // Cache the clickbox for potential menu selection
+        Shape clickableArea = targetNpc.getConvexHull();
+        if (clickableArea != null) {
+            cachedClickbox = clickableArea.getBounds();
+        }
+
+        // Next: check if we need menu selection or can left-click
+        phase = NpcInteractionPhase.CHECK_MENU;
     }
 
     // ========================================================================
-    // Phase: Click
+    // Phase: Check Menu
+    // ========================================================================
+
+    /**
+     * Check if the desired action is available via left-click or requires menu selection.
+     */
+    private void executeCheckMenu(TaskContext ctx) {
+        // If no menu action specified, just left-click
+        if (menuAction == null || menuAction.isEmpty()) {
+            log.debug("No menu action specified, using left-click");
+            phase = NpcInteractionPhase.CLICK;
+            return;
+        }
+
+        // Check if MenuHelper is available
+        if (ctx.getMenuHelper() == null) {
+            log.debug("MenuHelper not available, assuming left-click will work");
+            phase = NpcInteractionPhase.CLICK;
+            return;
+        }
+
+        // Check if the action is available via left-click
+        boolean isLeftClick = ctx.getMenuHelper().isLeftClickActionContains(menuAction);
+
+        if (isLeftClick) {
+            log.debug("Action '{}' available via left-click", menuAction);
+        phase = NpcInteractionPhase.CLICK;
+        } else {
+            log.debug("Action '{}' requires right-click menu selection", menuAction);
+            phase = NpcInteractionPhase.SELECT_MENU;
+        }
+    }
+
+    // ========================================================================
+    // Phase: Click (Left-Click)
     // ========================================================================
 
     private void executeClick(TaskContext ctx) {
@@ -490,7 +580,7 @@ public class InteractNpcTask extends AbstractTask {
             return;
         }
 
-        log.debug("Clicking NPC {} with action '{}'", getNpcDescription(), menuAction);
+        log.debug("Left-clicking NPC {} (action '{}' is default)", getNpcDescription(), menuAction);
 
         // Start async click
         clickPending = true;
@@ -505,6 +595,60 @@ public class InteractNpcTask extends AbstractTask {
             clickPending = false;
             log.error("Click failed", e);
             fail("Click failed: " + e.getMessage());
+            return null;
+        });
+    }
+
+    // ========================================================================
+    // Phase: Select Menu (Right-Click)
+    // ========================================================================
+
+    private void executeSelectMenu(TaskContext ctx) {
+        if (menuSelectionPending) {
+            return; // Menu selection in progress
+        }
+
+        if (ctx.getMenuHelper() == null) {
+            log.error("MenuHelper not available for menu selection");
+            fail("MenuHelper not available");
+            return;
+        }
+
+        if (cachedClickbox == null) {
+            log.error("No cached clickbox for menu selection");
+            fail("Cannot determine click area for menu");
+            return;
+        }
+
+        // Final NPC validity check
+        if (targetNpc == null || targetNpc.isDead()) {
+            handleNpcLost(ctx);
+            return;
+        }
+
+        log.debug("Right-clicking NPC {} and selecting '{}'", getNpcDescription(), menuAction);
+
+        menuSelectionPending = true;
+
+        // Get NPC name for more precise menu matching
+        String targetName = targetNpc.getName();
+
+        // Use MenuHelper to right-click and select the action
+        ctx.getMenuHelper().selectMenuEntry(cachedClickbox, menuAction, targetName)
+                .thenAccept(success -> {
+                    menuSelectionPending = false;
+                    if (success) {
+                        interactionTicks = 0;
+                        phase = NpcInteractionPhase.WAIT_RESPONSE;
+                    } else {
+                        log.warn("Menu selection failed for action '{}'", menuAction);
+                        fail("Menu selection failed");
+                    }
+                })
+                .exceptionally(e -> {
+                    menuSelectionPending = false;
+                    log.error("Menu selection error", e);
+                    fail("Menu selection error: " + e.getMessage());
             return null;
         });
     }
@@ -580,6 +724,7 @@ public class InteractNpcTask extends AbstractTask {
 
     /**
      * Find the nearest instance of the target NPC.
+     * Checks both primary npcId and any alternate IDs.
      */
     private NPC findNearestNpc(TaskContext ctx, WorldPoint playerPos) {
         Client client = ctx.getClient();
@@ -591,8 +736,9 @@ public class InteractNpcTask extends AbstractTask {
                 continue;
             }
 
-            // Check ID match
-            if (npc.getId() != npcId) {
+            // Check ID match (primary or alternates)
+            int id = npc.getId();
+            if (id != npcId && !alternateNpcIds.contains(id)) {
                 continue;
             }
 
@@ -744,7 +890,9 @@ public class InteractNpcTask extends AbstractTask {
         ROTATE_CAMERA,
         MOVE_MOUSE,
         HOVER_DELAY,
+        CHECK_MENU,
         CLICK,
+        SELECT_MENU,
         WAIT_RESPONSE
     }
 }

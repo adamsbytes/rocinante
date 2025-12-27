@@ -142,6 +142,13 @@ public class InteractObjectTask extends AbstractTask {
     @Setter
     private String description;
 
+    /**
+     * Alternate object IDs that also satisfy this task.
+     * Quest Helper uses addAlternateObjects() for objects with multiple IDs.
+     */
+    @Getter
+    private List<Integer> alternateObjectIds = new java.util.ArrayList<>();
+
     // ========================================================================
     // Execution State
     // ========================================================================
@@ -185,6 +192,16 @@ public class InteractObjectTask extends AbstractTask {
      * Whether click is currently pending (async).
      */
     protected boolean clickPending = false;
+
+    /**
+     * Whether menu selection is currently pending (async).
+     */
+    protected boolean menuSelectionPending = false;
+
+    /**
+     * Cached clickbox for menu selection.
+     */
+    protected java.awt.Rectangle cachedClickbox = null;
 
     // ========================================================================
     // Constructor
@@ -261,6 +278,29 @@ public class InteractObjectTask extends AbstractTask {
         return this;
     }
 
+    /**
+     * Add alternate object IDs that also satisfy this task (builder-style).
+     * Quest Helper uses this for objects with multiple IDs based on state.
+     *
+     * @param ids the alternate object IDs
+     * @return this task for chaining
+     */
+    public InteractObjectTask withAlternateIds(List<Integer> ids) {
+        this.alternateObjectIds.addAll(ids);
+        return this;
+    }
+
+    /**
+     * Add alternate object IDs (varargs builder-style).
+     *
+     * @param ids the alternate object IDs
+     * @return this task for chaining
+     */
+    public InteractObjectTask withAlternateIds(Integer... ids) {
+        this.alternateObjectIds.addAll(Arrays.asList(ids));
+        return this;
+    }
+
     // ========================================================================
     // Task Implementation
     // ========================================================================
@@ -285,8 +325,14 @@ public class InteractObjectTask extends AbstractTask {
             case HOVER_DELAY:
                 executeHoverDelay(ctx);
                 break;
+            case CHECK_MENU:
+                executeCheckMenu(ctx);
+                break;
             case CLICK:
                 executeClick(ctx);
+                break;
+            case SELECT_MENU:
+                executeSelectMenu(ctx);
                 break;
             case WAIT_RESPONSE:
                 executeWaitResponse(ctx);
@@ -390,13 +436,54 @@ public class InteractObjectTask extends AbstractTask {
         int hoverMs = HOVER_DELAY_MIN + (int) (Math.random() * (HOVER_DELAY_MAX - HOVER_DELAY_MIN));
         log.debug("Hovering for {}ms before click", hoverMs);
 
-        // Schedule transition to click phase
-        // For now, just proceed (actual delay is in mouse controller)
-        phase = InteractionPhase.CLICK;
+        // Cache the clickbox for potential menu selection
+        if (targetObject != null) {
+            Shape clickbox = targetObject.getClickbox();
+            if (clickbox != null) {
+                cachedClickbox = clickbox.getBounds();
+            }
+        }
+
+        // Next: check if we need menu selection or can left-click
+        phase = InteractionPhase.CHECK_MENU;
     }
 
     // ========================================================================
-    // Phase: Click
+    // Phase: Check Menu
+    // ========================================================================
+
+    /**
+     * Check if the desired action is available via left-click or requires menu selection.
+     */
+    protected void executeCheckMenu(TaskContext ctx) {
+        // If no menu action specified, just left-click
+        if (menuAction == null || menuAction.isEmpty()) {
+            log.debug("No menu action specified, using left-click");
+            phase = InteractionPhase.CLICK;
+            return;
+        }
+
+        // Check if MenuHelper is available
+        if (ctx.getMenuHelper() == null) {
+            log.debug("MenuHelper not available, assuming left-click will work");
+            phase = InteractionPhase.CLICK;
+            return;
+        }
+
+        // Check if the action is available via left-click
+        boolean isLeftClick = ctx.getMenuHelper().isLeftClickActionContains(menuAction);
+
+        if (isLeftClick) {
+            log.debug("Action '{}' available via left-click", menuAction);
+        phase = InteractionPhase.CLICK;
+        } else {
+            log.debug("Action '{}' requires right-click menu selection", menuAction);
+            phase = InteractionPhase.SELECT_MENU;
+        }
+    }
+
+    // ========================================================================
+    // Phase: Click (Left-Click)
     // ========================================================================
 
     protected void executeClick(TaskContext ctx) {
@@ -404,7 +491,7 @@ public class InteractObjectTask extends AbstractTask {
             return; // Click in progress
         }
 
-        log.debug("Clicking object {} with action '{}'", objectId, menuAction);
+        log.debug("Left-clicking object {} (action '{}' is default)", objectId, menuAction);
 
         // Start async click
         clickPending = true;
@@ -420,6 +507,51 @@ public class InteractObjectTask extends AbstractTask {
             clickPending = false;
             log.error("Click failed", e);
             fail("Click failed: " + e.getMessage());
+            return null;
+        });
+    }
+
+    // ========================================================================
+    // Phase: Select Menu (Right-Click)
+    // ========================================================================
+
+    protected void executeSelectMenu(TaskContext ctx) {
+        if (menuSelectionPending) {
+            return; // Menu selection in progress
+        }
+
+        if (ctx.getMenuHelper() == null) {
+            log.error("MenuHelper not available for menu selection");
+            fail("MenuHelper not available");
+            return;
+        }
+
+        if (cachedClickbox == null) {
+            log.error("No cached clickbox for menu selection");
+            fail("Cannot determine click area for menu");
+            return;
+        }
+
+        log.debug("Right-clicking object {} and selecting '{}'", objectId, menuAction);
+
+        menuSelectionPending = true;
+
+        // Use MenuHelper to right-click and select the action
+        ctx.getMenuHelper().selectMenuEntry(cachedClickbox, menuAction)
+                .thenAccept(success -> {
+                    menuSelectionPending = false;
+                    if (success) {
+                        interactionTicks = 0;
+                        phase = InteractionPhase.WAIT_RESPONSE;
+                    } else {
+                        log.warn("Menu selection failed for action '{}'", menuAction);
+                        fail("Menu selection failed");
+                    }
+                })
+                .exceptionally(e -> {
+                    menuSelectionPending = false;
+                    log.error("Menu selection error", e);
+                    fail("Menu selection error: " + e.getMessage());
             return null;
         });
     }
@@ -599,13 +731,14 @@ public class InteractObjectTask extends AbstractTask {
 
     /**
      * Find the target object on a specific tile.
+     * Checks both primary objectId and any alternate IDs.
      */
     private TileObject findObjectOnTile(Tile tile) {
         // Check game objects
         GameObject[] gameObjects = tile.getGameObjects();
         if (gameObjects != null) {
             for (GameObject obj : gameObjects) {
-                if (obj != null && obj.getId() == objectId) {
+                if (obj != null && matchesObjectId(obj.getId())) {
                     return obj;
                 }
             }
@@ -613,23 +746,30 @@ public class InteractObjectTask extends AbstractTask {
 
         // Check wall object
         WallObject wallObject = tile.getWallObject();
-        if (wallObject != null && wallObject.getId() == objectId) {
+        if (wallObject != null && matchesObjectId(wallObject.getId())) {
             return wallObject;
         }
 
         // Check decorative object
         DecorativeObject decorativeObject = tile.getDecorativeObject();
-        if (decorativeObject != null && decorativeObject.getId() == objectId) {
+        if (decorativeObject != null && matchesObjectId(decorativeObject.getId())) {
             return decorativeObject;
         }
 
         // Check ground object
         GroundObject groundObject = tile.getGroundObject();
-        if (groundObject != null && groundObject.getId() == objectId) {
+        if (groundObject != null && matchesObjectId(groundObject.getId())) {
             return groundObject;
         }
 
         return null;
+    }
+
+    /**
+     * Check if an ID matches the primary object ID or any alternate.
+     */
+    private boolean matchesObjectId(int id) {
+        return id == objectId || alternateObjectIds.contains(id);
     }
 
     /**
@@ -717,7 +857,9 @@ public class InteractObjectTask extends AbstractTask {
         ROTATE_CAMERA,
         MOVE_MOUSE,
         HOVER_DELAY,
+        CHECK_MENU,
         CLICK,
+        SELECT_MENU,
         WAIT_RESPONSE
     }
 }

@@ -225,6 +225,10 @@ public class PlayerProfile {
         // === Teleport preferences ===
         profileData.teleportMethodWeights = generateTeleportWeights(seededRandom);
         profileData.lawRuneAversion = seededRandom.nextDouble() * 0.5;  // 0-50% aversion
+
+        // === Interface interaction preferences ===
+        // ~60% of players prefer hotkeys, ~40% are habitual clickers
+        profileData.prefersHotkeys = seededRandom.nextDouble() < 0.60;
         
         // === Metrics ===
         profileData.sessionCount = 0;
@@ -919,6 +923,14 @@ public class PlayerProfile {
         // === Teleport preferences ===
         Map<String, Double> teleportMethodWeights = new LinkedHashMap<>();
         double lawRuneAversion = 0.0;
+
+        // === Interface interaction preferences ===
+        /**
+         * Whether this player prefers using hotkeys (F-keys) for tab switching.
+         * Some players are habitual clickers, others prefer keyboard shortcuts.
+         * This affects WidgetInteractTask behavior when opening tabs.
+         */
+        boolean prefersHotkeys = true;
 
         // === Metrics ===
         int sessionCount = 0;

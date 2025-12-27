@@ -3,6 +3,7 @@ package com.rocinante.tasks.impl;
 import com.rocinante.combat.AttackStyle;
 import com.rocinante.combat.GearSet;
 import com.rocinante.combat.GearSwitcher;
+import com.rocinante.combat.WeaponCategories;
 import com.rocinante.state.EquipmentState;
 import com.rocinante.state.InventoryState;
 import com.rocinante.tasks.AbstractTask;
@@ -11,7 +12,6 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -47,38 +47,6 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 @Slf4j
 public class EquipItemTask extends AbstractTask {
-
-    // ========================================================================
-    // Known Weapon Categories (for attack style detection)
-    // ========================================================================
-
-    /**
-     * Common ranged weapon IDs (bows, crossbows, thrown weapons).
-     */
-    private static final Set<Integer> RANGED_WEAPONS = Set.of(
-            // Shortbows
-            841, 843, 845, 847, 849, 851, 853,
-            // Longbows
-            839, 9174, 9176, 9177, 9179, 9181, 9183, 9185,
-            // Crossbows
-            767, 837,
-            // Thrown weapons
-            800, 802, 804, 806, 807, 809, 811, 813, 863, 864, 865, 866, 867, 868, 869,
-            // Special weapons
-            11785, 12926, 19481, 20997, 21902, 22550, 23987
-    );
-
-    /**
-     * Common magic weapon IDs (staffs, wands).
-     */
-    private static final Set<Integer> MAGIC_WEAPONS = Set.of(
-            // Basic staves
-            1379, 1381, 1383, 1385, 1387, 1389, 1391, 1393, 1395, 1397, 1399, 1401, 1403, 1405,
-            // Elemental staves
-            // Mystic staves
-            // Special staves
-            4675, 4710, 6563, 11791, 12899, 21006, 22296, 22323
-    );
 
     // ========================================================================
     // Configuration
@@ -349,7 +317,7 @@ public class EquipItemTask extends AbstractTask {
      * @return true if it's a ranged weapon
      */
     private boolean isRangedWeapon(int weaponId) {
-        return weaponId > 0 && RANGED_WEAPONS.contains(weaponId);
+        return WeaponCategories.isRangedWeapon(weaponId);
     }
 
     /**
@@ -359,7 +327,7 @@ public class EquipItemTask extends AbstractTask {
      * @return true if it's a magic weapon
      */
     private boolean isMagicWeapon(int weaponId) {
-        return weaponId > 0 && MAGIC_WEAPONS.contains(weaponId);
+        return WeaponCategories.isMagicWeapon(weaponId);
     }
 
     @Override

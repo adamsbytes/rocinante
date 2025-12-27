@@ -128,48 +128,6 @@ public class GearSet {
     // ========================================================================
 
     /**
-     * Common ranged weapon IDs (bows, crossbows, thrown weapons).
-     * Note: IDs must be unique for Set.of() - no duplicates allowed.
-     */
-    private static final Set<Integer> RANGED_WEAPONS = Set.of(
-            // Shortbows
-            841, 843, 845, 847, 849, 851, 853,
-            // Longbows
-            839,
-            // Crossbows
-            767, 837, 9174, 9176, 9177, 9179, 9181, 9183, 9185,
-            // Thrown weapons (knives, darts, javelins)
-            800, 802, 804, 806, 807, 809, 811, 813, 863, 864, 865, 866, 867, 868, 869,
-            // Special ranged weapons (blowpipe, twisted bow, etc.)
-            11785, 12926, 19481, 20997, 21902, 22550, 23987
-    );
-
-    /**
-     * Common magic weapon IDs (staffs, wands).
-     * Note: IDs must be unique for Set.of() - no duplicates allowed.
-     */
-    private static final Set<Integer> MAGIC_WEAPONS = Set.of(
-            // Basic staves (staff, air staff, water staff, etc.)
-            1379, 1381, 1383, 1385, 1387, 1389, 1391, 1393, 1395, 1397, 1399, 1401, 1403, 1405,
-            // Special staves (ancient staff, kodai wand, etc.)
-            4675, 4710, 6563, 11791, 12899, 21006, 22296, 22323
-    );
-
-    /**
-     * Common ammo IDs (arrows, bolts, runes for blowpipe).
-     */
-    private static final Set<Integer> AMMO_IDS = Set.of(
-            // Bronze to Dragon arrows
-            882, 884, 886, 888, 890, 892,
-            // Bronze to Dragon bolts
-            877, 9140, 9141, 9142, 9143, 9144, 9145,
-            // Special arrows/bolts
-            4740, 9236, 9237, 9238, 9239, 9240, 9241, 9242, 9243, 9244, 9245,
-            // Dart tips
-            806, 807, 809, 811, 813
-    );
-
-    /**
      * Auto-detect gear from inventory for a given attack style.
      * Finds appropriate weapons and ammo in inventory/equipment.
      *
@@ -188,7 +146,7 @@ public class GearSet {
         switch (style) {
             case RANGED:
                 // Look for ranged weapon in inventory
-                for (int weaponId : RANGED_WEAPONS) {
+                for (int weaponId : WeaponCategories.RANGED_WEAPONS) {
                     if (inventory.hasItem(weaponId)) {
                         builder.weapon(weaponId);
                         found = true;
@@ -196,7 +154,7 @@ public class GearSet {
                     }
                 }
                 // Look for ammo
-                for (int ammoId : AMMO_IDS) {
+                for (int ammoId : WeaponCategories.AMMO_IDS) {
                     if (inventory.hasItem(ammoId)) {
                         builder.ammo(ammoId);
                         break;
@@ -206,7 +164,7 @@ public class GearSet {
 
             case MAGIC:
                 // Look for magic weapon in inventory
-                for (int weaponId : MAGIC_WEAPONS) {
+                for (int weaponId : WeaponCategories.MAGIC_WEAPONS) {
                     if (inventory.hasItem(weaponId)) {
                         builder.weapon(weaponId);
                         found = true;
@@ -239,13 +197,13 @@ public class GearSet {
         for (int itemId : itemIds) {
             // Detect slot based on item (would need item definitions in real implementation)
             // For now, assume weapon slot for simplicity
-            if (RANGED_WEAPONS.contains(itemId)) {
+            if (WeaponCategories.isRangedWeapon(itemId)) {
                 builder.weapon(itemId);
                 detectedStyle = AttackStyle.RANGED;
-            } else if (MAGIC_WEAPONS.contains(itemId)) {
+            } else if (WeaponCategories.isMagicWeapon(itemId)) {
                 builder.weapon(itemId);
                 detectedStyle = AttackStyle.MAGIC;
-            } else if (AMMO_IDS.contains(itemId)) {
+            } else if (WeaponCategories.isAmmo(itemId)) {
                 builder.ammo(itemId);
             }
             // Additional slot detection would go here

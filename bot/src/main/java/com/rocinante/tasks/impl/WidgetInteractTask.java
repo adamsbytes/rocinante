@@ -69,22 +69,43 @@ public class WidgetInteractTask extends AbstractTask {
     public static final int TAB_EMOTES = 12;
     public static final int TAB_MUSIC = 13;
 
-    // F-key mappings
+    // F-key mappings (OSRS default keybinds when configured)
+    // Note: These are the common defaults, but players must configure them in-game
     private static final int[] TAB_FKEYS = {
-            java.awt.event.KeyEvent.VK_F1,      // Combat
-            java.awt.event.KeyEvent.VK_F2,      // Skills
-            java.awt.event.KeyEvent.VK_F3,      // Quests
-            java.awt.event.KeyEvent.VK_ESCAPE,  // Inventory (ESC)
-            java.awt.event.KeyEvent.VK_F4,      // Equipment
-            java.awt.event.KeyEvent.VK_F5,      // Prayer
-            java.awt.event.KeyEvent.VK_F6,      // Spellbook
-            java.awt.event.KeyEvent.VK_F7,      // Clan
-            java.awt.event.KeyEvent.VK_F8,      // Friends
-            java.awt.event.KeyEvent.VK_F9,      // Account
-            java.awt.event.KeyEvent.VK_F10,     // Logout
-            java.awt.event.KeyEvent.VK_F11,     // Settings
-            java.awt.event.KeyEvent.VK_F12,     // Emotes
-            0                                    // Music (no default)
+            java.awt.event.KeyEvent.VK_F1,      // Combat (0)
+            java.awt.event.KeyEvent.VK_F2,      // Skills (1)
+            java.awt.event.KeyEvent.VK_F3,      // Quests (2)
+            java.awt.event.KeyEvent.VK_F4,      // Inventory (3)
+            java.awt.event.KeyEvent.VK_F5,      // Equipment (4)
+            java.awt.event.KeyEvent.VK_F6,      // Prayer (5)
+            java.awt.event.KeyEvent.VK_F7,      // Spellbook (6)
+            java.awt.event.KeyEvent.VK_F8,      // Clan (7)
+            java.awt.event.KeyEvent.VK_F9,      // Friends (8)
+            java.awt.event.KeyEvent.VK_F10,     // Account (9)
+            0,                                   // Logout (10) - no default key
+            java.awt.event.KeyEvent.VK_F11,     // Settings (11)
+            java.awt.event.KeyEvent.VK_F12,     // Emotes (12)
+            0                                    // Music (13) - no default key
+    };
+
+    // Widget group IDs for tab icons (resizable mode stone icons)
+    // Used when forceClick=true to click the tab icon directly
+    private static final int TAB_STONE_GROUP = 161;  // Resizable classic layout
+    private static final int[] TAB_STONE_CHILDREN = {
+            51,  // Combat (0)
+            52,  // Skills (1)
+            53,  // Quests (2)
+            54,  // Inventory (3)
+            55,  // Equipment (4)
+            56,  // Prayer (5)
+            57,  // Spellbook (6)
+            37,  // Clan (7)
+            38,  // Friends (8)
+            39,  // Account (9)
+            40,  // Logout (10)
+            41,  // Settings (11)
+            42,  // Emotes (12)
+            43   // Music (13)
     };
 
     // ========================================================================
@@ -174,6 +195,27 @@ public class WidgetInteractTask extends AbstractTask {
     @Setter
     private String description;
 
+    /**
+     * Force click interaction instead of using hotkeys.
+     * - null: Use PlayerProfile preference (default)
+     * - true: Always click the widget (ignore hotkeys)
+     * - false: Always use hotkeys (if available)
+     * 
+     * This allows explicit control from quest steps (e.g., Tutorial Island
+     * explicitly teaches clicking tabs) while defaulting to player preference.
+     */
+    @Getter
+    @Setter
+    private Boolean forceClick = null;
+
+    /**
+     * Tab index for tab-switching tasks (used with forceClick).
+     * Set automatically by openTab() factory method.
+     */
+    @Getter
+    @Setter
+    private int tabIndex = -1;
+
     // ========================================================================
     // Execution State
     // ========================================================================
@@ -243,6 +285,9 @@ public class WidgetInteractTask extends AbstractTask {
 
     /**
      * Create a task to open a specific tab by index.
+     * 
+     * The task will use hotkeys by default (based on PlayerProfile preference),
+     * but can be configured to click the tab icon directly via withForceClick(true).
      *
      * @param tabIndex the tab index (0-13)
      * @return widget task
@@ -252,13 +297,40 @@ public class WidgetInteractTask extends AbstractTask {
             throw new IllegalArgumentException("Invalid tab index: " + tabIndex);
         }
 
+        // Store both the keyCode (for hotkey mode) and tab info (for click mode)
         int keyCode = TAB_FKEYS[tabIndex];
-        if (keyCode == 0) {
-            throw new IllegalArgumentException("No key binding for tab: " + tabIndex);
+        
+        WidgetInteractTask task;
+        if (keyCode != 0) {
+            task = pressKey(keyCode);
+        } else {
+            // No hotkey available, will need to click
+            task = new WidgetInteractTask(TAB_STONE_GROUP, TAB_STONE_CHILDREN[tabIndex]);
+            task.setForceClick(true);  // Must click, no hotkey available
+        }
+        
+        task.setTabIndex(tabIndex);
+        task.setDescription("Open tab " + tabIndex);
+        return task;
+    }
+
+    /**
+     * Create a task to open a specific tab by clicking the tab icon.
+     * This is useful when explicitly teaching players to click (e.g., Tutorial Island)
+     * or when hotkeys are not configured.
+     *
+     * @param tabIndex the tab index (0-13)
+     * @return widget task configured to click the tab icon
+     */
+    public static WidgetInteractTask openTabByClick(int tabIndex) {
+        if (tabIndex < 0 || tabIndex >= TAB_STONE_CHILDREN.length) {
+            throw new IllegalArgumentException("Invalid tab index: " + tabIndex);
         }
 
-        WidgetInteractTask task = pressKey(keyCode);
-        task.setDescription("Open tab " + tabIndex);
+        WidgetInteractTask task = new WidgetInteractTask(TAB_STONE_GROUP, TAB_STONE_CHILDREN[tabIndex]);
+        task.setTabIndex(tabIndex);
+        task.setForceClick(true);
+        task.setDescription("Click tab " + tabIndex);
         return task;
     }
 
@@ -454,6 +526,21 @@ public class WidgetInteractTask extends AbstractTask {
         return this;
     }
 
+    /**
+     * Set force click mode (builder-style).
+     * 
+     * When true, forces clicking the widget instead of using hotkeys.
+     * When false, forces using hotkeys (if available).
+     * When null (default), defers to PlayerProfile preference.
+     *
+     * @param force true to force click, false to force hotkey, null for profile default
+     * @return this task for chaining
+     */
+    public WidgetInteractTask withForceClick(Boolean force) {
+        this.forceClick = force;
+        return this;
+    }
+
     // ========================================================================
     // Task Implementation
     // ========================================================================
@@ -487,8 +574,8 @@ public class WidgetInteractTask extends AbstractTask {
     // ========================================================================
 
     private void executeWaitVisible(TaskContext ctx) {
-        // If using key press, skip visibility check
-        if (keyCode > 0) {
+        // If using key press AND we're not forcing click, skip visibility check
+        if (keyCode > 0 && shouldUseHotkey(ctx)) {
             phase = InteractionPhase.INTERACT;
             return;
         }
@@ -499,7 +586,7 @@ public class WidgetInteractTask extends AbstractTask {
         }
 
         Client client = ctx.getClient();
-        Widget widget = findTargetWidget(client);
+        Widget widget = findClickTargetWidget(client);
 
         if (widget != null && !widget.isHidden()) {
             log.debug("Widget {}:{} is visible", widgetGroupId, widgetChildId);
@@ -520,15 +607,18 @@ public class WidgetInteractTask extends AbstractTask {
     // ========================================================================
 
     private void executeInteract(TaskContext ctx) {
-        // Key press interaction
-        if (keyCode > 0) {
+        // Determine if we should use hotkey or click
+        boolean shouldUseHotkey = shouldUseHotkey(ctx);
+
+        // Key press interaction (if we should use hotkey and have a keyCode)
+        if (shouldUseHotkey && keyCode > 0) {
             performKeyPress(ctx);
             return;
         }
 
-        // Widget click interaction
+        // Widget click interaction - need to find the correct widget to click
         Client client = ctx.getClient();
-        Widget widget = findTargetWidget(client);
+        Widget widget = findClickTargetWidget(client);
 
         if (widget == null || widget.isHidden()) {
             log.warn("Widget {}:{} not found or hidden", widgetGroupId, widgetChildId);
@@ -548,6 +638,46 @@ public class WidgetInteractTask extends AbstractTask {
                 widgetGroupId, widgetChildId, clickPoint.x, clickPoint.y);
 
         performClick(ctx, clickPoint, bounds);
+    }
+
+    /**
+     * Determine if we should use hotkey interaction based on:
+     * 1. Explicit forceClick setting (highest priority)
+     * 2. PlayerProfile preference (if forceClick is null)
+     * 3. Default to hotkeys if profile unavailable
+     */
+    private boolean shouldUseHotkey(TaskContext ctx) {
+        // Explicit override takes precedence
+        if (forceClick != null) {
+            return !forceClick;  // forceClick=true means don't use hotkey
+        }
+
+        // Check player profile preference
+        if (ctx.getPlayerProfile() != null && ctx.getPlayerProfile().isLoaded()) {
+            return ctx.getPlayerProfile().getProfileData().isPrefersHotkeys();
+        }
+
+        // Default: use hotkeys if available
+        return true;
+    }
+
+    /**
+     * Find the widget to click. For tab switches, this finds the tab stone icon.
+     * This method is called when we've already determined we're clicking (not using hotkey).
+     */
+    private Widget findClickTargetWidget(Client client) {
+        // If this is a tab switch, use the tab stone widget for clicking
+        if (tabIndex >= 0 && tabIndex < TAB_STONE_CHILDREN.length) {
+            Widget tabWidget = client.getWidget(TAB_STONE_GROUP, TAB_STONE_CHILDREN[tabIndex]);
+            if (tabWidget != null) {
+                return tabWidget;
+            }
+            // Fall back to normal widget if tab stone not found (different interface mode?)
+            log.debug("Tab stone widget not found, falling back to default widget");
+        }
+
+        // Otherwise use the normal target widget
+        return findTargetWidget(client);
     }
 
     // ========================================================================

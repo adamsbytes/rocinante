@@ -80,6 +80,16 @@ public class WidgetQuestStep extends QuestStep {
     private int tabId = -1;
 
     /**
+     * Force click mode for tab switching.
+     * - null: Use PlayerProfile preference (default)
+     * - true: Always click the tab icon (ignore hotkeys)
+     * - false: Always use hotkeys (if available)
+     * 
+     * Tutorial Island explicitly teaches clicking tabs, so it should set this to true.
+     */
+    private Boolean forceClick = null;
+
+    /**
      * Create a widget quest step.
      *
      * @param widgetGroupId the widget group ID
@@ -115,7 +125,8 @@ public class WidgetQuestStep extends QuestStep {
         // Handle keyboard shortcut for tab switching
         if (isTabSwitch && tabId >= 0) {
             WidgetInteractTask tabTask = WidgetInteractTask.openTab(tabId)
-                    .withDescription(getText());
+                    .withDescription(getText())
+                    .withForceClick(forceClick);  // Propagate forceClick setting
             tasks.add(tabTask);
             return tasks;
         }
@@ -158,6 +169,7 @@ public class WidgetQuestStep extends QuestStep {
 
     /**
      * Create a step to open the inventory tab.
+     * Uses PlayerProfile preference for hotkey vs click.
      *
      * @param text instruction text
      * @return widget step
@@ -169,7 +181,22 @@ public class WidgetQuestStep extends QuestStep {
     }
 
     /**
+     * Create a step to open the inventory tab by clicking (ignores hotkey preference).
+     * Use this for Tutorial Island or when teaching the player to click.
+     *
+     * @param text instruction text
+     * @return widget step configured to always click
+     */
+    public static WidgetQuestStep openInventoryByClick(String text) {
+        return new WidgetQuestStep(149, text)
+                .withTabId(3)
+                .withTabSwitch(true)
+                .withForceClick(true);
+    }
+
+    /**
      * Create a step to open the skills tab.
+     * Uses PlayerProfile preference for hotkey vs click.
      *
      * @param text instruction text
      * @return widget step
@@ -181,7 +208,22 @@ public class WidgetQuestStep extends QuestStep {
     }
 
     /**
+     * Create a step to open the skills tab by clicking (ignores hotkey preference).
+     * Use this for Tutorial Island or when teaching the player to click.
+     *
+     * @param text instruction text
+     * @return widget step configured to always click
+     */
+    public static WidgetQuestStep openSkillsByClick(String text) {
+        return new WidgetQuestStep(320, text)
+                .withTabId(1)
+                .withTabSwitch(true)
+                .withForceClick(true);
+    }
+
+    /**
      * Create a step to open the quest tab.
+     * Uses PlayerProfile preference for hotkey vs click.
      *
      * @param text instruction text
      * @return widget step
@@ -193,7 +235,21 @@ public class WidgetQuestStep extends QuestStep {
     }
 
     /**
+     * Create a step to open the quest tab by clicking (ignores hotkey preference).
+     *
+     * @param text instruction text
+     * @return widget step configured to always click
+     */
+    public static WidgetQuestStep openQuestsByClick(String text) {
+        return new WidgetQuestStep(629, text)
+                .withTabId(2)
+                .withTabSwitch(true)
+                .withForceClick(true);
+    }
+
+    /**
      * Create a step to open the equipment tab.
+     * Uses PlayerProfile preference for hotkey vs click.
      *
      * @param text instruction text
      * @return widget step
@@ -205,7 +261,21 @@ public class WidgetQuestStep extends QuestStep {
     }
 
     /**
+     * Create a step to open the equipment tab by clicking (ignores hotkey preference).
+     *
+     * @param text instruction text
+     * @return widget step configured to always click
+     */
+    public static WidgetQuestStep openEquipmentByClick(String text) {
+        return new WidgetQuestStep(387, text)
+                .withTabId(4)
+                .withTabSwitch(true)
+                .withForceClick(true);
+    }
+
+    /**
      * Create a step to open the prayer tab.
+     * Uses PlayerProfile preference for hotkey vs click.
      *
      * @param text instruction text
      * @return widget step
@@ -217,7 +287,21 @@ public class WidgetQuestStep extends QuestStep {
     }
 
     /**
+     * Create a step to open the prayer tab by clicking (ignores hotkey preference).
+     *
+     * @param text instruction text
+     * @return widget step configured to always click
+     */
+    public static WidgetQuestStep openPrayerByClick(String text) {
+        return new WidgetQuestStep(541, text)
+                .withTabId(5)
+                .withTabSwitch(true)
+                .withForceClick(true);
+    }
+
+    /**
      * Create a step to open the spellbook tab.
+     * Uses PlayerProfile preference for hotkey vs click.
      *
      * @param text instruction text
      * @return widget step
@@ -229,21 +313,47 @@ public class WidgetQuestStep extends QuestStep {
     }
 
     /**
+     * Create a step to open the spellbook tab by clicking (ignores hotkey preference).
+     *
+     * @param text instruction text
+     * @return widget step configured to always click
+     */
+    public static WidgetQuestStep openSpellbookByClick(String text) {
+        return new WidgetQuestStep(218, text)
+                .withTabId(6)
+                .withTabSwitch(true)
+                .withForceClick(true);
+    }
+
+    /**
      * Create a step to open the settings tab.
+     * Uses PlayerProfile preference for hotkey vs click.
      *
      * @param text instruction text
      * @return widget step
      */
     public static WidgetQuestStep openSettings(String text) {
-        // Settings doesn't have a fixed tab key, need to click the widget
-        // Or use ESC key which opens settings on modern clients
         return new WidgetQuestStep(261, text)
                 .withTabId(11)
                 .withTabSwitch(true);
     }
 
     /**
+     * Create a step to open the settings tab by clicking (ignores hotkey preference).
+     *
+     * @param text instruction text
+     * @return widget step configured to always click
+     */
+    public static WidgetQuestStep openSettingsByClick(String text) {
+        return new WidgetQuestStep(261, text)
+                .withTabId(11)
+                .withTabSwitch(true)
+                .withForceClick(true);
+    }
+
+    /**
      * Create a step to open the combat styles tab.
+     * Uses PlayerProfile preference for hotkey vs click.
      *
      * @param text instruction text
      * @return widget step
@@ -255,7 +365,21 @@ public class WidgetQuestStep extends QuestStep {
     }
 
     /**
+     * Create a step to open the combat styles tab by clicking (ignores hotkey preference).
+     *
+     * @param text instruction text
+     * @return widget step configured to always click
+     */
+    public static WidgetQuestStep openCombatStylesByClick(String text) {
+        return new WidgetQuestStep(593, text)
+                .withTabId(0)
+                .withTabSwitch(true)
+                .withForceClick(true);
+    }
+
+    /**
      * Create a step to open the friends list.
+     * Uses PlayerProfile preference for hotkey vs click.
      *
      * @param text instruction text
      * @return widget step
@@ -267,7 +391,21 @@ public class WidgetQuestStep extends QuestStep {
     }
 
     /**
+     * Create a step to open the friends list by clicking (ignores hotkey preference).
+     *
+     * @param text instruction text
+     * @return widget step configured to always click
+     */
+    public static WidgetQuestStep openFriendsListByClick(String text) {
+        return new WidgetQuestStep(429, text)
+                .withTabId(9)
+                .withTabSwitch(true)
+                .withForceClick(true);
+    }
+
+    /**
      * Create a step to open the account management tab.
+     * Uses PlayerProfile preference for hotkey vs click.
      *
      * @param text instruction text
      * @return widget step
@@ -276,6 +414,19 @@ public class WidgetQuestStep extends QuestStep {
         return new WidgetQuestStep(109, text)
                 .withTabId(10)
                 .withTabSwitch(true);
+    }
+
+    /**
+     * Create a step to open the account management tab by clicking (ignores hotkey preference).
+     *
+     * @param text instruction text
+     * @return widget step configured to always click
+     */
+    public static WidgetQuestStep openAccountManagementByClick(String text) {
+        return new WidgetQuestStep(109, text)
+                .withTabId(10)
+                .withTabSwitch(true)
+                .withForceClick(true);
     }
 
     // ========================================================================
@@ -346,6 +497,21 @@ public class WidgetQuestStep extends QuestStep {
      */
     public WidgetQuestStep withTabId(int tabId) {
         this.tabId = tabId;
+        return this;
+    }
+
+    /**
+     * Force click mode for tab interaction (builder-style).
+     * 
+     * When true, forces clicking the tab widget instead of using hotkeys.
+     * When false, forces using hotkeys (if available).
+     * When null (default), defers to PlayerProfile preference.
+     *
+     * @param force true to force click, false to force hotkey, null for profile default
+     * @return this step for chaining
+     */
+    public WidgetQuestStep withForceClick(Boolean force) {
+        this.forceClick = force;
         return this;
     }
 }
