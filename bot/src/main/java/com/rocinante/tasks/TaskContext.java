@@ -12,6 +12,7 @@ import com.rocinante.input.RobotKeyboardController;
 import com.rocinante.input.RobotMouseController;
 import com.rocinante.input.WidgetClickHelper;
 import com.rocinante.progression.UnlockTracker;
+import com.rocinante.puzzle.PuzzleSolverRegistry;
 import com.rocinante.state.BankState;
 import com.rocinante.state.CombatState;
 import com.rocinante.state.EquipmentState;
@@ -115,6 +116,14 @@ public class TaskContext {
     private final PlayerProfile playerProfile;
 
     // ========================================================================
+    // Puzzle System
+    // ========================================================================
+
+    @Getter
+    @Nullable
+    private final PuzzleSolverRegistry puzzleSolverRegistry;
+
+    // ========================================================================
     // Task Variables
     // ========================================================================
 
@@ -158,7 +167,8 @@ public class TaskContext {
             @Nullable WidgetClickHelper widgetClickHelper,
             @Nullable MenuHelper menuHelper,
             @Nullable UnlockTracker unlockTracker,
-            @Nullable PlayerProfile playerProfile) {
+            @Nullable PlayerProfile playerProfile,
+            @Nullable PuzzleSolverRegistry puzzleSolverRegistry) {
         this.client = client;
         this.gameStateService = gameStateService;
         this.mouseController = mouseController;
@@ -173,6 +183,7 @@ public class TaskContext {
         this.menuHelper = menuHelper;
         this.unlockTracker = unlockTracker;
         this.playerProfile = playerProfile;
+        this.puzzleSolverRegistry = puzzleSolverRegistry;
         log.debug("TaskContext created");
     }
 
@@ -189,7 +200,7 @@ public class TaskContext {
             @Nullable TargetSelector targetSelector,
             @Nullable CombatManager combatManager) {
         this(client, gameStateService, mouseController, keyboardController, humanTimer, 
-                targetSelector, combatManager, null, null, null, null, null, null, null);
+                targetSelector, combatManager, null, null, null, null, null, null, null, null);
     }
 
     /**
@@ -202,7 +213,7 @@ public class TaskContext {
             RobotMouseController mouseController,
             RobotKeyboardController keyboardController,
             HumanTimer humanTimer) {
-        this(client, gameStateService, mouseController, keyboardController, humanTimer, null, null, null, null, null, null, null, null, null);
+        this(client, gameStateService, mouseController, keyboardController, humanTimer, null, null, null, null, null, null, null, null, null, null);
     }
 
     // ========================================================================

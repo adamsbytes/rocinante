@@ -55,7 +55,7 @@
 
 ---
 
-## Phase 4: Integrations (Quest Helper + Wiki + AI)
+## Phase 4: Integrations (Quest Helper + Wiki)
 **Goal**: Bot can read Quest Helper state and query external data.
 
 - [X] `QuestHelperBridge` - Plugin detection, state extraction
@@ -67,8 +67,6 @@
 - [ ] `WikiDataService` - OSRS Wiki API client
 - [ ] `WikiCacheManager` - Response caching
 - [ ] Drop table, item source, shop inventory parsing
-- [ ] `ClaudeAPIClient` - Anthropic API integration
-- [ ] `AIDirector` - Decision layer for ambiguous situations
 
 **Test**: Select a simple quest in Quest Helper, bot executes first 5 steps automatically.
 
@@ -119,13 +117,45 @@
 - [X] `UnlockTracker` - Teleports, areas, features (integrated with WebWalker)
 - [ ] `TeleportTask` with behavioral profile preferences
 - [ ] `InventoryTask`
-- [X] `BankTask`, `DialogueTask`, `WidgetInteractTask`
+- [X] `BankTask`, `DialogueTask`, `PuzzleTask`, `WidgetInteractTask`
 
 **Test**: Give goal "complete Recipe for Disaster" - bot generates valid plan and begins execution.
 
 ---
 
-## Phase 8: Ironman & HCIM Support
+## Phase 8: User Interaction
+**Goal**: WebUI provides user control over the planning systems defined in Phase 7.
+
+**Goal Management UI:**
+- [ ] Create/edit/delete goals (feeds into `AccountGoalPlanner`)
+- [ ] Drag-drop priority override (default: bot-optimized via planners)
+- [ ] Goals auto-start, persist in bot config
+
+**Manual Task UI:**
+- [ ] Skill training task input
+- [ ] Combat task input
+- [ ] Navigation task input
+- [ ] Quest task input
+- [ ] Force interrupt current task option
+
+**Session Control UI:**
+- [ ] Start/stop in-game session
+- [ ] Force break (exit to lobby)
+
+**Real-time Status Display:**
+- [ ] Current task with collapsible detail
+- [ ] Session stats (runtime, breaks, XP gained)
+- [ ] Account stats (levels, quest points)
+
+**Communication Layer:**
+- [ ] File-based command dispatch (goals/tasks → bot)
+- [ ] WebSocket status stream (bot → web → UI)
+
+**Test**: User creates "50 Mining" goal via UI, bot uses existing `SkillPlanner` to determine method, executes, UI shows real-time step detail.
+
+---
+
+## Phase 9: Ironman & HCIM Support
 **Goal**: Full ironman support with HCIM death prevention.
 
 - [ ] `IronmanState` - Account type detection
@@ -142,6 +172,12 @@
 - [ ] World type restrictions (no PvP/Deadman)
 
 **Test**: 100 hours HCIM operation with zero preventable deaths.
+
+## Phase 10: Advanced Features
+**Goal**: Make it awesome.
+
+- [ ] `ClaudeAPIClient` - Anthropic API integration
+- [ ] `AIDirector` - Decision layer for ambiguous situations
 
 ---
 

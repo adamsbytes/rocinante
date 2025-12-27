@@ -48,6 +48,7 @@ public abstract class QuestStep {
         ITEM,
         CONDITIONAL,
         COMPOSITE,
+        PUZZLE,
         CUSTOM
     }
 

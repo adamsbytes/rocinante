@@ -1,5 +1,6 @@
 package com.rocinante.quest.bridge;
 
+import com.rocinante.puzzle.PuzzleType;
 import com.rocinante.quest.Quest;
 import com.rocinante.quest.steps.*;
 import com.rocinante.state.StateCondition;
@@ -924,24 +925,100 @@ public class QuestHelperBridge {
      * PuzzleStep extends DetailedQuestStep and highlights widgets that need to be clicked.
      * Since puzzles require algorithmic solving, we delegate to AI Director at runtime.
      */
+    /**
+     * Translate a Quest Helper PuzzleStep to our PuzzleQuestStep.
+     *
+     * <p>Quest Helper's PuzzleStep uses a ButtonHighlightCalculator interface to determine
+     * which widgets to highlight. Our PuzzleQuestStep uses algorithmic solvers for
+     * sliding puzzles and light boxes, with auto-detection of puzzle type.
+     *
+     * <p>For puzzles not handled by our solvers, auto-detection will allow the
+     * PuzzleTask to wait for a supported puzzle interface to appear.
+     *
+     * @param qhStep the Quest Helper PuzzleStep
+     * @return a PuzzleQuestStep for solving the puzzle
+     */
     private QuestStep translatePuzzleStep(Object qhStep) throws Exception {
         String text = getStepText(qhStep);
-        WorldPoint location = getWorldPoint(qhStep);
-        
-        // PuzzleStep uses ButtonHighlightCalculator to determine which buttons to click
-        // We can't extract this logic statically, so we create a placeholder step
-        // The AI Director will handle puzzle solving at runtime
-        
-        log.info("PuzzleStep encountered - puzzle solving requires AI Director: {}", text);
-        
-        // Create a widget step placeholder that indicates a puzzle needs solving
-        // The quest executor should detect this and engage the AI Director
-        if (location != null) {
-            return new WalkQuestStep(location, text + " (puzzle - requires AI Director)");
+
+        // Try to detect puzzle type from step context
+        PuzzleType puzzleType = detectPuzzleType(qhStep, text);
+
+        log.info("PuzzleStep encountered - type: {}, text: {}", 
+                puzzleType != null ? puzzleType.getDisplayName() : "auto-detect", text);
+
+        // Create PuzzleQuestStep with detected type (or auto-detect)
+        return new PuzzleQuestStep(puzzleType, text);
+    }
+
+    /**
+     * Detect puzzle type from Quest Helper step context and text hints.
+     *
+     * @param qhStep the Quest Helper step
+     * @param text the step text
+     * @return detected puzzle type, or null for auto-detection
+     */
+    private PuzzleType detectPuzzleType(Object qhStep, String text) {
+        if (text == null) return null;
+
+        String lowerText = text.toLowerCase();
+
+        // Check for sliding puzzle indicators
+        if (lowerText.contains("sliding") || lowerText.contains("slide") ||
+            lowerText.contains("tile") || lowerText.contains("picture puzzle") ||
+            lowerText.contains("puzzle box")) {
+            return PuzzleType.SLIDING_PUZZLE;
         }
-        
-        // Return null to indicate this step needs special handling
+
+        // Check for light box indicators
+        if (lowerText.contains("light") || lowerText.contains("lamp") ||
+            lowerText.contains("bulb")) {
+            return PuzzleType.LIGHT_BOX;
+        }
+
+        // Try to detect from Quest Helper's ButtonHighlightCalculator widget ID
+        try {
+            Field calculatorField = qhStep.getClass().getDeclaredField("highlightCalculator");
+            calculatorField.setAccessible(true);
+            Object calculator = calculatorField.get(qhStep);
+
+            if (calculator != null) {
+                // Try to invoke getHighlightedButtons and check widget IDs
+                Method getButtonsMethod = calculator.getClass().getMethod("getHighlightedButtons");
+                Object buttons = getButtonsMethod.invoke(calculator);
+
+                if (buttons instanceof Set) {
+                    Set<?> buttonSet = (Set<?>) buttons;
+                    for (Object widgetDetails : buttonSet) {
+                        // Extract widget group ID
+                        int groupId = extractWidgetGroupId(widgetDetails);
+                        PuzzleType type = PuzzleType.fromWidgetGroupId(groupId);
+                        if (type != PuzzleType.UNKNOWN) {
+                            return type;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // Calculator not available or failed to extract - fall back to auto-detect
+            log.debug("Could not extract puzzle type from calculator: {}", e.getMessage());
+        }
+
+        // Auto-detect at runtime
         return null;
+    }
+
+    /**
+     * Extract widget group ID from a WidgetDetails object.
+     */
+    private int extractWidgetGroupId(Object widgetDetails) {
+        try {
+            Field groupIdField = widgetDetails.getClass().getDeclaredField("groupID");
+            groupIdField.setAccessible(true);
+            return groupIdField.getInt(widgetDetails);
+        } catch (Exception e) {
+            return -1;
+        }
     }
 
     /**
