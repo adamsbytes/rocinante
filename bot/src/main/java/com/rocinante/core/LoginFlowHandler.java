@@ -34,7 +34,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Flow (when on Tutorial Island):
  * 1. Check for "Set display name" widget → handle if present
  * 2. Check for character creation screen → handle if present  
- * 3. Handle tutorial steps (TODO)
+ * 3. Handle tutorial steps via TutorialIsland quest handler
  * 
  * NOTE: Pre-game screens (license agreement, Play button) are handled by
  * post_launch.py using OpenCV template matching.

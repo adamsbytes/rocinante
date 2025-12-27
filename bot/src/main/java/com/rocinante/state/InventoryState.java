@@ -46,7 +46,52 @@ public class InventoryState {
      */
     private static final Map<Integer, Integer> FOOD_HEALING;
 
+    /**
+     * Antipoison/antidote item IDs for poison cure detection.
+     * Includes all variants (different dose levels).
+     */
+    private static final Set<Integer> ANTIPOISON_IDS;
+
     static {
+        // Initialize antipoison IDs
+        Set<Integer> antipoisonIds = new HashSet<>();
+        // Regular antipoison (1-4 dose)
+        antipoisonIds.add(2446);  // Antipoison(4)
+        antipoisonIds.add(175);   // Antipoison(3)
+        antipoisonIds.add(177);   // Antipoison(2)
+        antipoisonIds.add(179);   // Antipoison(1)
+        // Superantipoison (1-4 dose)
+        antipoisonIds.add(2448);  // Superantipoison(4)
+        antipoisonIds.add(181);   // Superantipoison(3)
+        antipoisonIds.add(183);   // Superantipoison(2)
+        antipoisonIds.add(185);   // Superantipoison(1)
+        // Antidote+ (1-4 dose)
+        antipoisonIds.add(5943);  // Antidote+(4)
+        antipoisonIds.add(5945);  // Antidote+(3)
+        antipoisonIds.add(5947);  // Antidote+(2)
+        antipoisonIds.add(5949);  // Antidote+(1)
+        // Antidote++ (1-4 dose)
+        antipoisonIds.add(5952);  // Antidote++(4)
+        antipoisonIds.add(5954);  // Antidote++(3)
+        antipoisonIds.add(5956);  // Antidote++(2)
+        antipoisonIds.add(5958);  // Antidote++(1)
+        // Anti-venom (1-4 dose)
+        antipoisonIds.add(12905); // Anti-venom(4)
+        antipoisonIds.add(12907); // Anti-venom(3)
+        antipoisonIds.add(12909); // Anti-venom(2)
+        antipoisonIds.add(12911); // Anti-venom(1)
+        // Anti-venom+ (1-4 dose)
+        antipoisonIds.add(12913); // Anti-venom+(4)
+        antipoisonIds.add(12915); // Anti-venom+(3)
+        antipoisonIds.add(12917); // Anti-venom+(2)
+        antipoisonIds.add(12919); // Anti-venom+(1)
+        // Sanfew serum (cures poison and restores stats)
+        antipoisonIds.add(10925); // Sanfew serum(4)
+        antipoisonIds.add(10927); // Sanfew serum(3)
+        antipoisonIds.add(10929); // Sanfew serum(2)
+        antipoisonIds.add(10931); // Sanfew serum(1)
+        ANTIPOISON_IDS = Collections.unmodifiableSet(antipoisonIds);
+
         // Initialize food IDs
         Set<Integer> foodIds = new HashSet<>();
         // Low-tier food
@@ -470,6 +515,63 @@ public class InventoryState {
             }
         }
         return total;
+    }
+
+    // ========================================================================
+    // Antipoison Detection
+    // ========================================================================
+
+    /**
+     * Check if an item ID is an antipoison/antidote.
+     *
+     * @param itemId the item ID to check
+     * @return true if the item cures poison
+     */
+    public static boolean isAntipoison(int itemId) {
+        return ANTIPOISON_IDS.contains(itemId);
+    }
+
+    /**
+     * Check if the inventory contains any antipoison/antidote.
+     *
+     * @return true if at least one antipoison item is present
+     */
+    public boolean hasAntipoison() {
+        for (Item item : items) {
+            if (item != null && isAntipoison(item.getId())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Get the slot index of the first antipoison/antidote item.
+     *
+     * @return slot index of antipoison, or -1 if none found
+     */
+    public int getAntipoisonSlot() {
+        for (int i = 0; i < INVENTORY_SIZE; i++) {
+            if (items[i] != null && isAntipoison(items[i].getId())) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Get all slots containing antipoison/antidote items.
+     *
+     * @return list of slot indices containing antipoison
+     */
+    public List<Integer> getAntipoisonSlots() {
+        List<Integer> slots = new ArrayList<>();
+        for (int i = 0; i < INVENTORY_SIZE; i++) {
+            if (items[i] != null && isAntipoison(items[i].getId())) {
+                slots.add(i);
+            }
+        }
+        return slots;
     }
 }
 

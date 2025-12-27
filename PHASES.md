@@ -8,7 +8,6 @@
 
 - [X] `RobotMouseController` - Bezier curves, click variance, idle behavior
 - [X] `RobotKeyboardController` - Typing simulation, hotkeys
-- [X] `InputProfile` - Per-session randomized characteristics
 - [X] `HumanTimer` - Gaussian/Poisson delays, named profiles
 - [X] `GameStateService` - Tick-based state polling and caching
 - [X] `PlayerState`, `InventoryState`, `EquipmentState` - Basic state tracking
@@ -80,7 +79,7 @@
 - [X] `FatigueModel` - Session fatigue accumulation/effects
 - [X] `BreakScheduler` - Micro/short/long breaks
 - [X] `AttentionModel` - Focus states, distraction simulation
-- [X] `PlayerProfile` - Per-account persistent fingerprints (consolidated from InputProfile + BehavioralProfile)
+- [X] `PlayerProfile` - Per-account persistent fingerprints
 - [X] `BotActivityTracker` - Activity type awareness, account type detection, HCIM safety checks
 - [X] `EmergencyHandler` - Poison/health emergency conditions with task interruption
 - [X] Session rituals, idle behaviors, XP checking patterns

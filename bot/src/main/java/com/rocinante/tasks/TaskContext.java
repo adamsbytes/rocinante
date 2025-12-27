@@ -4,6 +4,8 @@ import com.rocinante.combat.CombatManager;
 import com.rocinante.combat.GearSwitcher;
 import com.rocinante.combat.TargetSelector;
 import com.rocinante.core.GameStateService;
+import com.rocinante.input.GroundItemClickHelper;
+import com.rocinante.input.InventoryClickHelper;
 import com.rocinante.input.RobotKeyboardController;
 import com.rocinante.input.RobotMouseController;
 import com.rocinante.state.CombatState;
@@ -75,6 +77,14 @@ public class TaskContext {
     @Nullable
     private final GearSwitcher gearSwitcher;
 
+    @Getter
+    @Nullable
+    private final InventoryClickHelper inventoryClickHelper;
+
+    @Getter
+    @Nullable
+    private final GroundItemClickHelper groundItemClickHelper;
+
     // ========================================================================
     // Task Variables
     // ========================================================================
@@ -113,7 +123,9 @@ public class TaskContext {
             HumanTimer humanTimer,
             @Nullable TargetSelector targetSelector,
             @Nullable CombatManager combatManager,
-            @Nullable GearSwitcher gearSwitcher) {
+            @Nullable GearSwitcher gearSwitcher,
+            @Nullable InventoryClickHelper inventoryClickHelper,
+            @Nullable GroundItemClickHelper groundItemClickHelper) {
         this.client = client;
         this.gameStateService = gameStateService;
         this.mouseController = mouseController;
@@ -122,11 +134,13 @@ public class TaskContext {
         this.targetSelector = targetSelector;
         this.combatManager = combatManager;
         this.gearSwitcher = gearSwitcher;
+        this.inventoryClickHelper = inventoryClickHelper;
+        this.groundItemClickHelper = groundItemClickHelper;
         log.debug("TaskContext created");
     }
 
     /**
-     * Constructor for TaskContext without gear switcher.
+     * Constructor for TaskContext without click helpers.
      * Used for testing or when gear switching is not needed.
      */
     public TaskContext(
@@ -138,7 +152,7 @@ public class TaskContext {
             @Nullable TargetSelector targetSelector,
             @Nullable CombatManager combatManager) {
         this(client, gameStateService, mouseController, keyboardController, humanTimer, 
-                targetSelector, combatManager, null);
+                targetSelector, combatManager, null, null, null);
     }
 
     /**
@@ -151,7 +165,7 @@ public class TaskContext {
             RobotMouseController mouseController,
             RobotKeyboardController keyboardController,
             HumanTimer humanTimer) {
-        this(client, gameStateService, mouseController, keyboardController, humanTimer, null, null, null);
+        this(client, gameStateService, mouseController, keyboardController, humanTimer, null, null, null, null, null);
     }
 
     // ========================================================================

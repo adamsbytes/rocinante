@@ -32,6 +32,12 @@ public class EmergencyHandler {
      */
     private String activeEmergencyId = null;
 
+    /**
+     * When true, all emergency checks are skipped.
+     * Use for quests/scenarios that require death or specific health states.
+     */
+    private volatile boolean suppressed = false;
+
     @Inject
     public EmergencyHandler() {
         this.conditions = new CopyOnWriteArrayList<>();
@@ -89,6 +95,10 @@ public class EmergencyHandler {
      * @return Optional containing emergency task, or empty if no emergency
      */
     public Optional<Task> checkEmergencies(TaskContext ctx) {
+        if (suppressed) {
+            return Optional.empty();
+        }
+        
         Instant now = Instant.now();
         
         for (EmergencyCondition condition : conditions) {
@@ -158,6 +168,36 @@ public class EmergencyHandler {
     }
 
     // ========================================================================
+    // Suppression
+    // ========================================================================
+
+    /**
+     * Suppress all emergency checks.
+     * Use for quests/scenarios that require death or specific health states.
+     */
+    public void suppress() {
+        this.suppressed = true;
+        log.info("Emergency handling suppressed");
+    }
+
+    /**
+     * Resume emergency checks after suppression.
+     */
+    public void unsuppress() {
+        this.suppressed = false;
+        log.info("Emergency handling resumed");
+    }
+
+    /**
+     * Check if emergency handling is currently suppressed.
+     * 
+     * @return true if suppressed
+     */
+    public boolean isSuppressed() {
+        return suppressed;
+    }
+
+    // ========================================================================
     // Status
     // ========================================================================
 
@@ -194,8 +234,8 @@ public class EmergencyHandler {
      * @return summary string
      */
     public String getSummary() {
-        return String.format("EmergencyHandler[conditions=%d, active=%s, cooldowns=%d]",
-                conditions.size(), activeEmergencyId, cooldowns.size());
+        return String.format("EmergencyHandler[conditions=%d, active=%s, cooldowns=%d, suppressed=%s]",
+                conditions.size(), activeEmergencyId, cooldowns.size(), suppressed);
     }
 
     @Override

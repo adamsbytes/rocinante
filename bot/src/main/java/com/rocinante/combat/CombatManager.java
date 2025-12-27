@@ -1,7 +1,8 @@
 package com.rocinante.combat;
 
 import com.rocinante.core.GameStateService;
-import com.rocinante.progression.UnlockTracker;
+import com.rocinante.input.GroundItemClickHelper;
+import com.rocinante.input.InventoryClickHelper;
 import com.rocinante.state.CombatState;
 import com.rocinante.state.EquipmentState;
 import com.rocinante.state.GroundItemSnapshot;
@@ -11,7 +12,6 @@ import com.rocinante.state.PlayerState;
 import com.rocinante.state.WorldState;
 // Use explicit import to avoid conflict with com.rocinante.combat.AttackStyle
 import com.rocinante.state.AttackStyle;
-import com.rocinante.input.RobotMouseController;
 import com.rocinante.timing.HumanTimer;
 import lombok.Getter;
 import lombok.Setter;
@@ -24,6 +24,7 @@ import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.util.Random;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Main combat loop orchestrator.
@@ -52,13 +53,25 @@ public class CombatManager {
 
     private final Client client;
     private final GameStateService gameStateService;
-    private final RobotMouseController mouseController;
+    private final InventoryClickHelper inventoryClickHelper;
+    private final GroundItemClickHelper groundItemClickHelper;
+    private final GearSwitcher gearSwitcher;
     private final HumanTimer humanTimer;
     private final HCIMSafetyManager hcimSafetyManager;
     private final FoodManager foodManager;
     private final PrayerFlicker prayerFlicker;
     private final SpecialAttackManager specialAttackManager;
     private final Random random = new Random();
+
+    /**
+     * Combo eat delay in ticks (karambwan can be eaten 1 tick after regular food).
+     */
+    private static final int COMBO_EAT_DELAY_TICKS = 1;
+
+    /**
+     * Milliseconds per game tick (approximately 600ms).
+     */
+    private static final int MS_PER_TICK = 600;
 
     // ========================================================================
     // State
@@ -90,7 +103,9 @@ public class CombatManager {
     public CombatManager(
             Client client,
             GameStateService gameStateService,
-            RobotMouseController mouseController,
+            InventoryClickHelper inventoryClickHelper,
+            GroundItemClickHelper groundItemClickHelper,
+            GearSwitcher gearSwitcher,
             HumanTimer humanTimer,
             HCIMSafetyManager hcimSafetyManager,
             FoodManager foodManager,
@@ -98,7 +113,9 @@ public class CombatManager {
             SpecialAttackManager specialAttackManager) {
         this.client = client;
         this.gameStateService = gameStateService;
-        this.mouseController = mouseController;
+        this.inventoryClickHelper = inventoryClickHelper;
+        this.groundItemClickHelper = groundItemClickHelper;
+        this.gearSwitcher = gearSwitcher;
         this.humanTimer = humanTimer;
         this.hcimSafetyManager = hcimSafetyManager;
         this.foodManager = foodManager;
@@ -388,16 +405,45 @@ public class CombatManager {
 
     private void executeEatAction(CombatAction action) {
         int currentTick = gameStateService.getCurrentTick();
+        int primarySlot = action.getPrimarySlot();
         
-        // Notify FoodManager of successful eat
-        foodManager.onFoodEaten(currentTick);
+        if (primarySlot < 0) {
+            log.warn("Invalid primary slot for eat action: {}", primarySlot);
+            return;
+        }
         
-        // TODO: Implement actual eating via mouse controller
-        // This would:
-        // 1. Click on food in inventory slot action.getPrimarySlot()
-        // 2. If combo eating, wait 1 tick then click karambwan at action.getSecondarySlot()
-        log.info("Would eat food at slot {} (combo: {})", 
-                action.getPrimarySlot(), action.isComboEat());
+        // Click on food in inventory
+        log.debug("Eating food at slot {} (combo: {})", primarySlot, action.isComboEat());
+        
+        CompletableFuture<Boolean> eatFuture = inventoryClickHelper.executeClick(primarySlot, "Eating food");
+        
+        eatFuture.thenAccept(success -> {
+            if (!success) {
+                log.warn("Failed to click food at slot {}", primarySlot);
+                return;
+            }
+            
+            // Notify FoodManager of successful eat
+            foodManager.onFoodEaten(currentTick);
+            
+            // If combo eating, wait 1 tick then click karambwan at secondary slot
+            // Per Section 10.1.2: support food + karambwan tick eating when low
+            if (action.isComboEat() && action.getSecondarySlot() >= 0) {
+                long comboDelayMs = COMBO_EAT_DELAY_TICKS * MS_PER_TICK;
+                
+                humanTimer.sleep(comboDelayMs).thenRun(() -> {
+                    log.debug("Combo eating karambwan at slot {}", action.getSecondarySlot());
+                    inventoryClickHelper.executeClick(action.getSecondarySlot(), "Combo eating karambwan")
+                            .thenAccept(comboSuccess -> {
+                                if (comboSuccess) {
+                                    log.debug("Combo eat completed successfully");
+                                } else {
+                                    log.warn("Failed to click karambwan at slot {}", action.getSecondarySlot());
+                                }
+                            });
+                });
+            }
+        });
     }
 
     private void executePrayerSwitch(CombatAction action) {
@@ -428,17 +474,42 @@ public class CombatManager {
     }
 
     private void executeLoot(CombatAction action) {
-        // TODO: Implement looting via mouse controller
-        // This would click on the ground item
         GroundItemSnapshot item = action.getGroundItem();
-        if (item != null) {
-            log.info("Would loot {} at {}", item.getName(), item.getWorldPosition());
+        if (item == null) {
+            log.warn("Loot action has no ground item");
+            return;
         }
+
+        log.debug("Looting {} at {}", item.getName(), item.getWorldPosition());
+
+        groundItemClickHelper.clickGroundItem(item.getWorldPosition(), item.getId(), item.getName())
+                .exceptionally(e -> {
+                    log.error("Failed to loot {}: {}", item.getName(), e.getMessage());
+                    return false;
+                });
     }
 
     private void executeGearSwitch(CombatAction action) {
-        // TODO: Implement gear switching via mouse controller
-        log.info("Would switch gear");
+        String gearSetName = action.getGearSetName();
+        if (gearSetName == null || gearSetName.isEmpty()) {
+            log.warn("Gear switch action has no gear set name");
+            return;
+        }
+
+        log.debug("Switching to gear set: {}", gearSetName);
+
+        gearSwitcher.switchTo(gearSetName)
+                .thenAccept(success -> {
+                    if (success) {
+                        log.debug("Gear switch to '{}' completed", gearSetName);
+                    } else {
+                        log.warn("Gear switch to '{}' failed", gearSetName);
+                    }
+                })
+                .exceptionally(e -> {
+                    log.error("Gear switch to '{}' error: {}", gearSetName, e.getMessage());
+                    return null;
+                });
     }
 
     private void executeFlee(CombatAction action) {
@@ -465,8 +536,23 @@ public class CombatManager {
     }
 
     private void executeDrinkPotion(CombatAction action) {
-        // TODO: Implement potion drinking via mouse controller
-        log.info("Would drink potion at slot {}", action.getPrimarySlot());
+        int slot = action.getPrimarySlot();
+        
+        if (slot < 0) {
+            log.warn("Invalid slot for drink potion action: {}", slot);
+            return;
+        }
+        
+        log.debug("Drinking potion at slot {}", slot);
+        
+        inventoryClickHelper.executeClick(slot, "Drinking potion")
+                .thenAccept(success -> {
+                    if (success) {
+                        log.debug("Potion drink completed at slot {}", slot);
+                    } else {
+                        log.warn("Failed to drink potion at slot {}", slot);
+                    }
+                });
     }
 
     // ========================================================================

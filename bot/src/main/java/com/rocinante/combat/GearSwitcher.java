@@ -1,19 +1,16 @@
 package com.rocinante.combat;
 
 import com.rocinante.core.GameStateService;
-import com.rocinante.input.RobotMouseController;
+import com.rocinante.input.InventoryClickHelper;
 import com.rocinante.state.EquipmentState;
 import com.rocinante.state.InventoryState;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
-import net.runelite.api.widgets.Widget;
-import net.runelite.api.widgets.WidgetInfo;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.awt.Rectangle;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadLocalRandom;
@@ -63,33 +60,13 @@ public class GearSwitcher {
      */
     private static final int MAX_CLICK_DELAY_MS = 150;
 
-    /**
-     * Inventory widget group ID.
-     */
-    private static final int INVENTORY_GROUP_ID = 149;
-
-    /**
-     * Inventory widget child ID for items.
-     */
-    private static final int INVENTORY_CHILD_ID = 0;
-
-    /**
-     * Number of inventory columns.
-     */
-    private static final int INVENTORY_COLUMNS = 4;
-
-    /**
-     * Number of inventory rows.
-     */
-    private static final int INVENTORY_ROWS = 7;
-
     // ========================================================================
     // Dependencies
     // ========================================================================
 
     private final Client client;
     private final GameStateService gameStateService;
-    private final RobotMouseController mouseController;
+    private final InventoryClickHelper inventoryClickHelper;
 
     // ========================================================================
     // State
@@ -127,10 +104,10 @@ public class GearSwitcher {
 
     @Inject
     public GearSwitcher(Client client, GameStateService gameStateService, 
-                        RobotMouseController mouseController) {
+                        InventoryClickHelper inventoryClickHelper) {
         this.client = client;
         this.gameStateService = gameStateService;
-        this.mouseController = mouseController;
+        this.inventoryClickHelper = inventoryClickHelper;
         log.info("GearSwitcher initialized");
     }
 
@@ -248,7 +225,7 @@ public class GearSwitcher {
             return CompletableFuture.completedFuture(false);
         }
 
-        return clickInventorySlot(slot);
+        return inventoryClickHelper.executeClick(slot, "Equipping item " + itemId);
     }
 
     /**
@@ -339,7 +316,7 @@ public class GearSwitcher {
         }
 
         // Click the inventory slot to equip
-        return clickInventorySlot(invSlot)
+        return inventoryClickHelper.executeClick(invSlot, "Equipping item " + itemId)
                 .thenCompose(success -> {
                     if (!success) {
                         log.warn("Failed to equip item {} in slot {}", itemId, invSlot);
@@ -351,76 +328,6 @@ public class GearSwitcher {
                 });
     }
 
-    /**
-     * Click an inventory slot to equip the item.
-     */
-    private CompletableFuture<Boolean> clickInventorySlot(int slot) {
-        // Get inventory widget
-        Widget inventoryWidget = client.getWidget(WidgetInfo.INVENTORY);
-        if (inventoryWidget == null || inventoryWidget.isHidden()) {
-            log.warn("Inventory widget not visible");
-            return CompletableFuture.completedFuture(false);
-        }
-
-        // Calculate slot position
-        Rectangle slotBounds = getInventorySlotBounds(inventoryWidget, slot);
-        if (slotBounds == null) {
-            log.warn("Could not get bounds for inventory slot {}", slot);
-            return CompletableFuture.completedFuture(false);
-        }
-
-        // Calculate click point with humanization
-        int clickX = slotBounds.x + randomOffset(slotBounds.width);
-        int clickY = slotBounds.y + randomOffset(slotBounds.height);
-
-        log.trace("Clicking inventory slot {} at ({}, {})", slot, clickX, clickY);
-
-        return mouseController.moveToCanvas(clickX, clickY)
-                .thenCompose(v -> mouseController.click())
-                .thenApply(v -> true)
-                .exceptionally(e -> {
-                    log.error("Failed to click inventory slot {}", slot, e);
-                    return false;
-                });
-    }
-
-    /**
-     * Get the bounds of an inventory slot.
-     */
-    private Rectangle getInventorySlotBounds(Widget inventoryWidget, int slot) {
-        if (slot < 0 || slot >= 28) {
-            return null;
-        }
-
-        Widget[] children = inventoryWidget.getDynamicChildren();
-        if (children == null || slot >= children.length) {
-            // Calculate bounds manually
-            Rectangle parentBounds = inventoryWidget.getBounds();
-            if (parentBounds == null) {
-                return null;
-            }
-
-            int col = slot % INVENTORY_COLUMNS;
-            int row = slot / INVENTORY_COLUMNS;
-            int slotWidth = parentBounds.width / INVENTORY_COLUMNS;
-            int slotHeight = parentBounds.height / INVENTORY_ROWS;
-
-            return new Rectangle(
-                    parentBounds.x + col * slotWidth,
-                    parentBounds.y + row * slotHeight,
-                    slotWidth,
-                    slotHeight
-            );
-        }
-
-        Widget slotWidget = children[slot];
-        if (slotWidget == null) {
-            return null;
-        }
-
-        return slotWidget.getBounds();
-    }
-
     // ========================================================================
     // Humanization Helpers
     // ========================================================================
@@ -430,17 +337,6 @@ public class GearSwitcher {
      */
     private int randomDelay() {
         return ThreadLocalRandom.current().nextInt(minClickDelay, maxClickDelay + 1);
-    }
-
-    /**
-     * Generate a random offset within a dimension (for click position).
-     * Uses Gaussian distribution centered at 40-60% of the dimension.
-     */
-    private int randomOffset(int dimension) {
-        double center = dimension * (0.4 + ThreadLocalRandom.current().nextDouble() * 0.2);
-        double stdDev = dimension * 0.15;
-        double offset = center + ThreadLocalRandom.current().nextGaussian() * stdDev;
-        return (int) Math.max(2, Math.min(dimension - 2, offset));
     }
 
     /**

@@ -23,12 +23,19 @@ import com.rocinante.behavior.emergencies.PoisonEmergency;
 import com.rocinante.config.RocinanteConfig;
 import com.rocinante.input.RobotKeyboardController;
 import com.rocinante.input.RobotMouseController;
+import com.rocinante.state.InventoryState;
+import com.rocinante.tasks.AbstractTask;
 import com.rocinante.tasks.Task;
 import com.rocinante.tasks.TaskContext;
 import com.rocinante.tasks.TaskExecutor;
 import com.rocinante.tasks.TaskPriority;
 import com.rocinante.timing.HumanTimer;
 import com.rocinante.quest.QuestExecutor;
+
+import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import java.util.List;
 import java.util.function.Function;
@@ -184,24 +191,111 @@ public class RocinantePlugin extends Plugin
     private void registerEmergencyConditions() {
         // Low Health Emergency - triggers when HP is critically low
         emergencyHandler.registerCondition(
-                new LowHealthEmergency(activityTracker, ctx -> {
-                    // Create flee/eat task based on context
-                    // This is a placeholder - actual implementation would use FoodManager
-                    log.warn("Low health emergency response - would eat/flee");
-                    return null; // TODO: Return actual flee/eat task
-                })
+                new LowHealthEmergency(activityTracker, ctx -> createEatFoodTask(ctx))
         );
         
         // Poison Emergency - triggers when poisoned with low health
         emergencyHandler.registerCondition(
-                new PoisonEmergency(activityTracker, ctx -> {
-                    // Create antidote task based on context
-                    log.warn("Poison emergency response - would use antidote");
-                    return null; // TODO: Return actual cure task
-                })
+                new PoisonEmergency(activityTracker, ctx -> createDrinkAntidoteTask(ctx))
         );
         
         log.info("Registered {} emergency conditions", emergencyHandler.getConditionCount());
+    }
+
+    /**
+     * Create a task to eat the best available food.
+     * Used by LowHealthEmergency.
+     */
+    private Task createEatFoodTask(TaskContext ctx) {
+        InventoryState inventory = ctx.getInventoryState();
+        int foodSlot = inventory.getBestFood();
+        
+        if (foodSlot < 0) {
+            log.warn("Emergency: No food available to eat");
+            return null;
+        }
+        
+        return new AbstractTask() {
+            private final AtomicBoolean started = new AtomicBoolean(false);
+            private final AtomicReference<CompletableFuture<Boolean>> pending = new AtomicReference<>();
+            
+            {
+                this.timeout = Duration.ofSeconds(5);
+                this.priority = TaskPriority.URGENT;
+            }
+            
+            @Override
+            public String getDescription() {
+                return "Emergency: Eat food";
+            }
+            
+            @Override
+            public boolean canExecute(TaskContext context) {
+                return context.getInventoryClickHelper() != null;
+            }
+            
+            @Override
+            protected void executeImpl(TaskContext context) {
+                if (started.compareAndSet(false, true)) {
+                    log.info("Emergency eating food from slot {}", foodSlot);
+                    var clickHelper = context.getInventoryClickHelper();
+                    pending.set(clickHelper.executeClick(foodSlot, "emergency food"));
+                }
+                
+                CompletableFuture<Boolean> future = pending.get();
+                if (future != null && future.isDone()) {
+                    complete();
+                }
+            }
+        };
+    }
+
+    /**
+     * Create a task to drink an antipoison/antidote.
+     * Used by PoisonEmergency.
+     */
+    private Task createDrinkAntidoteTask(TaskContext ctx) {
+        InventoryState inventory = ctx.getInventoryState();
+        int antidoteSlot = inventory.getAntipoisonSlot();
+        
+        if (antidoteSlot < 0) {
+            log.warn("Emergency: No antipoison available");
+            return null;
+        }
+        
+        return new AbstractTask() {
+            private final AtomicBoolean started = new AtomicBoolean(false);
+            private final AtomicReference<CompletableFuture<Boolean>> pending = new AtomicReference<>();
+            
+            {
+                this.timeout = Duration.ofSeconds(5);
+                this.priority = TaskPriority.URGENT;
+            }
+            
+            @Override
+            public String getDescription() {
+                return "Emergency: Drink antipoison";
+            }
+            
+            @Override
+            public boolean canExecute(TaskContext context) {
+                return context.getInventoryClickHelper() != null;
+            }
+            
+            @Override
+            protected void executeImpl(TaskContext context) {
+                if (started.compareAndSet(false, true)) {
+                    log.info("Emergency drinking antipoison from slot {}", antidoteSlot);
+                    var clickHelper = context.getInventoryClickHelper();
+                    pending.set(clickHelper.executeClick(antidoteSlot, "emergency antipoison"));
+                }
+                
+                CompletableFuture<Boolean> future = pending.get();
+                if (future != null && future.isDone()) {
+                    complete();
+                }
+            }
+        };
     }
 
     @Override

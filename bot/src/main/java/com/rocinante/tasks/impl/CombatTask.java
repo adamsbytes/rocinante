@@ -4,8 +4,10 @@ import com.rocinante.combat.CombatManager;
 import com.rocinante.combat.TargetSelector;
 import com.rocinante.state.*;
 import com.rocinante.tasks.AbstractTask;
+import com.rocinante.tasks.Task;
 import com.rocinante.tasks.TaskContext;
 import com.rocinante.tasks.TaskPriority;
+import com.rocinante.tasks.TaskState;
 import com.rocinante.util.Randomization;
 import java.util.concurrent.ThreadLocalRandom;
 import lombok.Getter;
@@ -152,6 +154,12 @@ public class CombatTask extends AbstractTask {
      */
     private int lootIndex = 0;
 
+    /**
+     * Active sub-task for delegation (e.g., WalkToTask for positioning).
+     * Allows CombatTask to reuse existing task implementations (DRY).
+     */
+    private Task activeSubTask;
+
     // ========================================================================
     // Constructor
     // ========================================================================
@@ -240,6 +248,16 @@ public class CombatTask extends AbstractTask {
             return;
         }
 
+        // Execute active sub-task if present (DRY delegation to WalkToTask, etc.)
+        if (activeSubTask != null) {
+            activeSubTask.execute(ctx);
+            if (activeSubTask.getState().isTerminal()) {
+                activeSubTask = null;
+            } else {
+                return; // Sub-task still running
+            }
+        }
+
         // Execute current phase
         switch (phase) {
             case FIND_TARGET:
@@ -321,30 +339,23 @@ public class CombatTask extends AbstractTask {
         
         if (distanceFromSafeSpot <= config.getSafeSpotMaxDistance()) {
             // We're in position, proceed to attack
+            phaseWaitTicks = 0;
             phase = CombatPhase.ATTACK;
             return;
         }
 
-        // Need to move to safe spot
-        if (!movePending && !player.isMoving()) {
+        // Need to move to safe spot - delegate to WalkToTask (DRY)
+        if (activeSubTask == null && !player.isMoving()) {
             log.debug("Moving to safe spot at {}", safeSpot);
-            
-            // TODO: Trigger walk to safe spot via WalkToTask or direct click
-            // For now, log and proceed
-            movePending = true;
-            
-            // Simulate movement completion for testing
-            CompletableFuture.runAsync(() -> {
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException ignored) {}
-                movePending = false;
-            });
+            activeSubTask = new WalkToTask(safeSpot);
+            phaseWaitTicks = 0;
+            return; // WalkToTask will be executed next tick by executeImpl
         }
 
         phaseWaitTicks++;
         if (phaseWaitTicks > MAX_WAIT_TICKS) {
             log.warn("Failed to reach safe spot, continuing to attack");
+            activeSubTask = null; // Cancel any pending walk
             phase = CombatPhase.ATTACK;
         }
     }
@@ -551,21 +562,34 @@ public class CombatTask extends AbstractTask {
         
         log.debug("Looting {} (value: {} gp)", item.getName(), item.getTotalGeValue());
 
-        // Click on ground item
-        // TODO: Implement actual ground item clicking
-        // For now, simulate the action
-        movePending = true;
-        
-        int delay = ThreadLocalRandom.current().nextInt(
-                config.getMinLootDelay(), config.getMaxLootDelay() + 1);
-        
-        CompletableFuture.runAsync(() -> {
-            try {
-                Thread.sleep(delay);
-            } catch (InterruptedException ignored) {}
-            movePending = false;
+        // Click on ground item using helper
+        var groundItemHelper = ctx.getGroundItemClickHelper();
+        if (groundItemHelper == null) {
+            log.warn("GroundItemClickHelper not available, skipping loot");
             lootIndex++;
-        });
+            return;
+        }
+
+        clickPending = true;
+        groundItemHelper.clickGroundItem(item.getWorldPosition(), item.getId(), item.getName())
+                .thenAccept(success -> {
+                    clickPending = false;
+                    if (success) {
+                        // Add humanized delay before next loot
+                        int delay = ThreadLocalRandom.current().nextInt(
+                                config.getMinLootDelay(), config.getMaxLootDelay() + 1);
+                        try {
+                            Thread.sleep(delay);
+                        } catch (InterruptedException ignored) {}
+                    }
+                    lootIndex++;
+                })
+                .exceptionally(e -> {
+                    log.error("Failed to loot {}: {}", item.getName(), e.getMessage());
+                    clickPending = false;
+                    lootIndex++;
+                    return null;
+                });
     }
 
     private void prepareLoot(TaskContext ctx) {
