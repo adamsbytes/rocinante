@@ -216,6 +216,10 @@ public class CombatQuestStep extends QuestStep {
 
         List<Task> tasks = new ArrayList<>();
 
+        // Check if this is manual spell casting (no equipment needed - just click spell then target)
+        // Tutorial Island magic step uses this: player has runes but no staff
+        boolean isManualSpellCasting = spells != null && !spells.isEmpty() && !useAutocast;
+
         // Add equipment task if attack style or gear set specified
         if (gearSet != null) {
             // Use explicit gear set (takes precedence)
@@ -227,8 +231,9 @@ public class CombatQuestStep extends QuestStep {
             if (attackRange == 1 && gearSet.getAttackStyle() != null) {
                 attackRange = gearSet.getAttackStyle().getDefaultRange();
             }
-        } else if (attackStyle != null) {
+        } else if (attackStyle != null && !isManualSpellCasting) {
             // Use attack style auto-detection
+            // Skip for manual spell casting - no staff needed, just runes
             log.debug("Adding EquipItemTask for attack style: {}", attackStyle);
             tasks.add(new EquipItemTask(attackStyle)
                     .withDescription("Equip gear for " + attackStyle.name().toLowerCase() + " combat"));
@@ -236,6 +241,12 @@ public class CombatQuestStep extends QuestStep {
             // Auto-set attack range from attack style if not explicitly set
             if (attackRange == 1) {
                 attackRange = attackStyle.getDefaultRange();
+            }
+        } else if (isManualSpellCasting) {
+            log.debug("Manual spell casting mode - skipping equipment task");
+            // Still set attack range for magic if not explicitly set
+            if (attackRange == 1) {
+                attackRange = 10; // Default magic range
             }
         }
 

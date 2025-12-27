@@ -55,6 +55,11 @@ public class WidgetQuestStep extends QuestStep {
     private int widgetChildId = 0;
 
     /**
+     * Optional dynamic child index (for widgets with dynamic children).
+     */
+    private int dynamicChildIndex = -1;
+
+    /**
      * The action to perform.
      */
     private WidgetAction action = WidgetAction.CLICK;
@@ -142,6 +147,11 @@ public class WidgetQuestStep extends QuestStep {
         // Handle widget click
         WidgetInteractTask widgetTask = new WidgetInteractTask(widgetGroupId, widgetChildId)
                 .withDescription(getText());
+
+        // Add dynamic child if specified
+        if (dynamicChildIndex >= 0) {
+            widgetTask.withDynamicChild(dynamicChildIndex);
+        }
 
         switch (action) {
             case CLICK:
@@ -441,6 +451,17 @@ public class WidgetQuestStep extends QuestStep {
      */
     public WidgetQuestStep withChildId(int childId) {
         this.widgetChildId = childId;
+        return this;
+    }
+
+    /**
+     * Set the dynamic child index (builder-style).
+     *
+     * @param index the dynamic child index
+     * @return this step for chaining
+     */
+    public WidgetQuestStep withDynamicChild(int index) {
+        this.dynamicChildIndex = index;
         return this;
     }
 

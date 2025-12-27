@@ -159,7 +159,8 @@ public class RequirementTranslator {
     // ========================================================================
 
     private StateCondition translateZoneRequirement(Object req) throws Exception {
-        boolean checkInZone = getBoolField(req, "checkInZone");
+        // checkInZone: true means "player should be in zone", false means "player should NOT be in zone"
+        boolean checkInZone = getBoolFieldSafe(req, "checkInZone", true);
 
         // Get zones list
         Object zonesObj = getFieldValue(req, "zones");
@@ -187,13 +188,14 @@ public class RequirementTranslator {
     }
 
     private StateCondition translateSingleZone(Object zone) throws Exception {
-        // Zone has minX, maxX, minY, maxY, minPlane, maxPlane
+        // Zone has minX, maxX, minY, maxY (public getters) and minPlane, maxPlane (private)
         int minX = getIntField(zone, "minX");
         int maxX = getIntField(zone, "maxX");
         int minY = getIntField(zone, "minY");
         int maxY = getIntField(zone, "maxY");
+        // minPlane and maxPlane are private with no getters, use reflection
         int minPlane = getIntFieldSafe(zone, "minPlane", 0);
-        int maxPlane = getIntFieldSafe(zone, "maxPlane", 3);
+        int maxPlane = getIntFieldSafe(zone, "maxPlane", 2); // Default is 2 in Zone class
 
         return ctx -> {
             WorldPoint pos = ctx.getPlayerState().getWorldPosition();
@@ -212,10 +214,11 @@ public class RequirementTranslator {
     private StateCondition translateItemRequirement(Object req) throws Exception {
         int itemId = getIntField(req, "id");
         int quantity = getIntFieldSafe(req, "quantity", 1);
-        boolean mustBeEquipped = getBoolFieldSafe(req, "mustBeEquipped", false);
-        boolean equip = getBoolFieldSafe(req, "equip", false);
 
-        // Handle alternate items
+        // ItemRequirement uses mustBeEquipped() method, but field is also called mustBeEquipped
+        boolean mustBeEquipped = getBoolFieldSafe(req, "mustBeEquipped", false);
+
+        // Handle alternate items (field is named alternateItems, not alternateItemIds)
         List<Integer> allIds = new ArrayList<>();
         allIds.add(itemId);
 
@@ -226,12 +229,12 @@ public class RequirementTranslator {
             allIds.addAll(alternates);
         }
 
-        if (mustBeEquipped || equip) {
+        if (mustBeEquipped) {
             // Check equipment
             int[] idArray = allIds.stream().mapToInt(i -> i).toArray();
             return Conditions.hasAnyEquipped(idArray);
         } else {
-            // Check inventory
+            // Check inventory (or bank, or ground - simplified to inventory for now)
             return ctx -> {
                 for (int id : allIds) {
                     if (ctx.getInventoryState().hasItem(id, quantity)) {

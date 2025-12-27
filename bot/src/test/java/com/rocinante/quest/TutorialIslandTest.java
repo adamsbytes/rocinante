@@ -244,14 +244,14 @@ public class TutorialIslandTest {
         assertEquals(StepType.WIDGET, steps.get(400).getType()); // Open equipment stats
         assertEquals(StepType.ITEM, steps.get(405).getType());   // Equip dagger
         assertEquals(StepType.NPC, steps.get(410).getType());    // Talk again
-        assertEquals(StepType.CONDITIONAL, steps.get(420).getType()); // Equip sword+shield
+        assertEquals(StepType.COMPOSITE, steps.get(420).getType()); // Equip sword+shield (composite)
         assertEquals(StepType.WIDGET, steps.get(430).getType()); // Open combat tab
         assertEquals(StepType.OBJECT, steps.get(440).getType()); // Enter rat cage
         assertEquals(StepType.COMBAT, steps.get(450).getType()); // Attack rat
-        assertEquals(StepType.COMBAT, steps.get(460).getType()); // Wait for rat to die
+        assertEquals(StepType.CUSTOM, steps.get(460).getType()); // Wait for rat to die (WaitQuestStep)
         assertEquals(StepType.NPC, steps.get(470).getType());    // Talk to Combat Instructor
         assertEquals(StepType.COMBAT, steps.get(480).getType()); // Equip bow (via AttackStyle) + attack
-        assertEquals(StepType.COMBAT, steps.get(490).getType()); // Wait for rat to die
+        assertEquals(StepType.CUSTOM, steps.get(490).getType()); // Wait for rat to die (WaitQuestStep)
         assertEquals(StepType.OBJECT, steps.get(500).getType()); // Exit combat area
     }
 

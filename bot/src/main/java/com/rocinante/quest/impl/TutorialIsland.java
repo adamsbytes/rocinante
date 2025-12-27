@@ -350,9 +350,8 @@ public class TutorialIsland implements Quest {
         steps.put(450, new CombatQuestStep(NPC_GIANT_RAT, "Attack the giant rat")
                 .withAttackStyle(AttackStyle.MELEE));
 
-        // var 460: Wait for rat to die (handled by combat step)
-        steps.put(460, new CombatQuestStep(NPC_GIANT_RAT, "Kill the giant rat")
-                .withAttackStyle(AttackStyle.MELEE));
+        // var 460: Wait for rat to die - combat initiated by step 450 handles the fight
+        steps.put(460, new WaitQuestStep("Waiting for the giant rat to die"));
 
         // var 470: Exit rat cage and talk to Combat Instructor
         steps.put(470, new NpcQuestStep(NPC_COMBAT_INSTRUCTOR, "Talk to the Combat Instructor")
@@ -362,9 +361,8 @@ public class TutorialIsland implements Quest {
         steps.put(480, new CombatQuestStep(NPC_GIANT_RAT, "Equip bow and arrows, attack the rat")
                 .withAttackStyle(AttackStyle.RANGED));
 
-        // var 490: Wait for rat to die
-        steps.put(490, new CombatQuestStep(NPC_GIANT_RAT, "Kill the rat with ranged")
-                .withAttackStyle(AttackStyle.RANGED));
+        // var 490: Wait for rat to die - combat initiated by step 480 handles the fight
+        steps.put(490, new WaitQuestStep("Waiting for the rat to die"));
 
         // var 500: Exit combat area
         steps.put(500, new ObjectQuestStep(OBJECT_COMBAT_LADDER, "Climb-up", "Climb the ladder"));
@@ -486,22 +484,15 @@ public class TutorialIsland implements Quest {
 
     /**
      * Create the step for equipping sword and shield.
+     * Uses a CompositeQuestStep to ensure both items are equipped sequentially.
+     * Each EquipItemTask handles the case where the item is already equipped.
      */
     private QuestStep createEquipSwordShieldStep() {
-        // This is a conditional step - equip both items
-        ConditionalQuestStep equipStep = new ConditionalQuestStep("Equip the bronze sword and wooden shield");
+        ConditionalQuestStep.CompositeQuestStep equipStep =
+                new ConditionalQuestStep.CompositeQuestStep("Equip the bronze sword and wooden shield");
 
-        // If don't have sword equipped, equip it
-        equipStep.when(
-                Conditions.hasEquipped(ITEM_BRONZE_SWORD).not(),
-                ItemQuestStep.equip(ITEM_BRONZE_SWORD, "Equip the bronze sword")
-        );
-
-        // If don't have shield equipped, equip it
-        equipStep.when(
-                Conditions.hasEquipped(ITEM_WOODEN_SHIELD).not(),
-                ItemQuestStep.equip(ITEM_WOODEN_SHIELD, "Equip the wooden shield")
-        );
+        equipStep.addStep(ItemQuestStep.equip(ITEM_BRONZE_SWORD, "Equip the bronze sword"));
+        equipStep.addStep(ItemQuestStep.equip(ITEM_WOODEN_SHIELD, "Equip the wooden shield"));
 
         return equipStep;
     }

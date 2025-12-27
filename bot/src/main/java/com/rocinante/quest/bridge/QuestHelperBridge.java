@@ -4,6 +4,7 @@ import com.rocinante.quest.Quest;
 import com.rocinante.quest.steps.*;
 import com.rocinante.state.StateCondition;
 import com.rocinante.tasks.impl.DialogueOptionResolver;
+import com.rocinante.tasks.impl.EmoteTask;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.coords.WorldPoint;
@@ -172,12 +173,27 @@ public class QuestHelperBridge {
             switch (stepClassName) {
                 case "NpcStep":
                     return translateNpcStep(qhStep);
+                case "NpcEmoteStep":
+                    return translateNpcEmoteStep(qhStep);
+                case "MultiNpcStep":
+                    return translateMultiNpcStep(qhStep);
                 case "ObjectStep":
                     return translateObjectStep(qhStep);
                 case "ItemStep":
                     return translateItemStep(qhStep);
                 case "ConditionalStep":
+                case "ReorderableConditionalStep":
                     return translateConditionalStep(qhStep);
+                case "EmoteStep":
+                    return translateEmoteStep(qhStep);
+                case "DigStep":
+                    return translateDigStep(qhStep);
+                case "TileStep":
+                    return translateTileStep(qhStep);
+                case "WidgetStep":
+                    return translateWidgetStep(qhStep);
+                case "PuzzleWrapperStep":
+                    return translatePuzzleWrapperStep(qhStep);
                 case "DetailedQuestStep":
                     return translateDetailedStep(qhStep);
                 default:
@@ -198,9 +214,13 @@ public class QuestHelperBridge {
         String text = getStepText(qhStep);
         WorldPoint location = getWorldPoint(qhStep);
 
+        // Infer menu action from step text
+        String menuAction = inferNpcMenuAction(text);
+        boolean dialogueExpected = "Talk-to".equals(menuAction);
+
         NpcQuestStep step = new NpcQuestStep(npcId, text)
-                .withMenuAction("Talk-to") // Default for NPC interactions
-                .withDialogueExpected(true);
+                .withMenuAction(menuAction)
+                .withDialogueExpected(dialogueExpected);
 
         if (location != null) {
             step.withWalkTo(location);
@@ -295,49 +315,62 @@ public class QuestHelperBridge {
 
     /**
      * Extract item ID from a Quest Helper ItemStep.
+     *
+     * <p>ItemStep (and its parent DetailedQuestStep) stores items in the
+     * 'requirements' list as ItemRequirement objects. At runtime, Quest Helper
+     * populates tileHighlights based on these requirements when items spawn.
+     *
+     * @param qhStep the ItemStep object
+     * @return the first item ID found, or -1 if none
      */
     private int extractItemIdFromStep(Object qhStep) {
-        // Try direct itemId field first
-        int itemId = getIntFieldSafe(qhStep, "itemId", -1);
-        if (itemId > 0) {
-            return itemId;
-        }
-
-        // Try to get from item requirements
+        // ItemStep uses the 'requirements' list inherited from DetailedQuestStep
+        // to track which items should be picked up
         try {
-            Object itemReq = getFieldValue(qhStep, "itemRequirement");
-            if (itemReq != null) {
-                itemId = getIntFieldSafe(itemReq, "id", -1);
-                if (itemId > 0) {
-                    return itemId;
-                }
-            }
-        } catch (Exception e) {
-            log.trace("Could not extract itemId from itemRequirement", e);
-        }
-
-        // Try items list/array
-        try {
-            Object items = getFieldValue(qhStep, "items");
-            if (items instanceof int[]) {
-                int[] itemIds = (int[]) items;
-                if (itemIds.length > 0) {
-                    return itemIds[0];
-                }
-            } else if (items instanceof List) {
+            Object requirements = getFieldValue(qhStep, "requirements");
+            if (requirements instanceof List) {
                 @SuppressWarnings("unchecked")
-                List<Object> itemList = (List<Object>) items;
-                if (!itemList.isEmpty()) {
-                    Object first = itemList.get(0);
-                    if (first instanceof Integer) {
-                        return (Integer) first;
+                List<Object> reqList = (List<Object>) requirements;
+                for (Object req : reqList) {
+                    if (req == null) continue;
+
+                    // Check if this is an ItemRequirement
+                    String reqClassName = req.getClass().getSimpleName();
+                    if (reqClassName.equals("ItemRequirement") ||
+                        reqClassName.equals("ItemRequirements") ||
+                        reqClassName.contains("Item")) {
+
+                        // Try to get the item ID
+                        int itemId = getIntFieldSafe(req, "id", -1);
+                        if (itemId > 0) {
+                            return itemId;
+                        }
+
+                        // Try getAllIds() method for items with alternates
+                        try {
+                            Method getAllIds = findMethod(req.getClass(), "getAllIds");
+                            if (getAllIds != null) {
+                                getAllIds.setAccessible(true);
+                                @SuppressWarnings("unchecked")
+                                List<Integer> ids = (List<Integer>) getAllIds.invoke(req);
+                                if (ids != null && !ids.isEmpty()) {
+                                    return ids.get(0);
+                                }
+                            }
+                        } catch (Exception e) {
+                            log.trace("Could not call getAllIds on requirement", e);
+                        }
                     }
-                    // Might be an ItemRequirement object
-                    return getIntFieldSafe(first, "id", -1);
                 }
             }
         } catch (Exception e) {
-            log.trace("Could not extract itemId from items list", e);
+            log.trace("Could not extract itemId from requirements list", e);
+        }
+
+        // Fallback: try iconItemID from DetailedQuestStep (often set to the item)
+        int iconItemId = getIntFieldSafe(qhStep, "iconItemID", -1);
+        if (iconItemId > 0) {
+            return iconItemId;
         }
 
         return -1;
@@ -347,38 +380,48 @@ public class QuestHelperBridge {
      * Extract item name from a Quest Helper ItemStep.
      */
     private String extractItemNameFromStep(Object qhStep, String fallbackText) {
-        // Try itemName field
-        String itemName = getStringField(qhStep, "itemName");
-        if (itemName != null && !itemName.isEmpty()) {
-            return itemName;
-        }
-
-        // Try to get from item requirement
+        // Try to get name from requirements list
         try {
-            Object itemReq = getFieldValue(qhStep, "itemRequirement");
-            if (itemReq != null) {
-                itemName = getStringField(itemReq, "name");
-                if (itemName != null && !itemName.isEmpty()) {
-                    return itemName;
+            Object requirements = getFieldValue(qhStep, "requirements");
+            if (requirements instanceof List) {
+                @SuppressWarnings("unchecked")
+                List<Object> reqList = (List<Object>) requirements;
+                for (Object req : reqList) {
+                    if (req == null) continue;
+
+                    String reqClassName = req.getClass().getSimpleName();
+                    if (reqClassName.contains("Item")) {
+                        String name = getStringField(req, "name");
+                        if (name != null && !name.isEmpty()) {
+                            return name;
+                        }
+                    }
                 }
             }
         } catch (Exception e) {
-            log.trace("Could not extract itemName from itemRequirement", e);
+            log.trace("Could not extract itemName from requirements", e);
         }
 
         // Parse from step text (e.g., "Grab an egg from the farm" -> "egg")
         if (fallbackText != null) {
             String lower = fallbackText.toLowerCase();
             // Common patterns
-            if (lower.contains("grab") || lower.contains("pick up") || lower.contains("take")) {
+            if (lower.contains("grab") || lower.contains("pick up") || lower.contains("take") ||
+                lower.contains("get") || lower.contains("collect")) {
                 // Try to extract item name after common verbs
-                String[] patterns = {"grab an? ", "grab the ", "pick up an? ", "pick up the ", "take an? ", "take the "};
+                String[] patterns = {
+                    "grab an ", "grab a ", "grab the ", "grab ",
+                    "pick up an ", "pick up a ", "pick up the ", "pick up ",
+                    "take an ", "take a ", "take the ", "take ",
+                    "get an ", "get a ", "get the ", "get ",
+                    "collect an ", "collect a ", "collect the ", "collect "
+                };
                 for (String pattern : patterns) {
-                    int idx = lower.indexOf(pattern.replace("?", ""));
+                    int idx = lower.indexOf(pattern);
                     if (idx >= 0) {
-                        String after = fallbackText.substring(idx + pattern.length() - 1).trim();
+                        String after = fallbackText.substring(idx + pattern.length()).trim();
                         // Take first word or phrase before preposition
-                        String[] words = after.split("\\s+(from|at|in|on)\\s+");
+                        String[] words = after.split("\\s+(from|at|in|on|near|and)\\s+");
                         if (words.length > 0 && !words[0].isEmpty()) {
                             return words[0].trim();
                         }
@@ -462,6 +505,215 @@ public class QuestHelperBridge {
         String text = getStepText(qhStep);
         log.debug("Generic step translation (unsupported type): {}", text);
         return null;
+    }
+
+    // ========================================================================
+    // Additional Step Type Translations
+    // ========================================================================
+
+    /**
+     * Translate an EmoteStep to EmoteQuestStep.
+     */
+    private EmoteQuestStep translateEmoteStep(Object qhStep) throws Exception {
+        String text = getStepText(qhStep);
+        WorldPoint location = getWorldPoint(qhStep);
+
+        // Extract emote from the step
+        Object emoteObj = getFieldValue(qhStep, "emote");
+        int spriteId = -1;
+        String emoteName = null;
+
+        if (emoteObj != null) {
+            // QuestEmote has name and spriteId fields
+            emoteName = getStringField(emoteObj, "name");
+            spriteId = getIntFieldSafe(emoteObj, "spriteId", -1);
+        }
+
+        EmoteQuestStep step;
+        if (emoteName != null) {
+            step = new EmoteQuestStep(emoteName, text);
+        } else if (spriteId > 0) {
+            step = EmoteQuestStep.fromSpriteId(spriteId, text);
+        } else {
+            log.warn("Could not extract emote from EmoteStep: {}", text);
+            // Fall back to walk step if we have location
+            if (location != null) {
+                return null; // Let caller handle with WalkQuestStep
+            }
+            return null;
+        }
+
+        if (location != null) {
+            step.withWalkTo(location);
+        }
+
+        if (spriteId > 0) {
+            step.withSpriteId(spriteId);
+        }
+
+        log.debug("Translated EmoteStep: emote={}, spriteId={}, text={}", emoteName, spriteId, text);
+        return step;
+    }
+
+    /**
+     * Translate a DigStep to DigQuestStep.
+     */
+    private DigQuestStep translateDigStep(Object qhStep) throws Exception {
+        String text = getStepText(qhStep);
+        WorldPoint location = getWorldPoint(qhStep);
+
+        if (location == null) {
+            log.warn("DigStep has no location: {}", text);
+            return null;
+        }
+
+        DigQuestStep step = new DigQuestStep(location, text);
+        log.debug("Translated DigStep: location={}, text={}", location, text);
+        return step;
+    }
+
+    /**
+     * Translate a TileStep to WalkQuestStep.
+     * TileStep is essentially "walk to this tile".
+     */
+    private WalkQuestStep translateTileStep(Object qhStep) throws Exception {
+        String text = getStepText(qhStep);
+        WorldPoint location = getWorldPoint(qhStep);
+
+        if (location == null) {
+            log.warn("TileStep has no location: {}", text);
+            return null;
+        }
+
+        WalkQuestStep step = new WalkQuestStep(location, text);
+        log.debug("Translated TileStep: location={}, text={}", location, text);
+        return step;
+    }
+
+    /**
+     * Translate a WidgetStep to WidgetQuestStep.
+     */
+    private WidgetQuestStep translateWidgetStep(Object qhStep) throws Exception {
+        String text = getStepText(qhStep);
+
+        // Extract widget details from the step
+        // WidgetStep has List<WidgetDetails> widgetDetails
+        Object widgetDetailsList = getFieldValue(qhStep, "widgetDetails");
+        if (widgetDetailsList instanceof List) {
+            @SuppressWarnings("unchecked")
+            List<Object> details = (List<Object>) widgetDetailsList;
+            if (!details.isEmpty()) {
+                Object firstDetail = details.get(0);
+                int groupId = getIntFieldSafe(firstDetail, "groupID", -1);
+                int childId = getIntFieldSafe(firstDetail, "childID", -1);
+                int childChildId = getIntFieldSafe(firstDetail, "childChildID", -1);
+
+                if (groupId > 0) {
+                    WidgetQuestStep step = new WidgetQuestStep(groupId, childId, text);
+                    if (childChildId >= 0) {
+                        step.withDynamicChild(childChildId);
+                    }
+                    log.debug("Translated WidgetStep: groupId={}, childId={}, text={}", groupId, childId, text);
+                    return step;
+                }
+            }
+        }
+
+        log.warn("Could not extract widget details from WidgetStep: {}", text);
+        return null;
+    }
+
+    /**
+     * Translate an NpcEmoteStep to an NpcQuestStep followed by EmoteQuestStep.
+     * NpcEmoteStep extends NpcStep and requires performing an emote near an NPC.
+     */
+    private ConditionalQuestStep translateNpcEmoteStep(Object qhStep) throws Exception {
+        // NpcEmoteStep has both NPC interaction and emote
+        // We create a conditional step that first does the NPC interaction, then the emote
+        String text = getStepText(qhStep);
+        WorldPoint location = getWorldPoint(qhStep);
+
+        // Get NPC data (inherited from NpcStep)
+        int npcId = getIntField(qhStep, "npcID");
+
+        // Get emote data
+        Object emoteObj = getFieldValue(qhStep, "emote");
+        String emoteName = null;
+        int spriteId = -1;
+
+        if (emoteObj != null) {
+            emoteName = getStringField(emoteObj, "name");
+            spriteId = getIntFieldSafe(emoteObj, "spriteId", -1);
+        }
+
+        // Create a sequence: NPC interaction is typically not needed for emote clues,
+        // so we create an emote step that walks to the NPC location
+        if (emoteName != null || spriteId > 0) {
+            EmoteQuestStep emoteStep;
+            if (emoteName != null) {
+                emoteStep = new EmoteQuestStep(emoteName, text);
+            } else {
+                emoteStep = EmoteQuestStep.fromSpriteId(spriteId, text);
+            }
+
+            if (location != null) {
+                emoteStep.withWalkTo(location);
+            }
+
+            // Wrap in conditional step for flexibility
+            ConditionalQuestStep wrapper = new ConditionalQuestStep(text);
+            wrapper.otherwise(emoteStep);
+
+            log.debug("Translated NpcEmoteStep: npcId={}, emote={}, location={}", npcId, emoteName, location);
+            return wrapper;
+        }
+
+        log.warn("Could not translate NpcEmoteStep: {}", text);
+        return null;
+    }
+
+    /**
+     * Translate a MultiNpcStep to NpcQuestStep.
+     * MultiNpcStep is like NpcStep but can interact with multiple NPCs.
+     */
+    private NpcQuestStep translateMultiNpcStep(Object qhStep) throws Exception {
+        // MultiNpcStep extends NpcStep, so we can use similar logic
+        int npcId = getIntField(qhStep, "npcID");
+        String text = getStepText(qhStep);
+        WorldPoint location = getWorldPoint(qhStep);
+
+        NpcQuestStep step = new NpcQuestStep(npcId, text)
+                .withMenuAction("Talk-to")
+                .withDialogueExpected(true);
+
+        if (location != null) {
+            step.withWalkTo(location);
+        }
+
+        // Extract all NPC IDs (MultiNpcStep typically has a list)
+        List<Integer> allNpcIds = extractAlternateIds(qhStep, "npcIDs", "alternateNpcIDs", "alternateNpcs");
+        if (!allNpcIds.isEmpty()) {
+            step.withAlternateIds(allNpcIds);
+        }
+
+        // Extract dialogue options
+        List<DialogueOptionResolver> dialogueResolvers = extractDialogueOptions(qhStep);
+        if (!dialogueResolvers.isEmpty()) {
+            step.withDialogueOptions(extractDialogueTexts(dialogueResolvers).toArray(new String[0]));
+        }
+
+        log.debug("Translated MultiNpcStep: npcId={}, alternates={}, text={}", npcId, allNpcIds.size(), text);
+        return step;
+    }
+
+    /**
+     * Translate a PuzzleWrapperStep.
+     * PuzzleWrapperStep extends ConditionalStep and wraps puzzle logic.
+     * Since we can't auto-solve puzzles, we translate it as a conditional step.
+     */
+    private ConditionalQuestStep translatePuzzleWrapperStep(Object qhStep) throws Exception {
+        // PuzzleWrapperStep is a ConditionalStep, so use the same logic
+        return translateConditionalStep(qhStep);
     }
 
     // ========================================================================
@@ -673,6 +925,61 @@ public class QuestHelperBridge {
 
         // Default
         return "Interact";
+    }
+
+    /**
+     * Infer NPC menu action from step text.
+     *
+     * @param text the step description text
+     * @return the inferred menu action
+     */
+    private String inferNpcMenuAction(String text) {
+        if (text == null) {
+            return "Talk-to";
+        }
+
+        String lowerText = text.toLowerCase();
+
+        // Pickpocket actions
+        if (lowerText.contains("pickpocket") || lowerText.contains("pick pocket") ||
+            lowerText.contains("steal from") || lowerText.contains("thieve")) {
+            return "Pickpocket";
+        }
+
+        // Attack/combat actions
+        if (lowerText.contains("attack") || lowerText.contains("kill") ||
+            lowerText.contains("fight") || lowerText.contains("slay")) {
+            return "Attack";
+        }
+
+        // Trade/shop actions
+        if (lowerText.contains("trade") || lowerText.contains("shop") ||
+            lowerText.contains("buy from") || lowerText.contains("sell to")) {
+            return "Trade";
+        }
+
+        // Bank actions
+        if (lowerText.contains("bank") && !lowerText.contains("talk")) {
+            return "Bank";
+        }
+
+        // Examine actions
+        if (lowerText.contains("examine") && !lowerText.contains("talk")) {
+            return "Examine";
+        }
+
+        // Follow actions
+        if (lowerText.contains("follow") && !lowerText.contains("talk")) {
+            return "Follow";
+        }
+
+        // Use item on NPC (covered by different task, but may appear in text)
+        if (lowerText.contains("use") && lowerText.contains("on")) {
+            return "Use";
+        }
+
+        // Default to Talk-to for NPC interactions
+        return "Talk-to";
     }
 
     // ========================================================================
@@ -1015,10 +1322,71 @@ public class QuestHelperBridge {
     public static class QuestMetadata {
         private final String name;
         private final int varId;
+        private final boolean usesVarp; // true for varp, false for varbit
+        private final int completionValue;
 
         public QuestMetadata(String name, int varId) {
+            this(name, varId, false, -1);
+        }
+
+        public QuestMetadata(String name, int varId, boolean usesVarp, int completionValue) {
             this.name = name;
             this.varId = varId;
+            this.usesVarp = usesVarp;
+            this.completionValue = completionValue;
+        }
+    }
+
+    /**
+     * Extract more detailed metadata from a QuestHelperQuest enum entry.
+     *
+     * @param questEnumEntry the QuestHelperQuest enum value
+     * @return extracted metadata or null if extraction fails
+     */
+    public static QuestMetadata extractMetadataFromEnum(Object questEnumEntry) {
+        if (questEnumEntry == null) {
+            return null;
+        }
+
+        try {
+            // Get name
+            Method getNameMethod = questEnumEntry.getClass().getMethod("getName");
+            String name = (String) getNameMethod.invoke(questEnumEntry);
+
+            // Try to get varbit field
+            Field varbitField = questEnumEntry.getClass().getDeclaredField("varbit");
+            varbitField.setAccessible(true);
+            Object varbit = varbitField.get(questEnumEntry);
+
+            // Try to get varPlayer field
+            Field varPlayerField = questEnumEntry.getClass().getDeclaredField("varPlayer");
+            varPlayerField.setAccessible(true);
+            Object varPlayer = varPlayerField.get(questEnumEntry);
+
+            // Get completeValue
+            Field completeValueField = questEnumEntry.getClass().getDeclaredField("completeValue");
+            completeValueField.setAccessible(true);
+            int completeValue = completeValueField.getInt(questEnumEntry);
+
+            int varId = -1;
+            boolean usesVarp = false;
+
+            if (varbit != null) {
+                // Get varbit ID via getId()
+                Method getId = varbit.getClass().getMethod("getId");
+                varId = (int) getId.invoke(varbit);
+                usesVarp = false;
+            } else if (varPlayer != null) {
+                // Get varp ID via getId()
+                Method getId = varPlayer.getClass().getMethod("getId");
+                varId = (int) getId.invoke(varPlayer);
+                usesVarp = true;
+            }
+
+            return new QuestMetadata(name, varId, usesVarp, completeValue);
+        } catch (Exception e) {
+            log.debug("Could not extract metadata from QuestHelperQuest enum", e);
+            return null;
         }
     }
 
@@ -1052,15 +1420,19 @@ public class QuestHelperBridge {
 
             @Override
             public boolean usesVarp() {
-                // Quest Helper quests typically use varps for progress
-                return true;
+                return bridge.getMetadata().isUsesVarp();
             }
 
             @Override
             public int getCompletionValue() {
-                // Would need to determine from quest data
-                // For now, return a high value that likely indicates completion
-                return 100;
+                int value = bridge.getMetadata().getCompletionValue();
+                if (value == -1) {
+                    // Completion value not specified - use RuneLite's Quest enum
+                    // which has proper completion values for standard quests
+                    // For now, return a sentinel that means "check via client script"
+                    return -1;
+                }
+                return value;
             }
 
             @Override
