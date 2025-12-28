@@ -930,21 +930,8 @@ public class InteractObjectTask extends AbstractTask {
             return null;
         }
 
-        // Calculate random point within the clickable area
-        // Use Gaussian distribution centered on the object
-        int centerX = bounds.x + bounds.width / 2;
-        int centerY = bounds.y + bounds.height / 2;
-
-        // Add some variance using Gaussian distribution
-        double[] offset = Randomization.staticGaussian2D(0, 0, bounds.width / 4.0, bounds.height / 4.0);
-        int clickX = centerX + (int) offset[0];
-        int clickY = centerY + (int) offset[1];
-
-        // Clamp to bounds
-        clickX = Math.max(bounds.x, Math.min(clickX, bounds.x + bounds.width));
-        clickY = Math.max(bounds.y, Math.min(clickY, bounds.y + bounds.height));
-
-        return new Point(clickX, clickY);
+        // Use centralized ClickPointCalculator for humanized positioning
+        return com.rocinante.input.ClickPointCalculator.getGaussianClickPoint(bounds);
     }
 
     // ========================================================================

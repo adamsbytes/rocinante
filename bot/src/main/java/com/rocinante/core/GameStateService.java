@@ -52,7 +52,9 @@ import net.runelite.api.events.AnimationChanged;
 import net.runelite.api.events.StatChanged;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.game.ItemManager;
+import net.runelite.api.gameval.DBTableID;
 import net.runelite.api.gameval.VarbitID;
+import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.client.plugins.slayer.SlayerPluginService;
 
 import javax.annotation.Nullable;
@@ -875,6 +877,12 @@ public class GameStateService {
             }
         }
 
+        // Read blocked tasks from varplayers
+        java.util.Set<String> blockedTasks = readBlockedTasks();
+
+        // Read extended tasks (derived from LONGER_* unlocks)
+        java.util.Set<String> extendedTasks = buildExtendedTaskSet(unlocks);
+
         // Get slayer level
         int slayerLevel = client.getRealSkillLevel(Skill.SLAYER);
 
@@ -888,11 +896,169 @@ public class GameStateService {
                 .wildernessStreak(wildernessStreak)
                 .currentMaster(currentMaster)
                 .unlocks(unlocks)
-                .blockedTasks(java.util.Collections.emptySet()) // TODO: Read from varplayers
-                .extendedTasks(java.util.Collections.emptySet()) // TODO: Read from varbits
+                .blockedTasks(blockedTasks)
+                .extendedTasks(extendedTasks)
                 .targetNpcs(targetNpcs != null ? targetNpcs : java.util.Collections.emptyList())
                 .slayerLevel(slayerLevel)
                 .build();
+    }
+
+    /**
+     * Read blocked slayer tasks from varplayers.
+     * 
+     * VarPlayers for blocked tasks:
+     * - SLAYER_REWARDS_BLOCKED (1096) - first slot
+     * - SLAYER_REWARDS_BLOCKED_2 through _13 (4830-4841) - additional slots
+     * - SLAYER_REWARDS_BLOCKED_DIARY_1 and _2 (4842-4843) - diary slots
+     * 
+     * Each varplayer stores a task ID that must be looked up via DBTableID.SlayerTask.
+     *
+     * @return set of blocked task names (creature names)
+     */
+    private java.util.Set<String> readBlockedTasks() {
+        java.util.Set<String> blocked = new java.util.HashSet<>();
+
+        // All blocked task varplayers - IDs from RuneLite VarPlayerID
+        int[] blockedVarplayers = {
+            VarPlayerID.SLAYER_REWARDS_BLOCKED,       // 1096 - first slot
+            VarPlayerID.SLAYER_REWARDS_BLOCKED_2,     // 4830
+            VarPlayerID.SLAYER_REWARDS_BLOCKED_3,     // 4831
+            VarPlayerID.SLAYER_REWARDS_BLOCKED_4,     // 4832
+            VarPlayerID.SLAYER_REWARDS_BLOCKED_5,     // 4833
+            VarPlayerID.SLAYER_REWARDS_BLOCKED_6,     // 4834
+            VarPlayerID.SLAYER_REWARDS_BLOCKED_7,     // 4835
+            VarPlayerID.SLAYER_REWARDS_BLOCKED_8,     // 4836
+            VarPlayerID.SLAYER_REWARDS_BLOCKED_9,     // 4837
+            VarPlayerID.SLAYER_REWARDS_BLOCKED_10,    // 4838
+            VarPlayerID.SLAYER_REWARDS_BLOCKED_11,    // 4839
+            VarPlayerID.SLAYER_REWARDS_BLOCKED_12,    // 4840
+            VarPlayerID.SLAYER_REWARDS_BLOCKED_13,    // 4841
+            VarPlayerID.SLAYER_REWARDS_BLOCKED_DIARY_1, // 4842
+            VarPlayerID.SLAYER_REWARDS_BLOCKED_DIARY_2  // 4843
+        };
+
+        for (int varplayerId : blockedVarplayers) {
+            try {
+                int taskId = client.getVarpValue(varplayerId);
+                if (taskId > 0) {
+                    String taskNameFromDb = lookupSlayerTaskName(taskId);
+                    if (taskNameFromDb != null && !taskNameFromDb.isEmpty()) {
+                        blocked.add(taskNameFromDb);
+                        log.trace("Found blocked task ID {} = {}", taskId, taskNameFromDb);
+                    }
+                }
+            } catch (Exception e) {
+                log.trace("Error reading blocked task varplayer {}: {}", varplayerId, e.getMessage());
+            }
+        }
+
+        return blocked;
+    }
+
+    /**
+     * Look up a slayer task name from its task ID using the game's DB table.
+     * 
+     * Uses DBTableID.SlayerTask.COL_ID to find the row, then reads COL_NAME_UPPERCASE.
+     *
+     * @param taskId the task ID from varplayer
+     * @return the task name, or null if not found
+     */
+    private String lookupSlayerTaskName(int taskId) {
+        try {
+            // Find the DB row for this task ID
+            java.util.List<Integer> taskRows = client.getDBRowsByValue(
+                DBTableID.SlayerTask.ID,
+                DBTableID.SlayerTask.COL_ID,
+                0,
+                taskId
+            );
+
+            if (taskRows == null || taskRows.isEmpty()) {
+                log.trace("No DB row found for slayer task ID {}", taskId);
+                return null;
+            }
+
+            // Get the task name from the first matching row
+            int dbRow = taskRows.get(0);
+            Object[] nameData = client.getDBTableField(dbRow, DBTableID.SlayerTask.COL_NAME_UPPERCASE, 0);
+            
+            if (nameData != null && nameData.length > 0 && nameData[0] instanceof String) {
+                return (String) nameData[0];
+            }
+        } catch (Exception e) {
+            log.debug("Error looking up slayer task name for ID {}: {}", taskId, e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * Build the set of extended (longer) task names from unlocked LONGER_* rewards.
+     * 
+     * Maps SlayerUnlock extensions to their creature names for easy lookup.
+     *
+     * @param unlocks the set of unlocked slayer rewards
+     * @return set of creature names that have extended tasks enabled
+     */
+    private java.util.Set<String> buildExtendedTaskSet(java.util.Set<SlayerUnlock> unlocks) {
+        java.util.Set<String> extended = new java.util.HashSet<>();
+
+        // Map LONGER_* unlocks to creature names
+        // These mappings are based on the unlock display names
+        for (SlayerUnlock unlock : unlocks) {
+            if (!unlock.isExtension()) {
+                continue;
+            }
+
+            // Extract creature name from the unlock
+            String creatureName = getCreatureNameForExtension(unlock);
+            if (creatureName != null) {
+                extended.add(creatureName);
+            }
+        }
+
+        return extended;
+    }
+
+    /**
+     * Get the creature name for a task extension unlock.
+     * 
+     * @param unlock the LONGER_* unlock
+     * @return the creature name this extension applies to
+     */
+    private String getCreatureNameForExtension(SlayerUnlock unlock) {
+        // Map based on enum name -> creature name
+        // These match the task names used in SlayerPluginService
+        switch (unlock) {
+            case LONGER_ANKOU: return "Ankou";
+            case LONGER_SUQAH: return "Suqah";
+            case LONGER_BLACK_DRAGONS: return "Black dragons";
+            case LONGER_METAL_DRAGONS: return "Metal dragons";
+            case LONGER_ABYSSAL_DEMONS: return "Abyssal demons";
+            case LONGER_BLACK_DEMONS: return "Black demons";
+            case LONGER_GREATER_DEMONS: return "Greater demons";
+            case LONGER_BLOODVELD: return "Bloodveld";
+            case LONGER_ABERRANT_SPECTRES: return "Aberrant spectres";
+            case LONGER_AVIANSIES: return "Aviansies";
+            case LONGER_MITHRIL_DRAGONS: return "Mithril dragons";
+            case LONGER_CAVE_HORRORS: return "Cave horrors";
+            case LONGER_DUST_DEVILS: return "Dust devils";
+            case LONGER_SKELETAL_WYVERNS: return "Skeletal wyverns";
+            case LONGER_GARGOYLES: return "Gargoyles";
+            case LONGER_NECHRYAEL: return "Nechryael";
+            case LONGER_CAVE_KRAKEN: return "Cave kraken";
+            case LONGER_SPIRITUAL_GWD: return "Spiritual creatures";
+            case LONGER_VAMPYRES: return "Vampyres";
+            case LONGER_DARK_BEASTS: return "Dark beasts";
+            case LONGER_FOSSIL_WYVERNS: return "Fossil island wyverns";
+            case LONGER_ADAMANT_DRAGONS: return "Adamant dragons";
+            case LONGER_RUNE_DRAGONS: return "Rune dragons";
+            case LONGER_SCABARITES: return "Scabarites";
+            case LONGER_BASILISKS: return "Basilisks";
+            case LONGER_REVENANTS: return "Revenants";
+            case LONGER_ARAXYTES: return "Araxytes";
+            case LONGER_CUSTODIANS: return "Custodian stalkers";
+            default: return null;
+        }
     }
 
     /**

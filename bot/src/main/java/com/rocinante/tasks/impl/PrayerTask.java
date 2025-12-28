@@ -500,8 +500,10 @@ public class PrayerTask extends AbstractTask {
             return;
         }
 
-        int clickX = bounds.x + bounds.width / 2 + ThreadLocalRandom.current().nextInt(-3, 4);
-        int clickY = bounds.y + bounds.height / 2 + ThreadLocalRandom.current().nextInt(-3, 4);
+        // Use centralized ClickPointCalculator for humanized positioning
+        java.awt.Point clickPoint = com.rocinante.input.ClickPointCalculator.getGaussianClickPoint(bounds);
+        int clickX = clickPoint.x;
+        int clickY = clickPoint.y;
 
         log.debug("Clicking quick-prayer orb at ({}, {})", clickX, clickY);
 
@@ -590,8 +592,10 @@ public class PrayerTask extends AbstractTask {
             return;
         }
 
-        int clickX = bounds.x + bounds.width / 2 + ThreadLocalRandom.current().nextInt(-5, 6);
-        int clickY = bounds.y + bounds.height / 2 + ThreadLocalRandom.current().nextInt(-5, 6);
+        // Use centralized ClickPointCalculator for humanized positioning
+        java.awt.Point clickPoint = com.rocinante.input.ClickPointCalculator.getGaussianClickPoint(bounds);
+        int clickX = clickPoint.x;
+        int clickY = clickPoint.y;
 
         log.debug("Clicking prayer {} at ({}, {})", prayerName, clickX, clickY);
 

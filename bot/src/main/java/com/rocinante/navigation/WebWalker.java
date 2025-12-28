@@ -76,6 +76,11 @@ public class WebWalker {
     private boolean isHardcoreIronman = false;
 
     /**
+     * Whether the player is an Ultimate Ironman (cannot use bank).
+     */
+    private boolean isUltimateIronman = false;
+
+    /**
      * Whether wilderness edges should be avoided.
      */
     private boolean avoidWilderness = true;
@@ -127,12 +132,56 @@ public class WebWalker {
     private void loadNavigationWeb() {
         try {
             navigationWeb = NavigationWeb.loadFromResources();
-            log.info("WebWalker loaded navigation web with {} nodes and {} edges",
-                    navigationWeb.getNodes().size(),
-                    navigationWeb.getEdges().size());
+            
+            int nodeCount = navigationWeb.getNodes().size();
+            int edgeCount = navigationWeb.getEdges().size();
+            int bankCount = navigationWeb.getBanks().size();
+            
+            log.info("WebWalker loaded navigation web: {} nodes, {} edges, {} banks",
+                    nodeCount, edgeCount, bankCount);
+            
+            // Validate critical nodes exist
+            validateCriticalNodes();
+            
         } catch (IOException e) {
-            log.error("Failed to load navigation web", e);
+            log.error("Failed to load navigation web from resources", e);
             navigationWeb = null;
+        }
+    }
+    
+    /**
+     * Validate that critical navigation nodes are present.
+     * Throws IllegalStateException if required nodes are missing.
+     */
+    private void validateCriticalNodes() {
+        if (navigationWeb == null) {
+            return;
+        }
+        
+        // Key nodes that must exist for basic navigation
+        String[] criticalNodes = {
+            "lumbridge_castle",
+            "lumbridge_bank",
+            "varrock_west_bank",
+            "edgeville_bank",
+            "draynor_bank"
+        };
+        
+        List<String> missingNodes = new ArrayList<>();
+        for (String nodeId : criticalNodes) {
+            if (!navigationWeb.hasNode(nodeId)) {
+                missingNodes.add(nodeId);
+            }
+        }
+        
+        if (!missingNodes.isEmpty()) {
+            log.warn("Navigation web missing critical nodes: {}", missingNodes);
+        }
+        
+        // Verify we have at least one bank
+        if (navigationWeb.getBanks().isEmpty()) {
+            throw new IllegalStateException(
+                "Navigation web has no bank nodes - navigation will be severely limited");
         }
     }
 
@@ -210,6 +259,15 @@ public class WebWalker {
         if (hardcore) {
             this.avoidWilderness = true;
         }
+    }
+
+    /**
+     * Set Ultimate Ironman mode (cannot use banks).
+     *
+     * @param ultimate true if player is UIM
+     */
+    public void setUltimateIronman(boolean ultimate) {
+        this.isUltimateIronman = ultimate;
     }
 
     /**
@@ -817,8 +875,7 @@ public class WebWalker {
 
             @Override
             public boolean isUltimateIronman() {
-                // TODO: Add UIM detection if needed
-                return false;
+                return WebWalker.this.isUltimateIronman;
             }
 
             @Override

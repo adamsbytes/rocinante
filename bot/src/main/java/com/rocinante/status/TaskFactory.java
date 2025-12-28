@@ -11,6 +11,7 @@ import com.rocinante.progression.TrainingMethod;
 import com.rocinante.progression.TrainingMethodRepository;
 import com.rocinante.quest.Quest;
 import com.rocinante.quest.QuestExecutor;
+import com.rocinante.quest.QuestService;
 import com.rocinante.combat.CombatManager;
 import com.rocinante.combat.TargetSelector;
 import com.rocinante.tasks.Task;
@@ -57,6 +58,9 @@ public class TaskFactory {
     @Nullable
     private CombatManager combatManager;
 
+    @Nullable
+    private QuestService questService;
+
     @Inject
     public TaskFactory(TrainingMethodRepository trainingMethodRepository) {
         this.trainingMethodRepository = trainingMethodRepository;
@@ -88,6 +92,15 @@ public class TaskFactory {
      */
     public void setCombatManager(@Nullable CombatManager combatManager) {
         this.combatManager = combatManager;
+    }
+
+    /**
+     * Set the quest service for quest loading.
+     *
+     * @param questService the quest service
+     */
+    public void setQuestService(@Nullable QuestService questService) {
+        this.questService = questService;
     }
 
     /**
@@ -440,9 +453,25 @@ public class TaskFactory {
             return Optional.empty();
         }
 
+        // Use QuestService to resolve questId to Quest object
+        Quest quest = null;
+        if (questService != null) {
+            quest = questService.getQuestById(questId);
+            if (quest == null) {
+                log.warn("Quest not found: {}. Trying Quest Helper selected quest.", questId);
+                // Fall back to currently selected Quest Helper quest
+                quest = questService.getSelectedQuestFromHelper();
+            }
+        }
+        
+        if (quest == null) {
+            log.warn("Cannot resolve quest: {} - neither QuestService nor Quest Helper available", questId);
+            return Optional.empty();
+        }
+
         // Create a wrapper task that initiates quest execution
-        log.info("Created quest task for: {}", questId);
-        return Optional.of(new QuestTriggerTask(questId, questExecutor));
+        log.info("Created quest task for: {} ({})", quest.getName(), quest.getId());
+        return Optional.of(new QuestTriggerTask(quest, questExecutor));
     }
 
     // ========================================================================
@@ -450,15 +479,19 @@ public class TaskFactory {
     // ========================================================================
 
     /**
-     * Simple task that triggers quest execution via QuestExecutor.
+     * Task that triggers quest execution via QuestExecutor.
+     * 
+     * This task resolves the quest from QuestService and starts execution
+     * via QuestExecutor. The actual quest steps run asynchronously via
+     * game tick events.
      */
     private static class QuestTriggerTask extends com.rocinante.tasks.AbstractTask {
-        private final String questId;
+        private final Quest quest;
         private final QuestExecutor questExecutor;
         private boolean started = false;
 
-        QuestTriggerTask(String questId, QuestExecutor questExecutor) {
-            this.questId = questId;
+        QuestTriggerTask(Quest quest, QuestExecutor questExecutor) {
+            this.quest = quest;
             this.questExecutor = questExecutor;
         }
 
@@ -470,10 +503,9 @@ public class TaskFactory {
         @Override
         protected void executeImpl(com.rocinante.tasks.TaskContext ctx) {
             if (!started) {
-                // Try to find and start the quest
-                // This is a simplified implementation - full implementation would
-                // resolve questId to a Quest object via QuestHelperBridge
-                log.info("Starting quest: {}", questId);
+                // Start quest execution via QuestExecutor
+                log.info("Starting quest: {} ({})", quest.getName(), quest.getId());
+                questExecutor.startQuest(quest);
                 started = true;
                 // Quest execution is handled by QuestExecutor via game tick events
                 // This task completes after initiating the quest
@@ -483,7 +515,7 @@ public class TaskFactory {
 
         @Override
         public String getDescription() {
-            return "Start quest: " + questId;
+            return "Start quest: " + quest.getName();
         }
     }
 }

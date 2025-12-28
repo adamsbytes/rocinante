@@ -729,14 +729,74 @@ public class UnlockTracker {
         return state == QuestState.IN_PROGRESS || state == QuestState.FINISHED;
     }
 
+    // ========================================================================
+    // Achievement Diary (Delegated to DiaryTracker)
+    // ========================================================================
+
+    /**
+     * Diary tracker for achievement diary completion checks.
+     * Lazily initialized to avoid circular dependency issues.
+     */
+    private DiaryTracker diaryTracker;
+
+    /**
+     * Get or create the diary tracker.
+     */
+    private DiaryTracker getDiaryTracker() {
+        if (diaryTracker == null) {
+            diaryTracker = new DiaryTracker(client);
+        }
+        return diaryTracker;
+    }
+
+    /**
+     * Set the diary tracker (for dependency injection).
+     *
+     * @param diaryTracker the diary tracker instance
+     */
+    public void setDiaryTracker(DiaryTracker diaryTracker) {
+        this.diaryTracker = diaryTracker;
+    }
+
     /**
      * Check if an achievement diary tier is complete.
-     * Placeholder - would need varbit checks for actual implementation.
+     *
+     * @param diaryTier format: "REGION_TIER" e.g., "LUMBRIDGE_ELITE", "VARROCK_HARD"
+     * @return true if the diary tier is completed
      */
     private boolean isDiaryComplete(String diaryTier) {
-        // TODO: Implement diary completion checks via varbits
-        log.debug("Diary completion check not implemented: {}", diaryTier);
-        return false;
+        return getDiaryTracker().isComplete(diaryTier);
+    }
+
+    /**
+     * Check if a specific achievement diary tier is complete.
+     *
+     * @param region the diary region
+     * @param tier   the diary tier (Easy, Medium, Hard, Elite)
+     * @return true if the diary tier is completed
+     */
+    public boolean isDiaryComplete(DiaryTracker.DiaryRegion region, DiaryTracker.DiaryTier tier) {
+        return getDiaryTracker().isComplete(region, tier);
+    }
+
+    /**
+     * Check if any tier of a diary is complete.
+     *
+     * @param region the diary region
+     * @return true if any tier (easy, medium, hard, elite) is complete
+     */
+    public boolean hasAnyDiaryComplete(DiaryTracker.DiaryRegion region) {
+        return getDiaryTracker().hasAnyComplete(region);
+    }
+
+    /**
+     * Get the highest completed diary tier for a region.
+     *
+     * @param region the diary region
+     * @return highest completed tier, or null if none complete
+     */
+    public DiaryTracker.DiaryTier getHighestCompletedDiaryTier(DiaryTracker.DiaryRegion region) {
+        return getDiaryTracker().getHighestCompletedTier(region);
     }
 
     // ========================================================================

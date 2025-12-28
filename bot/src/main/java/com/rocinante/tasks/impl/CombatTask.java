@@ -692,9 +692,10 @@ public class CombatTask extends AbstractTask {
             return;
         }
 
-        // Humanized click position within spell icon
-        int clickX = bounds.x + bounds.width / 2 + ThreadLocalRandom.current().nextInt(-3, 4);
-        int clickY = bounds.y + bounds.height / 2 + ThreadLocalRandom.current().nextInt(-3, 4);
+        // Use centralized ClickPointCalculator for humanized positioning
+        java.awt.Point clickPoint = com.rocinante.input.ClickPointCalculator.getGaussianClickPoint(bounds);
+        int clickX = clickPoint.x;
+        int clickY = clickPoint.y;
 
         log.debug("Clicking spell {} at ({}, {})", spell.getSpellName(), clickX, clickY);
 
@@ -1233,30 +1234,14 @@ public class CombatTask extends AbstractTask {
     }
 
     private Point calculateNpcClickPoint(TaskContext ctx, NPC npc) {
-        Shape clickableArea = npc.getConvexHull();
-
-        if (clickableArea == null) {
-            return calculateNpcModelCenter(ctx, npc);
+        // Use centralized ClickPointCalculator for NPC click points
+        Point clickPoint = com.rocinante.input.ClickPointCalculator.getNpcClickPoint(npc);
+        if (clickPoint != null) {
+            return clickPoint;
         }
-
-        Rectangle bounds = clickableArea.getBounds();
-        if (bounds == null || bounds.width == 0 || bounds.height == 0) {
-            return calculateNpcModelCenter(ctx, npc);
-        }
-
-        // Calculate random point within the clickable area using Gaussian distribution
-        int centerX = bounds.x + bounds.width / 2;
-        int centerY = bounds.y + bounds.height / 2;
-
-        double[] offset = Randomization.staticGaussian2D(0, 0, bounds.width / 4.0, bounds.height / 4.0);
-        int clickX = centerX + (int) offset[0];
-        int clickY = centerY + (int) offset[1];
-
-        // Clamp to bounds
-        clickX = Math.max(bounds.x, Math.min(clickX, bounds.x + bounds.width));
-        clickY = Math.max(bounds.y, Math.min(clickY, bounds.y + bounds.height));
-
-        return new Point(clickX, clickY);
+        
+        // Fallback to model center calculation
+        return calculateNpcModelCenter(ctx, npc);
     }
 
     private Point calculateNpcModelCenter(TaskContext ctx, NPC npc) {

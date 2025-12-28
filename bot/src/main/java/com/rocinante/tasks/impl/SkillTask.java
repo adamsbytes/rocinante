@@ -315,6 +315,7 @@ public class SkillTask extends AbstractTask {
 
     /**
      * Check if player has required tools for the training method.
+     * Checks both inventory and equipped items.
      */
     private boolean hasRequiredTools(TaskContext ctx) {
         TrainingMethod method = config.getMethod();
@@ -325,18 +326,28 @@ public class SkillTask extends AbstractTask {
         }
 
         InventoryState inventory = ctx.getInventoryState();
+        com.rocinante.state.EquipmentState equipment = ctx.getEquipmentState();
 
         // For tools, we just need any one of the required items (different tiers)
-        // This is a simplification - real implementation might check equipped items too
+        // Check inventory first
         for (int itemId : requiredItems) {
             if (inventory.hasItem(itemId)) {
+                log.trace("Found required tool {} in inventory", itemId);
                 return true;
             }
         }
 
-        // Check if any required item is equipped
-        // TODO: Check equipment state when that feature is available
+        // Check equipped items (e.g., pickaxe, axe, fishing rod can be equipped)
+        if (equipment != null) {
+            for (int itemId : requiredItems) {
+                if (equipment.hasEquipped(itemId)) {
+                    log.trace("Found required tool {} equipped", itemId);
+                    return true;
+                }
+            }
+        }
 
+        log.debug("Missing required tools. Needed one of: {}", requiredItems);
         return false;
     }
 
@@ -692,45 +703,102 @@ public class SkillTask extends AbstractTask {
     // ========================================================================
 
     private void executeBank(TaskContext ctx) {
-        // Create banking sub-task sequence
+        // Create banking sub-task using ResupplyTask
         if (activeSubTask == null) {
             TrainingMethod method = config.getMethod();
 
-            // First, walk to bank if needed
-            String bankLocation = method.getBankLocationId();
-            if (bankLocation != null) {
-                // TODO: Look up bank location from web.json
-                // For now, use BankTask which handles finding nearest bank
-                log.debug("Walking to bank: {}", bankLocation);
+            // Look up bank location from web.json
+            String bankLocationId = method.getBankLocationId();
+            WorldPoint bankPosition = lookupBankLocation(ctx, bankLocationId);
+            
+            if (bankPosition != null) {
+                log.debug("Using configured bank location: {} at {}", bankLocationId, bankPosition);
+            } else {
+                log.debug("No configured bank location, ResupplyTask will find nearest bank");
             }
 
-            // Open bank, deposit products, close, return
-            activeSubTask = createBankingSequence(ctx);
+            // Use ResupplyTask which handles the complete banking flow
+            activeSubTask = createResupplyTask(bankPosition);
         }
     }
 
     /**
-     * Create the banking sub-task sequence.
+     * Look up bank location from NavigationWeb by ID.
+     * This allows training methods to specify preferred banks (e.g., closest to training spot).
+     *
+     * @param ctx            the task context
+     * @param bankLocationId the bank node ID from TrainingMethod
+     * @return the bank WorldPoint, or null if not found
      */
-    private Task createBankingSequence(TaskContext ctx) {
+    private WorldPoint lookupBankLocation(TaskContext ctx, String bankLocationId) {
+        if (bankLocationId == null || bankLocationId.isEmpty()) {
+            return null;
+        }
+
+        try {
+            // Get NavigationWeb from WebWalker
+            com.rocinante.navigation.WebWalker webWalker = ctx.getWebWalker();
+            if (webWalker == null) {
+                log.warn("WebWalker not available for bank lookup");
+                return null;
+            }
+
+            com.rocinante.navigation.NavigationWeb navigationWeb = webWalker.getNavigationWeb();
+            if (navigationWeb == null) {
+                log.warn("NavigationWeb not available for bank lookup");
+                return null;
+            }
+
+            // Look up the bank node by ID
+            com.rocinante.navigation.WebNode bankNode = navigationWeb.getNode(bankLocationId);
+            if (bankNode == null) {
+                log.warn("Bank location ID '{}' not found in NavigationWeb", bankLocationId);
+                return null;
+            }
+
+            // Verify it's actually a bank
+            if (bankNode.getType() != com.rocinante.navigation.WebNodeType.BANK) {
+                log.warn("Node '{}' is not a bank (type={})", bankLocationId, bankNode.getType());
+                return null;
+            }
+
+            log.debug("Resolved bank '{}' to position {}", bankLocationId, bankNode.getWorldPoint());
+            return bankNode.getWorldPoint();
+        } catch (Exception e) {
+            log.warn("Error looking up bank location '{}': {}", bankLocationId, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Create a ResupplyTask for banking during skill training.
+     * Uses the existing ResupplyTask which handles:
+     * - Walking to bank (specific or nearest)
+     * - Depositing inventory
+     * - Returning to training position
+     *
+     * @param bankPosition the specific bank position, or null to use nearest
+     * @return configured ResupplyTask
+     */
+    private Task createResupplyTask(WorldPoint bankPosition) {
         TrainingMethod method = config.getMethod();
-        List<Integer> productIds = method.getProductItemIds();
-
-        // For now, use simple deposit all approach
-        // A more sophisticated implementation would:
-        // 1. Walk to bank
-        // 2. Open bank
-        // 3. Deposit specific items
-        // 4. Close bank
-        // 5. Return to training spot
-
-        BankTask bankTask = BankTask.depositAll()
-                .withDescription("Bank " + method.getName() + " products");
-
-        // After banking completes, we'll return to training
-        // This is handled in handleSubTaskComplete
-
-        return bankTask;
+        
+        // Use ResupplyTask.Builder for clean configuration
+        ResupplyTask.ResupplyTaskBuilder builder = ResupplyTask.builder()
+                .depositInventory(true)  // Deposit all gathered resources
+                .depositEquipment(false); // Keep equipped tools
+        
+        // Set specific bank location if provided
+        if (bankPosition != null) {
+            builder.bankLocation(bankPosition);
+        }
+        
+        // Set return position to training spot if we have one
+        if (trainingPosition != null) {
+            builder.returnPosition(trainingPosition);
+        }
+        
+        return builder.build();
     }
 
     // ========================================================================

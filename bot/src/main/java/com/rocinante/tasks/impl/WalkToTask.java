@@ -1853,18 +1853,40 @@ public class WalkToTask extends AbstractTask {
             return null;
         }
 
-        // Use Perspective to get canvas coordinates
-        // This is a simplified version - proper implementation would use full 3D projection
+        // Get the tile height at the target location for accurate projection
+        // Using half the tile center height (ground level) for walking clicks
+        int tileHeight = 0;
+        try {
+            // Get height at tile center (tiles are 128 local units, so offset by 64)
+            tileHeight = Perspective.getTileHeight(client, localPoint, target.getPlane());
+        } catch (Exception e) {
+            log.trace("Could not get tile height at {}: {}", target, e.getMessage());
+        }
+
+        // Use Perspective to get canvas coordinates with proper height offset
         net.runelite.api.Point canvasPoint = Perspective.localToCanvas(
-                client, localPoint, target.getPlane());
+                client, localPoint, target.getPlane(), tileHeight);
 
         if (canvasPoint == null) {
             return null;
         }
 
-        // Add randomization
-        int x = canvasPoint.getX() + Randomization.gaussianInt(0, 3);
-        int y = canvasPoint.getY() + Randomization.gaussianInt(0, 3);
+        // Verify the point is within the viewport
+        java.awt.Rectangle viewport = ctx.getGameStateService().getViewportBounds();
+        if (!viewport.contains(canvasPoint.getX(), canvasPoint.getY())) {
+            log.trace("Viewport point {} outside viewport {}", canvasPoint, viewport);
+            return null;
+        }
+
+        // Add slight randomization using ClickPointCalculator for humanization
+        int offsetX = com.rocinante.input.ClickPointCalculator.randomGaussianOffset(6, 2);
+        int offsetY = com.rocinante.input.ClickPointCalculator.randomGaussianOffset(6, 2);
+        int x = canvasPoint.getX() + offsetX;
+        int y = canvasPoint.getY() + offsetY;
+
+        // Clamp to viewport bounds
+        x = Math.max(viewport.x, Math.min(x, viewport.x + viewport.width - 1));
+        y = Math.max(viewport.y, Math.min(y, viewport.y + viewport.height - 1));
 
         return new Point(x, y);
     }
@@ -1968,8 +1990,10 @@ public class WalkToTask extends AbstractTask {
         if (webWalker != null && ctx.getIronmanState() != null) {
             webWalker.setIronman(ctx.getIronmanState().isIronman());
             webWalker.setHardcoreIronman(ctx.getIronmanState().isHardcore());
-            log.debug("WebWalker configured for ironman mode: {}, hardcore: {}",
-                    ctx.getIronmanState().isIronman(), ctx.getIronmanState().isHardcore());
+            webWalker.setUltimateIronman(ctx.getIronmanState().isUltimate());
+            log.debug("WebWalker configured for ironman mode: {}, hardcore: {}, ultimate: {}",
+                    ctx.getIronmanState().isIronman(), ctx.getIronmanState().isHardcore(),
+                    ctx.getIronmanState().isUltimate());
         }
 
         servicesInitialized = true;

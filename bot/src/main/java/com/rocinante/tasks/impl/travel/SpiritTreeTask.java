@@ -350,9 +350,10 @@ public class SpiritTreeTask implements TravelSubTask {
             return;
         }
 
-        var rand = ctx.getRandomization();
-        int x = bounds.x + bounds.width / 2 + (int) ((rand.uniformRandom(0, 1) - 0.5) * bounds.width * 0.4);
-        int y = bounds.y + bounds.height / 2 + (int) ((rand.uniformRandom(0, 1) - 0.5) * bounds.height * 0.4);
+        // Use centralized ClickPointCalculator for humanized positioning
+        java.awt.Point clickPoint = com.rocinante.input.ClickPointCalculator.getGaussianClickPoint(bounds);
+        int x = clickPoint.x;
+        int y = clickPoint.y;
 
         waiting = true;
 

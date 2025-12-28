@@ -216,18 +216,7 @@ public class InventoryClickHelper {
      * @return humanized offset within the dimension
      */
     int randomOffset(int dimension) {
-        // Center at 45-55% of dimension (per Section 3.1.2)
-        double centerPercent = 0.45 + ThreadLocalRandom.current().nextDouble() * 0.10;
-        double center = dimension * centerPercent;
-
-        // Standard deviation = 15% of dimension
-        double stdDev = dimension * 0.15;
-
-        // Gaussian offset
-        double offset = center + ThreadLocalRandom.current().nextGaussian() * stdDev;
-
-        // Clamp to valid range (minimum 2px from edge)
-        return (int) Math.max(2, Math.min(dimension - 2, offset));
+        return ClickPointCalculator.calculateGaussianOffset(dimension);
     }
 }
 

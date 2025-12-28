@@ -165,6 +165,12 @@ public class WebWalkerTest {
     }
 
     @Test
+    public void testSetUltimateIronman() {
+        webWalker.setUltimateIronman(true);
+        // UIM mode should affect banking edge availability
+    }
+
+    @Test
     public void testSetAvoidWilderness() {
         webWalker.setAvoidWilderness(true);
 

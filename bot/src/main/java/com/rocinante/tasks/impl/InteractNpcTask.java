@@ -843,23 +843,13 @@ public class InteractNpcTask extends AbstractTask {
             return calculateNpcModelCenter(ctx, npc);
         }
 
-        // Calculate random point within the clickable area using Gaussian distribution
-        int centerX = bounds.x + bounds.width / 2;
-        int centerY = bounds.y + bounds.height / 2;
-
-        double[] offset = Randomization.staticGaussian2D(0, 0, bounds.width / 4.0, bounds.height / 4.0);
-        int clickX = centerX + (int) offset[0];
-        int clickY = centerY + (int) offset[1];
-
-        // Clamp to bounds
-        clickX = Math.max(bounds.x, Math.min(clickX, bounds.x + bounds.width));
-        clickY = Math.max(bounds.y, Math.min(clickY, bounds.y + bounds.height));
-
-        return new Point(clickX, clickY);
+        // Use centralized ClickPointCalculator for humanized positioning
+        return com.rocinante.input.ClickPointCalculator.getGaussianClickPoint(bounds);
     }
 
     /**
-     * Calculate click point using NPC model center as fallback.
+     * Calculate click point using NPC model center.
+     * Uses Perspective.localToCanvas with proper height offset for accurate targeting.
      */
     private Point calculateNpcModelCenter(TaskContext ctx, NPC npc) {
         LocalPoint localPoint = npc.getLocalLocation();
@@ -867,15 +857,43 @@ public class InteractNpcTask extends AbstractTask {
             return null;
         }
 
-        // Get screen position of NPC
-        // This is a simplified calculation - actual implementation would use
-        // Perspective.localToCanvas with proper height offset
-        int height = npc.getLogicalHeight() / 2;
-
-        // Use canvas center as fallback
         Client client = ctx.getClient();
-        Dimension canvasSize = client.getCanvas().getSize();
-        return new Point(canvasSize.width / 2, canvasSize.height / 2);
+
+        // Get NPC logical height and use center (half height) for click targeting
+        // This accounts for different NPC sizes (imps, dragons, etc.)
+        int npcHeight = npc.getLogicalHeight();
+        int clickHeight = npcHeight / 2;
+
+        // Get tile height at NPC location
+        int tileHeight = 0;
+        try {
+            tileHeight = Perspective.getTileHeight(client, localPoint, client.getPlane());
+        } catch (Exception e) {
+            log.trace("Could not get tile height for NPC at {}", localPoint);
+        }
+
+        // Calculate canvas point with proper height offset
+        // The z offset is negative because height goes up (negative in the coordinate system)
+        net.runelite.api.Point canvasPoint = Perspective.localToCanvas(
+                client, localPoint, client.getPlane(), tileHeight - clickHeight);
+
+        if (canvasPoint == null) {
+            log.trace("NPC {} not visible on screen", npc.getName());
+            return null;
+        }
+
+        // Add slight randomization using our centralized utility
+        Point clickPoint = com.rocinante.input.ClickPointCalculator.getGaussianClickPoint(
+                new java.awt.Rectangle(
+                        canvasPoint.getX() - 5,
+                        canvasPoint.getY() - 5,
+                        10,
+                        10
+                ),
+                0.20 // Smaller target = less variance
+        );
+
+        return clickPoint;
     }
 
     // ========================================================================

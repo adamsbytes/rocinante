@@ -986,6 +986,88 @@ public class TravelTask extends AbstractTask {
                 }
                 return quetzal(quetzalDest);
 
+            case "canoe":
+                String canoeDest = metadata.get("destination");
+                if (canoeDest == null) {
+                    log.warn("No destination in metadata for canoe");
+                    return null;
+                }
+                return canoe(canoeDest);
+
+            case "balloon":
+                String balloonDest = metadata.get("destination");
+                String logItemIdStr = metadata.get("log_item_id");
+                if (balloonDest == null) {
+                    log.warn("No destination in metadata for balloon");
+                    return null;
+                }
+                int logItemId = logItemIdStr != null ? Integer.parseInt(logItemIdStr) : -1;
+                return balloon(balloonDest, logItemId);
+
+            case "ship":
+                String shipDest = metadata.get("destination");
+                String shipNpc = metadata.get("npc_name");
+                if (shipDest == null) {
+                    log.warn("No destination in metadata for ship");
+                    return null;
+                }
+                return ship(shipDest, shipNpc);
+
+            case "row_boat":
+                String rowBoatDest = metadata.get("destination");
+                String rowBoatObjIdStr = metadata.get("object_id");
+                if (rowBoatDest == null || rowBoatObjIdStr == null) {
+                    log.warn("Missing destination or object_id in metadata for row boat");
+                    return null;
+                }
+                return rowBoat(rowBoatDest, Integer.parseInt(rowBoatObjIdStr));
+
+            case "magic_carpet":
+                String carpetDest = metadata.get("destination");
+                String carpetFareStr = metadata.getOrDefault("fare", "0");
+                if (carpetDest == null) {
+                    log.warn("No destination in metadata for magic carpet");
+                    return null;
+                }
+                return magicCarpet(carpetDest, Integer.parseInt(carpetFareStr));
+
+            case "minecart":
+                String minecartDest = metadata.get("destination");
+                String minecartObjIdStr = metadata.get("object_id");
+                if (minecartDest == null || minecartObjIdStr == null) {
+                    log.warn("Missing destination or object_id in metadata for minecart");
+                    return null;
+                }
+                return minecart(minecartDest, Integer.parseInt(minecartObjIdStr));
+
+            case "wilderness_lever":
+                String leverObjIdStr = metadata.get("object_id");
+                String leverDestX = metadata.get("dest_x");
+                String leverDestY = metadata.get("dest_y");
+                String leverDestPlane = metadata.getOrDefault("dest_plane", "0");
+                if (leverObjIdStr == null) {
+                    log.warn("Missing object_id in metadata for wilderness lever");
+                    return null;
+                }
+                WorldPoint leverDest = null;
+                if (leverDestX != null && leverDestY != null) {
+                    leverDest = new WorldPoint(
+                            Integer.parseInt(leverDestX),
+                            Integer.parseInt(leverDestY),
+                            Integer.parseInt(leverDestPlane)
+                    );
+                }
+                return wildernessLever(Integer.parseInt(leverObjIdStr), leverDest);
+
+            case "mushtree":
+                String mushtreeDest = metadata.get("destination");
+                String mushtreeObjIdStr = metadata.get("object_id");
+                if (mushtreeDest == null || mushtreeObjIdStr == null) {
+                    log.warn("Missing destination or object_id in metadata for mushtree");
+                    return null;
+                }
+                return mushtree(mushtreeDest, Integer.parseInt(mushtreeObjIdStr));
+
             default:
                 log.warn("Unknown travel_type: {}", travelType);
                 return null;
@@ -1697,10 +1779,10 @@ public class TravelTask extends AbstractTask {
             return;
         }
 
-        // Calculate humanized click point
-        var rand = ctx.getRandomization();
-        int x = bounds.x + bounds.width / 2 + (int) ((rand.uniformRandom(0, 1) - 0.5) * bounds.width * 0.4);
-        int y = bounds.y + bounds.height / 2 + (int) ((rand.uniformRandom(0, 1) - 0.5) * bounds.height * 0.4);
+        // Use centralized ClickPointCalculator for humanized positioning
+        java.awt.Point clickPoint = com.rocinante.input.ClickPointCalculator.getGaussianClickPoint(bounds);
+        int x = clickPoint.x;
+        int y = clickPoint.y;
 
         log.debug("{}: clicking at ({}, {})", actionDesc, x, y);
         clickPending = true;

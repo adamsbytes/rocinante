@@ -204,10 +204,10 @@ public class TutorialIslandTest {
 
     @Test
     public void testGielinorGuideStepTypes() {
-        assertEquals(StepType.NPC, steps.get(2).getType());    // Talk to Gielinor Guide
-        assertEquals(StepType.WIDGET, steps.get(3).getType()); // Open settings
-        assertEquals(StepType.NPC, steps.get(7).getType());    // Talk again
-        assertEquals(StepType.OBJECT, steps.get(10).getType()); // Open door
+        assertEquals(StepType.NPC, steps.get(2).getType());       // Talk to Gielinor Guide
+        assertEquals(StepType.COMPOSITE, steps.get(3).getType()); // Open settings + set fixed mode
+        assertEquals(StepType.NPC, steps.get(7).getType());       // Talk again
+        assertEquals(StepType.OBJECT, steps.get(10).getType());   // Open door
     }
 
     @Test

@@ -66,6 +66,119 @@ public abstract class AbstractTask implements Task {
     protected String failureReason;
 
     // ========================================================================
+    // Phase Management Support
+    // ========================================================================
+
+    /**
+     * Current phase name (for tasks that use phase-based execution).
+     * Stored as String to support any enum type.
+     */
+    @Getter
+    protected String currentPhaseName = "INIT";
+
+    /**
+     * Ticks spent in the current phase.
+     * Useful for phase-specific timeouts and delays.
+     */
+    @Getter
+    protected int phaseWaitTicks = 0;
+
+    /**
+     * Maximum ticks to wait in a phase before considering it stuck.
+     * Set to -1 for no limit.
+     */
+    @Getter
+    @Setter
+    protected int maxPhaseWaitTicks = 100;
+
+    /**
+     * Tick when the current phase started.
+     */
+    protected int phaseStartTick = 0;
+
+    /**
+     * Record a phase transition for logging and tracking.
+     * Resets phase wait ticks counter.
+     *
+     * @param newPhase the new phase (use enum.name() or string)
+     */
+    protected void recordPhaseTransition(String newPhase) {
+        if (newPhase == null) {
+            return;
+        }
+        String oldPhase = this.currentPhaseName;
+        this.currentPhaseName = newPhase;
+        this.phaseWaitTicks = 0;
+        this.phaseStartTick = this.executionTicks;
+        
+        if (!newPhase.equals(oldPhase)) {
+            log.debug("Task '{}' phase: {} -> {}", getDescription(), oldPhase, newPhase);
+        }
+    }
+
+    /**
+     * Record a phase transition from an enum value.
+     * Convenience method that calls name() on the enum.
+     *
+     * @param newPhase the new phase enum value
+     */
+    protected void recordPhaseTransition(Enum<?> newPhase) {
+        if (newPhase != null) {
+            recordPhaseTransition(newPhase.name());
+        }
+    }
+
+    /**
+     * Increment the phase wait tick counter.
+     * Call this each tick to track how long we've been in the current phase.
+     */
+    protected void incrementPhaseWaitTicks() {
+        this.phaseWaitTicks++;
+    }
+
+    /**
+     * Check if the current phase has been waiting too long.
+     * Uses maxPhaseWaitTicks as the threshold.
+     *
+     * @return true if phase has exceeded max wait ticks
+     */
+    protected boolean isPhaseTimedOut() {
+        if (maxPhaseWaitTicks < 0) {
+            return false; // No limit
+        }
+        return phaseWaitTicks > maxPhaseWaitTicks;
+    }
+
+    /**
+     * Check if the current phase has been waiting for at least the specified ticks.
+     *
+     * @param ticks minimum ticks to have waited
+     * @return true if waited at least the specified ticks
+     */
+    protected boolean hasPhaseWaitedTicks(int ticks) {
+        return phaseWaitTicks >= ticks;
+    }
+
+    /**
+     * Get ticks since the current phase started.
+     *
+     * @return ticks in current phase
+     */
+    protected int getTicksInCurrentPhase() {
+        return executionTicks - phaseStartTick;
+    }
+
+    /**
+     * Reset phase tracking to initial state.
+     * Useful when restarting or re-initializing a task.
+     */
+    protected void resetPhaseTracking() {
+        this.currentPhaseName = "INIT";
+        this.phaseWaitTicks = 0;
+        this.phaseStartTick = 0;
+    }
+
+    // ========================================================================
     // State Management
     // ========================================================================
 

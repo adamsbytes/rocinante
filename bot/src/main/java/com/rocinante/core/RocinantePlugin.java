@@ -37,6 +37,7 @@ import com.rocinante.tasks.TaskExecutor;
 import com.rocinante.tasks.TaskPriority;
 import com.rocinante.timing.HumanTimer;
 import com.rocinante.quest.QuestExecutor;
+import com.rocinante.quest.QuestService;
 import com.rocinante.util.Randomization;
 import com.rocinante.behavior.tasks.MicroPauseTask;
 import com.rocinante.behavior.tasks.ShortBreakTask;
@@ -116,6 +117,10 @@ public class RocinantePlugin extends Plugin
     @Inject
     @Getter
     private QuestExecutor questExecutor;
+
+    @Inject
+    @Getter
+    private QuestService questService;
 
     // === State Components ===
 
@@ -337,6 +342,10 @@ public class RocinantePlugin extends Plugin
         taskFactory.setQuestExecutor(questExecutor);
         taskFactory.setTargetSelector(targetSelector);
         taskFactory.setCombatManager(combatManager);
+        taskFactory.setQuestService(questService);
+        
+        // Initialize QuestService with Quest Helper plugin (if available)
+        initializeQuestHelperIntegration();
         
         // Start status publishing and command processing
         statusPublisher.start();
@@ -407,6 +416,39 @@ public class RocinantePlugin extends Plugin
             } catch (ClassNotFoundException e) {
                 log.warn("Required plugin class not found: {} - this plugin may not be available", pluginClassName);
             }
+        }
+    }
+    
+    /**
+     * Initialize Quest Helper plugin integration.
+     * 
+     * Per REQUIREMENTS.md Section 8.2.1, this finds the Quest Helper plugin at runtime
+     * and initializes QuestService with it for quest data extraction.
+     */
+    private void initializeQuestHelperIntegration() {
+        // Quest Helper plugin class name (external plugin)
+        final String QUEST_HELPER_CLASS = "com.questhelper.QuestHelperPlugin";
+        
+        try {
+            // Find Quest Helper plugin instance
+            Object questHelperPlugin = null;
+            for (Plugin plugin : pluginManager.getPlugins()) {
+                if (plugin.getClass().getName().equals(QUEST_HELPER_CLASS)) {
+                    questHelperPlugin = plugin;
+                    break;
+                }
+            }
+            
+            if (questHelperPlugin != null) {
+                questService.initializeQuestHelper(questHelperPlugin);
+                log.info("Quest Helper integration initialized - quest data extraction available");
+            } else {
+                questService.initializeQuestHelper(null);
+                log.info("Quest Helper plugin not found - using manual quests only");
+            }
+        } catch (Exception e) {
+            log.warn("Failed to initialize Quest Helper integration", e);
+            questService.initializeQuestHelper(null);
         }
     }
     

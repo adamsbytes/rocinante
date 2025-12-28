@@ -1209,15 +1209,8 @@ public class BankTask extends AbstractTask {
     }
 
     private Point calculateClickPoint(Rectangle bounds) {
-        double[] offset = Randomization.staticGaussian2D(0, 0, bounds.width / 4.0, bounds.height / 4.0);
-        int clickX = (int) (bounds.getCenterX() + offset[0]);
-        int clickY = (int) (bounds.getCenterY() + offset[1]);
-
-        // Clamp to bounds
-        clickX = Math.max(bounds.x + 2, Math.min(clickX, bounds.x + bounds.width - 2));
-        clickY = Math.max(bounds.y + 2, Math.min(clickY, bounds.y + bounds.height - 2));
-
-        return new Point(clickX, clickY);
+        // Use centralized ClickPointCalculator for humanized click points
+        return com.rocinante.input.ClickPointCalculator.getGaussianClickPoint(bounds);
     }
 
     @Override

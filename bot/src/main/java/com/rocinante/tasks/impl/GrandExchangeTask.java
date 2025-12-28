@@ -1221,14 +1221,10 @@ public class GrandExchangeTask extends AbstractTask {
 
     /**
      * Generate humanized click offset per REQUIREMENTS.md Section 3.1.2.
-     * Matches WidgetClickHelper's implementation for consistency.
+     * Delegates to ClickPointCalculator for centralized implementation.
      */
     private int randomOffset(int dimension) {
-        double centerPercent = 0.45 + java.util.concurrent.ThreadLocalRandom.current().nextDouble() * 0.10;
-        double center = dimension * centerPercent;
-        double stdDev = dimension * 0.15;
-        double offset = center + java.util.concurrent.ThreadLocalRandom.current().nextGaussian() * stdDev;
-        return (int) Math.max(2, Math.min(dimension - 2, offset));
+        return com.rocinante.input.ClickPointCalculator.calculateGaussianOffset(dimension);
     }
 
     @Override

@@ -339,17 +339,13 @@ public class MenuHelper {
 
     /**
      * Generate a random offset within a dimension for click position.
-     * Uses Gaussian distribution centered at 45-55% of the dimension.
+     * Delegates to ClickPointCalculator for centralized implementation.
      *
      * @param dimension the width or height of the clickable area
      * @return humanized offset within the dimension
      */
     private int randomOffset(int dimension) {
-        double centerPercent = 0.45 + ThreadLocalRandom.current().nextDouble() * 0.10;
-        double center = dimension * centerPercent;
-        double stdDev = dimension * 0.15;
-        double offset = center + ThreadLocalRandom.current().nextGaussian() * stdDev;
-        return (int) Math.max(2, Math.min(dimension - 2, offset));
+        return ClickPointCalculator.calculateGaussianOffset(dimension);
     }
 }
 
