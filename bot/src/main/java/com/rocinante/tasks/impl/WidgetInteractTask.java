@@ -3,6 +3,7 @@ package com.rocinante.tasks.impl;
 import com.rocinante.state.WorldState;
 import com.rocinante.tasks.AbstractTask;
 import com.rocinante.tasks.TaskContext;
+import com.rocinante.util.Randomization;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -633,7 +634,7 @@ public class WidgetInteractTask extends AbstractTask {
             return;
         }
 
-        Point clickPoint = calculateClickPoint(bounds);
+        Point clickPoint = calculateClickPoint(bounds, ctx.getRandomization());
         log.debug("Clicking widget {}:{} at ({}, {})",
                 widgetGroupId, widgetChildId, clickPoint.x, clickPoint.y);
 
@@ -725,13 +726,17 @@ public class WidgetInteractTask extends AbstractTask {
         return widget;
     }
 
-    private Point calculateClickPoint(Rectangle bounds) {
+    private Point calculateClickPoint(Rectangle bounds, Randomization rand) {
         // Random point within bounds, biased toward center (Gaussian)
-        double offsetX = (Math.random() - 0.5) * bounds.width * 0.6;
-        double offsetY = (Math.random() - 0.5) * bounds.height * 0.6;
+        double offsetX = rand.gaussianRandom(0, bounds.width * 0.15);
+        double offsetY = rand.gaussianRandom(0, bounds.height * 0.15);
 
         int x = bounds.x + bounds.width / 2 + (int) offsetX;
         int y = bounds.y + bounds.height / 2 + (int) offsetY;
+
+        // Clamp to bounds
+        x = Math.max(bounds.x + 2, Math.min(bounds.x + bounds.width - 2, x));
+        y = Math.max(bounds.y + 2, Math.min(bounds.y + bounds.height - 2, y));
 
         return new Point(x, y);
     }

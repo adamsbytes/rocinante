@@ -80,6 +80,18 @@ public class LightBoxSolver implements PuzzleSolverStrategy {
     private boolean[] previousLightState = null;
     private int lastClickedButton = -1;
 
+    /**
+     * Tracks whether the puzzle was visible in the previous detectState call.
+     * Used to detect puzzle open/close transitions.
+     */
+    private boolean wasVisible = false;
+
+    /**
+     * Hash of the initial light state when we first saw this puzzle.
+     * Used to detect if this is a different puzzle instance.
+     */
+    private int initialStateHash = 0;
+
     @Override
     public PuzzleType getPuzzleType() {
         return PuzzleType.LIGHT_BOX;
@@ -98,13 +110,36 @@ public class LightBoxSolver implements PuzzleSolverStrategy {
 
     @Override
     public Optional<PuzzleState> detectState(Client client) {
-        if (!isPuzzleVisible(client)) {
+        boolean isVisible = isPuzzleVisible(client);
+        
+        // Detect new puzzle: was not visible before, now is visible
+        if (isVisible && !wasVisible) {
+            log.debug("Light box puzzle newly visible - resetting learned effects");
+            reset();
+        }
+        wasVisible = isVisible;
+
+        if (!isVisible) {
             return Optional.empty();
         }
 
         boolean[] lights = readLightStates(client);
         if (lights == null) {
             return Optional.empty();
+        }
+
+        // Check if this looks like a completely different puzzle
+        // (e.g., player closed and got a new casket)
+        int stateHash = computeStateHash(lights);
+        if (initialStateHash != 0 && previousLightState != null && allEffectsKnown()) {
+            // If we think we know all effects but the state doesn't make sense,
+            // this might be a new puzzle with the same visibility
+            // This can happen if player reopens the interface quickly
+        }
+        
+        // Store initial state hash on first detection
+        if (initialStateHash == 0) {
+            initialStateHash = stateHash;
         }
 
         // Update button effect tracking
@@ -116,6 +151,13 @@ public class LightBoxSolver implements PuzzleSolverStrategy {
             log.error("Failed to create light box state", e);
             return Optional.empty();
         }
+    }
+
+    /**
+     * Compute a hash of the light state for detecting puzzle changes.
+     */
+    private int computeStateHash(boolean[] lights) {
+        return Arrays.hashCode(lights);
     }
 
     /**
@@ -317,7 +359,9 @@ public class LightBoxSolver implements PuzzleSolverStrategy {
         }
         previousLightState = null;
         lastClickedButton = -1;
-        log.debug("Light box solver reset");
+        initialStateHash = 0;
+        // Note: wasVisible is intentionally not reset here as it's used for visibility tracking
+        log.debug("Light box solver reset - ready for new puzzle");
     }
 
     /**

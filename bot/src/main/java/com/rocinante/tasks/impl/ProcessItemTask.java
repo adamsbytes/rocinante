@@ -15,6 +15,7 @@ import net.runelite.api.widgets.Widget;
 
 import java.awt.event.KeyEvent;
 import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Task for processing items using item-on-item interaction with make-all interface handling.
@@ -361,17 +362,19 @@ public class ProcessItemTask extends AbstractTask {
         operationPending = true;
 
         // Click source item
+        long delayMs = ctx.getRandomization().uniformRandomLong(100, 200);
         inventoryHelper.executeClick(sourceSlot, "Use source item")
                 .thenCompose(success -> {
                     if (!success) {
                         throw new RuntimeException("Failed to click source item");
                     }
-                    // Small delay before clicking target
-                    try {
-                        Thread.sleep(ctx.getRandomization().uniformRandomLong(100, 200));
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
+                    // Small non-blocking delay before clicking target
+                    return CompletableFuture.supplyAsync(
+                        () -> null,
+                        CompletableFuture.delayedExecutor(delayMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    );
+                })
+                .thenCompose(v -> {
                     // Click target item
                     return inventoryHelper.executeClick(targetSlot, "Use on target item");
                 })

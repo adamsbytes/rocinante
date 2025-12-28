@@ -86,6 +86,54 @@ public class TeleportTask extends AbstractTask {
         SPELL_WIDGET_IDS.put("Teleport to House", 31);     // 0x1f
     }
 
+    // ========================================================================
+    // Rune Item IDs (from RuneLite ItemID)
+    // ========================================================================
+    private static final int RUNE_AIR = 556;
+    private static final int RUNE_WATER = 555;
+    private static final int RUNE_EARTH = 557;
+    private static final int RUNE_FIRE = 554;
+    private static final int RUNE_LAW = 563;
+    private static final int RUNE_SOUL = 566;
+
+    /**
+     * Spell requirements: magic level and rune costs.
+     */
+    private static final Map<String, SpellRequirements> SPELL_REQUIREMENTS = new HashMap<>();
+    static {
+        SPELL_REQUIREMENTS.put("Varrock Teleport", new SpellRequirements(25, 
+            Map.of(RUNE_LAW, 1, RUNE_AIR, 3, RUNE_FIRE, 1)));
+        SPELL_REQUIREMENTS.put("Lumbridge Teleport", new SpellRequirements(31, 
+            Map.of(RUNE_LAW, 1, RUNE_AIR, 3, RUNE_EARTH, 1)));
+        SPELL_REQUIREMENTS.put("Falador Teleport", new SpellRequirements(37, 
+            Map.of(RUNE_LAW, 1, RUNE_AIR, 3, RUNE_WATER, 1)));
+        SPELL_REQUIREMENTS.put("Teleport to House", new SpellRequirements(40, 
+            Map.of(RUNE_LAW, 1, RUNE_AIR, 1, RUNE_EARTH, 1)));
+        SPELL_REQUIREMENTS.put("Camelot Teleport", new SpellRequirements(45, 
+            Map.of(RUNE_LAW, 1, RUNE_AIR, 5)));
+        SPELL_REQUIREMENTS.put("Ardougne Teleport", new SpellRequirements(51, 
+            Map.of(RUNE_LAW, 2, RUNE_WATER, 2)));
+        SPELL_REQUIREMENTS.put("Watchtower Teleport", new SpellRequirements(58, 
+            Map.of(RUNE_LAW, 2, RUNE_EARTH, 2)));
+        SPELL_REQUIREMENTS.put("Trollheim Teleport", new SpellRequirements(61, 
+            Map.of(RUNE_LAW, 2, RUNE_FIRE, 2)));
+        SPELL_REQUIREMENTS.put("Teleport to Kourend", new SpellRequirements(69, 
+            Map.of(RUNE_LAW, 2, RUNE_SOUL, 2, RUNE_WATER, 2)));
+    }
+
+    /**
+     * Holds spell requirements data.
+     */
+    private static class SpellRequirements {
+        final int magicLevel;
+        final Map<Integer, Integer> runeCosts;
+
+        SpellRequirements(int magicLevel, Map<Integer, Integer> runeCosts) {
+            this.magicLevel = magicLevel;
+            this.runeCosts = runeCosts;
+        }
+    }
+
     /**
      * Equipment widget group.
      */
@@ -118,6 +166,52 @@ public class TeleportTask extends AbstractTask {
      * Normal teleport animation duration (ticks).
      */
     private static final int TELEPORT_DURATION_TICKS = 5;
+
+    // ========================================================================
+    // Fairy Ring Constants
+    // ========================================================================
+
+    /**
+     * Fairy ring widget group.
+     */
+    private static final int FAIRY_RING_GROUP = 398;
+
+    /**
+     * Fairy ring first dial (left) child IDs.
+     */
+    private static final int FAIRY_RING_DIAL_1_LEFT = 19;
+    private static final int FAIRY_RING_DIAL_1_RIGHT = 20;
+
+    /**
+     * Fairy ring second dial (middle) child IDs.
+     */
+    private static final int FAIRY_RING_DIAL_2_LEFT = 21;
+    private static final int FAIRY_RING_DIAL_2_RIGHT = 22;
+
+    /**
+     * Fairy ring third dial (right) child IDs.
+     */
+    private static final int FAIRY_RING_DIAL_3_LEFT = 23;
+    private static final int FAIRY_RING_DIAL_3_RIGHT = 24;
+
+    /**
+     * Fairy ring confirm button.
+     */
+    private static final int FAIRY_RING_CONFIRM = 26;
+
+    /**
+     * Fairy ring dial letters. Each dial can be A, B, C, or D.
+     */
+    private static final char[] FAIRY_RING_LETTERS = {'A', 'B', 'C', 'D'};
+
+    // ========================================================================
+    // Spirit Tree Constants
+    // ========================================================================
+
+    /**
+     * Spirit tree widget group.
+     */
+    private static final int SPIRIT_TREE_GROUP = 187;
 
     // ========================================================================
     // Teleport Method Enum
@@ -199,6 +293,20 @@ public class TeleportTask extends AbstractTask {
     private final String teleportOption;
 
     /**
+     * Fairy ring code (3 letters like "AJR", "BKS" for FAIRY_RING method).
+     */
+    @Getter
+    @Nullable
+    private final String fairyRingCode;
+
+    /**
+     * Spirit tree destination name (e.g., "Tree Gnome Village" for SPIRIT_TREE method).
+     */
+    @Getter
+    @Nullable
+    private final String spiritTreeDestination;
+
+    /**
      * Expected destination after teleport (for verification).
      */
     @Getter
@@ -236,6 +344,10 @@ public class TeleportTask extends AbstractTask {
     private boolean clickPending = false;
     private WorldPoint startPosition;
     private int waitTicks = 0;
+    
+    // Fairy ring state: current dial positions [0-3] representing A-D
+    private int[] fairyRingDialPositions = new int[3];
+    private int currentDialToSet = 0;
 
     // ========================================================================
     // Constructors
@@ -244,12 +356,15 @@ public class TeleportTask extends AbstractTask {
     @Builder
     private TeleportTask(TeleportMethod method, @Nullable String spellName, 
                          int itemId, @Nullable String teleportOption,
+                         @Nullable String fairyRingCode, @Nullable String spiritTreeDestination,
                          @Nullable WorldPoint expectedDestination,
                          @Nullable String description) {
         this.method = method;
         this.spellName = spellName;
         this.itemId = itemId;
         this.teleportOption = teleportOption;
+        this.fairyRingCode = fairyRingCode;
+        this.spiritTreeDestination = spiritTreeDestination;
         this.expectedDestination = expectedDestination;
         this.description = description;
         this.timeout = Duration.ofSeconds(30);
@@ -341,6 +456,62 @@ public class TeleportTask extends AbstractTask {
                 .method(TeleportMethod.JEWELRY_INVENTORY)
                 .itemId(jewelryItemId)
                 .teleportOption(option)
+                .build();
+    }
+
+    /**
+     * Create a task to use a fairy ring.
+     *
+     * @param code the 3-letter fairy ring code (e.g., "AJR", "BKS")
+     * @return teleport task
+     */
+    public static TeleportTask fairyRing(String code) {
+        if (code == null || code.length() != 3) {
+            throw new IllegalArgumentException("Fairy ring code must be 3 letters");
+        }
+        return TeleportTask.builder()
+                .method(TeleportMethod.FAIRY_RING)
+                .itemId(-1)
+                .fairyRingCode(code.toUpperCase())
+                .build();
+    }
+
+    /**
+     * Create a task to use a fairy ring with expected destination.
+     *
+     * @param code the 3-letter fairy ring code
+     * @param destination expected destination
+     * @return teleport task
+     */
+    public static TeleportTask fairyRing(String code, WorldPoint destination) {
+        return fairyRing(code).withDestination(destination);
+    }
+
+    /**
+     * Create a task to use a spirit tree.
+     *
+     * @param destination the destination name (e.g., "Tree Gnome Village")
+     * @return teleport task
+     */
+    public static TeleportTask spiritTree(String destination) {
+        return TeleportTask.builder()
+                .method(TeleportMethod.SPIRIT_TREE)
+                .itemId(-1)
+                .spiritTreeDestination(destination)
+                .build();
+    }
+
+    /**
+     * Create a task to use POH teleport (requires being in POH).
+     *
+     * @param portalDestination the portal destination name
+     * @return teleport task
+     */
+    public static TeleportTask pohPortal(String portalDestination) {
+        return TeleportTask.builder()
+                .method(TeleportMethod.POH_PORTAL)
+                .itemId(-1)
+                .teleportOption(portalDestination)
                 .build();
     }
 
@@ -461,6 +632,16 @@ public class TeleportTask extends AbstractTask {
                 return hasJewelryEquipped(ctx, itemId);
             case JEWELRY_INVENTORY:
                 return hasItemInInventory(ctx, itemId);
+            case FAIRY_RING:
+                // Fairy ring requires dramen/lunar staff or completion of Lumbridge Elite diary
+                // For simplicity, we assume player has access
+                return fairyRingCode != null && fairyRingCode.length() == 3;
+            case SPIRIT_TREE:
+                // Spirit tree requires partial completion of Tree Gnome Village
+                return spiritTreeDestination != null;
+            case POH_PORTAL:
+                // POH portal requires being in house
+                return teleportOption != null;
             default:
                 return true;
         }
@@ -487,6 +668,24 @@ public class TeleportTask extends AbstractTask {
                 break;
             case CLICK_TELEPORT:
                 executeClickTeleport(ctx);
+                break;
+            case WAIT_FAIRY_RING_INTERFACE:
+                executeWaitFairyRingInterface(ctx);
+                break;
+            case SET_FAIRY_RING_DIALS:
+                executeSetFairyRingDials(ctx);
+                break;
+            case CONFIRM_FAIRY_RING:
+                executeConfirmFairyRing(ctx);
+                break;
+            case WAIT_SPIRIT_TREE_INTERFACE:
+                executeWaitSpiritTreeInterface(ctx);
+                break;
+            case SELECT_SPIRIT_TREE_DESTINATION:
+                executeSelectSpiritTreeDestination(ctx);
+                break;
+            case CLICK_POH_PORTAL:
+                executeClickPohPortal(ctx);
                 break;
             case WAIT_FOR_TELEPORT:
                 executeWaitForTeleport(ctx);
@@ -520,6 +719,20 @@ public class TeleportTask extends AbstractTask {
             case TABLET:
             case JEWELRY_INVENTORY:
                 phase = TeleportPhase.OPEN_INVENTORY;
+                break;
+            case FAIRY_RING:
+                // Player needs to interact with a fairy ring object first
+                // For now, assume the interface is already open or will be opened by another task
+                phase = TeleportPhase.WAIT_FAIRY_RING_INTERFACE;
+                currentDialToSet = 0;
+                break;
+            case SPIRIT_TREE:
+                // Player needs to interact with a spirit tree object first
+                phase = TeleportPhase.WAIT_SPIRIT_TREE_INTERFACE;
+                break;
+            case POH_PORTAL:
+                // Player needs to be in their POH and click the portal
+                phase = TeleportPhase.CLICK_POH_PORTAL;
                 break;
             default:
                 fail("Unsupported teleport method: " + method);
@@ -798,6 +1011,173 @@ public class TeleportTask extends AbstractTask {
                 });
     }
 
+    // ========================================================================
+    // Phase: Fairy Ring Interface
+    // ========================================================================
+
+    private void executeWaitFairyRingInterface(TaskContext ctx) {
+        Client client = ctx.getClient();
+        Widget fairyRing = client.getWidget(FAIRY_RING_GROUP, 0);
+
+        if (fairyRing != null && !fairyRing.isHidden()) {
+            log.debug("Fairy ring interface is open");
+            // Read current dial positions
+            readFairyRingDialPositions(ctx);
+            phase = TeleportPhase.SET_FAIRY_RING_DIALS;
+            return;
+        }
+
+        waitTicks++;
+        if (waitTicks > 20) {
+            fail("Fairy ring interface did not open - ensure you interact with a fairy ring first");
+        }
+    }
+
+    private void readFairyRingDialPositions(TaskContext ctx) {
+        // Read the current dial positions from the widget
+        // Each dial shows which letter is currently selected
+        // For simplicity, we assume dials start at 'A' (position 0)
+        // In practice, we'd read the varbit or widget text
+        fairyRingDialPositions[0] = 0;
+        fairyRingDialPositions[1] = 0;
+        fairyRingDialPositions[2] = 0;
+    }
+
+    private void executeSetFairyRingDials(TaskContext ctx) {
+        if (currentDialToSet >= 3) {
+            phase = TeleportPhase.CONFIRM_FAIRY_RING;
+            return;
+        }
+
+        // Get target letter for current dial
+        char targetLetter = fairyRingCode.charAt(currentDialToSet);
+        int targetPosition = targetLetter - 'A';
+        if (targetPosition < 0 || targetPosition > 3) {
+            fail("Invalid fairy ring code letter: " + targetLetter);
+            return;
+        }
+
+        int currentPosition = fairyRingDialPositions[currentDialToSet];
+        if (currentPosition == targetPosition) {
+            // This dial is already correct
+            currentDialToSet++;
+            return;
+        }
+
+        // Calculate clicks needed (can go left or right)
+        int clockwiseClicks = (targetPosition - currentPosition + 4) % 4;
+        int counterClicks = (currentPosition - targetPosition + 4) % 4;
+
+        // Choose direction with fewer clicks
+        int childId;
+        if (clockwiseClicks <= counterClicks) {
+            // Click right
+            childId = currentDialToSet == 0 ? FAIRY_RING_DIAL_1_RIGHT 
+                    : currentDialToSet == 1 ? FAIRY_RING_DIAL_2_RIGHT : FAIRY_RING_DIAL_3_RIGHT;
+            fairyRingDialPositions[currentDialToSet] = (currentPosition + 1) % 4;
+        } else {
+            // Click left
+            childId = currentDialToSet == 0 ? FAIRY_RING_DIAL_1_LEFT 
+                    : currentDialToSet == 1 ? FAIRY_RING_DIAL_2_LEFT : FAIRY_RING_DIAL_3_LEFT;
+            fairyRingDialPositions[currentDialToSet] = (currentPosition + 3) % 4;
+        }
+
+        Client client = ctx.getClient();
+        Widget dialButton = client.getWidget(FAIRY_RING_GROUP, childId);
+        if (dialButton == null || dialButton.isHidden()) {
+            fail("Fairy ring dial button not found");
+            return;
+        }
+
+        log.debug("Setting fairy ring dial {}: {} -> {}", 
+                currentDialToSet + 1, FAIRY_RING_LETTERS[currentPosition], targetLetter);
+        clickWidget(ctx, dialButton, "Rotate dial " + (currentDialToSet + 1));
+    }
+
+    private void executeConfirmFairyRing(TaskContext ctx) {
+        Client client = ctx.getClient();
+        Widget confirmButton = client.getWidget(FAIRY_RING_GROUP, FAIRY_RING_CONFIRM);
+
+        if (confirmButton == null || confirmButton.isHidden()) {
+            fail("Fairy ring confirm button not found");
+            return;
+        }
+
+        log.debug("Confirming fairy ring teleport: {}", fairyRingCode);
+        clickWidget(ctx, confirmButton, "Confirm fairy ring");
+    }
+
+    // ========================================================================
+    // Phase: Spirit Tree Interface
+    // ========================================================================
+
+    private void executeWaitSpiritTreeInterface(TaskContext ctx) {
+        Client client = ctx.getClient();
+        Widget spiritTree = client.getWidget(SPIRIT_TREE_GROUP, 0);
+
+        if (spiritTree != null && !spiritTree.isHidden()) {
+            log.debug("Spirit tree interface is open");
+            phase = TeleportPhase.SELECT_SPIRIT_TREE_DESTINATION;
+            return;
+        }
+
+        waitTicks++;
+        if (waitTicks > 20) {
+            fail("Spirit tree interface did not open - ensure you interact with a spirit tree first");
+        }
+    }
+
+    private void executeSelectSpiritTreeDestination(TaskContext ctx) {
+        Client client = ctx.getClient();
+        Widget container = client.getWidget(SPIRIT_TREE_GROUP, 3);
+
+        if (container == null) {
+            fail("Spirit tree destination container not found");
+            return;
+        }
+
+        // Search for the destination in the children
+        Widget[] children = container.getDynamicChildren();
+        if (children == null) {
+            fail("Spirit tree has no destinations");
+            return;
+        }
+
+        for (Widget child : children) {
+            String text = child.getText();
+            if (text != null && text.contains(spiritTreeDestination)) {
+                log.debug("Found spirit tree destination: {}", spiritTreeDestination);
+                clickWidget(ctx, child, "Select " + spiritTreeDestination);
+                return;
+            }
+        }
+
+        fail("Spirit tree destination not found: " + spiritTreeDestination);
+    }
+
+    // ========================================================================
+    // Phase: POH Portal
+    // ========================================================================
+
+    private void executeClickPohPortal(TaskContext ctx) {
+        // POH portals are game objects that need to be clicked
+        // This phase assumes the player is already in their POH
+        // The portal object would need to be found and interacted with
+        // For now, we provide a basic implementation that looks for the portal widget
+        
+        // POH teleport interfaces vary based on portal type
+        // Common pattern: right-click portal -> select destination
+        log.warn("POH portal teleport not fully implemented - requires object interaction");
+        
+        // For portals that open an interface (like Nexus), we'd check for that widget
+        // For basic portals, we'd need to interact with the game object
+        fail("POH portal teleport requires integration with InteractObjectTask");
+    }
+
+    // ========================================================================
+    // Common Click Helper
+    // ========================================================================
+
     private void clickWidget(TaskContext ctx, Widget widget, String actionDesc) {
         Rectangle bounds = widget.getBounds();
         if (bounds == null || bounds.width == 0) {
@@ -806,8 +1186,9 @@ public class TeleportTask extends AbstractTask {
         }
 
         // Calculate humanized click point
-        int x = bounds.x + bounds.width / 2 + (int) ((Math.random() - 0.5) * bounds.width * 0.4);
-        int y = bounds.y + bounds.height / 2 + (int) ((Math.random() - 0.5) * bounds.height * 0.4);
+        var rand = ctx.getRandomization();
+        int x = bounds.x + bounds.width / 2 + (int) ((rand.uniformRandom(0, 1) - 0.5) * bounds.width * 0.4);
+        int y = bounds.y + bounds.height / 2 + (int) ((rand.uniformRandom(0, 1) - 0.5) * bounds.height * 0.4);
 
         log.debug("{}: clicking at ({}, {})", actionDesc, x, y);
         clickPending = true;
@@ -888,14 +1269,46 @@ public class TeleportTask extends AbstractTask {
     // ========================================================================
 
     private boolean canCastSpell(TaskContext ctx) {
-        // Check if spell exists
+        // Check if spell exists in widget mapping
         Integer childId = SPELL_WIDGET_IDS.get(spellName);
         if (childId == null) {
+            log.warn("Unknown spell: {}", spellName);
             return false;
         }
 
-        // Check magic level (basic check - could be enhanced with rune checking)
-        // For now, we'll let the game tell us if we can't cast
+        // Check spell requirements
+        SpellRequirements reqs = SPELL_REQUIREMENTS.get(spellName);
+        if (reqs == null) {
+            // Unknown requirements - allow attempt
+            log.debug("No requirements data for spell: {}", spellName);
+            return true;
+        }
+
+        // Check magic level
+        Client client = ctx.getClient();
+        int magicLevel = client.getRealSkillLevel(Skill.MAGIC);
+        if (magicLevel < reqs.magicLevel) {
+            log.debug("Insufficient magic level for {}: have {}, need {}", 
+                    spellName, magicLevel, reqs.magicLevel);
+            return false;
+        }
+
+        // Check rune requirements
+        InventoryState inventory = ctx.getInventoryState();
+        for (Map.Entry<Integer, Integer> runeCost : reqs.runeCosts.entrySet()) {
+            int runeId = runeCost.getKey();
+            int requiredCount = runeCost.getValue();
+            int haveCount = inventory.countItem(runeId);
+            
+            // TODO: Check for rune-saving staves (fire staff, air staff, etc.)
+            // For now, require actual runes in inventory
+            if (haveCount < requiredCount) {
+                log.debug("Insufficient runes for {}: rune {} have {}, need {}", 
+                        spellName, runeId, haveCount, requiredCount);
+                return false;
+            }
+        }
+
         return true;
     }
 
@@ -944,6 +1357,12 @@ public class TeleportTask extends AbstractTask {
             case JEWELRY_EQUIPPED:
             case JEWELRY_INVENTORY:
                 return "Use jewelry teleport to " + teleportOption;
+            case FAIRY_RING:
+                return "Use fairy ring " + fairyRingCode;
+            case SPIRIT_TREE:
+                return "Use spirit tree to " + spiritTreeDestination;
+            case POH_PORTAL:
+                return "Use POH portal to " + teleportOption;
             default:
                 return "Teleport";
         }
@@ -959,6 +1378,16 @@ public class TeleportTask extends AbstractTask {
         OPEN_EQUIPMENT,
         OPEN_INVENTORY,
         CLICK_TELEPORT,
+        // Fairy ring phases
+        WAIT_FAIRY_RING_INTERFACE,
+        SET_FAIRY_RING_DIALS,
+        CONFIRM_FAIRY_RING,
+        // Spirit tree phases
+        WAIT_SPIRIT_TREE_INTERFACE,
+        SELECT_SPIRIT_TREE_DESTINATION,
+        // POH portal phase
+        CLICK_POH_PORTAL,
+        // Common final phases
         WAIT_FOR_TELEPORT,
         VERIFY_ARRIVAL
     }

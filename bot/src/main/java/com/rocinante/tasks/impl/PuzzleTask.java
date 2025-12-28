@@ -485,16 +485,13 @@ public class PuzzleTask extends AbstractTask {
     }
 
     /**
-     * Async delay helper.
+     * Async delay helper using scheduled executor for non-blocking delay.
      */
     private CompletableFuture<Void> delayAsync(int delayMs) {
-        return CompletableFuture.runAsync(() -> {
-            try {
-                Thread.sleep(delayMs);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        });
+        return CompletableFuture.supplyAsync(
+            () -> null,
+            CompletableFuture.delayedExecutor(delayMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+        ).thenAccept(v -> {});
     }
 
     // ========================================================================

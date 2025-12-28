@@ -3,6 +3,7 @@ package com.rocinante.tasks.impl;
 import com.rocinante.tasks.AbstractTask;
 import com.rocinante.tasks.TaskContext;
 import com.rocinante.timing.DelayProfile;
+import com.rocinante.util.Randomization;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -582,7 +583,7 @@ public class EmoteTask extends AbstractTask {
         }
 
         // Calculate humanized click point
-        Point clickPoint = calculateClickPoint(bounds);
+        Point clickPoint = calculateClickPoint(bounds, ctx.getRandomization());
         log.debug("Clicking emote '{}' at ({}, {})", emoteName, clickPoint.x, clickPoint.y);
 
         clickPending = true;
@@ -639,13 +640,17 @@ public class EmoteTask extends AbstractTask {
     // Helper Methods
     // ========================================================================
 
-    private Point calculateClickPoint(Rectangle bounds) {
+    private Point calculateClickPoint(Rectangle bounds, Randomization rand) {
         // Gaussian-distributed click within bounds
-        double offsetX = (Math.random() - 0.5) * bounds.width * 0.6;
-        double offsetY = (Math.random() - 0.5) * bounds.height * 0.6;
+        double offsetX = rand.gaussianRandom(0, bounds.width * 0.15);
+        double offsetY = rand.gaussianRandom(0, bounds.height * 0.15);
 
         int x = bounds.x + bounds.width / 2 + (int) offsetX;
         int y = bounds.y + bounds.height / 2 + (int) offsetY;
+
+        // Clamp to bounds
+        x = Math.max(bounds.x + 2, Math.min(bounds.x + bounds.width - 2, x));
+        y = Math.max(bounds.y + 2, Math.min(bounds.y + bounds.height - 2, y));
 
         return new Point(x, y);
     }

@@ -370,7 +370,7 @@ public class InteractObjectTask extends AbstractTask {
         startAnimation = player.getAnimationId();
 
         // Decide if we should rotate camera
-        if (cameraRotationChance > 0 && Math.random() < cameraRotationChance) {
+        if (cameraRotationChance > 0 && ctx.getRandomization().chance(cameraRotationChance)) {
             phase = InteractionPhase.ROTATE_CAMERA;
         } else {
             phase = InteractionPhase.MOVE_MOUSE;
@@ -451,7 +451,7 @@ public class InteractObjectTask extends AbstractTask {
 
     protected void executeHoverDelay(TaskContext ctx) {
         // Generate humanized hover delay
-        int hoverMs = HOVER_DELAY_MIN + (int) (Math.random() * (HOVER_DELAY_MAX - HOVER_DELAY_MIN));
+        int hoverMs = ctx.getRandomization().uniformRandomInt(HOVER_DELAY_MIN, HOVER_DELAY_MAX);
         log.debug("Hovering for {}ms before click", hoverMs);
 
         // Cache the clickbox for potential menu selection

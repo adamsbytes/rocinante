@@ -148,6 +148,23 @@ public class ArceuusLibraryTask extends MinigameTask {
     @Nullable
     private Object libraryPluginLibrary;
 
+    /**
+     * Whether plugin integration has been attempted.
+     */
+    private boolean pluginAccessAttempted = false;
+
+    /**
+     * Whether plugin integration is permanently disabled due to errors.
+     * Once disabled, we won't retry to avoid log spam.
+     */
+    private boolean pluginIntegrationDisabled = false;
+
+    /**
+     * Counter for reflection errors - if too many, disable integration.
+     */
+    private int reflectionErrorCount = 0;
+    private static final int MAX_REFLECTION_ERRORS = 5;
+
     // ========================================================================
     // Activity Enum
     // ========================================================================
@@ -189,13 +206,15 @@ public class ArceuusLibraryTask extends MinigameTask {
     @Override
     protected void executeWaitingPhase(TaskContext ctx) {
         // Library doesn't have "rounds" - we're always ready to work
-        // Try to initialize plugin access via reflection if not done
-        if (libraryPluginLibrary == null) {
+        // Try to initialize plugin access via reflection if not done (and not disabled)
+        if (!pluginAccessAttempted && !pluginIntegrationDisabled) {
             tryInitializePluginAccess(ctx);
         }
 
-        // Update plugin state
-        updateFromPlugin();
+        // Update plugin state (if integration is available)
+        if (libraryPluginLibrary != null && !pluginIntegrationDisabled) {
+            updateFromPlugin();
+        }
 
         // Check if we already have a request
         if (libraryState.hasActiveRequest()) {
@@ -215,35 +234,131 @@ public class ArceuusLibraryTask extends MinigameTask {
 
     /**
      * Try to access the RuneLite Kourend Library plugin's Library object via reflection.
+     * 
+     * <p><b>WARNING:</b> This uses reflection to access internal RuneLite plugin state.
+     * This is fragile and may break if the plugin's internal structure changes.
+     * The bot will continue to work without this integration, but with reduced efficiency.
      */
     private void tryInitializePluginAccess(TaskContext ctx) {
+        pluginAccessAttempted = true;
+        
         try {
             // Try to find KourendLibraryPlugin through client's plugin manager
             // This is a best-effort approach since the Library class is package-private
-            Class<?> pluginClass = Class.forName("net.runelite.client.plugins.kourendlibrary.KourendLibraryPlugin");
+            Class<?> pluginClass;
+            try {
+                pluginClass = Class.forName("net.runelite.client.plugins.kourendlibrary.KourendLibraryPlugin");
+            } catch (ClassNotFoundException e) {
+                // Plugin not installed or class not found - this is expected if plugin isn't enabled
+                log.info("KourendLibraryPlugin not found - library task will use fallback book location logic");
+                return;
+            }
             
             // Get PluginManager from client (if accessible)
-            Object pluginManager = ctx.getClient().getClass().getMethod("getPluginManager").invoke(ctx.getClient());
-            if (pluginManager != null) {
-                Method getPlugins = pluginManager.getClass().getMethod("getPlugins");
-                @SuppressWarnings("unchecked")
-                java.util.Collection<?> plugins = (java.util.Collection<?>) getPlugins.invoke(pluginManager);
-                
-                for (Object plugin : plugins) {
-                    if (pluginClass.isInstance(plugin)) {
-                        Field libraryField = pluginClass.getDeclaredField("library");
-                        libraryField.setAccessible(true);
-                        libraryPluginLibrary = libraryField.get(plugin);
-                        if (libraryPluginLibrary != null) {
-                            log.info("KourendLibraryPlugin integration active via reflection");
-                        }
-                        break;
+            Method getPluginManager;
+            try {
+                getPluginManager = ctx.getClient().getClass().getMethod("getPluginManager");
+            } catch (NoSuchMethodException e) {
+                log.debug("Client doesn't expose getPluginManager - skipping plugin integration");
+                return;
+            }
+
+            Object pluginManager = getPluginManager.invoke(ctx.getClient());
+            if (pluginManager == null) {
+                log.debug("PluginManager is null - skipping plugin integration");
+                return;
+            }
+
+            Method getPlugins = pluginManager.getClass().getMethod("getPlugins");
+            @SuppressWarnings("unchecked")
+            java.util.Collection<?> plugins = (java.util.Collection<?>) getPlugins.invoke(pluginManager);
+            
+            boolean pluginFound = false;
+            for (Object plugin : plugins) {
+                if (pluginClass.isInstance(plugin)) {
+                    pluginFound = true;
+                    
+                    // Validate expected field exists before accessing
+                    Field libraryField;
+                    try {
+                        libraryField = pluginClass.getDeclaredField("library");
+                    } catch (NoSuchFieldException e) {
+                        log.warn("KourendLibraryPlugin structure changed - 'library' field not found. " +
+                                "Plugin integration disabled. The bot will still work but with reduced efficiency.");
+                        pluginIntegrationDisabled = true;
+                        return;
                     }
+                    
+                    libraryField.setAccessible(true);
+                    libraryPluginLibrary = libraryField.get(plugin);
+                    
+                    if (libraryPluginLibrary != null) {
+                        // Validate the library object has expected methods
+                        if (validateLibraryObjectStructure()) {
+                            log.info("KourendLibraryPlugin integration active - book locations will be predicted");
+                        } else {
+                            log.warn("KourendLibraryPlugin Library object has unexpected structure. " +
+                                    "Integration disabled. The bot will still work but with reduced efficiency.");
+                            pluginIntegrationDisabled = true;
+                            libraryPluginLibrary = null;
+                        }
+                    }
+                    break;
                 }
             }
+            
+            if (!pluginFound) {
+                log.info("KourendLibraryPlugin is installed but not enabled - using fallback book location logic");
+            }
+            
         } catch (Exception e) {
             // Plugin not available or reflection failed - continue without it
-            log.debug("Could not access KourendLibraryPlugin: {}", e.getMessage());
+            log.debug("Could not access KourendLibraryPlugin: {} - {}", 
+                    e.getClass().getSimpleName(), e.getMessage());
+            handleReflectionError("initialization", e);
+        }
+    }
+
+    /**
+     * Validate that the library object has the expected method signatures.
+     * This catches structural changes that would cause runtime errors.
+     */
+    private boolean validateLibraryObjectStructure() {
+        if (libraryPluginLibrary == null) {
+            return false;
+        }
+        
+        try {
+            Class<?> libraryClass = libraryPluginLibrary.getClass();
+            
+            // Check for expected methods
+            libraryClass.getDeclaredMethod("getBookcases");
+            libraryClass.getDeclaredMethod("getCustomerBook");
+            libraryClass.getDeclaredMethod("getCustomerId");
+            
+            return true;
+        } catch (NoSuchMethodException e) {
+            log.debug("Library object missing expected method: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Handle a reflection error with rate limiting.
+     * If too many errors occur, disable plugin integration entirely.
+     */
+    private void handleReflectionError(String operation, Exception e) {
+        reflectionErrorCount++;
+        
+        if (reflectionErrorCount >= MAX_REFLECTION_ERRORS) {
+            log.warn("Too many reflection errors ({}) accessing KourendLibraryPlugin. " +
+                    "Integration disabled. The bot will continue without plugin assistance.", 
+                    reflectionErrorCount);
+            pluginIntegrationDisabled = true;
+            libraryPluginLibrary = null;
+        } else {
+            log.debug("Reflection error during {}: {} (error count: {})", 
+                    operation, e.getMessage(), reflectionErrorCount);
         }
     }
 
@@ -476,8 +591,8 @@ public class ArceuusLibraryTask extends MinigameTask {
             return localLoc;
         }
 
-        // Check plugin for predicted location
-        if (libraryPluginLibrary != null) {
+        // Check plugin for predicted location (if integration is active)
+        if (libraryPluginLibrary != null && !pluginIntegrationDisabled) {
             try {
                 Method getBookcases = libraryPluginLibrary.getClass().getDeclaredMethod("getBookcases");
                 getBookcases.setAccessible(true);
@@ -501,7 +616,7 @@ public class ArceuusLibraryTask extends MinigameTask {
                     }
                 }
             } catch (Exception e) {
-                log.debug("Error checking plugin for book location: {}", e.getMessage());
+                handleReflectionError("findBookLocation", e);
             }
         }
 
@@ -539,7 +654,9 @@ public class ArceuusLibraryTask extends MinigameTask {
     // ========================================================================
 
     private void updateFromPlugin() {
-        if (libraryPluginLibrary == null) return;
+        if (libraryPluginLibrary == null || pluginIntegrationDisabled) {
+            return;
+        }
 
         try {
             Method getCustomerBook = libraryPluginLibrary.getClass().getDeclaredMethod("getCustomerBook");
@@ -562,7 +679,7 @@ public class ArceuusLibraryTask extends MinigameTask {
                 }
             }
         } catch (Exception e) {
-            log.debug("Error reading from library plugin: {}", e.getMessage());
+            handleReflectionError("updateFromPlugin", e);
         }
     }
 

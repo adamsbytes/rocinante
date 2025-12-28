@@ -332,14 +332,8 @@ public class WaitForConditionTask extends AbstractTask {
         resetIdleMouseCountdown(rand);
 
         // Decide if we should move the mouse (not every time)
-        if (rand != null) {
-            if (!rand.chance(0.6)) {
-                return;
-            }
-        } else {
-            if (Math.random() > 0.6) {
-                return;
-            }
+        if (!rand.chance(0.6)) {
+            return;
         }
 
         // Get current mouse position
@@ -349,23 +343,13 @@ public class WaitForConditionTask extends AbstractTask {
         }
 
         // Calculate random drift
-        int driftX, driftY;
-        if (rand != null) {
-            driftX = rand.uniformRandomInt(-IDLE_MOUSE_MAX_DRIFT, IDLE_MOUSE_MAX_DRIFT);
-            driftY = rand.uniformRandomInt(-IDLE_MOUSE_MAX_DRIFT, IDLE_MOUSE_MAX_DRIFT);
-            
-            // Apply smaller movements more often
-            if (rand.chance(0.7)) {
-                driftX = driftX / 3;
-                driftY = driftY / 3;
-            }
-        } else {
-            driftX = (int)(Math.random() * IDLE_MOUSE_MAX_DRIFT * 2) - IDLE_MOUSE_MAX_DRIFT;
-            driftY = (int)(Math.random() * IDLE_MOUSE_MAX_DRIFT * 2) - IDLE_MOUSE_MAX_DRIFT;
-            if (Math.random() < 0.7) {
-                driftX = driftX / 3;
-                driftY = driftY / 3;
-            }
+        int driftX = rand.uniformRandomInt(-IDLE_MOUSE_MAX_DRIFT, IDLE_MOUSE_MAX_DRIFT);
+        int driftY = rand.uniformRandomInt(-IDLE_MOUSE_MAX_DRIFT, IDLE_MOUSE_MAX_DRIFT);
+        
+        // Apply smaller movements more often
+        if (rand.chance(0.7)) {
+            driftX = driftX / 3;
+            driftY = driftY / 3;
         }
 
         int newX = mousePos.x + driftX;
@@ -407,8 +391,9 @@ public class WaitForConditionTask extends AbstractTask {
         if (rand != null) {
             idleMouseCountdown = rand.uniformRandomInt(IDLE_MOUSE_MIN_INTERVAL, IDLE_MOUSE_MAX_INTERVAL);
         } else {
+            // Fallback when no randomization available (e.g., constructor call)
             idleMouseCountdown = IDLE_MOUSE_MIN_INTERVAL
-                    + (int)(Math.random() * (IDLE_MOUSE_MAX_INTERVAL - IDLE_MOUSE_MIN_INTERVAL));
+                    + new java.util.Random().nextInt(IDLE_MOUSE_MAX_INTERVAL - IDLE_MOUSE_MIN_INTERVAL);
         }
     }
 

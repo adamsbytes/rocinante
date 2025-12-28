@@ -436,7 +436,7 @@ public class InteractNpcTask extends AbstractTask {
         startPosition = playerPos;
 
         // Decide if we should rotate camera
-        if (cameraRotationChance > 0 && Math.random() < cameraRotationChance) {
+        if (cameraRotationChance > 0 && ctx.getRandomization().chance(cameraRotationChance)) {
             phase = NpcInteractionPhase.ROTATE_CAMERA;
         } else {
             phase = NpcInteractionPhase.MOVE_MOUSE;
@@ -538,7 +538,7 @@ public class InteractNpcTask extends AbstractTask {
         }
 
         // Generate humanized hover delay
-        int hoverMs = HOVER_DELAY_MIN + (int) (Math.random() * (HOVER_DELAY_MAX - HOVER_DELAY_MIN));
+        int hoverMs = ctx.getRandomization().uniformRandomInt(HOVER_DELAY_MIN, HOVER_DELAY_MAX);
         log.debug("Hovering for {}ms before click", hoverMs);
 
         // Cache the clickbox for potential menu selection

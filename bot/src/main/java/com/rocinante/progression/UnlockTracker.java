@@ -564,15 +564,269 @@ public class UnlockTracker {
                 }
                 return false;
             case TELEPORT:
+                return isTeleportUnlocked(identifier);
             case TRANSPORTATION:
+                return isTransportationUnlocked(identifier);
             case AREA:
+                return isAreaUnlocked(identifier);
             case FEATURE:
-                // TODO: Implement these unlock types as needed
-                log.debug("Unlock type {} not yet implemented for: {}", type, identifier);
-                return false;
+                return isFeatureUnlocked(identifier);
             default:
                 return false;
         }
+    }
+
+    // ========================================================================
+    // Teleport Unlock Checks
+    // ========================================================================
+
+    /**
+     * Teleport spell requirements: spell name -> (magic level, quest name or null).
+     */
+    private static final Map<String, int[]> TELEPORT_SPELL_REQUIREMENTS = new HashMap<>();
+    static {
+        // Format: magic level, then 0 = no quest, or varbit/quest ID
+        TELEPORT_SPELL_REQUIREMENTS.put("VARROCK_TELEPORT", new int[]{25});
+        TELEPORT_SPELL_REQUIREMENTS.put("LUMBRIDGE_TELEPORT", new int[]{31});
+        TELEPORT_SPELL_REQUIREMENTS.put("FALADOR_TELEPORT", new int[]{37});
+        TELEPORT_SPELL_REQUIREMENTS.put("HOUSE_TELEPORT", new int[]{40});
+        TELEPORT_SPELL_REQUIREMENTS.put("CAMELOT_TELEPORT", new int[]{45});
+        TELEPORT_SPELL_REQUIREMENTS.put("ARDOUGNE_TELEPORT", new int[]{51}); // Requires Plague City
+        TELEPORT_SPELL_REQUIREMENTS.put("WATCHTOWER_TELEPORT", new int[]{58}); // Requires Watchtower
+        TELEPORT_SPELL_REQUIREMENTS.put("TROLLHEIM_TELEPORT", new int[]{61}); // Requires Eadgar's Ruse
+        TELEPORT_SPELL_REQUIREMENTS.put("APE_ATOLL_TELEPORT", new int[]{64}); // Requires RFD
+        TELEPORT_SPELL_REQUIREMENTS.put("KOUREND_TELEPORT", new int[]{69}); // Requires Client of Kourend favor
+    }
+
+    /**
+     * Check if a teleport method is unlocked.
+     *
+     * @param identifier teleport identifier (spell name, jewelry type, etc.)
+     * @return true if the teleport is available
+     */
+    private boolean isTeleportUnlocked(String identifier) {
+        // Check spell teleports
+        int[] spellReqs = TELEPORT_SPELL_REQUIREMENTS.get(identifier.toUpperCase());
+        if (spellReqs != null) {
+            int magicLevel = getSkillLevel(Skill.MAGIC);
+            return magicLevel >= spellReqs[0];
+        }
+
+        // Check jewelry teleports (requires having the jewelry)
+        // Format: JEWELRY_<TYPE>_<DESTINATION> e.g., JEWELRY_RING_OF_DUELING_DUEL_ARENA
+        if (identifier.startsWith("JEWELRY_")) {
+            // For jewelry, we just need to own it - specific check would require item IDs
+            log.debug("Jewelry teleport {} check - assuming available if player has item", identifier);
+            return true; // Would need item ID lookup
+        }
+
+        // Check tablet teleports
+        if (identifier.startsWith("TABLET_")) {
+            log.debug("Tablet teleport {} check - assuming available if player has item", identifier);
+            return true; // Would need item ID lookup
+        }
+
+        // Check POH portal teleports (requires house and portal room)
+        if (identifier.startsWith("POH_PORTAL_")) {
+            // Requires construction level and materials to build
+            int constructionLevel = getSkillLevel(Skill.CONSTRUCTION);
+            return constructionLevel >= 50; // Basic portal room requirement
+        }
+
+        log.debug("Unknown teleport identifier: {}", identifier);
+        return false;
+    }
+
+    // ========================================================================
+    // Transportation Unlock Checks
+    // ========================================================================
+
+    /**
+     * Check if a transportation method is unlocked.
+     *
+     * @param identifier transportation identifier
+     * @return true if the transport is available
+     */
+    private boolean isTransportationUnlocked(String identifier) {
+        String upper = identifier.toUpperCase();
+
+        // Fairy rings - requires started Fairy Tale II or Lumbridge Elite diary
+        if (upper.startsWith("FAIRY_RING")) {
+            return isQuestStarted(Quest.FAIRYTALE_II__CURE_A_QUEEN)
+                    || isDiaryComplete("LUMBRIDGE_ELITE");
+        }
+
+        // Spirit trees - requires started Tree Gnome Village
+        if (upper.startsWith("SPIRIT_TREE")) {
+            return isQuestStarted(Quest.TREE_GNOME_VILLAGE);
+        }
+
+        // Gnome gliders - requires completion of The Grand Tree
+        if (upper.startsWith("GNOME_GLIDER")) {
+            return isQuestCompleted(Quest.THE_GRAND_TREE);
+        }
+
+        // Canoes - requires woodcutting level (12+ for basic)
+        if (upper.startsWith("CANOE")) {
+            int wcLevel = getSkillLevel(Skill.WOODCUTTING);
+            if (upper.contains("LOG")) return wcLevel >= 12;
+            if (upper.contains("DUGOUT")) return wcLevel >= 27;
+            if (upper.contains("STABLE")) return wcLevel >= 42;
+            if (upper.contains("WAKA")) return wcLevel >= 57;
+            return wcLevel >= 12;
+        }
+
+        // Charter ships - generally always available
+        if (upper.startsWith("CHARTER_SHIP")) {
+            return true;
+        }
+
+        // Balloon transport - requires Enlightened Journey
+        if (upper.startsWith("BALLOON")) {
+            return isQuestCompleted(Quest.ENLIGHTENED_JOURNEY);
+        }
+
+        log.debug("Unknown transportation identifier: {}", identifier);
+        return false;
+    }
+
+    /**
+     * Check if a quest is started (but not necessarily completed).
+     */
+    private boolean isQuestStarted(Quest quest) {
+        QuestState state = quest.getState(client);
+        return state == QuestState.IN_PROGRESS || state == QuestState.FINISHED;
+    }
+
+    /**
+     * Check if an achievement diary tier is complete.
+     * Placeholder - would need varbit checks for actual implementation.
+     */
+    private boolean isDiaryComplete(String diaryTier) {
+        // TODO: Implement diary completion checks via varbits
+        log.debug("Diary completion check not implemented: {}", diaryTier);
+        return false;
+    }
+
+    // ========================================================================
+    // Area Unlock Checks
+    // ========================================================================
+
+    /**
+     * Quest requirements for area access.
+     */
+    private static final Map<String, Quest> AREA_QUEST_REQUIREMENTS = new HashMap<>();
+    static {
+        AREA_QUEST_REQUIREMENTS.put("MORYTANIA", Quest.PRIEST_IN_PERIL);
+        AREA_QUEST_REQUIREMENTS.put("KOUREND", null); // No quest required, just get there
+        AREA_QUEST_REQUIREMENTS.put("PRIFDDINAS", Quest.SONG_OF_THE_ELVES);
+        AREA_QUEST_REQUIREMENTS.put("ZANARIS", Quest.LOST_CITY);
+        AREA_QUEST_REQUIREMENTS.put("APE_ATOLL", Quest.MONKEY_MADNESS_I);
+        AREA_QUEST_REQUIREMENTS.put("TROLL_STRONGHOLD", Quest.TROLL_STRONGHOLD);
+        AREA_QUEST_REQUIREMENTS.put("WATERBIRTH_ISLAND", null); // Requires boat but no quest
+    }
+
+    /**
+     * Check if an area is unlocked for the player.
+     *
+     * @param identifier area identifier
+     * @return true if the area is accessible
+     */
+    private boolean isAreaUnlocked(String identifier) {
+        String upper = identifier.toUpperCase();
+
+        // Check quest-gated areas
+        Quest requiredQuest = AREA_QUEST_REQUIREMENTS.get(upper);
+        if (requiredQuest != null) {
+            return isQuestCompleted(requiredQuest);
+        }
+
+        // If area is known but has no quest requirement, it's unlocked
+        if (AREA_QUEST_REQUIREMENTS.containsKey(upper)) {
+            return true;
+        }
+
+        // Check skill-gated areas
+        if (upper.contains("AGILITY_SHORTCUT")) {
+            // Format: AGILITY_SHORTCUT_XX where XX is the level
+            String[] parts = upper.split("_");
+            if (parts.length >= 3) {
+                try {
+                    int level = Integer.parseInt(parts[parts.length - 1]);
+                    return getSkillLevel(Skill.AGILITY) >= level;
+                } catch (NumberFormatException e) {
+                    // Not a level-based check
+                }
+            }
+        }
+
+        // Unknown area - assume accessible (conservative default)
+        log.debug("Unknown area identifier: {}, assuming accessible", identifier);
+        return true;
+    }
+
+    // ========================================================================
+    // Feature Unlock Checks
+    // ========================================================================
+
+    /**
+     * Check if a game feature is unlocked.
+     *
+     * @param identifier feature identifier
+     * @return true if the feature is available
+     */
+    private boolean isFeatureUnlocked(String identifier) {
+        String upper = identifier.toUpperCase();
+
+        // NPC Contact spell - requires Lunar Diplomacy and 67 Magic
+        if (upper.equals("NPC_CONTACT")) {
+            return isQuestCompleted(Quest.LUNAR_DIPLOMACY) && getSkillLevel(Skill.MAGIC) >= 67;
+        }
+
+        // House tabs - requires 40 Construction
+        if (upper.equals("HOUSE_TABS") || upper.equals("TELEPORT_TO_HOUSE_TABS")) {
+            return getSkillLevel(Skill.CONSTRUCTION) >= 40;
+        }
+
+        // Fairy ring without staff - requires Lumbridge Elite diary
+        if (upper.equals("FAIRY_RING_NO_STAFF")) {
+            return isDiaryComplete("LUMBRIDGE_ELITE");
+        }
+
+        // Spirit tree planting - requires 83 Farming
+        if (upper.equals("PLANT_SPIRIT_TREE")) {
+            return getSkillLevel(Skill.FARMING) >= 83;
+        }
+
+        // Deposit box access - generally available
+        if (upper.equals("DEPOSIT_BOX")) {
+            return true;
+        }
+
+        // GE access - requires completion of tutorial
+        if (upper.equals("GRAND_EXCHANGE")) {
+            return true; // Would need to check tutorial completion
+        }
+
+        // Blast furnace - requires 60 Smithing or payment
+        if (upper.equals("BLAST_FURNACE")) {
+            return getSkillLevel(Skill.SMITHING) >= 60;
+        }
+
+        // Farming guild - requires 45/65/85 Farming for tiers
+        if (upper.startsWith("FARMING_GUILD")) {
+            if (upper.contains("ADVANCED")) return getSkillLevel(Skill.FARMING) >= 85;
+            if (upper.contains("INTERMEDIATE")) return getSkillLevel(Skill.FARMING) >= 65;
+            return getSkillLevel(Skill.FARMING) >= 45;
+        }
+
+        // Warrior's guild - requires 130 combined Attack + Strength
+        if (upper.equals("WARRIORS_GUILD")) {
+            return getSkillLevel(Skill.ATTACK) + getSkillLevel(Skill.STRENGTH) >= 130;
+        }
+
+        log.debug("Unknown feature identifier: {}", identifier);
+        return false;
     }
 
     // ========================================================================

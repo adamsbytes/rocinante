@@ -1,5 +1,6 @@
 package com.rocinante.tasks.impl;
 
+import com.rocinante.state.IronmanState;
 import com.rocinante.tasks.AbstractTask;
 import com.rocinante.tasks.TaskContext;
 import com.rocinante.tasks.TaskPriority;
@@ -211,7 +212,18 @@ public class TradeTask extends AbstractTask {
 
     @Override
     public boolean canExecute(TaskContext ctx) {
-        return ctx.isLoggedIn();
+        if (!ctx.isLoggedIn()) {
+            return false;
+        }
+
+        // Ironman accounts cannot trade with other players
+        IronmanState ironmanState = ctx.getGameStateService().getIronmanState();
+        if (ironmanState != null && ironmanState.isIronman()) {
+            log.debug("Cannot trade - account is an ironman");
+            return false;
+        }
+
+        return true;
     }
 
     @Override
@@ -427,10 +439,127 @@ public class TradeTask extends AbstractTask {
             return;
         }
 
-        // TODO: Implement full scam protection - compare first screen offer to second screen text
-        // For now, since we're only implementing passive trades, just proceed
-        log.debug("Scam protection would verify items here");
+        // Verify second screen items match what we saw on first screen
+        if (config.shouldVerifyTrade()) {
+            Map<Integer, Integer> secondScreenItems = readSecondScreenReceiveItems(client);
+            
+            if (secondScreenItems == null) {
+                log.warn("Could not read second screen items - declining for safety");
+                declineTrade(ctx);
+                fail("Could not verify trade - scam protection");
+                return;
+            }
+
+            // Compare to first screen offer (theirOffer)
+            if (!verifyItemsMatch(theirOffer, secondScreenItems)) {
+                log.warn("SCAM DETECTED: Second screen items don't match first screen!");
+                log.warn("First screen had: {}", theirOffer);
+                log.warn("Second screen has: {}", secondScreenItems);
+                declineTrade(ctx);
+                fail("Trade items changed - scam protection triggered");
+                return;
+            }
+
+            // Also verify expected items if configured
+            if (config.hasExpectedItems()) {
+                Map<Integer, Integer> expected = config.getExpectedItems();
+                if (!verifyExpectedItems(secondScreenItems, expected)) {
+                    log.warn("Trade doesn't contain expected items");
+                    log.warn("Expected: {}", expected);
+                    log.warn("Receiving: {}", secondScreenItems);
+                    declineTrade(ctx);
+                    fail("Trade missing expected items");
+                    return;
+                }
+            }
+
+            log.debug("Scam protection passed - second screen matches first screen");
+        }
+
         phase = TradePhase.ACCEPT_SECOND;
+    }
+
+    /**
+     * Read the items shown on the second trade screen's "You will receive" section.
+     * The second screen shows text descriptions like "1 x Bronze dagger" or "Absolutely nothing!"
+     *
+     * @return map of item ID -> quantity, or null if cannot parse
+     */
+    private Map<Integer, Integer> readSecondScreenReceiveItems(Client client) {
+        Widget receiveWidget = client.getWidget(TRADE_CONFIRM_GROUP, TRADE_CONFIRM_YOU_RECEIVE_CHILD);
+        if (receiveWidget == null) {
+            return null;
+        }
+
+        // The widget contains text children with item descriptions
+        Widget[] children = receiveWidget.getStaticChildren();
+        if (children == null || children.length == 0) {
+            // Try dynamic children
+            children = receiveWidget.getDynamicChildren();
+        }
+
+        if (children == null || children.length == 0) {
+            // Check if main widget has text directly
+            String text = receiveWidget.getText();
+            if (text != null && text.contains("Absolutely nothing")) {
+                return new HashMap<>(); // Empty trade, which is valid
+            }
+            return null;
+        }
+
+        // Parse each item line
+        Map<Integer, Integer> items = new HashMap<>();
+        for (Widget child : children) {
+            if (child == null) continue;
+            String text = child.getText();
+            if (text == null || text.isEmpty()) continue;
+            if (text.contains("Absolutely nothing")) {
+                continue; // Empty line
+            }
+
+            // Parse format: "X x Item Name" or just "Item Name" for quantity 1
+            // Note: This is a simplified parser. Real implementation would need
+            // to handle various formats and potentially use item name -> ID lookup
+            int itemId = child.getItemId();
+            int quantity = child.getItemQuantity();
+
+            if (itemId > 0) {
+                items.merge(itemId, quantity, Integer::sum);
+            }
+        }
+
+        return items;
+    }
+
+    /**
+     * Verify that the second screen items match the first screen offer.
+     */
+    private boolean verifyItemsMatch(Map<Integer, Integer> firstScreen, Map<Integer, Integer> secondScreen) {
+        if (firstScreen.size() != secondScreen.size()) {
+            return false;
+        }
+
+        for (Map.Entry<Integer, Integer> entry : firstScreen.entrySet()) {
+            Integer secondQty = secondScreen.get(entry.getKey());
+            if (secondQty == null || !secondQty.equals(entry.getValue())) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Verify that we're receiving at least the expected items.
+     */
+    private boolean verifyExpectedItems(Map<Integer, Integer> receiving, Map<Integer, Integer> expected) {
+        for (Map.Entry<Integer, Integer> entry : expected.entrySet()) {
+            Integer receivingQty = receiving.get(entry.getKey());
+            if (receivingQty == null || receivingQty < entry.getValue()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     // ========================================================================
@@ -565,9 +694,10 @@ public class TradeTask extends AbstractTask {
             return;
         }
 
-        // Calculate click point with some randomization
-        int x = bounds.x + bounds.width / 2 + (int) ((Math.random() - 0.5) * bounds.width * 0.4);
-        int y = bounds.y + bounds.height / 2 + (int) ((Math.random() - 0.5) * bounds.height * 0.4);
+        // Calculate click point with humanized randomization
+        var rand = ctx.getRandomization();
+        int x = bounds.x + bounds.width / 2 + (int) ((rand.uniformRandom(0, 1) - 0.5) * bounds.width * 0.4);
+        int y = bounds.y + bounds.height / 2 + (int) ((rand.uniformRandom(0, 1) - 0.5) * bounds.height * 0.4);
 
         clickPending = true;
         ctx.getMouseController().moveToCanvas(x, y)

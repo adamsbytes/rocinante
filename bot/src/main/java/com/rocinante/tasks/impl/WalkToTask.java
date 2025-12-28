@@ -619,12 +619,13 @@ public class WalkToTask extends AbstractTask {
         log.debug("Distance to destination: {} tiles", distance);
 
         // Choose pathfinding strategy based on distance
+        Randomization rand = ctx.getRandomization();
         if (distance > WEBWALKER_DISTANCE_THRESHOLD) {
             // Use WebWalker for long distances
-            calculateWebPath(playerPos);
+            calculateWebPath(playerPos, rand);
         } else {
             // Use direct PathFinder for short distances
-            calculateDirectPath(playerPos);
+            calculateDirectPath(playerPos, rand);
         }
 
         if (currentPath.isEmpty() && (unifiedPath == null || unifiedPath.isEmpty())) {
@@ -641,7 +642,7 @@ public class WalkToTask extends AbstractTask {
         phase = WalkPhase.WALKING;
     }
 
-    private void calculateWebPath(WorldPoint playerPos) {
+    private void calculateWebPath(WorldPoint playerPos, Randomization rand) {
         // Use unified pathfinding (supports multi-plane navigation)
         unifiedPath = webWalker.findUnifiedPath(playerPos, destination);
         
@@ -659,11 +660,11 @@ public class WalkToTask extends AbstractTask {
             }
         } else {
             log.debug("Unified pathfinding failed, trying direct pathfinding");
-            calculateDirectPath(playerPos);
+            calculateDirectPath(playerPos, rand);
         }
     }
 
-    private void calculateDirectPath(WorldPoint playerPos) {
+    private void calculateDirectPath(WorldPoint playerPos, Randomization rand) {
         currentPath = pathFinder.findPath(playerPos, destination);
 
         if (!currentPath.isEmpty()) {
@@ -671,8 +672,8 @@ public class WalkToTask extends AbstractTask {
             pathIndex = 0;
 
             // Apply humanized deviation
-            if (Math.random() < PATH_DEVIATION_CHANCE && currentPath.size() > 3) {
-                applyPathDeviation();
+            if (rand.chance(PATH_DEVIATION_CHANCE) && currentPath.size() > 3) {
+                applyPathDeviation(rand);
             }
         }
     }
@@ -680,12 +681,12 @@ public class WalkToTask extends AbstractTask {
     /**
      * Apply small random deviation to path for humanization.
      */
-    private void applyPathDeviation() {
-        int deviationPoint = 1 + (int) (Math.random() * (currentPath.size() - 2));
+    private void applyPathDeviation(Randomization rand) {
+        int deviationPoint = 1 + rand.uniformRandomInt(0, currentPath.size() - 3);
         WorldPoint original = currentPath.get(deviationPoint);
 
-        int dx = (int) (Math.random() * (MAX_DEVIATION_TILES * 2 + 1)) - MAX_DEVIATION_TILES;
-        int dy = (int) (Math.random() * (MAX_DEVIATION_TILES * 2 + 1)) - MAX_DEVIATION_TILES;
+        int dx = rand.uniformRandomInt(-MAX_DEVIATION_TILES, MAX_DEVIATION_TILES);
+        int dy = rand.uniformRandomInt(-MAX_DEVIATION_TILES, MAX_DEVIATION_TILES);
 
         WorldPoint deviated = new WorldPoint(
                 original.getX() + dx,

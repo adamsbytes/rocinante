@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Full-featured bank interaction task.
@@ -724,11 +725,21 @@ public class BankTask extends AbstractTask {
                 redundantActionsRemaining--;
                 log.debug("Performing redundant bank close/reopen ({} remaining)", redundantActionsRemaining);
                 
-                // Close the bank and go back to OPEN_BANK phase
-                closeBank(ctx);
-                ctx.getHumanTimer().sleep(ctx.getRandomization().uniformRandomLong(300, 800))
+                // Close the bank, wait, then go back to OPEN_BANK phase
+                // Chain the operations properly to avoid race conditions
+                operationPending = true;
+                closeBank(ctx)
+                    .thenCompose(v -> ctx.getHumanTimer().sleep(
+                        ctx.getRandomization().uniformRandomLong(300, 800)))
                     .thenRun(() -> {
+                        operationPending = false;
                         phase = BankPhase.OPEN_BANK;
+                    })
+                    .exceptionally(e -> {
+                        operationPending = false;
+                        log.error("Redundant bank close failed", e);
+                        phase = BankPhase.OPEN_BANK;
+                        return null;
                     });
                 return;
             }
@@ -1311,10 +1322,12 @@ public class BankTask extends AbstractTask {
     /**
      * Close the bank interface without completing the task.
      * Used for redundant action injection (close and reopen).
+     * 
+     * @return CompletableFuture that completes when the close key is pressed
      */
-    private void closeBank(TaskContext ctx) {
+    private CompletableFuture<Void> closeBank(TaskContext ctx) {
         // Press Escape to close bank (more human-like than clicking X)
-        ctx.getKeyboardController().pressKey(java.awt.event.KeyEvent.VK_ESCAPE)
+        return ctx.getKeyboardController().pressKey(java.awt.event.KeyEvent.VK_ESCAPE)
                 .exceptionally(e -> {
                     log.trace("Failed to close bank via ESC: {}", e.getMessage());
                     return null;

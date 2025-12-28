@@ -526,7 +526,7 @@ public class CombatTask extends AbstractTask {
                 log.debug("Safe spot blocked by aggro NPC, dragging away (attempt {}/{})", 
                         safeSpotDragAttempts, MAX_SAFESPOT_DRAG_ATTEMPTS);
                 // Walk 3-5 tiles away to drag NPC, then return
-                WorldPoint dragPosition = calculateDragPosition(playerPos, safeSpot);
+                WorldPoint dragPosition = calculateDragPosition(playerPos, safeSpot, ctx.getRandomization());
                 activeSubTask = new WalkToTask(dragPosition);
                 phaseWaitTicks = 0;
                 return;
@@ -586,7 +586,7 @@ public class CombatTask extends AbstractTask {
     /**
      * Calculate a position to drag aggro NPC away from safe spot.
      */
-    private WorldPoint calculateDragPosition(WorldPoint playerPos, WorldPoint safeSpot) {
+    private WorldPoint calculateDragPosition(WorldPoint playerPos, WorldPoint safeSpot, Randomization rand) {
         // Calculate direction away from safe spot
         int dx = playerPos.getX() - safeSpot.getX();
         int dy = playerPos.getY() - safeSpot.getY();
@@ -595,11 +595,11 @@ public class CombatTask extends AbstractTask {
         double mag = Math.sqrt(dx * dx + dy * dy);
         if (mag == 0) {
             // Player is exactly on safe spot, pick random direction
-            double angle = Math.random() * 2 * Math.PI;
+            double angle = rand.uniformRandom(0, 2 * Math.PI);
             dx = (int) Math.round(Math.cos(angle) * 4);
             dy = (int) Math.round(Math.sin(angle) * 4);
         } else {
-            int dragDistance = 3 + (int) (Math.random() * 3); // 3-5 tiles
+            int dragDistance = rand.uniformRandomInt(3, 5);
             dx = (int) Math.round(dx / mag * dragDistance);
             dy = (int) Math.round(dy / mag * dragDistance);
         }
