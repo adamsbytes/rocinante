@@ -72,6 +72,8 @@ export interface BotRuntimeStatus {
   player: PlayerInfo | null;
   /** Task queue status */
   queue: QueueInfo | null;
+  /** Quest data (updated on level up, quest completion, or manual refresh) */
+  quests: QuestsData | null;
 }
 
 /**
@@ -177,7 +179,7 @@ export interface QueueInfo {
  * Command to send to the bot.
  */
 export interface BotCommand {
-  type: 'START' | 'STOP' | 'CLEAR_QUEUE' | 'FORCE_BREAK' | 'ABORT_TASK' | 'QUEUE_TASK';
+  type: 'START' | 'STOP' | 'CLEAR_QUEUE' | 'FORCE_BREAK' | 'ABORT_TASK' | 'QUEUE_TASK' | 'REFRESH_QUESTS';
   timestamp: number;
   task?: TaskSpec;
   priority?: 'URGENT' | 'NORMAL' | 'LOW' | 'BEHAVIORAL';
@@ -329,14 +331,92 @@ export interface LocationInfo {
 }
 
 /**
- * Quest information for the UI.
+ * Quest information for the UI (static data).
  */
 export interface QuestInfo {
   id: string;
   name: string;
   questPoints: number;
-  difficulty: 'NOVICE' | 'INTERMEDIATE' | 'EXPERIENCED' | 'MASTER' | 'GRANDMASTER';
+  difficulty: 'NOVICE' | 'INTERMEDIATE' | 'EXPERIENCED' | 'MASTER' | 'GRANDMASTER' | 'MINIQUEST';
   members: boolean;
+}
+
+// ============================================================================
+// Live Quest Data Types (from bot status.json)
+// ============================================================================
+
+/**
+ * Quest data included in runtime status.
+ * Updated on: initial load, level up, quest completion, manual refresh.
+ */
+export interface QuestsData {
+  /** Unix timestamp when quest data was last refreshed */
+  lastUpdated: number;
+  /** List of available quests with requirement status */
+  available: QuestSummary[];
+  /** IDs of completed quests */
+  completed: string[];
+  /** IDs of in-progress quests */
+  inProgress: string[];
+  /** Total quest points earned */
+  totalQuestPoints: number;
+}
+
+/**
+ * Summary of a single quest with live requirement checking.
+ */
+export interface QuestSummary {
+  /** Quest ID (e.g., "DESERT_TREASURE") */
+  id: string;
+  /** Quest display name */
+  name: string;
+  /** Difficulty level */
+  difficulty: string;
+  /** Whether members-only */
+  members: boolean;
+  /** Quest points reward */
+  questPoints: number;
+  /** Current quest state: NOT_STARTED, IN_PROGRESS, FINISHED */
+  state: string;
+  /** Whether all requirements are met to start this quest */
+  canStart: boolean;
+  /** Skill requirements with met/unmet status */
+  skillRequirements: SkillRequirementStatus[];
+  /** Quest requirements with met/unmet status */
+  questRequirements: QuestRequirementStatus[];
+  /** Item requirements (from Quest Helper) */
+  itemRequirements: ItemRequirementStatus[];
+}
+
+/**
+ * Skill requirement with current level status.
+ */
+export interface SkillRequirementStatus {
+  skill: string;
+  required: number;
+  current: number;
+  met: boolean;
+  /** Whether this can be boosted to meet requirement */
+  boostable: boolean;
+}
+
+/**
+ * Quest requirement status.
+ */
+export interface QuestRequirementStatus {
+  questId: string;
+  questName: string;
+  met: boolean;
+}
+
+/**
+ * Item requirement status.
+ */
+export interface ItemRequirementStatus {
+  itemName: string;
+  itemId: number;
+  quantity: number;
+  have: boolean;
 }
 
 // ============================================================================

@@ -12,6 +12,10 @@ import com.rocinante.state.StateCondition;
 import com.rocinante.tasks.impl.DialogueTask;
 import com.rocinante.tasks.impl.IronmanSelectionTask;
 import com.rocinante.tasks.impl.SettingsTask;
+import com.rocinante.util.ItemCollections;
+import com.rocinante.util.ObjectCollections;
+import net.runelite.api.ItemID;
+import net.runelite.api.ObjectID;
 
 import javax.annotation.Nullable;
 import java.util.HashMap;
@@ -116,7 +120,7 @@ public class TutorialIsland implements Quest {
     // Constants - Object IDs
     // ========================================================================
 
-    public static final int OBJECT_TREE = 37965;
+    public static final int OBJECT_TREE = ObjectID.TREE_9730; // Tutorial Island trees
     public static final int OBJECT_OAK = 37969;
     public static final int OBJECT_TIN_ROCK = 37945;
     public static final int OBJECT_COPPER_ROCK = 37944;
@@ -144,32 +148,6 @@ public class TutorialIsland implements Quest {
     public static final int OBJECT_BANK_EXIT = 37961;
     public static final int OBJECT_PRAYER_DOOR = 37962;
     public static final int OBJECT_PRAYER_EXIT = 37963;
-
-    // ========================================================================
-    // Constants - Item IDs
-    // ========================================================================
-
-    public static final int ITEM_BRONZE_AXE = 1351;
-    public static final int ITEM_BRONZE_PICKAXE = 1265;
-    public static final int ITEM_TINDERBOX = 590;
-    public static final int ITEM_NET = 303;
-    public static final int ITEM_RAW_SHRIMP = 317;
-    public static final int ITEM_SHRIMP = 315;
-    public static final int ITEM_LOGS = 1511;
-    public static final int ITEM_BREAD_DOUGH = 2307;
-    public static final int ITEM_BREAD = 2309;
-    public static final int ITEM_POT_OF_FLOUR = 1933;
-    public static final int ITEM_BUCKET_OF_WATER = 1929;
-    public static final int ITEM_TIN_ORE = 438;
-    public static final int ITEM_COPPER_ORE = 436;
-    public static final int ITEM_BRONZE_BAR = 2349;
-    public static final int ITEM_BRONZE_DAGGER = 1205;
-    public static final int ITEM_BRONZE_SWORD = 1277;
-    public static final int ITEM_WOODEN_SHIELD = 1171;
-    public static final int ITEM_SHORTBOW = 841;
-    public static final int ITEM_BRONZE_ARROW = 882;
-    public static final int ITEM_AIR_RUNE = 556;
-    public static final int ITEM_MIND_RUNE = 558;
 
     // ========================================================================
     // Quest Interface
@@ -272,7 +250,7 @@ public class TutorialIsland implements Quest {
                 .withDialogueExpected(true));
 
         // var 70: Cut tree
-        steps.put(70, new ObjectQuestStep(OBJECT_TREE, "Chop down", "Cut down a tree"));
+        steps.put(70, new ObjectQuestStep(ObjectCollections.TREES, "Chop down", "Cut down a tree"));
 
         // var 80: Make fire
         steps.put(80, createMakeFireStep());
@@ -303,7 +281,7 @@ public class TutorialIsland implements Quest {
         steps.put(150, createMakeDoughStep());
 
         // var 160: Cook bread
-        steps.put(160, ItemQuestStep.useOn(ITEM_BREAD_DOUGH, OBJECT_RANGE, "Cook the bread dough"));
+        steps.put(160, ItemQuestStep.useOn(ItemID.BREAD_DOUGH, OBJECT_RANGE, "Cook the bread dough"));
 
         // var 170: Exit Chef's house
         steps.put(170, new ObjectQuestStep(OBJECT_CHEF_DOOR_EXIT, "Open", "Exit the cook's building"));
@@ -347,20 +325,20 @@ public class TutorialIsland implements Quest {
         // the instructor gives items and explains mining. These don't require bot action.
 
         // var 300: Mine tin
-        steps.put(300, new ObjectQuestStep(OBJECT_TIN_ROCK, "Mine", "Mine some tin ore"));
+        steps.put(300, new ObjectQuestStep(ObjectCollections.TIN_ROCKS, "Mine", "Mine some tin ore"));
 
         // var 310: Mine copper
-        steps.put(310, new ObjectQuestStep(OBJECT_COPPER_ROCK, "Mine", "Mine some copper ore"));
+        steps.put(310, new ObjectQuestStep(ObjectCollections.COPPER_ROCKS, "Mine", "Mine some copper ore"));
 
         // var 320: Smelt bronze bar
-        steps.put(320, new ObjectQuestStep(OBJECT_FURNACE, "Smelt", "Smelt a bronze bar"));
+        steps.put(320, new ObjectQuestStep(ObjectCollections.FURNACES, "Smelt", "Smelt a bronze bar"));
 
         // var 330: Talk to Mining Instructor
         steps.put(330, new NpcQuestStep(NPC_MINING_INSTRUCTOR, "Talk to the Mining Instructor")
                 .withDialogueExpected(true));
 
         // var 340: Click anvil
-        steps.put(340, new ObjectQuestStep(OBJECT_ANVIL, "Smith", "Click on the anvil"));
+        steps.put(340, new ObjectQuestStep(ObjectCollections.ANVILS, "Smith", "Click on the anvil"));
 
         // var 350: Smith bronze dagger
         steps.put(350, createSmithDaggerStep());
@@ -384,7 +362,7 @@ public class TutorialIsland implements Quest {
                 .withAction(WidgetQuestStep.WidgetAction.CLICK));
 
         // var 405: Equip bronze dagger
-        steps.put(405, ItemQuestStep.equip(ITEM_BRONZE_DAGGER, "Equip the bronze dagger"));
+        steps.put(405, ItemQuestStep.equip(ItemID.BRONZE_DAGGER, "Equip the bronze dagger"));
 
         // var 410: Talk to Combat Instructor
         steps.put(410, new NpcQuestStep(NPC_COMBAT_INSTRUCTOR, "Talk to the Combat Instructor again")
@@ -554,26 +532,32 @@ public class TutorialIsland implements Quest {
 
     /**
      * Create the step for making a fire (use tinderbox on logs).
+     * Uses ItemCollections to accept any tinderbox variant and any burnable logs.
      */
     private QuestStep createMakeFireStep() {
-        // Use tinderbox on logs in inventory
-        return ItemQuestStep.useOnItem(ITEM_TINDERBOX, ITEM_LOGS, "Light a fire with the tinderbox and logs");
+        return ItemQuestStep.useOnItem(
+                ItemCollections.TINDERBOXES,
+                ItemCollections.BURNABLE_LOGS,
+                "Light a fire with the tinderbox and logs");
     }
 
     /**
      * Create the step for cooking shrimp.
+     * Uses ItemCollections for raw shrimp variants and ObjectCollections for any cooking fire.
      */
     private QuestStep createCookShrimpStep() {
-        // Use raw shrimp on fire
-        return ItemQuestStep.useOn(ITEM_RAW_SHRIMP, OBJECT_FIRE, "Cook the shrimp on the fire");
+        return ItemQuestStep.useOn(ItemCollections.RAW_SHRIMP, ObjectCollections.COOKING_FIRES, "Cook the shrimp on the fire");
     }
 
     /**
      * Create the step for making bread dough.
+     * Uses ItemCollections to accept any water container and Tutorial Island flour variant.
      */
     private QuestStep createMakeDoughStep() {
-        // Use bucket of water on pot of flour
-        return ItemQuestStep.useOnItem(ITEM_BUCKET_OF_WATER, ITEM_POT_OF_FLOUR, "Make bread dough");
+        return ItemQuestStep.useOnItem(
+                ItemCollections.WATER_CONTAINERS,
+                ItemCollections.POTS_OF_FLOUR,
+                "Make bread dough");
     }
 
     /**
@@ -595,8 +579,8 @@ public class TutorialIsland implements Quest {
         ConditionalQuestStep.CompositeQuestStep equipStep =
                 new ConditionalQuestStep.CompositeQuestStep("Equip the bronze sword and wooden shield");
 
-        equipStep.addStep(ItemQuestStep.equip(ITEM_BRONZE_SWORD, "Equip the bronze sword"));
-        equipStep.addStep(ItemQuestStep.equip(ITEM_WOODEN_SHIELD, "Equip the wooden shield"));
+        equipStep.addStep(ItemQuestStep.equip(ItemID.BRONZE_SWORD, "Equip the bronze sword"));
+        equipStep.addStep(ItemQuestStep.equip(ItemID.WOODEN_SHIELD, "Equip the wooden shield"));
 
         return equipStep;
     }

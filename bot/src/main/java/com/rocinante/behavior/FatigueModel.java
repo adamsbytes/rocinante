@@ -6,6 +6,7 @@ import net.runelite.api.events.GameTick;
 import net.runelite.client.eventbus.Subscribe;
 
 import javax.inject.Inject;
+import javax.inject.Provider;
 import javax.inject.Singleton;
 import java.time.Duration;
 import java.time.Instant;
@@ -87,7 +88,9 @@ public class FatigueModel {
 
     // === Dependencies ===
     
-    private final BotActivityTracker activityTracker;
+    // Using Provider to break circular dependency:
+    // GameStateService -> FatigueModel -> BotActivityTracker -> TaskExecutor -> TaskContext -> GameStateService
+    private final Provider<BotActivityTracker> activityTrackerProvider;
     private final PlayerProfile playerProfile;
     
     // === State (using Atomic types for thread safety) ===
@@ -119,8 +122,8 @@ public class FatigueModel {
     private final AtomicLong sessionActionCount = new AtomicLong(0);
 
     @Inject
-    public FatigueModel(BotActivityTracker activityTracker, PlayerProfile playerProfile) {
-        this.activityTracker = activityTracker;
+    public FatigueModel(Provider<BotActivityTracker> activityTrackerProvider, PlayerProfile playerProfile) {
+        this.activityTrackerProvider = activityTrackerProvider;
         this.playerProfile = playerProfile;
         log.info("FatigueModel initialized");
     }
@@ -128,9 +131,9 @@ public class FatigueModel {
     /**
      * Constructor for testing.
      */
-    public FatigueModel(BotActivityTracker activityTracker, PlayerProfile playerProfile, 
+    public FatigueModel(Provider<BotActivityTracker> activityTrackerProvider, PlayerProfile playerProfile, 
                         double initialFatigue) {
-        this.activityTracker = activityTracker;
+        this.activityTrackerProvider = activityTrackerProvider;
         this.playerProfile = playerProfile;
         setFatigueLevelInternal(clampFatigue(initialFatigue));
     }
@@ -279,10 +282,11 @@ public class FatigueModel {
      * Get the current intensity multiplier from activity tracker.
      */
     private double getIntensityMultiplier() {
-        if (activityTracker == null) {
+        if (activityTrackerProvider == null) {
             return 1.0;
         }
-        return activityTracker.getCurrentActivity().getFatigueMultiplier();
+        BotActivityTracker tracker = activityTrackerProvider.get();
+        return tracker != null ? tracker.getCurrentActivity().getFatigueMultiplier() : 1.0;
     }
 
     // ========================================================================
@@ -395,8 +399,9 @@ public class FatigueModel {
         double threshold = playerProfile.getBreakFatigueThreshold();
         
         // Apply account type modifier (HCIM breaks earlier)
-        if (activityTracker != null) {
-            threshold *= activityTracker.getAccountType().getBreakThresholdModifier();
+        BotActivityTracker tracker = activityTrackerProvider != null ? activityTrackerProvider.get() : null;
+        if (tracker != null) {
+            threshold *= tracker.getAccountType().getBreakThresholdModifier();
         }
         
         return currentFatigue >= threshold;
@@ -414,8 +419,9 @@ public class FatigueModel {
             threshold = playerProfile.getBreakFatigueThreshold();
         }
         
-        if (activityTracker != null) {
-            threshold *= activityTracker.getAccountType().getBreakThresholdModifier();
+        BotActivityTracker tracker = activityTrackerProvider != null ? activityTrackerProvider.get() : null;
+        if (tracker != null) {
+            threshold *= tracker.getAccountType().getBreakThresholdModifier();
         }
         
         return threshold;

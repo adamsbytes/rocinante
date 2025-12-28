@@ -1,8 +1,10 @@
 package com.rocinante.tasks.impl;
 
+import com.rocinante.input.SafeClickExecutor;
 import com.rocinante.state.PlayerState;
 import com.rocinante.tasks.AbstractTask;
 import com.rocinante.tasks.TaskContext;
+import com.rocinante.tasks.TaskState;
 import com.rocinante.util.Randomization;
 import lombok.Getter;
 import lombok.Setter;
@@ -12,7 +14,6 @@ import net.runelite.api.NPC;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.widgets.Widget;
 
-import java.awt.Point;
 import java.awt.Rectangle;
 import java.time.Duration;
 
@@ -136,6 +137,11 @@ public class ShopPurchaseTask extends AbstractTask {
     private NPC targetNpc;
 
     /**
+     * Sub-task for walking/traveling to shopkeeper when too far.
+     */
+    private WalkToTask walkSubTask;
+
+    /**
      * Whether an async operation is pending.
      */
     private boolean operationPending = false;
@@ -144,6 +150,11 @@ public class ShopPurchaseTask extends AbstractTask {
      * Ticks waiting for response.
      */
     private int waitTicks = 0;
+
+    /**
+     * Maximum distance (tiles) to directly interact without walking closer.
+     */
+    private static final int INTERACTION_DISTANCE = 15;
 
     /**
      * Maximum ticks to wait for shop to open.
@@ -264,12 +275,18 @@ public class ShopPurchaseTask extends AbstractTask {
             return;
         }
 
+        // Handle sub-task execution
+        if (walkSubTask != null) {
+            executeWalkSubTask(ctx);
+            return;
+        }
+
         switch (phase) {
             case FIND_SHOPKEEPER:
                 executeFindShopkeeper(ctx);
                 break;
-            case MOVE_TO_SHOPKEEPER:
-                executeMoveToShopkeeper(ctx);
+            case WALK_TO_SHOPKEEPER:
+                executeWalkToShopkeeper(ctx);
                 break;
             case OPEN_SHOP:
                 executeOpenShop(ctx);
@@ -320,7 +337,13 @@ public class ShopPurchaseTask extends AbstractTask {
         targetNpc = findShopkeeper(ctx, playerPos);
         if (targetNpc != null) {
             log.debug("Found shopkeeper {} at {}", targetNpc.getName(), targetNpc.getWorldLocation());
-            phase = ShopPhase.MOVE_TO_SHOPKEEPER;
+            int distance = playerPos.distanceTo(targetNpc.getWorldLocation());
+            if (distance > INTERACTION_DISTANCE) {
+                log.debug("Shopkeeper is {} tiles away, walking closer first", distance);
+                phase = ShopPhase.WALK_TO_SHOPKEEPER;
+            } else {
+                phase = ShopPhase.OPEN_SHOP;
+            }
             return;
         }
 
@@ -350,10 +373,49 @@ public class ShopPurchaseTask extends AbstractTask {
     }
 
     // ========================================================================
-    // Phase: Move to Shopkeeper
+    // Phase: Walk to Shopkeeper
     // ========================================================================
 
-    private void executeMoveToShopkeeper(TaskContext ctx) {
+    private void executeWalkToShopkeeper(TaskContext ctx) {
+        if (targetNpc == null || targetNpc.isDead()) {
+            phase = ShopPhase.FIND_SHOPKEEPER;
+            return;
+        }
+
+        WorldPoint targetPos = targetNpc.getWorldLocation();
+        if (targetPos == null) {
+            fail("Lost shopkeeper target while traveling");
+            return;
+        }
+
+        // Create walk sub-task (uses WebWalker for optimal path including teleports)
+        walkSubTask = new WalkToTask(targetPos)
+                .withDescription("Travel to shopkeeper");
+        log.debug("Starting travel to shopkeeper at {}", targetPos);
+    }
+
+    private void executeWalkSubTask(TaskContext ctx) {
+        // Execute the walk task (handles state transitions automatically)
+        walkSubTask.execute(ctx);
+
+        // Check if walk is done
+        if (walkSubTask.getState().isTerminal()) {
+            if (walkSubTask.getState() == TaskState.COMPLETED) {
+                log.debug("Travel to shopkeeper completed, proceeding to open");
+                phase = ShopPhase.OPEN_SHOP;
+            } else {
+                log.warn("Travel to shopkeeper failed: {}", walkSubTask.getFailureReason());
+                fail("Failed to travel to shopkeeper");
+            }
+            walkSubTask = null;
+        }
+    }
+
+    // ========================================================================
+    // Phase: Open Shop (uses SafeClickExecutor)
+    // ========================================================================
+
+    private void executeOpenShop(TaskContext ctx) {
         if (targetNpc == null || targetNpc.isDead()) {
             phase = ShopPhase.FIND_SHOPKEEPER;
             return;
@@ -361,52 +423,34 @@ public class ShopPurchaseTask extends AbstractTask {
 
         Rectangle bounds = targetNpc.getConvexHull() != null ?
                 targetNpc.getConvexHull().getBounds() : null;
-
-        if (bounds == null || bounds.width == 0 || bounds.height == 0) {
-            log.debug("Shopkeeper not visible, waiting...");
+        if (bounds == null || bounds.width == 0) {
+            log.debug("Shopkeeper not visible, walking closer...");
             waitTicks++;
-            if (waitTicks > 10) {
-                fail("Shopkeeper not visible");
+            if (waitTicks > 5) {
+                phase = ShopPhase.WALK_TO_SHOPKEEPER;
+                waitTicks = 0;
             }
             return;
         }
 
-        Point clickPoint = calculateClickPoint(bounds);
-
-        operationPending = true;
-        ctx.getMouseController().moveToCanvas(clickPoint.x, clickPoint.y)
-                .thenRun(() -> {
-                    operationPending = false;
-                    phase = ShopPhase.OPEN_SHOP;
-                })
-                .exceptionally(e -> {
-                    operationPending = false;
-                    log.error("Failed to move to shopkeeper", e);
-                    fail("Mouse movement failed");
-                    return null;
-                });
-    }
-
-    // ========================================================================
-    // Phase: Open Shop
-    // ========================================================================
-
-    private void executeOpenShop(TaskContext ctx) {
-        // Need to right-click and select "Trade"
-        // For simplicity, we'll try left-click first (if Trade is default action)
         log.debug("Clicking shopkeeper to open shop");
-
         operationPending = true;
-        ctx.getMouseController().click()
-                .thenRun(() -> {
+
+        SafeClickExecutor safeClick = ctx.getSafeClickExecutor();
+        safeClick.clickNpc(targetNpc, "Trade")
+                .thenAccept(success -> {
                     operationPending = false;
-                    waitTicks = 0;
-                    phase = ShopPhase.WAIT_SHOP_OPEN;
+                    if (success) {
+                        waitTicks = 0;
+                        phase = ShopPhase.WAIT_SHOP_OPEN;
+                    } else {
+                        fail("Failed to click shopkeeper");
+                    }
                 })
                 .exceptionally(e -> {
                     operationPending = false;
-                    log.error("Failed to click shopkeeper", e);
-                    fail("Click failed");
+                    log.error("Shopkeeper click failed", e);
+                    fail("Click failed: " + e.getMessage());
                     return null;
                 });
     }
@@ -426,9 +470,10 @@ public class ShopPurchaseTask extends AbstractTask {
 
         waitTicks++;
         if (waitTicks > SHOP_OPEN_TIMEOUT) {
-            // Might need to use right-click "Trade" menu
-            log.warn("Shop didn't open, may need right-click Trade");
-            phase = ShopPhase.MOVE_TO_SHOPKEEPER;
+            // Re-evaluate - target may have moved or we need different action
+            log.debug("Shop didn't open, re-evaluating...");
+            phase = ShopPhase.FIND_SHOPKEEPER;
+            targetNpc = null;
             waitTicks = 0;
         }
     }
@@ -467,7 +512,7 @@ public class ShopPurchaseTask extends AbstractTask {
             return;
         }
 
-        Point clickPoint = calculateClickPoint(bounds);
+        java.awt.Point clickPoint = com.rocinante.input.ClickPointCalculator.getGaussianClickPoint(bounds);
         operationPending = true;
 
         ctx.getMouseController().moveToCanvas(clickPoint.x, clickPoint.y)
@@ -553,7 +598,7 @@ public class ShopPurchaseTask extends AbstractTask {
             return;
         }
 
-        Point clickPoint = calculateClickPoint(bounds);
+        java.awt.Point clickPoint = com.rocinante.input.ClickPointCalculator.getGaussianClickPoint(bounds);
         operationPending = true;
 
         ctx.getMouseController().moveToCanvas(clickPoint.x, clickPoint.y)
@@ -651,18 +696,6 @@ public class ShopPurchaseTask extends AbstractTask {
         return shopWidget != null && !shopWidget.isHidden();
     }
 
-    private Point calculateClickPoint(Rectangle bounds) {
-        double[] offset = Randomization.staticGaussian2D(0, 0, bounds.width / 4.0, bounds.height / 4.0);
-        int clickX = (int) (bounds.getCenterX() + offset[0]);
-        int clickY = (int) (bounds.getCenterY() + offset[1]);
-
-        // Clamp to bounds
-        clickX = Math.max(bounds.x + 2, Math.min(clickX, bounds.x + bounds.width - 2));
-        clickY = Math.max(bounds.y + 2, Math.min(clickY, bounds.y + bounds.height - 2));
-
-        return new Point(clickX, clickY);
-    }
-
     @Override
     public String getDescription() {
         if (description != null) {
@@ -692,7 +725,7 @@ public class ShopPurchaseTask extends AbstractTask {
      */
     private enum ShopPhase {
         FIND_SHOPKEEPER,
-        MOVE_TO_SHOPKEEPER,
+        WALK_TO_SHOPKEEPER,
         OPEN_SHOP,
         WAIT_SHOP_OPEN,
         SET_QUANTITY,

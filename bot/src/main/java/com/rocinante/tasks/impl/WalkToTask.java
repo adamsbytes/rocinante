@@ -185,6 +185,13 @@ public class WalkToTask extends AbstractTask {
     private int targetNpcId = -1;
 
     /**
+     * Optional node type to walk to (nearest instance via WebWalker).
+     */
+    @Getter
+    @Setter
+    private WebNodeType targetNodeType;
+
+    /**
      * Custom description for this walk task.
      */
     @Getter
@@ -429,6 +436,20 @@ public class WalkToTask extends AbstractTask {
         return task;
     }
 
+    /**
+     * Create a walk task to the nearest node of a specific type.
+     * Uses WebWalker's unified pathfinding which includes teleports/transports.
+     *
+     * @param type the target node type (BANK, SHOP, GRAND_EXCHANGE, etc.)
+     * @return the walk task
+     */
+    public static WalkToTask toNearest(WebNodeType type) {
+        WalkToTask task = new WalkToTask(0, 0);
+        task.targetNodeType = type;
+        task.description = "Travel to nearest " + type.name().toLowerCase().replace("_", " ");
+        return task;
+    }
+
     // ========================================================================
     // Configuration Methods
     // ========================================================================
@@ -583,6 +604,32 @@ public class WalkToTask extends AbstractTask {
                 log.warn("Could not find NPC: {}", targetNpcId);
                 fail("NPC not found: " + targetNpcId);
                 return;
+            }
+        }
+
+        // Resolve node type to nearest location via WebWalker
+        if (targetNodeType != null && (destination == null || destination.getX() == 0)) {
+            PlayerState player2 = ctx.getPlayerState();
+            WorldPoint playerPos2 = player2.getWorldPosition();
+            if (playerPos2 != null && webWalker != null) {
+                NavigationPath path = webWalker.findUnifiedPathToNearestType(playerPos2, targetNodeType);
+                if (!path.isEmpty()) {
+                    destination = path.getEndPoint();
+                    // Store the pre-computed path so we don't recalculate
+                    unifiedPath = path;
+                    log.debug("Resolved {} to {} via unified path", targetNodeType, destination);
+                } else {
+                    // Fallback: find nearest node directly
+                    WebNode node = webWalker.getNavigationWeb().findNearestNode(playerPos2, targetNodeType);
+                    if (node != null) {
+                        destination = node.getWorldPoint();
+                        log.debug("Resolved {} to {} (direct node lookup)", targetNodeType, destination);
+                    } else {
+                        log.warn("Could not find nearest {}", targetNodeType);
+                        fail("No " + targetNodeType.name().toLowerCase() + " found");
+                        return;
+                    }
+                }
             }
         }
 

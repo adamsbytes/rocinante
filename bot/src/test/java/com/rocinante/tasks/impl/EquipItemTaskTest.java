@@ -68,7 +68,8 @@ public class EquipItemTaskTest {
     public void testConstructor_SingleItem() {
         EquipItemTask task = new EquipItemTask(SHORTBOW);
 
-        assertEquals(SHORTBOW, task.getItemId());
+        assertEquals(1, task.getItemIds().size());
+        assertTrue(task.getItemIds().contains(SHORTBOW));
         assertNull(task.getGearSet());
         assertNull(task.getAttackStyle());
         assertTrue(task.getDescription().contains(String.valueOf(SHORTBOW)));
@@ -83,7 +84,7 @@ public class EquipItemTaskTest {
 
         EquipItemTask task = new EquipItemTask(gearSet);
 
-        assertEquals(-1, task.getItemId());
+        assertTrue(task.getItemIds().isEmpty());
         assertEquals(gearSet, task.getGearSet());
         assertNull(task.getAttackStyle());
         assertTrue(task.getDescription().contains("Ranged"));
@@ -93,7 +94,7 @@ public class EquipItemTaskTest {
     public void testConstructor_AttackStyle() {
         EquipItemTask task = new EquipItemTask(AttackStyle.RANGED);
 
-        assertEquals(-1, task.getItemId());
+        assertTrue(task.getItemIds().isEmpty());
         assertNull(task.getGearSet());
         assertEquals(AttackStyle.RANGED, task.getAttackStyle());
         assertTrue(task.getDescription().toLowerCase().contains("ranged"));

@@ -256,6 +256,7 @@
 
 - [ ] "Full Self Recovery" - awareness and retries such that it's VERY hard to get stuck, even when things go wrong
 - [ ] Moneymaking-focused tasks/plans, such as merching/shop runs/collecting/etc
+- [ ] Achievement Diary completion support including individual diary task tracking
 - [ ] `Sailing` skill support
 - [ ] `ClaudeAPIClient` - Anthropic API integration
 - [ ] `AIDirector` - Decision layer for ambiguous situations

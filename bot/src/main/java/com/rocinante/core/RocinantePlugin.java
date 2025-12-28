@@ -2,6 +2,7 @@ package com.rocinante.core;
 
 import com.google.inject.Provides;
 import javax.inject.Inject;
+import javax.inject.Provider;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
@@ -10,9 +11,11 @@ import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
+import net.runelite.client.plugins.PluginDependency;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.PluginInstantiationException;
 import net.runelite.client.plugins.PluginManager;
+import net.runelite.client.plugins.slayer.SlayerPlugin;
 import com.rocinante.behavior.BotActivityTracker;
 import com.rocinante.behavior.BreakScheduler;
 import com.rocinante.behavior.BreakType;
@@ -42,7 +45,9 @@ import com.rocinante.util.Randomization;
 import com.rocinante.behavior.tasks.MicroPauseTask;
 import com.rocinante.behavior.tasks.ShortBreakTask;
 import com.rocinante.behavior.tasks.LongBreakTask;
+import net.runelite.client.plugins.slayer.SlayerPluginService;
 
+import javax.annotation.Nullable;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -68,6 +73,7 @@ import java.util.function.Function;
     tags = {"automation", "quests", "combat", "slayer"},
     enabledByDefault = true
 )
+@PluginDependency(SlayerPlugin.class)
 public class RocinantePlugin extends Plugin
 {
     @Inject
@@ -83,8 +89,15 @@ public class RocinantePlugin extends Plugin
     private PluginManager pluginManager;
 
     @Inject
-    @Getter
-    private GameStateService gameStateService;
+    private Provider<GameStateService> gameStateServiceProvider;
+    
+    /**
+     * Get the GameStateService instance.
+     * Uses Provider to break circular dependency during injection.
+     */
+    public GameStateService getGameStateService() {
+        return gameStateServiceProvider.get();
+    }
 
     @Inject
     @Getter
@@ -209,6 +222,11 @@ public class RocinantePlugin extends Plugin
     @Getter
     private com.rocinante.combat.CombatManager combatManager;
 
+    // Optional RuneLite plugin services - may be null if plugin not loaded
+    @Inject
+    @Nullable
+    private SlayerPluginService slayerPluginService;
+
     @Override
     protected void startUp() throws Exception
     {
@@ -216,7 +234,13 @@ public class RocinantePlugin extends Plugin
 
         // Register GameStateService with the event bus
         // GameStateService needs to receive events for state tracking
-        eventBus.register(gameStateService);
+        eventBus.register(gameStateServiceProvider.get());
+        
+        // Wire TaskExecutor to GameStateService (setter injection to break circular dependency)
+        gameStateServiceProvider.get().setTaskExecutorProvider(() -> taskExecutor);
+        
+        // Wire SlayerPluginService to GameStateService (optional - may be null if Slayer plugin not loaded)
+        gameStateServiceProvider.get().setSlayerPluginService(slayerPluginService);
 
         // Register LoginFlowHandler with the event bus
         // LoginFlowHandler auto-handles license agreement and name entry screens
@@ -333,10 +357,12 @@ public class RocinantePlugin extends Plugin
         statusPublisher.setXpTracker(xpTracker);
         statusPublisher.setFatigueModel(fatigueModel);
         statusPublisher.setBreakScheduler(breakScheduler);
+        statusPublisher.setQuestService(questService);
         
-        // Wire CommandProcessor with TaskExecutor and TaskFactory
+        // Wire CommandProcessor with TaskExecutor, TaskFactory, and StatusPublisher
         commandProcessor.setTaskExecutor(taskExecutor);
         commandProcessor.setTaskFactory(taskFactory);
+        commandProcessor.setStatusPublisher(statusPublisher);
         
         // Wire TaskFactory with dependencies (for manual task creation)
         taskFactory.setQuestExecutor(questExecutor);
@@ -635,10 +661,10 @@ public class RocinantePlugin extends Plugin
         loginFlowHandler.reset();
 
         // Unregister GameStateService from the event bus
-        eventBus.unregister(gameStateService);
+        eventBus.unregister(gameStateServiceProvider.get());
 
         // Invalidate all cached state
-        gameStateService.invalidateAllCaches();
+        gameStateServiceProvider.get().invalidateAllCaches();
 
         // Clear task context variables
         taskContext.clearVariables();

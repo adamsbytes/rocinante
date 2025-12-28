@@ -33,7 +33,7 @@ public class AttentionModelTest {
         when(activityTracker.getCurrentActivity()).thenReturn(ActivityType.MEDIUM);
         when(activityTracker.getAccountType()).thenReturn(AccountType.NORMAL);
         
-        attentionModel = new AttentionModel(activityTracker, randomization);
+        attentionModel = new AttentionModel(() -> activityTracker, randomization);
     }
 
     // ========================================================================
@@ -49,7 +49,7 @@ public class AttentionModelTest {
 
     @Test
     public void testInitialization_WithCustomState() {
-        AttentionModel custom = new AttentionModel(activityTracker, randomization, AttentionState.DISTRACTED);
+        AttentionModel custom = new AttentionModel(() -> activityTracker, randomization, AttentionState.DISTRACTED);
         
         assertEquals(AttentionState.DISTRACTED, custom.getCurrentState());
     }
@@ -133,7 +133,7 @@ public class AttentionModelTest {
         
         int afkCount = 0;
         for (int i = 0; i < 100; i++) {
-            AttentionModel test = new AttentionModel(activityTracker, randomization);
+            AttentionModel test = new AttentionModel(() -> activityTracker, randomization);
             // Force transitions
             for (int j = 0; j < 10; j++) {
                 test.tick();
@@ -184,7 +184,7 @@ public class AttentionModelTest {
         int distractionCount = 0;
         
         for (int i = 0; i < 100; i++) {
-            AttentionModel test = new AttentionModel(activityTracker, randomization);
+            AttentionModel test = new AttentionModel(() -> activityTracker, randomization);
             test.onChatMessage();
             if (test.isInExternalDistraction()) {
                 distractionCount++;

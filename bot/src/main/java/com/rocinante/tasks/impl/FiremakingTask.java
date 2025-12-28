@@ -8,6 +8,8 @@ import com.rocinante.tasks.AbstractTask;
 import com.rocinante.tasks.Task;
 import com.rocinante.tasks.TaskContext;
 import com.rocinante.tasks.TaskState;
+import com.rocinante.util.ItemCollections;
+import com.rocinante.util.Randomization;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -15,10 +17,9 @@ import net.runelite.api.Client;
 import net.runelite.api.Skill;
 import net.runelite.api.coords.WorldPoint;
 
-import com.rocinante.util.Randomization;
-
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 
 /**
  * Task for line-based firemaking training.
@@ -243,8 +244,8 @@ public class FiremakingTask extends AbstractTask {
     private void executeSetup(TaskContext ctx) {
         InventoryState inventory = ctx.getInventoryState();
 
-        // Check for tinderbox
-        if (!inventory.hasItem(config.getTinderboxItemId())) {
+        // Check for tinderbox (any from collection)
+        if (!hasAnyTinderbox(inventory)) {
             log.error("No tinderbox in inventory");
             fail("Missing tinderbox");
             return;
@@ -336,7 +337,7 @@ public class FiremakingTask extends AbstractTask {
         }
 
         if (clickPhase == ClickPhase.CLICK_TINDERBOX) {
-            int tinderboxSlot = inventory.getSlotOf(config.getTinderboxItemId());
+            int tinderboxSlot = findTinderboxSlot(inventory);
             if (tinderboxSlot < 0) {
                 fail("Tinderbox not found in inventory");
                 return;
@@ -628,6 +629,35 @@ public class FiremakingTask extends AbstractTask {
     // ========================================================================
     // Utility Methods
     // ========================================================================
+
+    /**
+     * Check if inventory has any tinderbox from the configured collection.
+     */
+    private boolean hasAnyTinderbox(InventoryState inventory) {
+        List<Integer> tinderboxIds = config.getTinderboxItemIds();
+        for (int id : tinderboxIds) {
+            if (inventory.hasItem(id)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Find the slot of the best tinderbox in inventory.
+     * Returns -1 if none found.
+     */
+    private int findTinderboxSlot(InventoryState inventory) {
+        // Use best-first ordering (golden tinderbox > regular)
+        List<Integer> tinderboxIds = ItemCollections.bestFirst(config.getTinderboxItemIds());
+        for (int id : tinderboxIds) {
+            int slot = inventory.getSlotOf(id);
+            if (slot >= 0) {
+                return slot;
+            }
+        }
+        return -1;
+    }
 
     private String getTargetDescription() {
         if (config.hasLevelTarget()) {

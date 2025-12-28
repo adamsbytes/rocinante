@@ -143,7 +143,7 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
       return error('Bot not found', 404);
     }
 
-    const runtimeStatus = readBotStatus(botId);
+    const runtimeStatus = await readBotStatus(botId);
     return success(runtimeStatus);
   }
 
@@ -159,7 +159,7 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
 
     try {
       const body = await req.json();
-      sendBotCommand(botId, body);
+      await sendBotCommand(botId, body);
       return success({ sent: true });
     } catch (err) {
       return error(err instanceof Error ? err.message : 'Failed to send command');
@@ -505,10 +505,11 @@ const bunServer = Bun.serve({
         }, 30000);
 
         // Send initial status if available
-        const initialStatus = readBotStatus(botId);
+        readBotStatus(botId).then((initialStatus) => {
         if (initialStatus && ws.readyState === 1) {
           ws.send(JSON.stringify(initialStatus));
         }
+        }).catch((err) => console.error(`Error reading initial status:`, err));
       }
     },
 
@@ -533,7 +534,8 @@ const bunServer = Bun.serve({
           const parsed = JSON.parse(data);
           
           if (parsed.type === 'command' && parsed.command) {
-            sendBotCommand(statusData.botId, parsed.command);
+            sendBotCommand(statusData.botId, parsed.command)
+              .catch((err) => console.error(`Error sending command:`, err));
           }
         } catch (error) {
           console.error(`Error handling status WebSocket message:`, error);

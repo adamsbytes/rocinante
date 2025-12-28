@@ -41,6 +41,7 @@ public class BotStatus {
             .session(null)
             .player(null)
             .queue(null)
+            .quests(null)
             .build();
 
     /**
@@ -72,6 +73,11 @@ public class BotStatus {
      * Task queue status.
      */
     QueueInfo queue;
+
+    /**
+     * Quest data from Quest Helper (updated on quest state changes).
+     */
+    QuestsData quests;
 
     /**
      * Serialize to JSON string.
@@ -436,6 +442,149 @@ public class BotStatus {
         }
     }
 
+    /**
+     * Quest data for the UI.
+     */
+    @Value
+    @Builder
+    public static class QuestsData {
+        /**
+         * Unix timestamp when quest data was last refreshed.
+         * Quest data is expensive to compute, so it's cached and only refreshed on:
+         * - Initial load
+         * - Level up (skill requirements may now be met)
+         * - Quest completion
+         * - Manual refresh request from UI
+         */
+        long lastUpdated;
+
+        /**
+         * List of available quests with requirement status.
+         */
+        List<QuestSummary> available;
+
+        /**
+         * IDs of completed quests.
+         */
+        List<String> completed;
+
+        /**
+         * IDs of in-progress quests.
+         */
+        List<String> inProgress;
+
+        /**
+         * Total quest points earned.
+         */
+        int totalQuestPoints;
+
+        /**
+         * Create empty quests data.
+         */
+        public static QuestsData empty() {
+            return QuestsData.builder()
+                    .lastUpdated(0)
+                    .available(List.of())
+                    .completed(List.of())
+                    .inProgress(List.of())
+                    .totalQuestPoints(0)
+                    .build();
+        }
+    }
+
+    /**
+     * Summary of a single quest with requirement checking.
+     */
+    @Value
+    @Builder
+    public static class QuestSummary {
+        /**
+         * Quest ID (e.g., "DESERT_TREASURE").
+         */
+        String id;
+
+        /**
+         * Quest display name.
+         */
+        String name;
+
+        /**
+         * Difficulty level.
+         */
+        String difficulty;
+
+        /**
+         * Whether members-only.
+         */
+        boolean members;
+
+        /**
+         * Quest points reward.
+         */
+        int questPoints;
+
+        /**
+         * Current quest state: NOT_STARTED, IN_PROGRESS, FINISHED.
+         */
+        String state;
+
+        /**
+         * Whether all requirements are met to start this quest.
+         */
+        boolean canStart;
+
+        /**
+         * Skill requirements with met/unmet status.
+         */
+        List<SkillRequirementStatus> skillRequirements;
+
+        /**
+         * Quest requirements with met/unmet status.
+         */
+        List<QuestRequirementStatus> questRequirements;
+
+        /**
+         * Item requirements (optional, from Quest Helper).
+         */
+        List<ItemRequirementStatus> itemRequirements;
+    }
+
+    /**
+     * Skill requirement status.
+     */
+    @Value
+    @Builder
+    public static class SkillRequirementStatus {
+        String skill;
+        int required;
+        int current;
+        boolean met;
+        boolean boostable;
+    }
+
+    /**
+     * Quest requirement status.
+     */
+    @Value
+    @Builder
+    public static class QuestRequirementStatus {
+        String questId;
+        String questName;
+        boolean met;
+    }
+
+    /**
+     * Item requirement status.
+     */
+    @Value
+    @Builder
+    public static class ItemRequirementStatus {
+        String itemName;
+        int itemId;
+        int quantity;
+        boolean have;
+    }
+
     // ========================================================================
     // Builder Helper
     // ========================================================================
@@ -451,6 +600,7 @@ public class BotStatus {
      * @param playerName player's display name
      * @param questPoints quest points
      * @param pendingTasks pending task queue
+     * @param questsData cached quest data (can be null if not yet loaded)
      * @return complete bot status snapshot
      */
     public static BotStatus capture(
@@ -461,7 +611,8 @@ public class BotStatus {
             XpTracker xpTracker,
             String playerName,
             int questPoints,
-            List<Task> pendingTasks) {
+            List<Task> pendingTasks,
+            QuestsData questsData) {
 
         return BotStatus.builder()
                 .timestamp(System.currentTimeMillis())
@@ -470,6 +621,7 @@ public class BotStatus {
                 .session(SessionInfo.fromStats(sessionStats))
                 .player(PlayerInfo.fromState(playerState, xpTracker, playerName, questPoints))
                 .queue(QueueInfo.fromTasks(pendingTasks))
+                .quests(questsData)
                 .build();
     }
 }

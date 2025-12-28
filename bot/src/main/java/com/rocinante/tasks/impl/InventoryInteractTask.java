@@ -10,6 +10,10 @@ import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * Task for simple inventory item interactions (Eat, Drink, Use, Drop).
@@ -50,16 +54,22 @@ public class InventoryInteractTask extends AbstractTask {
     // ========================================================================
 
     /**
-     * The item ID to interact with.
+     * Acceptable item IDs to interact with.
+     * Ordered by priority - first match wins.
      */
     @Getter
-    private final int itemId;
+    private final List<Integer> itemIds;
 
     /**
      * The action to perform (eat, drink, use, drop).
      */
     @Getter
     private final String action;
+
+    /**
+     * The resolved item ID found in inventory.
+     */
+    private int resolvedItemId = -1;
 
     /**
      * Custom description.
@@ -92,17 +102,30 @@ public class InventoryInteractTask extends AbstractTask {
     private boolean operationPending = false;
 
     // ========================================================================
-    // Constructor
+    // Constructors
     // ========================================================================
 
     /**
-     * Create an inventory interact task.
+     * Create an inventory interact task with a single item.
      *
      * @param itemId the item ID to interact with
      * @param action the action to perform (eat, drink, use, drop)
      */
     public InventoryInteractTask(int itemId, String action) {
-        this.itemId = itemId;
+        this.itemIds = Collections.singletonList(itemId);
+        this.action = action.toLowerCase();
+        this.timeout = Duration.ofSeconds(15);
+    }
+
+    /**
+     * Create an inventory interact task accepting any of the provided items.
+     * Items are checked in order - first match wins (for priority ordering).
+     *
+     * @param itemIds acceptable item IDs to interact with, ordered by priority
+     * @param action  the action to perform (eat, drink, use, drop)
+     */
+    public InventoryInteractTask(Collection<Integer> itemIds, String action) {
+        this.itemIds = new ArrayList<>(itemIds);
         this.action = action.toLowerCase();
         this.timeout = Duration.ofSeconds(15);
     }
@@ -132,14 +155,48 @@ public class InventoryInteractTask extends AbstractTask {
             return false;
         }
 
-        // Check if we have the item in inventory
+        // Find any matching item in inventory
         InventoryState inventory = ctx.getInventoryState();
-        if (!inventory.hasItem(itemId)) {
-            log.debug("Item {} not in inventory", itemId);
+        resolvedItemId = findFirstMatchingItem(inventory, itemIds);
+        if (resolvedItemId == -1) {
+            log.debug("No item from {} found in inventory. Inventory contains: {}",
+                    itemIds, formatInventoryContents(inventory));
             return false;
         }
 
+        log.debug("Resolved item {} from acceptable list {}", resolvedItemId, itemIds);
         return true;
+    }
+
+    /**
+     * Find the first item ID from the list that exists in inventory.
+     * Returns in priority order (first in list = highest priority).
+     */
+    private int findFirstMatchingItem(InventoryState inventory, List<Integer> itemIds) {
+        for (int itemId : itemIds) {
+            if (inventory.hasItem(itemId)) {
+                return itemId;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Format inventory contents for debug logging.
+     */
+    private String formatInventoryContents(InventoryState inventory) {
+        StringBuilder sb = new StringBuilder("[");
+        boolean first = true;
+        for (net.runelite.api.Item item : inventory.getNonEmptyItems()) {
+            if (!first) sb.append(", ");
+            sb.append(item.getId());
+            if (item.getQuantity() > 1) {
+                sb.append("x").append(item.getQuantity());
+            }
+            first = false;
+        }
+        sb.append("]");
+        return sb.toString();
     }
 
     @Override
@@ -171,20 +228,22 @@ public class InventoryInteractTask extends AbstractTask {
         }
 
         InventoryState inventory = ctx.getInventoryState();
-        int slot = inventory.getSlotOf(itemId);
+        int slot = inventory.getSlotOf(resolvedItemId);
 
         if (slot < 0) {
-            fail("Item " + itemId + " not found in inventory");
+            log.debug("Item {} no longer in inventory. Inventory: {}",
+                    resolvedItemId, formatInventoryContents(inventory));
+            fail("Item " + resolvedItemId + " not found in inventory");
             return;
         }
 
         // Store starting state
-        startItemCount = inventory.countItem(itemId);
+        startItemCount = inventory.countItem(resolvedItemId);
 
-        log.debug("Clicking item {} in slot {} (action: {})", itemId, slot, action);
+        log.debug("Clicking item {} in slot {} (action: {})", resolvedItemId, slot, action);
         operationPending = true;
 
-        inventoryHelper.executeClick(slot, action + " item " + itemId)
+        inventoryHelper.executeClick(slot, action + " item " + resolvedItemId)
                 .thenAccept(success -> {
                     operationPending = false;
                     if (success) {
@@ -231,7 +290,7 @@ public class InventoryInteractTask extends AbstractTask {
 
         // Check if item count decreased (consumed)
         if (!success) {
-            int currentCount = inventory.countItem(itemId);
+            int currentCount = inventory.countItem(resolvedItemId);
             if (currentCount < startItemCount) {
                 success = true;
                 successReason = "item consumed";
@@ -245,7 +304,7 @@ public class InventoryInteractTask extends AbstractTask {
         }
 
         if (success) {
-            log.info("Inventory interaction successful: {} {} ({})", action, itemId, successReason);
+            log.info("Inventory interaction successful: {} {} ({})", action, resolvedItemId, successReason);
             complete();
             return;
         }
@@ -262,7 +321,10 @@ public class InventoryInteractTask extends AbstractTask {
         if (description != null) {
             return description;
         }
-        return String.format("InventoryInteract[%s %d]", action, itemId);
+        if (itemIds.size() == 1) {
+            return String.format("InventoryInteract[%s %d]", action, itemIds.get(0));
+        }
+        return String.format("InventoryInteract[%s %s]", action, itemIds);
     }
 
     // ========================================================================

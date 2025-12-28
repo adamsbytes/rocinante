@@ -7,6 +7,7 @@ import net.runelite.api.events.GameTick;
 import net.runelite.client.eventbus.Subscribe;
 
 import javax.inject.Inject;
+import javax.inject.Provider;
 import javax.inject.Singleton;
 import java.time.Duration;
 import java.time.Instant;
@@ -89,7 +90,9 @@ public class AttentionModel {
 
     // === Dependencies ===
     
-    private final BotActivityTracker activityTracker;
+    // Using Provider to break circular dependency:
+    // GameStateService -> AttentionModel -> BotActivityTracker -> TaskExecutor -> TaskContext -> GameStateService
+    private final Provider<BotActivityTracker> activityTrackerProvider;
     private final Randomization randomization;
     
     // === State ===
@@ -132,8 +135,8 @@ public class AttentionModel {
     private volatile boolean inExternalDistraction = false;
 
     @Inject
-    public AttentionModel(BotActivityTracker activityTracker, Randomization randomization) {
-        this.activityTracker = activityTracker;
+    public AttentionModel(Provider<BotActivityTracker> activityTrackerProvider, Randomization randomization) {
+        this.activityTrackerProvider = activityTrackerProvider;
         this.randomization = randomization;
         scheduleNextTransition();
         log.info("AttentionModel initialized");
@@ -142,9 +145,9 @@ public class AttentionModel {
     /**
      * Constructor for testing.
      */
-    public AttentionModel(BotActivityTracker activityTracker, Randomization randomization,
+    public AttentionModel(Provider<BotActivityTracker> activityTrackerProvider, Randomization randomization,
                           AttentionState initialState) {
-        this.activityTracker = activityTracker;
+        this.activityTrackerProvider = activityTrackerProvider;
         this.randomization = randomization;
         this.currentState = initialState;
         scheduleNextTransition();
@@ -225,12 +228,13 @@ public class AttentionModel {
         }
         
         // HCIM: reduce AFK probability
-        if (activityTracker != null && activityTracker.getAccountType().isHardcore()) {
+        BotActivityTracker tracker = activityTrackerProvider != null ? activityTrackerProvider.get() : null;
+        if (tracker != null && tracker.getAccountType().isHardcore()) {
             afkWeight *= 0.3;  // 70% less likely to go AFK
         }
         
         // During combat: no AFK, reduce distracted
-        if (activityTracker != null && activityTracker.getCurrentActivity().isCombat()) {
+        if (tracker != null && tracker.getCurrentActivity().isCombat()) {
             afkWeight = 0;
             distractedWeight *= 0.5;
         }
@@ -368,10 +372,11 @@ public class AttentionModel {
      * @return true if AFK is safe
      */
     public boolean canEnterAFK() {
-        if (activityTracker == null) {
+        BotActivityTracker tracker = activityTrackerProvider != null ? activityTrackerProvider.get() : null;
+        if (tracker == null) {
             return true;
         }
-        return activityTracker.canEnterAFK();
+        return tracker.canEnterAFK();
     }
 
     /**

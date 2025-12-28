@@ -10,6 +10,10 @@ import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * Task for using one inventory item on another inventory item.
@@ -20,10 +24,16 @@ import java.time.Duration;
  *   <li>Click the target item in inventory</li>
  * </ol>
  *
- * <p>Example usage:
+ * <p>Supports single items or collections of acceptable items:
  * <pre>{@code
  * // Use tinderbox on logs (make fire)
  * UseItemOnItemTask lightFire = new UseItemOnItemTask(ItemID.TINDERBOX, ItemID.LOGS);
+ *
+ * // Use ANY tinderbox on ANY basic logs
+ * UseItemOnItemTask lightAnyFire = new UseItemOnItemTask(
+ *     Set.of(ItemID.TINDERBOX, ItemID.GOLDEN_TINDERBOX),
+ *     Set.of(ItemID.LOGS, ItemID.OAK_LOGS, ItemID.WILLOW_LOGS))
+ *     .withDescription("Light a fire");
  *
  * // Use bucket of water on pot of flour (make dough)
  * UseItemOnItemTask makeDough = new UseItemOnItemTask(ItemID.BUCKET_OF_WATER, ItemID.POT_OF_FLOUR)
@@ -47,16 +57,18 @@ public class UseItemOnItemTask extends AbstractTask {
     // ========================================================================
 
     /**
-     * The source item ID (the item to use).
+     * Acceptable source item IDs (the item to use).
+     * Ordered by priority - first match wins.
      */
     @Getter
-    private final int sourceItemId;
+    private final List<Integer> sourceItemIds;
 
     /**
-     * The target item ID (the item to use the source on).
+     * Acceptable target item IDs (the item to use the source on).
+     * Ordered by priority - first match wins.
      */
     @Getter
-    private final int targetItemId;
+    private final List<Integer> targetItemIds;
 
     /**
      * Custom description.
@@ -72,6 +84,16 @@ public class UseItemOnItemTask extends AbstractTask {
      * Current execution phase.
      */
     private UseItemPhase phase = UseItemPhase.CLICK_SOURCE;
+
+    /**
+     * The resolved source item ID found in inventory.
+     */
+    private int resolvedSourceId = -1;
+
+    /**
+     * The resolved target item ID found in inventory.
+     */
+    private int resolvedTargetId = -1;
 
     /**
      * Player animation when interaction started.
@@ -94,18 +116,55 @@ public class UseItemOnItemTask extends AbstractTask {
     private boolean operationPending = false;
 
     // ========================================================================
-    // Constructor
+    // Constructors
     // ========================================================================
 
     /**
-     * Create a use item on item task.
+     * Create a use item on item task with single item IDs.
      *
      * @param sourceItemId the source item ID (to use)
      * @param targetItemId the target item ID (to use on)
      */
     public UseItemOnItemTask(int sourceItemId, int targetItemId) {
-        this.sourceItemId = sourceItemId;
-        this.targetItemId = targetItemId;
+        this.sourceItemIds = Collections.singletonList(sourceItemId);
+        this.targetItemIds = Collections.singletonList(targetItemId);
+        this.timeout = Duration.ofSeconds(30);
+    }
+
+    /**
+     * Create a use item on item task accepting any of the provided items.
+     * Items are checked in order - first match wins (for priority ordering).
+     *
+     * @param sourceItemIds acceptable source item IDs (to use), ordered by priority
+     * @param targetItemIds acceptable target item IDs (to use on), ordered by priority
+     */
+    public UseItemOnItemTask(Collection<Integer> sourceItemIds, Collection<Integer> targetItemIds) {
+        this.sourceItemIds = new ArrayList<>(sourceItemIds);
+        this.targetItemIds = new ArrayList<>(targetItemIds);
+        this.timeout = Duration.ofSeconds(30);
+    }
+
+    /**
+     * Create a use item on item task with single source and multiple targets.
+     *
+     * @param sourceItemId  the source item ID (to use)
+     * @param targetItemIds acceptable target item IDs (to use on), ordered by priority
+     */
+    public UseItemOnItemTask(int sourceItemId, Collection<Integer> targetItemIds) {
+        this.sourceItemIds = Collections.singletonList(sourceItemId);
+        this.targetItemIds = new ArrayList<>(targetItemIds);
+        this.timeout = Duration.ofSeconds(30);
+    }
+
+    /**
+     * Create a use item on item task with multiple sources and single target.
+     *
+     * @param sourceItemIds acceptable source item IDs (to use), ordered by priority
+     * @param targetItemId  the target item ID (to use on)
+     */
+    public UseItemOnItemTask(Collection<Integer> sourceItemIds, int targetItemId) {
+        this.sourceItemIds = new ArrayList<>(sourceItemIds);
+        this.targetItemIds = Collections.singletonList(targetItemId);
         this.timeout = Duration.ofSeconds(30);
     }
 
@@ -134,18 +193,57 @@ public class UseItemOnItemTask extends AbstractTask {
             return false;
         }
 
-        // Check if we have both items in inventory
         InventoryState inventory = ctx.getInventoryState();
-        if (!inventory.hasItem(sourceItemId)) {
-            log.debug("Source item {} not in inventory", sourceItemId);
-            return false;
-        }
-        if (!inventory.hasItem(targetItemId)) {
-            log.debug("Target item {} not in inventory", targetItemId);
+
+        // Find any matching source item
+        resolvedSourceId = findFirstMatchingItem(inventory, sourceItemIds);
+        if (resolvedSourceId == -1) {
+            log.debug("No source item from {} found in inventory. Inventory contains: {}",
+                    sourceItemIds, formatInventoryContents(inventory));
             return false;
         }
 
+        // Find any matching target item
+        resolvedTargetId = findFirstMatchingItem(inventory, targetItemIds);
+        if (resolvedTargetId == -1) {
+            log.debug("No target item from {} found in inventory. Inventory contains: {}",
+                    targetItemIds, formatInventoryContents(inventory));
+            return false;
+        }
+
+        log.debug("Resolved source={} target={} from acceptable sets", resolvedSourceId, resolvedTargetId);
         return true;
+    }
+
+    /**
+     * Find the first item ID from the list that exists in inventory.
+     * Returns in priority order (first in list = highest priority).
+     */
+    private int findFirstMatchingItem(InventoryState inventory, List<Integer> itemIds) {
+        for (int itemId : itemIds) {
+            if (inventory.hasItem(itemId)) {
+                return itemId;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Format inventory contents for debug logging.
+     */
+    private String formatInventoryContents(InventoryState inventory) {
+        StringBuilder sb = new StringBuilder("[");
+        boolean first = true;
+        for (net.runelite.api.Item item : inventory.getNonEmptyItems()) {
+            if (!first) sb.append(", ");
+            sb.append(item.getId());
+            if (item.getQuantity() > 1) {
+                sb.append("x").append(item.getQuantity());
+            }
+            first = false;
+        }
+        sb.append("]");
+        return sb.toString();
     }
 
     @Override
@@ -180,17 +278,19 @@ public class UseItemOnItemTask extends AbstractTask {
         }
 
         InventoryState inventory = ctx.getInventoryState();
-        int slot = inventory.getSlotOf(sourceItemId);
+        int slot = inventory.getSlotOf(resolvedSourceId);
 
         if (slot < 0) {
-            fail("Source item " + sourceItemId + " not found in inventory");
+            log.debug("Source item {} no longer in inventory. Inventory: {}",
+                    resolvedSourceId, formatInventoryContents(inventory));
+            fail("Source item " + resolvedSourceId + " not found in inventory");
             return;
         }
 
-        log.debug("Clicking source item {} in slot {}", sourceItemId, slot);
+        log.debug("Clicking source item {} in slot {}", resolvedSourceId, slot);
         operationPending = true;
 
-        inventoryHelper.executeClick(slot, "Use source item " + sourceItemId)
+        inventoryHelper.executeClick(slot, "Use source item " + resolvedSourceId)
                 .thenAccept(success -> {
                     operationPending = false;
                     if (success) {
@@ -220,21 +320,23 @@ public class UseItemOnItemTask extends AbstractTask {
         }
 
         InventoryState inventory = ctx.getInventoryState();
-        int slot = inventory.getSlotOf(targetItemId);
+        int slot = inventory.getSlotOf(resolvedTargetId);
 
         if (slot < 0) {
-            fail("Target item " + targetItemId + " not found in inventory");
+            log.debug("Target item {} no longer in inventory. Inventory: {}",
+                    resolvedTargetId, formatInventoryContents(inventory));
+            fail("Target item " + resolvedTargetId + " not found in inventory");
             return;
         }
 
         // Store starting state for success detection
         startAnimation = ctx.getPlayerState().getAnimationId();
-        startTargetCount = inventory.countItem(targetItemId);
+        startTargetCount = inventory.countItem(resolvedTargetId);
 
-        log.debug("Clicking target item {} in slot {}", targetItemId, slot);
+        log.debug("Clicking target item {} in slot {}", resolvedTargetId, slot);
         operationPending = true;
 
-        inventoryHelper.executeClick(slot, "Use on target item " + targetItemId)
+        inventoryHelper.executeClick(slot, "Use on target item " + resolvedTargetId)
                 .thenAccept(success -> {
                     operationPending = false;
                     if (success) {
@@ -280,7 +382,7 @@ public class UseItemOnItemTask extends AbstractTask {
 
         // Check if target item was consumed/transformed
         if (!success) {
-            int currentCount = inventory.countItem(targetItemId);
+            int currentCount = inventory.countItem(resolvedTargetId);
             if (currentCount < startTargetCount) {
                 success = true;
                 successReason = "item consumed/transformed";
@@ -288,13 +390,13 @@ public class UseItemOnItemTask extends AbstractTask {
         }
 
         // Check if source item was consumed
-        if (!success && !inventory.hasItem(sourceItemId)) {
+        if (!success && !inventory.hasItem(resolvedSourceId)) {
             success = true;
             successReason = "source item consumed";
         }
 
         if (success) {
-            log.info("Use item on item successful: {} on {} ({})", sourceItemId, targetItemId, successReason);
+            log.info("Use item on item successful: {} on {} ({})", resolvedSourceId, resolvedTargetId, successReason);
             complete();
             return;
         }
@@ -311,7 +413,11 @@ public class UseItemOnItemTask extends AbstractTask {
         if (description != null) {
             return description;
         }
-        return String.format("UseItemOnItem[source=%d, target=%d]", sourceItemId, targetItemId);
+        if (sourceItemIds.size() == 1 && targetItemIds.size() == 1) {
+            return String.format("UseItemOnItem[source=%d, target=%d]",
+                    sourceItemIds.iterator().next(), targetItemIds.iterator().next());
+        }
+        return String.format("UseItemOnItem[sources=%s, targets=%s]", sourceItemIds, targetItemIds);
     }
 
     // ========================================================================
@@ -324,4 +430,3 @@ public class UseItemOnItemTask extends AbstractTask {
         WAIT_RESPONSE
     }
 }
-

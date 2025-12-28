@@ -369,35 +369,6 @@ public class TutorialIslandTest {
     }
 
     // ========================================================================
-    // Item ID Tests
-    // ========================================================================
-
-    @Test
-    public void testItemIdsPositive() {
-        assertTrue(TutorialIsland.ITEM_BRONZE_AXE > 0);
-        assertTrue(TutorialIsland.ITEM_BRONZE_PICKAXE > 0);
-        assertTrue(TutorialIsland.ITEM_TINDERBOX > 0);
-        assertTrue(TutorialIsland.ITEM_NET > 0);
-        assertTrue(TutorialIsland.ITEM_RAW_SHRIMP > 0);
-        assertTrue(TutorialIsland.ITEM_SHRIMP > 0);
-        assertTrue(TutorialIsland.ITEM_LOGS > 0);
-        assertTrue(TutorialIsland.ITEM_BREAD_DOUGH > 0);
-        assertTrue(TutorialIsland.ITEM_BREAD > 0);
-        assertTrue(TutorialIsland.ITEM_POT_OF_FLOUR > 0);
-        assertTrue(TutorialIsland.ITEM_BUCKET_OF_WATER > 0);
-        assertTrue(TutorialIsland.ITEM_TIN_ORE > 0);
-        assertTrue(TutorialIsland.ITEM_COPPER_ORE > 0);
-        assertTrue(TutorialIsland.ITEM_BRONZE_BAR > 0);
-        assertTrue(TutorialIsland.ITEM_BRONZE_DAGGER > 0);
-        assertTrue(TutorialIsland.ITEM_BRONZE_SWORD > 0);
-        assertTrue(TutorialIsland.ITEM_WOODEN_SHIELD > 0);
-        assertTrue(TutorialIsland.ITEM_SHORTBOW > 0);
-        assertTrue(TutorialIsland.ITEM_BRONZE_ARROW > 0);
-        assertTrue(TutorialIsland.ITEM_AIR_RUNE > 0);
-        assertTrue(TutorialIsland.ITEM_MIND_RUNE > 0);
-    }
-
-    // ========================================================================
     // Step Text Tests
     // ========================================================================
 

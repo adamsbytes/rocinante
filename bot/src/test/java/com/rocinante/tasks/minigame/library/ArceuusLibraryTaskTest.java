@@ -69,7 +69,7 @@ public class ArceuusLibraryTaskTest {
         // Set up TaskContext with all necessary components
         taskContext = new TaskContext(
                 client,
-                gameStateService,
+                () -> gameStateService,
                 mouseController,
                 keyboardController,
                 humanTimer,

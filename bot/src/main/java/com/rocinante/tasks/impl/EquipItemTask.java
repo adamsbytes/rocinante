@@ -12,6 +12,10 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -53,10 +57,16 @@ public class EquipItemTask extends AbstractTask {
     // ========================================================================
 
     /**
-     * Single item ID to equip (-1 if using gear set or attack style).
+     * Acceptable item IDs to equip (empty if using gear set or attack style).
+     * Ordered by priority - first match wins.
      */
     @Getter
-    private final int itemId;
+    private final List<Integer> itemIds;
+
+    /**
+     * The resolved item ID found in inventory/equipment.
+     */
+    private int resolvedItemId = -1;
 
     /**
      * Gear set to equip (null if using single item or attack style).
@@ -105,10 +115,24 @@ public class EquipItemTask extends AbstractTask {
      * @param itemId the item ID to equip
      */
     public EquipItemTask(int itemId) {
-        this.itemId = itemId;
+        this.itemIds = Collections.singletonList(itemId);
         this.gearSet = null;
         this.attackStyle = null;
         this.description = "Equip item " + itemId;
+        this.timeout = Duration.ofSeconds(10);
+    }
+
+    /**
+     * Create a task to equip any of the provided items.
+     * Items are checked in order - first match wins (for priority ordering).
+     *
+     * @param itemIds acceptable item IDs to equip, ordered by priority
+     */
+    public EquipItemTask(Collection<Integer> itemIds) {
+        this.itemIds = new ArrayList<>(itemIds);
+        this.gearSet = null;
+        this.attackStyle = null;
+        this.description = "Equip item from " + itemIds;
         this.timeout = Duration.ofSeconds(10);
     }
 
@@ -118,7 +142,7 @@ public class EquipItemTask extends AbstractTask {
      * @param gearSet the gear set to equip
      */
     public EquipItemTask(GearSet gearSet) {
-        this.itemId = -1;
+        this.itemIds = Collections.emptyList();
         this.gearSet = gearSet;
         this.attackStyle = null;
         this.description = "Equip gear set: " + (gearSet != null ? gearSet.getName() : "null");
@@ -131,7 +155,7 @@ public class EquipItemTask extends AbstractTask {
      * @param attackStyle the attack style to equip for
      */
     public EquipItemTask(AttackStyle attackStyle) {
-        this.itemId = -1;
+        this.itemIds = Collections.emptyList();
         this.gearSet = null;
         this.attackStyle = attackStyle;
         this.description = "Equip for " + attackStyle.name() + " combat";
@@ -168,12 +192,14 @@ public class EquipItemTask extends AbstractTask {
         InventoryState inventory = ctx.getGameStateService().getInventoryState();
         EquipmentState equipment = ctx.getGameStateService().getEquipmentState();
 
-        // If equipping single item, check it exists in inventory or is already equipped
-        if (itemId > 0) {
-            if (!inventory.hasItem(itemId) && !equipment.hasEquipped(itemId)) {
-                log.debug("Item {} not in inventory or equipment", itemId);
+        // If equipping from item list, find first available
+        if (!itemIds.isEmpty()) {
+            resolvedItemId = findFirstMatchingItem(inventory, equipment, itemIds);
+            if (resolvedItemId == -1) {
+                log.debug("No item from {} found in inventory or equipment", itemIds);
                 return false;
             }
+            log.debug("Resolved item {} from acceptable list {}", resolvedItemId, itemIds);
         }
 
         // If equipping gear set, verify items available
@@ -202,10 +228,10 @@ public class EquipItemTask extends AbstractTask {
             GearSwitcher switcher = ctx.getGearSwitcher();
             CompletableFuture<Boolean> future;
 
-            if (itemId > 0) {
-                // Single item equip
-                log.debug("Starting single item equip: {}", itemId);
-                future = switcher.equipItem(itemId);
+            if (resolvedItemId > 0) {
+                // Single item equip (from list or single ID)
+                log.debug("Starting single item equip: {}", resolvedItemId);
+                future = switcher.equipItem(resolvedItemId);
             } else if (gearSet != null) {
                 // Gear set equip
                 log.debug("Starting gear set equip: {}", gearSet.getName());
@@ -271,9 +297,9 @@ public class EquipItemTask extends AbstractTask {
     private boolean isEquipmentDone(TaskContext ctx) {
         EquipmentState equipment = ctx.getGameStateService().getEquipmentState();
 
-        if (itemId > 0) {
+        if (resolvedItemId > 0) {
             // Single item - check if equipped
-            return equipment.hasEquipped(itemId);
+            return equipment.hasEquipped(resolvedItemId);
         } else if (gearSet != null && !gearSet.isEmpty()) {
             // Gear set - check if all items equipped
             return gearSet.isEquipped(equipment);
@@ -287,6 +313,19 @@ public class EquipItemTask extends AbstractTask {
 
         // No requirement specified - consider done
         return true;
+    }
+
+    /**
+     * Find the first item ID from the list that exists in inventory or equipment.
+     * Returns in priority order (first in list = highest priority).
+     */
+    private int findFirstMatchingItem(InventoryState inventory, EquipmentState equipment, List<Integer> itemIds) {
+        for (int itemId : itemIds) {
+            if (inventory.hasItem(itemId) || equipment.hasEquipped(itemId)) {
+                return itemId;
+            }
+        }
+        return -1;
     }
 
     /**

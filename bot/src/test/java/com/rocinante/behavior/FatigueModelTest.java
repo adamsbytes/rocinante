@@ -34,7 +34,7 @@ public class FatigueModelTest {
         when(playerProfile.getBreakFatigueThreshold()).thenReturn(0.80);
         when(playerProfile.getBaseMisclickRate()).thenReturn(0.02);
         
-        fatigueModel = new FatigueModel(activityTracker, playerProfile);
+        fatigueModel = new FatigueModel(() -> activityTracker, playerProfile);
     }
 
     // ========================================================================
@@ -50,7 +50,7 @@ public class FatigueModelTest {
 
     @Test
     public void testInitialization_WithCustomLevel() {
-        FatigueModel custom = new FatigueModel(activityTracker, playerProfile, 0.5);
+        FatigueModel custom = new FatigueModel(() -> activityTracker, playerProfile, 0.5);
         assertEquals(0.5, custom.getFatigueLevel(), 0.001);
     }
 

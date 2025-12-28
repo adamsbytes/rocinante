@@ -1,11 +1,13 @@
 package com.rocinante.tasks.impl;
 
 import com.rocinante.input.MenuHelper;
+import com.rocinante.input.SafeClickExecutor;
 import com.rocinante.input.WidgetClickHelper;
 import com.rocinante.state.GrandExchangeSlot;
 import com.rocinante.state.GrandExchangeState;
 import com.rocinante.tasks.AbstractTask;
 import com.rocinante.tasks.TaskContext;
+import com.rocinante.tasks.TaskState;
 import com.rocinante.timing.DelayProfile;
 import com.rocinante.ui.GrandExchangeWidgets;
 import lombok.Getter;
@@ -68,6 +70,11 @@ public class GrandExchangeTask extends AbstractTask {
     // ========================================================================
     // Constants
     // ========================================================================
+
+    /**
+     * Maximum distance (tiles) to directly interact without walking closer.
+     */
+    private static final int INTERACTION_DISTANCE = 15;
 
     /**
      * Maximum ticks to wait for GE interface to open.
@@ -170,6 +177,11 @@ public class GrandExchangeTask extends AbstractTask {
      * Target GE clerk NPC.
      */
     private NPC targetClerk;
+
+    /**
+     * Sub-task for walking/traveling to GE when too far.
+     */
+    private WalkToTask walkSubTask;
 
     /**
      * The slot we're using for the operation.
@@ -391,6 +403,12 @@ public class GrandExchangeTask extends AbstractTask {
             return;
         }
 
+        // Handle sub-task execution
+        if (walkSubTask != null) {
+            executeWalkSubTask(ctx);
+            return;
+        }
+
         switch (phase) {
             case VALIDATE:
                 executeValidate(ctx);
@@ -398,8 +416,8 @@ public class GrandExchangeTask extends AbstractTask {
             case FIND_GE:
                 executeFindGE(ctx);
                 break;
-            case MOVE_TO_GE:
-                executeMoveToGE(ctx);
+            case WALK_TO_GE:
+                executeWalkToGE(ctx);
                 break;
             case OPEN_GE:
                 executeOpenGE(ctx);
@@ -528,7 +546,13 @@ public class GrandExchangeTask extends AbstractTask {
         }
 
         log.debug("Found GE clerk at {}", targetClerk.getWorldLocation());
-        phase = GrandExchangePhase.MOVE_TO_GE;
+        int distance = playerPos.distanceTo(targetClerk.getWorldLocation());
+        if (distance > INTERACTION_DISTANCE) {
+            log.debug("GE clerk is {} tiles away, traveling closer first", distance);
+            phase = GrandExchangePhase.WALK_TO_GE;
+        } else {
+            phase = GrandExchangePhase.OPEN_GE;
+        }
     }
 
     private NPC findNearestGEClerk(TaskContext ctx, WorldPoint playerPos) {
@@ -564,63 +588,84 @@ public class GrandExchangeTask extends AbstractTask {
     }
 
     // ========================================================================
-    // Phase: Move to GE
+    // Phase: Walk to GE
     // ========================================================================
 
-    private void executeMoveToGE(TaskContext ctx) {
+    private void executeWalkToGE(TaskContext ctx) {
         if (targetClerk == null) {
-            fail("Lost GE clerk target");
+            phase = GrandExchangePhase.FIND_GE;
+            return;
+        }
+
+        WorldPoint targetPos = targetClerk.getWorldLocation();
+        if (targetPos == null) {
+            fail("Lost GE clerk target while traveling");
+            return;
+        }
+
+        // Create walk sub-task (uses WebWalker for optimal path including teleports)
+        walkSubTask = new WalkToTask(targetPos)
+                .withDescription("Travel to Grand Exchange");
+        log.debug("Starting travel to GE at {}", targetPos);
+    }
+
+    private void executeWalkSubTask(TaskContext ctx) {
+        // Execute the walk task (handles state transitions automatically)
+        walkSubTask.execute(ctx);
+
+        // Check if walk is done
+        if (walkSubTask.getState().isTerminal()) {
+            if (walkSubTask.getState() == TaskState.COMPLETED) {
+                log.debug("Travel to GE completed, proceeding to open");
+                phase = GrandExchangePhase.OPEN_GE;
+            } else {
+                log.warn("Travel to GE failed: {}", walkSubTask.getFailureReason());
+                fail("Failed to travel to GE");
+            }
+            walkSubTask = null;
+        }
+    }
+
+    // ========================================================================
+    // Phase: Open GE (uses SafeClickExecutor)
+    // ========================================================================
+
+    private void executeOpenGE(TaskContext ctx) {
+        if (targetClerk == null) {
+            phase = GrandExchangePhase.FIND_GE;
             return;
         }
 
         Rectangle bounds = targetClerk.getConvexHull() != null ?
                 targetClerk.getConvexHull().getBounds() : null;
-
-        if (bounds == null || bounds.width == 0 || bounds.height == 0) {
-            log.debug("GE clerk not visible, waiting...");
+        if (bounds == null || bounds.width == 0) {
+            log.debug("GE clerk not visible, traveling closer...");
             waitTicks++;
-            if (waitTicks > 10) {
-                fail("GE clerk not visible");
+            if (waitTicks > 5) {
+                phase = GrandExchangePhase.WALK_TO_GE;
+                waitTicks = 0;
             }
             return;
         }
 
-        // Use humanized click position (same formula as WidgetClickHelper)
-        int clickX = bounds.x + randomOffset(bounds.width);
-        int clickY = bounds.y + randomOffset(bounds.height);
-
+        log.debug("Clicking GE clerk to open exchange");
         operationPending = true;
-        ctx.getMouseController().moveToCanvas(clickX, clickY)
-                .thenRun(() -> {
+
+        SafeClickExecutor safeClick = ctx.getSafeClickExecutor();
+        safeClick.clickNpc(targetClerk, "Exchange")
+                .thenAccept(success -> {
                     operationPending = false;
-                    phase = GrandExchangePhase.OPEN_GE;
+                    if (success) {
+                        waitTicks = 0;
+                        phase = GrandExchangePhase.WAIT_GE_OPEN;
+                    } else {
+                        fail("Failed to click GE clerk");
+                    }
                 })
                 .exceptionally(e -> {
                     operationPending = false;
-                    log.error("Failed to move to GE clerk", e);
-                    fail("Mouse movement failed");
-                    return null;
-                });
-    }
-
-    // ========================================================================
-    // Phase: Open GE
-    // ========================================================================
-
-    private void executeOpenGE(TaskContext ctx) {
-        log.debug("Clicking to open GE");
-
-        operationPending = true;
-        ctx.getMouseController().click()
-                .thenRun(() -> {
-                    operationPending = false;
-                    waitTicks = 0;
-                    phase = GrandExchangePhase.WAIT_GE_OPEN;
-                })
-                .exceptionally(e -> {
-                    operationPending = false;
-                    log.error("Failed to click GE clerk", e);
-                    fail("Click failed");
+                    log.error("GE clerk click failed", e);
+                    fail("Click failed: " + e.getMessage());
                     return null;
                 });
     }
@@ -649,8 +694,9 @@ public class GrandExchangeTask extends AbstractTask {
 
         waitTicks++;
         if (waitTicks > GE_OPEN_TIMEOUT) {
-            log.debug("GE didn't open, retrying...");
-            phase = GrandExchangePhase.MOVE_TO_GE;
+            log.debug("GE didn't open, re-evaluating...");
+            phase = GrandExchangePhase.FIND_GE;
+            targetClerk = null;
             waitTicks = 0;
         }
     }
@@ -1290,7 +1336,7 @@ public class GrandExchangeTask extends AbstractTask {
     private enum GrandExchangePhase {
         VALIDATE,
         FIND_GE,
-        MOVE_TO_GE,
+        WALK_TO_GE,
         OPEN_GE,
         WAIT_GE_OPEN,
         SELECT_SLOT,

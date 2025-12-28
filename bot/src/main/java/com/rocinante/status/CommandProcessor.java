@@ -81,6 +81,10 @@ public class CommandProcessor {
     @Nullable
     private CommandHandler commandHandler;
 
+    @Setter
+    @Nullable
+    private StatusPublisher statusPublisher;
+
     // ========================================================================
     // State
     // ========================================================================
@@ -283,6 +287,9 @@ public class CommandProcessor {
                     
                 case "QUEUE_TASK":
                     return handleQueueTask(cmdObj);
+
+                case "REFRESH_QUESTS":
+                    return handleRefreshQuests();
                     
                 default:
                     // Delegate to custom handler if available
@@ -338,6 +345,16 @@ public class CommandProcessor {
             // Could queue a break task here
             return true;
         }
+        return false;
+    }
+
+    private boolean handleRefreshQuests() {
+        if (statusPublisher != null) {
+            log.info("Quest data refresh requested from UI");
+            statusPublisher.requestQuestRefresh();
+            return true;
+        }
+        log.warn("Cannot refresh quests: StatusPublisher not set");
         return false;
     }
 

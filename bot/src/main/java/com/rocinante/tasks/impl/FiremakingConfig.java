@@ -1,11 +1,13 @@
 package com.rocinante.tasks.impl;
 
+import com.rocinante.util.ItemCollections;
 import lombok.Builder;
 import lombok.Value;
 import net.runelite.api.ItemID;
 import net.runelite.api.coords.WorldPoint;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -178,11 +180,11 @@ public class FiremakingConfig {
     // ========================================================================
 
     /**
-     * Tinderbox item ID to use.
-     * Default is regular tinderbox; can be set to infernal axe combo.
+     * Acceptable tinderbox item IDs.
+     * Defaults to all tinderboxes (regular and golden).
      */
     @Builder.Default
-    int tinderboxItemId = ItemID.TINDERBOX;
+    List<Integer> tinderboxItemIds = ItemCollections.TINDERBOXES;
 
     // ========================================================================
     // Behavior Configuration

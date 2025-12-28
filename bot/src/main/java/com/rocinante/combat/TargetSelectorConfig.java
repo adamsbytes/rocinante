@@ -4,6 +4,7 @@ import lombok.Builder;
 import lombok.Singular;
 import lombok.Value;
 
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
@@ -39,6 +40,30 @@ public class TargetSelectorConfig {
      * Configuration for farming specific NPCs by ID.
      */
     public static TargetSelectorConfig forNpcIds(int... npcIds) {
+        TargetSelectorConfig.TargetSelectorConfigBuilder builder = TargetSelectorConfig.builder()
+                .priority(SelectionPriority.TARGETING_PLAYER)
+                .priority(SelectionPriority.SPECIFIC_ID)
+                .priority(SelectionPriority.NEAREST)
+                .searchRadius(15)
+                .skipInCombatWithOthers(true)
+                .skipUnreachable(true)
+                .maxCombatLevel(-1);
+
+        for (int id : npcIds) {
+            builder.targetNpcId(id);
+        }
+
+        return builder.build();
+    }
+
+    /**
+     * Configuration for farming specific NPCs by ID collection.
+     * NPCs are selected in priority order from the collection.
+     *
+     * @param npcIds collection of NPC IDs to target
+     * @return configured selector
+     */
+    public static TargetSelectorConfig forNpcIds(Collection<Integer> npcIds) {
         TargetSelectorConfig.TargetSelectorConfigBuilder builder = TargetSelectorConfig.builder()
                 .priority(SelectionPriority.TARGETING_PLAYER)
                 .priority(SelectionPriority.SPECIFIC_ID)

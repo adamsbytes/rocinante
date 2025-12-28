@@ -11,6 +11,7 @@ import net.runelite.api.coords.WorldPoint;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -96,6 +97,27 @@ public class ObjectQuestStep extends QuestStep {
         super(menuAction + " object");
         this.objectId = objectId;
         this.menuAction = menuAction;
+    }
+
+    /**
+     * Create an object quest step accepting any of the provided object IDs.
+     * Objects are checked in order - first match wins (for priority ordering).
+     *
+     * @param objectIds  acceptable object IDs, ordered by priority
+     * @param menuAction the menu action
+     * @param text       instruction text
+     */
+    public ObjectQuestStep(Collection<Integer> objectIds, String menuAction, String text) {
+        super(text);
+        if (objectIds == null || objectIds.isEmpty()) {
+            throw new IllegalArgumentException("objectIds must not be empty");
+        }
+        List<Integer> ids = new ArrayList<>(objectIds);
+        this.objectId = ids.get(0);
+        this.menuAction = menuAction;
+        if (ids.size() > 1) {
+            this.alternateObjectIds.addAll(ids.subList(1, ids.size()));
+        }
     }
 
     @Override

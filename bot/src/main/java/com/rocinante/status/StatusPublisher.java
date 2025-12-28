@@ -3,6 +3,7 @@ package com.rocinante.status;
 import com.rocinante.behavior.BreakScheduler;
 import com.rocinante.behavior.FatigueModel;
 import com.rocinante.core.GameStateService;
+import com.rocinante.quest.QuestService;
 import com.rocinante.state.PlayerState;
 import com.rocinante.tasks.Task;
 import com.rocinante.tasks.TaskExecutor;
@@ -11,12 +12,15 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.Player;
+import net.runelite.api.Skill;
 import net.runelite.api.VarPlayer;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.events.StatChanged;
 import net.runelite.client.eventbus.Subscribe;
 
 import javax.annotation.Nullable;
 import javax.inject.Inject;
+import javax.inject.Provider;
 import javax.inject.Singleton;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -25,7 +29,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -63,7 +69,7 @@ public class StatusPublisher {
     // ========================================================================
 
     private final Client client;
-    private final GameStateService gameStateService;
+    private final Provider<GameStateService> gameStateServiceProvider;
     
     @Setter
     @Nullable
@@ -81,9 +87,29 @@ public class StatusPublisher {
     @Nullable
     private BreakScheduler breakScheduler;
 
+    @Setter
+    @Nullable
+    private QuestService questService;
+
     // ========================================================================
     // State
     // ========================================================================
+
+    /**
+     * Cached quest data (expensive to compute, refreshed on demand).
+     */
+    @Nullable
+    private volatile BotStatus.QuestsData cachedQuestsData;
+
+    /**
+     * Flag to trigger quest data refresh on next tick.
+     */
+    private volatile boolean questRefreshPending = true;
+
+    /**
+     * Track skill levels to detect level-ups.
+     */
+    private final Map<Skill, Integer> lastKnownLevels = new HashMap<>();
 
     /**
      * Path to the status file.
@@ -111,9 +137,9 @@ public class StatusPublisher {
     private volatile BotStatus lastStatus;
 
     @Inject
-    public StatusPublisher(Client client, GameStateService gameStateService) {
+    public StatusPublisher(Client client, Provider<GameStateService> gameStateServiceProvider) {
         this.client = client;
-        this.gameStateService = gameStateService;
+        this.gameStateServiceProvider = gameStateServiceProvider;
         
         // Initialize status directory
         initializeStatusDirectory();
@@ -183,11 +209,85 @@ public class StatusPublisher {
             return;
         }
 
+        // Refresh quest data if pending (initial load, level up, or manual refresh)
+        if (questRefreshPending) {
+            refreshQuestData();
+            questRefreshPending = false;
+        }
+
         tickCounter++;
         if (tickCounter >= TICKS_BETWEEN_UPDATES) {
             tickCounter = 0;
             writeStatusIfNeeded();
         }
+    }
+
+    /**
+     * Handle stat changes to detect level-ups.
+     * When a skill levels up, quest requirements may now be met.
+     */
+    @Subscribe
+    public void onStatChanged(StatChanged event) {
+        if (!enabled.get()) {
+            return;
+        }
+
+        Skill skill = event.getSkill();
+        int newLevel = event.getLevel();
+        Integer lastLevel = lastKnownLevels.get(skill);
+
+        if (lastLevel != null && newLevel > lastLevel) {
+            log.info("Level up detected: {} {} -> {}, refreshing quest data", skill.getName(), lastLevel, newLevel);
+            questRefreshPending = true;
+        }
+
+        lastKnownLevels.put(skill, newLevel);
+    }
+
+    /**
+     * Force a refresh of quest data.
+     * Called from CommandProcessor when UI requests refresh.
+     */
+    public void requestQuestRefresh() {
+        log.info("Quest data refresh requested");
+        questRefreshPending = true;
+    }
+
+    /**
+     * Refresh the cached quest data from QuestService.
+     */
+    private void refreshQuestData() {
+        if (questService == null) {
+            log.debug("QuestService not available, skipping quest data refresh");
+            cachedQuestsData = BotStatus.QuestsData.empty();
+            return;
+        }
+
+        try {
+            log.debug("Refreshing quest data from QuestService...");
+            cachedQuestsData = buildQuestsData();
+            log.info("Quest data refreshed: {} quests available", 
+                    cachedQuestsData.getAvailable() != null ? cachedQuestsData.getAvailable().size() : 0);
+        } catch (Exception e) {
+            log.error("Failed to refresh quest data", e);
+            cachedQuestsData = BotStatus.QuestsData.empty();
+        }
+    }
+
+    /**
+     * Build quest data from QuestService.
+     * This is called on refresh and builds the full quest list with requirement status.
+     */
+    private BotStatus.QuestsData buildQuestsData() {
+        // TODO: Implement full quest data building from QuestService
+        // For now, return empty data - will be implemented when bot is working
+        return BotStatus.QuestsData.builder()
+                .lastUpdated(System.currentTimeMillis())
+                .available(List.of())
+                .completed(List.of())
+                .inProgress(List.of())
+                .totalQuestPoints(0)
+                .build();
     }
 
     /**
@@ -247,7 +347,7 @@ public class StatusPublisher {
         SessionStats sessionStats = SessionStats.capture(xpTracker, fatigueModel, breakScheduler);
 
         // Get player state
-        PlayerState playerState = gameStateService.getPlayerState();
+        PlayerState playerState = gameStateServiceProvider.get().getPlayerState();
 
         // Get player name
         String playerName = null;
@@ -272,7 +372,8 @@ public class StatusPublisher {
                 xpTracker,
                 playerName,
                 questPoints,
-                pendingTasks
+                pendingTasks,
+                cachedQuestsData
         );
     }
 

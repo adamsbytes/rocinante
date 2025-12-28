@@ -1,11 +1,13 @@
 package com.rocinante.tasks.impl;
 
 import com.rocinante.input.MenuHelper;
+import com.rocinante.input.SafeClickExecutor;
 import com.rocinante.input.WidgetClickHelper;
 import com.rocinante.state.InventoryState;
 import com.rocinante.state.PlayerState;
 import com.rocinante.tasks.AbstractTask;
 import com.rocinante.tasks.TaskContext;
+import com.rocinante.tasks.TaskState;
 import com.rocinante.timing.DelayProfile;
 import com.rocinante.util.Randomization;
 import lombok.Builder;
@@ -21,7 +23,6 @@ import net.runelite.api.Tile;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.widgets.Widget;
 
-import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.event.KeyEvent;
 import java.time.Duration;
@@ -254,6 +255,11 @@ public class BankTask extends AbstractTask {
     private NPC targetBanker;
 
     /**
+     * Sub-task for walking/traveling to bank when too far.
+     */
+    private WalkToTask walkSubTask;
+
+    /**
      * Whether an async operation is pending.
      */
     private boolean operationPending = false;
@@ -262,6 +268,11 @@ public class BankTask extends AbstractTask {
      * Ticks waiting for response.
      */
     private int waitTicks = 0;
+
+    /**
+     * Maximum distance (tiles) to directly interact without walking closer.
+     */
+    private static final int INTERACTION_DISTANCE = 15;
 
     /**
      * Maximum ticks to wait for bank to open.
@@ -468,12 +479,18 @@ public class BankTask extends AbstractTask {
             return;
         }
 
+        // Handle sub-task execution
+        if (walkSubTask != null) {
+            executeWalkSubTask(ctx);
+            return;
+        }
+
         switch (phase) {
             case FIND_BANK:
                 executeFindBank(ctx);
                 break;
-            case MOVE_TO_BANK:
-                executeMoveToBank(ctx);
+            case WALK_TO_BANK:
+                executeWalkToBank(ctx);
                 break;
             case OPEN_BANK:
                 executeOpenBank(ctx);
@@ -526,19 +543,42 @@ public class BankTask extends AbstractTask {
             return;
         }
 
-        // Find nearest bank booth
+        // Find both booth and banker, then randomly pick if both available
         targetBooth = findNearestBankBooth(ctx, playerPos);
+        targetBanker = findNearestBanker(ctx, playerPos);
+
+        if (targetBooth != null && targetBanker != null) {
+            // Both available - randomly pick for human-like behavior
+            if (ThreadLocalRandom.current().nextBoolean()) {
+                log.debug("Found both bank booth and banker - choosing booth");
+                targetBanker = null;
+            } else {
+                log.debug("Found both bank booth and banker - choosing banker");
+                targetBooth = null;
+            }
+        }
+
         if (targetBooth != null) {
             log.debug("Found bank booth {} at {}", targetBooth.getId(), targetBooth.getWorldLocation());
-            phase = BankPhase.MOVE_TO_BANK;
+            int distance = playerPos.distanceTo(targetBooth.getWorldLocation());
+            if (distance > INTERACTION_DISTANCE) {
+                log.debug("Bank booth is {} tiles away, walking closer first", distance);
+                phase = BankPhase.WALK_TO_BANK;
+            } else {
+                phase = BankPhase.OPEN_BANK;
+            }
             return;
         }
 
-        // Find nearest banker NPC
-        targetBanker = findNearestBanker(ctx, playerPos);
         if (targetBanker != null) {
             log.debug("Found banker {} at {}", targetBanker.getId(), targetBanker.getWorldLocation());
-            phase = BankPhase.MOVE_TO_BANK;
+            int distance = playerPos.distanceTo(targetBanker.getWorldLocation());
+            if (distance > INTERACTION_DISTANCE) {
+                log.debug("Banker is {} tiles away, walking closer first", distance);
+                phase = BankPhase.WALK_TO_BANK;
+            } else {
+                phase = BankPhase.OPEN_BANK;
+            }
             return;
         }
 
@@ -622,56 +662,55 @@ public class BankTask extends AbstractTask {
     }
 
     // ========================================================================
-    // Phase: Move to Bank
+    // Phase: Walk To Bank
     // ========================================================================
 
-    private void executeMoveToBank(TaskContext ctx) {
-        // Calculate click point on bank target
-        Point clickPoint;
-        Rectangle bounds;
-
-        if (targetBooth != null) {
-            bounds = targetBooth.getClickbox() != null ? 
-                    targetBooth.getClickbox().getBounds() : null;
-        } else if (targetBanker != null) {
-            bounds = targetBanker.getConvexHull() != null ?
-                    targetBanker.getConvexHull().getBounds() : null;
-        } else {
-            fail("Lost bank target");
-            return;
-        }
-
-        if (bounds == null || bounds.width == 0 || bounds.height == 0) {
-            // Target not on screen, might need to walk closer
-            log.debug("Bank target not visible, waiting...");
-            waitTicks++;
-            if (waitTicks > 10) {
-                fail("Bank target not visible");
-            }
-            return;
-        }
-
-        clickPoint = calculateClickPoint(bounds);
+    private void executeWalkToBank(TaskContext ctx) {
+        WorldPoint targetPos = null;
         
-        operationPending = true;
-        ctx.getMouseController().moveToCanvas(clickPoint.x, clickPoint.y)
-                .thenRun(() -> {
-                    operationPending = false;
-                    phase = BankPhase.OPEN_BANK;
-                })
-                .exceptionally(e -> {
-                    operationPending = false;
-                    log.error("Failed to move to bank", e);
-                    fail("Mouse movement failed");
-                    return null;
-                });
+        if (targetBooth != null) {
+            targetPos = targetBooth.getWorldLocation();
+        } else if (targetBanker != null) {
+            targetPos = targetBanker.getWorldLocation();
+        }
+
+        if (targetPos == null) {
+            fail("Lost bank target while traveling");
+            return;
+        }
+
+        // Create walk sub-task (uses WebWalker for optimal path including teleports)
+        walkSubTask = new WalkToTask(targetPos)
+                .withDescription("Travel to bank");
+        log.debug("Starting travel to bank at {}", targetPos);
+    }
+
+    private void executeWalkSubTask(TaskContext ctx) {
+        // Execute the walk task (handles state transitions automatically)
+        walkSubTask.execute(ctx);
+
+        // Check if walk is done
+        if (walkSubTask.getState().isTerminal()) {
+            if (walkSubTask.getState() == TaskState.COMPLETED) {
+                log.debug("Travel to bank completed, proceeding to open");
+                phase = BankPhase.OPEN_BANK;
+            } else {
+                log.warn("Travel to bank failed: {}", walkSubTask.getFailureReason());
+                fail("Failed to travel to bank");
+            }
+            walkSubTask = null;
+        }
     }
 
     // ========================================================================
-    // Phase: Open Bank
+    // Phase: Open Bank (uses SafeClickExecutor)
     // ========================================================================
 
     private void executeOpenBank(TaskContext ctx) {
+        if (operationPending) {
+            return;
+        }
+
         // Check for redundant action injection (3% chance per REQUIREMENTS.md 3.4.4)
         if (!redundantActionChecked) {
             redundantActionChecked = true;
@@ -681,22 +720,78 @@ public class BankTask extends AbstractTask {
                 log.debug("Injecting {} redundant bank open/close actions", redundantActionsRemaining);
             }
         }
-        
-        log.debug("Clicking to open bank");
 
-        operationPending = true;
-        ctx.getMouseController().click()
-                .thenRun(() -> {
-                    operationPending = false;
+        SafeClickExecutor safeClick = ctx.getSafeClickExecutor();
+
+        if (targetBooth != null) {
+            // Click bank booth
+            Rectangle bounds = targetBooth.getClickbox() != null ?
+                    targetBooth.getClickbox().getBounds() : null;
+            if (bounds == null || bounds.width == 0) {
+                log.debug("Bank booth not visible, walking closer...");
+                waitTicks++;
+                if (waitTicks > 5) {
+                    // Target not visible, need to walk closer
+                    phase = BankPhase.WALK_TO_BANK;
                     waitTicks = 0;
-                    phase = BankPhase.WAIT_BANK_OPEN;
-                })
-                .exceptionally(e -> {
-                    operationPending = false;
-                    log.error("Failed to click bank", e);
-                    fail("Click failed");
-                    return null;
-                });
+                }
+                return;
+            }
+
+            log.debug("Clicking bank booth");
+            operationPending = true;
+            safeClick.clickObject(targetBooth, "Bank")
+                    .thenAccept(success -> {
+                        operationPending = false;
+                        if (success) {
+                            waitTicks = 0;
+                            phase = BankPhase.WAIT_BANK_OPEN;
+                        } else {
+                            fail("Failed to click bank booth");
+                        }
+                    })
+                    .exceptionally(e -> {
+                        operationPending = false;
+                        log.error("Bank booth click failed", e);
+                        fail("Click failed: " + e.getMessage());
+                        return null;
+                    });
+        } else if (targetBanker != null) {
+            // Click banker NPC
+            Rectangle bounds = targetBanker.getConvexHull() != null ?
+                    targetBanker.getConvexHull().getBounds() : null;
+            if (bounds == null || bounds.width == 0) {
+                log.debug("Banker not visible, walking closer...");
+                waitTicks++;
+                if (waitTicks > 5) {
+                    // Target not visible, need to walk closer
+                    phase = BankPhase.WALK_TO_BANK;
+                    waitTicks = 0;
+                }
+                return;
+            }
+
+            log.debug("Clicking banker");
+            operationPending = true;
+            safeClick.clickNpc(targetBanker, "Bank")
+                    .thenAccept(success -> {
+                        operationPending = false;
+                        if (success) {
+                            waitTicks = 0;
+                            phase = BankPhase.WAIT_BANK_OPEN;
+                        } else {
+                            fail("Failed to click banker");
+                        }
+                    })
+                    .exceptionally(e -> {
+                        operationPending = false;
+                        log.error("Banker click failed", e);
+                        fail("Click failed: " + e.getMessage());
+                        return null;
+                    });
+        } else {
+            fail("Lost bank target");
+        }
     }
 
     // ========================================================================
@@ -743,9 +838,11 @@ public class BankTask extends AbstractTask {
 
         waitTicks++;
         if (waitTicks > BANK_OPEN_TIMEOUT) {
-            // Try clicking again
-            log.debug("Bank didn't open, retrying...");
-            phase = BankPhase.MOVE_TO_BANK;
+            // Go back to FIND_BANK to re-evaluate (target may have moved, we may be too far)
+            log.debug("Bank didn't open, re-evaluating...");
+            phase = BankPhase.FIND_BANK;
+            targetBooth = null;
+            targetBanker = null;
             waitTicks = 0;
         }
     }
@@ -1208,11 +1305,6 @@ public class BankTask extends AbstractTask {
         return bankContainer != null && !bankContainer.isHidden();
     }
 
-    private Point calculateClickPoint(Rectangle bounds) {
-        // Use centralized ClickPointCalculator for humanized click points
-        return com.rocinante.input.ClickPointCalculator.getGaussianClickPoint(bounds);
-    }
-
     @Override
     public String getDescription() {
         if (description != null) {
@@ -1266,7 +1358,7 @@ public class BankTask extends AbstractTask {
      */
     private enum BankPhase {
         FIND_BANK,
-        MOVE_TO_BANK,
+        WALK_TO_BANK,
         OPEN_BANK,
         WAIT_BANK_OPEN,
         SET_QUANTITY_MODE,

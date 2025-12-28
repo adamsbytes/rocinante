@@ -41,7 +41,7 @@ public class UnlockTrackerTest {
     @Before
     public void setUp() {
         when(client.getGameState()).thenReturn(GameState.LOGGED_IN);
-        unlockTracker = new UnlockTracker(client, gameStateService);
+        unlockTracker = new UnlockTracker(client, () -> gameStateService);
     }
 
     // ========================================================================

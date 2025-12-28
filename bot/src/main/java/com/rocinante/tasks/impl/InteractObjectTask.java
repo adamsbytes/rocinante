@@ -1,5 +1,6 @@
 package com.rocinante.tasks.impl;
 
+import com.rocinante.input.SafeClickExecutor;
 import com.rocinante.state.PlayerState;
 import com.rocinante.tasks.AbstractTask;
 import com.rocinante.tasks.TaskContext;
@@ -25,7 +26,9 @@ import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.Shape;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -239,6 +242,26 @@ public class InteractObjectTask extends AbstractTask {
         this.objectId = objectId;
         this.menuAction = menuAction;
         this.timeout = Duration.ofSeconds(30);
+    }
+
+    /**
+     * Create an interact object task accepting any of the provided object IDs.
+     * Objects are checked in order - first match wins (for priority ordering).
+     *
+     * @param objectIds  acceptable object IDs, ordered by priority
+     * @param menuAction the menu action text
+     */
+    public InteractObjectTask(Collection<Integer> objectIds, String menuAction) {
+        if (objectIds == null || objectIds.isEmpty()) {
+            throw new IllegalArgumentException("objectIds must not be empty");
+        }
+        List<Integer> ids = new ArrayList<>(objectIds);
+        this.objectId = ids.get(0);
+        this.menuAction = menuAction;
+        this.timeout = Duration.ofSeconds(30);
+        if (ids.size() > 1) {
+            this.alternateObjectIds.addAll(ids.subList(1, ids.size()));
+        }
     }
 
     // ========================================================================
@@ -583,19 +606,21 @@ public class InteractObjectTask extends AbstractTask {
             return;
         }
 
-        log.debug("Left-clicking object {} (action '{}' is default)", objectId, menuAction);
-
-        // Start async click
+        log.debug("Clicking object {} (action '{}')", objectId, menuAction);
         clickPending = true;
 
-        // Use humanized click via mouse controller
-        CompletableFuture<Void> clickFuture = ctx.getMouseController().click();
-
-        clickFuture.thenRun(() -> {
+        // Use SafeClickExecutor for overlap-aware clicking
+        ctx.getSafeClickExecutor().clickObject(targetObject, menuAction != null ? menuAction : "")
+                .thenAccept(success -> {
             clickPending = false;
+                    if (success) {
             interactionTicks = 0;
             phase = InteractionPhase.WAIT_RESPONSE;
-        }).exceptionally(e -> {
+                    } else {
+                        fail("Click failed for object " + objectId);
+                    }
+                })
+                .exceptionally(e -> {
             clickPending = false;
             log.error("Click failed", e);
             fail("Click failed: " + e.getMessage());

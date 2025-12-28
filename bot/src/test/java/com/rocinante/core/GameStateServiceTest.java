@@ -94,9 +94,9 @@ public class GameStateServiceTest {
                 null,  // ironmanState
                 playerProfile, fatigueModel, breakScheduler, attentionModel,
                 null,  // xpTracker
-                null,  // taskExecutorProvider
-                weaponDataService, npcCombatDataLoader, projectileDataLoader,
-                slayerPluginService);
+                weaponDataService, npcCombatDataLoader, projectileDataLoader);
+        // Wire SlayerPluginService via setter (optional)
+        gameStateService.setSlayerPluginService(slayerPluginService);
     }
 
     // ========================================================================

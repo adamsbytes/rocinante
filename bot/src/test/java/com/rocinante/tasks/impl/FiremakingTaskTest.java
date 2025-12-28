@@ -68,7 +68,7 @@ public class FiremakingTaskTest {
         // Set up TaskContext with inventory click helper
         taskContext = new TaskContext(
                 client, 
-                gameStateService, 
+                () -> gameStateService, 
                 mouseController, 
                 keyboardController, 
                 humanTimer,

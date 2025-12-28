@@ -1,5 +1,6 @@
 package com.rocinante.tasks.impl;
 
+import com.rocinante.input.SafeClickExecutor;
 import com.rocinante.state.PlayerState;
 import com.rocinante.tasks.AbstractTask;
 import com.rocinante.tasks.TaskContext;
@@ -21,6 +22,7 @@ import java.awt.Rectangle;
 import java.awt.Shape;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -252,6 +254,26 @@ public class InteractNpcTask extends AbstractTask {
         this.npcId = npcId;
         this.menuAction = menuAction;
         this.timeout = Duration.ofSeconds(30);
+    }
+
+    /**
+     * Create an interact NPC task accepting any of the provided NPC IDs.
+     * NPCs are checked in order - first match wins (for priority ordering).
+     *
+     * @param npcIds     acceptable NPC IDs, ordered by priority
+     * @param menuAction the menu action text
+     */
+    public InteractNpcTask(Collection<Integer> npcIds, String menuAction) {
+        if (npcIds == null || npcIds.isEmpty()) {
+            throw new IllegalArgumentException("npcIds must not be empty");
+        }
+        List<Integer> ids = new ArrayList<>(npcIds);
+        this.npcId = ids.get(0);
+        this.menuAction = menuAction;
+        this.timeout = Duration.ofSeconds(30);
+        if (ids.size() > 1) {
+            this.alternateNpcIds.addAll(ids.subList(1, ids.size()));
+        }
     }
 
     // ========================================================================
@@ -642,18 +664,21 @@ public class InteractNpcTask extends AbstractTask {
             return;
         }
 
-        log.debug("Left-clicking NPC {} (action '{}' is default)", getNpcDescription(), menuAction);
-
-        // Start async click
+        log.debug("Clicking NPC {} (action '{}')", getNpcDescription(), menuAction);
         clickPending = true;
 
-        CompletableFuture<Void> clickFuture = ctx.getMouseController().click();
-
-        clickFuture.thenRun(() -> {
+        // Use SafeClickExecutor for overlap-aware clicking
+        ctx.getSafeClickExecutor().clickNpc(targetNpc, menuAction != null ? menuAction : "")
+                .thenAccept(success -> {
             clickPending = false;
+                    if (success) {
             interactionTicks = 0;
             phase = NpcInteractionPhase.WAIT_RESPONSE;
-        }).exceptionally(e -> {
+                    } else {
+                        fail("Click failed for NPC " + getNpcDescription());
+                    }
+                })
+                .exceptionally(e -> {
             clickPending = false;
             log.error("Click failed", e);
             fail("Click failed: " + e.getMessage());

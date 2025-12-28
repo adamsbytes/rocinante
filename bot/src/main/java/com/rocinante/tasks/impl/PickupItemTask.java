@@ -12,6 +12,7 @@ import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.coords.WorldPoint;
 
+import javax.annotation.Nullable;
 import java.time.Duration;
 import java.util.Optional;
 
@@ -263,27 +264,75 @@ public class PickupItemTask extends AbstractTask {
     // ========================================================================
 
     private void executeClickItem(TaskContext ctx) {
-        GroundItemClickHelper groundItemHelper = ctx.getGroundItemClickHelper();
-
         log.debug("Clicking ground item '{}' at {}", itemName, targetLocation);
         operationPending = true;
 
-        groundItemHelper.clickGroundItem(targetLocation, itemId, itemName)
-                .thenAccept(success -> {
-                    operationPending = false;
-                    if (success) {
-                        pickupTicks = 0;
-                        phase = PickupPhase.WAIT_PICKUP;
-                    } else {
-                        fail("Failed to click ground item: " + itemName);
-                    }
-                })
-                .exceptionally(e -> {
-                    operationPending = false;
-                    log.error("Failed to click ground item", e);
-                    fail("Click failed: " + e.getMessage());
-                    return null;
-                });
+        // Get canvas position of the ground item
+        net.runelite.api.Point canvasPoint = getGroundItemCanvasPoint(ctx, targetLocation);
+        if (canvasPoint == null) {
+            log.warn("Cannot get canvas position for ground item at {}", targetLocation);
+            fail("Ground item not visible");
+            return;
+        }
+
+        // Use SafeClickExecutor if available for overlap protection
+        com.rocinante.input.SafeClickExecutor safeClick = ctx.getSafeClickExecutor();
+        if (safeClick != null) {
+            java.awt.Point awtPoint = new java.awt.Point(canvasPoint.getX(), canvasPoint.getY());
+            safeClick.clickGroundItem(awtPoint, itemName)
+                    .thenAccept(success -> {
+                        operationPending = false;
+                        if (success) {
+                            pickupTicks = 0;
+                            phase = PickupPhase.WAIT_PICKUP;
+                        } else {
+                            fail("Failed to click ground item: " + itemName);
+                        }
+                    })
+                    .exceptionally(e -> {
+                        operationPending = false;
+                        log.error("Failed to click ground item", e);
+                        fail("Click failed: " + e.getMessage());
+                        return null;
+                    });
+        } else {
+            // Fallback to GroundItemClickHelper
+            GroundItemClickHelper groundItemHelper = ctx.getGroundItemClickHelper();
+            groundItemHelper.clickGroundItem(targetLocation, itemId, itemName)
+                    .thenAccept(success -> {
+                        operationPending = false;
+                        if (success) {
+                            pickupTicks = 0;
+                            phase = PickupPhase.WAIT_PICKUP;
+                        } else {
+                            fail("Failed to click ground item: " + itemName);
+                        }
+                    })
+                    .exceptionally(e -> {
+                        operationPending = false;
+                        log.error("Failed to click ground item", e);
+                        fail("Click failed: " + e.getMessage());
+                        return null;
+                    });
+        }
+    }
+
+    /**
+     * Get canvas point for a ground item at a world location.
+     */
+    @Nullable
+    private net.runelite.api.Point getGroundItemCanvasPoint(TaskContext ctx, WorldPoint worldPos) {
+        net.runelite.api.Client client = ctx.getClient();
+        if (client == null || worldPos == null) {
+            return null;
+        }
+
+        net.runelite.api.coords.LocalPoint localPoint = net.runelite.api.coords.LocalPoint.fromWorld(client, worldPos);
+        if (localPoint == null) {
+            return null;
+        }
+
+        return net.runelite.api.Perspective.localToCanvas(client, localPoint, client.getPlane(), 0);
     }
 
     // ========================================================================

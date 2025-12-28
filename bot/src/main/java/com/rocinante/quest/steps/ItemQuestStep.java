@@ -13,6 +13,8 @@ import lombok.experimental.Accessors;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -54,9 +56,15 @@ public class ItemQuestStep extends QuestStep {
     }
 
     /**
-     * The primary item ID.
+     * The primary item ID (legacy, for single item).
      */
     private final int itemId;
+
+    /**
+     * Acceptable source item IDs (for multi-item support).
+     * Ordered by priority - first match wins.
+     */
+    private List<Integer> sourceItemIds;
 
     /**
      * The action to perform.
@@ -64,9 +72,15 @@ public class ItemQuestStep extends QuestStep {
     private ItemAction action = ItemAction.USE;
 
     /**
-     * Target object ID (for USE_ON_OBJECT).
+     * Target object ID (for USE_ON_OBJECT, single object).
      */
     private int targetObjectId = -1;
+
+    /**
+     * Acceptable target object IDs (for USE_ON_OBJECT with multi-object support).
+     * Ordered by priority - first match wins.
+     */
+    private List<Integer> targetObjectIds;
 
     /**
      * Target NPC ID (for USE_ON_NPC).
@@ -74,12 +88,18 @@ public class ItemQuestStep extends QuestStep {
     private int targetNpcId = -1;
 
     /**
-     * Target item ID (for USE_ON_ITEM).
+     * Target item ID (for USE_ON_ITEM, single item).
      */
     private int targetItemId = -1;
 
     /**
-     * Create an item quest step.
+     * Acceptable target item IDs (for USE_ON_ITEM with multi-item support).
+     * Ordered by priority - first match wins.
+     */
+    private List<Integer> targetItemIds;
+
+    /**
+     * Create an item quest step with a single item.
      *
      * @param itemId the item ID
      * @param text   instruction text
@@ -87,6 +107,20 @@ public class ItemQuestStep extends QuestStep {
     public ItemQuestStep(int itemId, String text) {
         super(text);
         this.itemId = itemId;
+        this.sourceItemIds = null; // Use itemId
+    }
+
+    /**
+     * Create an item quest step with multiple acceptable items.
+     * Items are checked in order - first match wins (for priority ordering).
+     *
+     * @param itemIds acceptable item IDs, ordered by priority
+     * @param text    instruction text
+     */
+    public ItemQuestStep(Collection<Integer> itemIds, String text) {
+        super(text);
+        this.itemId = itemIds.iterator().next(); // Legacy compatibility
+        this.sourceItemIds = new ArrayList<>(itemIds);
     }
 
     @Override
@@ -106,22 +140,29 @@ public class ItemQuestStep extends QuestStep {
                 break;
 
             case USE_ON_OBJECT:
-                if (targetObjectId < 0) {
+                if (targetObjectId < 0 && (targetObjectIds == null || targetObjectIds.isEmpty())) {
                     log.error("USE_ON_OBJECT requires a target object ID");
                     throw new IllegalStateException("Target object ID not set for USE_ON_OBJECT action");
                 }
-                log.debug("Creating UseItemOnObjectTask for item {} on object {}", itemId, targetObjectId);
-                tasks.add(new UseItemOnObjectTask(itemId, targetObjectId)
+                // Use collections if available, otherwise fall back to single IDs
+                List<Integer> objectItems = sourceItemIds != null ? sourceItemIds : Collections.singletonList(itemId);
+                List<Integer> objectTargets = targetObjectIds != null && !targetObjectIds.isEmpty()
+                        ? targetObjectIds : Collections.singletonList(targetObjectId);
+                log.debug("Creating UseItemOnObjectTask for items {} on objects {}", objectItems, objectTargets);
+                tasks.add(new UseItemOnObjectTask(objectItems, objectTargets)
                         .withDescription(getText()));
                 break;
 
             case USE_ON_ITEM:
-                if (targetItemId < 0) {
+                if (targetItemId < 0 && (targetItemIds == null || targetItemIds.isEmpty())) {
                     log.error("USE_ON_ITEM requires a target item ID");
                     throw new IllegalStateException("Target item ID not set for USE_ON_ITEM action");
                 }
-                log.debug("Creating UseItemOnItemTask for item {} on item {}", itemId, targetItemId);
-                tasks.add(new UseItemOnItemTask(itemId, targetItemId)
+                // Use collections if available, otherwise fall back to single IDs
+                List<Integer> sources = sourceItemIds != null ? sourceItemIds : Collections.singletonList(itemId);
+                List<Integer> targets = targetItemIds != null ? targetItemIds : Collections.singletonList(targetItemId);
+                log.debug("Creating UseItemOnItemTask for items {} on items {}", sources, targets);
+                tasks.add(new UseItemOnItemTask(sources, targets)
                         .withDescription(getText()));
                 break;
 
@@ -217,6 +258,52 @@ public class ItemQuestStep extends QuestStep {
     }
 
     /**
+     * Create a step to use any of the provided items on an object.
+     *
+     * @param itemIds  acceptable item IDs
+     * @param objectId the target object ID
+     * @param text     instruction text
+     * @return item step
+     */
+    public static ItemQuestStep useOn(Collection<Integer> itemIds, int objectId, String text) {
+        ItemQuestStep step = new ItemQuestStep(itemIds, text);
+        step.action = ItemAction.USE_ON_OBJECT;
+        step.targetObjectId = objectId;
+        return step;
+    }
+
+    /**
+     * Create a step to use an item on any of the provided objects.
+     *
+     * @param itemId    the item ID
+     * @param objectIds acceptable object IDs, ordered by priority
+     * @param text      instruction text
+     * @return the quest step
+     */
+    public static ItemQuestStep useOn(int itemId, Collection<Integer> objectIds, String text) {
+        ItemQuestStep step = new ItemQuestStep(itemId, text);
+        step.action = ItemAction.USE_ON_OBJECT;
+        step.targetObjectIds = new ArrayList<>(objectIds);
+        return step;
+    }
+
+    /**
+     * Create a step to use any of the provided items on any of the provided objects.
+     * Both items and objects are checked in order - first match wins (for priority ordering).
+     *
+     * @param itemIds   acceptable item IDs, ordered by priority
+     * @param objectIds acceptable object IDs, ordered by priority
+     * @param text      instruction text
+     * @return the quest step
+     */
+    public static ItemQuestStep useOn(Collection<Integer> itemIds, Collection<Integer> objectIds, String text) {
+        ItemQuestStep step = new ItemQuestStep(itemIds, text);
+        step.action = ItemAction.USE_ON_OBJECT;
+        step.targetObjectIds = new ArrayList<>(objectIds);
+        return step;
+    }
+
+    /**
      * Create a step to use an item on an NPC.
      *
      * @param itemId the item ID
@@ -243,6 +330,23 @@ public class ItemQuestStep extends QuestStep {
         ItemQuestStep step = new ItemQuestStep(itemId, text);
         step.action = ItemAction.USE_ON_ITEM;
         step.targetItemId = targetItemId;
+        return step;
+    }
+
+    /**
+     * Create a step to use any of the source items on any of the target items.
+     * Useful for flexible tasks like "light fire with any logs".
+     * Items are checked in order - first match wins (for priority ordering).
+     *
+     * @param sourceItemIds acceptable source item IDs, ordered by priority
+     * @param targetItemIds acceptable target item IDs, ordered by priority
+     * @param text          instruction text
+     * @return item step
+     */
+    public static ItemQuestStep useOnItem(Collection<Integer> sourceItemIds, Collection<Integer> targetItemIds, String text) {
+        ItemQuestStep step = new ItemQuestStep(sourceItemIds, text);
+        step.action = ItemAction.USE_ON_ITEM;
+        step.targetItemIds = new ArrayList<>(targetItemIds);
         return step;
     }
 

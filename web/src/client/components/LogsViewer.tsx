@@ -69,12 +69,16 @@ export const LogsViewer: Component<LogsViewerProps> = (props) => {
 
   onMount(() => {
     connectToLogs();
+    // Lock body scroll while modal is open
+    document.body.style.overflow = 'hidden';
   });
 
   onCleanup(() => {
     if (abortController) {
       abortController.abort();
     }
+    // Restore body scroll when modal closes
+    document.body.style.overflow = '';
   });
 
   const handleScroll = () => {
@@ -208,7 +212,7 @@ export const LogsViewer: Component<LogsViewerProps> = (props) => {
         <div
           ref={logsContainer}
           onScroll={handleScroll}
-          class="flex-1 overflow-auto bg-[var(--bg-secondary)] min-h-[400px]"
+          class="flex-1 overflow-auto bg-[var(--bg-secondary)] min-h-[400px] overscroll-contain"
         >
           <Show
             when={logs().length > 0}

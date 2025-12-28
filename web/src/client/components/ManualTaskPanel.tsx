@@ -1,4 +1,4 @@
-import { type Component, createSignal, Show, For } from 'solid-js';
+import { type Component, createSignal, Show, For, Switch, Match, Suspense } from 'solid-js';
 import type { StatusStore } from '../lib/statusStore';
 import type { TaskSpec } from '../../shared/types';
 import { SkillTaskForm } from './task-forms/SkillTaskForm';
@@ -163,33 +163,37 @@ export const ManualTaskPanel: Component<ManualTaskPanelProps> = (props) => {
         )}
       </Show>
 
-      {/* Tab content */}
-      <div class="p-4">
-        <Show when={activeTab() === 'skills'}>
+      {/* Tab content - Suspense prevents resource loading from bubbling up to page-level Suspense */}
+      <div class="p-4 min-h-[400px]">
+        <Suspense fallback={<div class="text-gray-400 text-sm py-4">Loading...</div>}>
+          <Switch>
+            <Match when={activeTab() === 'skills'}>
           <SkillTaskForm
             onSubmit={handleSubmitTask}
             playerSkills={props.playerSkills}
             submitting={submitting()}
           />
-        </Show>
-        <Show when={activeTab() === 'combat'}>
+            </Match>
+            <Match when={activeTab() === 'combat'}>
           <CombatTaskForm
             onSubmit={handleSubmitTask}
             submitting={submitting()}
           />
-        </Show>
-        <Show when={activeTab() === 'navigation'}>
+            </Match>
+            <Match when={activeTab() === 'navigation'}>
           <NavigationTaskForm
             onSubmit={handleSubmitTask}
             submitting={submitting()}
           />
-        </Show>
-        <Show when={activeTab() === 'quests'}>
+            </Match>
+            <Match when={activeTab() === 'quests'}>
           <QuestTaskForm
             onSubmit={handleSubmitTask}
             submitting={submitting()}
           />
-        </Show>
+            </Match>
+          </Switch>
+        </Suspense>
       </div>
     </div>
   );

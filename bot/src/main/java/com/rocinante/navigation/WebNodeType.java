@@ -43,6 +43,11 @@ public enum WebNodeType {
     /**
      * Training area.
      */
-    TRAINING
+    TRAINING,
+
+    /**
+     * Grand Exchange.
+     */
+    GRAND_EXCHANGE
 }
 

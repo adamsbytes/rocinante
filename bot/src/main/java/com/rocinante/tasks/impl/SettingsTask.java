@@ -36,7 +36,7 @@ import java.util.function.Predicate;
  * 
  * // Custom setting
  * SettingsTask.builder()
- *     .category(SettingsCategory.DISPLAY)
+ *     .category(SettingsCategory.INTERFACES)
  *     .settingText("Fixed - Classic layout")
  *     .build()
  * </pre>
@@ -57,14 +57,14 @@ public class SettingsTask extends AbstractTask {
     /** Full settings interface group ID */
     private static final int SETTINGS_GROUP = 134;
     
-    /** Settings categories container (child 17) */
-    private static final int SETTINGS_CATEGORIES = 17;
+    /** Settings categories tabs - the actual clickable tabs (child 25) */
+    private static final int SETTINGS_CATEGORIES_TABS = 25;
     
     /** Settings content area where options appear (child 19) */
     private static final int SETTINGS_CONTENT = 19;
     
-    /** Settings content scrollbar (child 20) */
-    private static final int SETTINGS_SCROLLBAR = 20;
+    /** Settings scrollbar (child 21) */
+    private static final int SETTINGS_SCROLLBAR = 21;
     
     /** Close button for settings (child 4) */
     private static final int SETTINGS_CLOSE = 4;
@@ -78,17 +78,18 @@ public class SettingsTask extends AbstractTask {
     
     /**
      * Settings categories available in the full settings panel.
+     * Names must match exactly what appears in the OSRS settings interface.
      */
     public enum SettingsCategory {
         ALL_SETTINGS("All Settings", 0),
-        DISPLAY("Display", 1),
+        ACTIVITIES("Activities", 1),
         AUDIO("Audio", 2),
         CHAT("Chat", 3),
         CONTROLS("Controls", 4),
-        KEYBINDS("Keybinds", 5),
+        DISPLAY("Display", 5),
         GAMEPLAY("Gameplay", 6),
-        WARNINGS("Warnings", 7),
-        ACCOUNT("Account", 8);
+        INTERFACES("Interfaces", 7),  // Game client layout settings are here
+        WARNINGS("Warnings", 8);
         
         @Getter
         private final String name;
@@ -129,6 +130,8 @@ public class SettingsTask extends AbstractTask {
         WAIT_FOR_FULL_SETTINGS,
         SELECT_CATEGORY,
         WAIT_FOR_CATEGORY,
+        CLICK_DROPDOWN,           // NEW: For dropdown settings - click the dropdown
+        WAIT_FOR_DROPDOWN,        // NEW: Wait for dropdown options to appear
         FIND_AND_CLICK_SETTING,
         SCROLL_TO_SETTING,
         VERIFY_CHANGE,
@@ -147,7 +150,7 @@ public class SettingsTask extends AbstractTask {
     /** The category to navigate to */
     private final SettingsCategory category;
     
-    /** Text to search for in settings content */
+    /** Text to search for in settings content (or dropdown option text if isDropdown) */
     private final String settingText;
     
     /** Optional predicate to match specific widget */
@@ -155,6 +158,12 @@ public class SettingsTask extends AbstractTask {
     
     /** Whether to close settings after changing */
     private final boolean closeAfter;
+    
+    /** If true, settingText is a dropdown option and we need to click the dropdown first */
+    private final boolean isDropdownSetting;
+    
+    /** Label text for finding the dropdown (e.g., "Game client layout") */
+    private final String dropdownLabelText;
     
     /** Current sub-task being executed */
     private Task currentSubTask;
@@ -176,12 +185,21 @@ public class SettingsTask extends AbstractTask {
     // ========================================================================
     
     private SettingsTask(SettingsCategory category, String settingText, 
-                         Predicate<Widget> settingMatcher, boolean closeAfter, String taskDescription) {
+                         Predicate<Widget> settingMatcher, boolean closeAfter, String taskDescription,
+                         boolean isDropdownSetting, String dropdownLabelText) {
         this.category = category;
         this.settingText = settingText;
         this.settingMatcher = settingMatcher;
         this.closeAfter = closeAfter;
+        this.isDropdownSetting = isDropdownSetting;
+        this.dropdownLabelText = dropdownLabelText;
         this.description = taskDescription != null ? taskDescription : "Change setting: " + settingText;
+    }
+    
+    // Legacy constructor for non-dropdown settings
+    private SettingsTask(SettingsCategory category, String settingText, 
+                         Predicate<Widget> settingMatcher, boolean closeAfter, String taskDescription) {
+        this(category, settingText, settingMatcher, closeAfter, taskDescription, false, null);
     }
 
     // ========================================================================
@@ -190,27 +208,33 @@ public class SettingsTask extends AbstractTask {
     
     /**
      * Create a task to set the interface to Fixed mode.
+     * This is a dropdown setting - we need to click the dropdown first, then select the option.
      */
     public static SettingsTask setFixedMode() {
         return new SettingsTask(
-            SettingsCategory.DISPLAY,
-            InterfaceModeOption.FIXED.getText(),
+            SettingsCategory.INTERFACES,
+            InterfaceModeOption.FIXED.getText(),  // "Fixed - Classic layout"
             null,
             true,
-            "Set interface to Fixed mode"
+            "Set interface to Fixed mode",
+            true,                                  // This is a dropdown setting
+            "Game client layout"                   // The dropdown label
         );
     }
     
     /**
      * Create a task to set a specific interface mode.
+     * This is a dropdown setting - we need to click the dropdown first, then select the option.
      */
     public static SettingsTask setInterfaceMode(InterfaceModeOption mode) {
         return new SettingsTask(
-            SettingsCategory.DISPLAY,
+            SettingsCategory.INTERFACES,
             mode.getText(),
             null,
             true,
-            "Set interface to " + mode.name() + " mode"
+            "Set interface to " + mode.name() + " mode",
+            true,                                  // This is a dropdown setting
+            "Game client layout"                   // The dropdown label
         );
     }
     
@@ -320,6 +344,12 @@ public class SettingsTask extends AbstractTask {
                 break;
             case WAIT_FOR_CATEGORY:
                 executeWaitForCategory(ctx);
+                break;
+            case CLICK_DROPDOWN:
+                executeClickDropdown(ctx);
+                break;
+            case WAIT_FOR_DROPDOWN:
+                executeWaitForDropdown(ctx);
                 break;
             case FIND_AND_CLICK_SETTING:
                 executeFindAndClickSetting(ctx);
@@ -433,27 +463,136 @@ public class SettingsTask extends AbstractTask {
             return;
         }
         
-        // Find the category widget by text
-        Widget categoriesContainer = client.getWidget(SETTINGS_GROUP, SETTINGS_CATEGORIES);
+        // Find the category tabs container
+        Widget categoriesContainer = client.getWidget(SETTINGS_GROUP, SETTINGS_CATEGORIES_TABS);
         if (categoriesContainer == null || categoriesContainer.isHidden()) {
-            log.debug("Waiting for categories container");
+            log.debug("Waiting for categories tabs container");
             return;
         }
         
-        Widget categoryWidget = findChildByText(categoriesContainer, category.getName());
-        if (categoryWidget != null) {
-            // Create WidgetInteractTask to click the category
-            log.debug("Clicking category: {}", category.getName());
-            currentSubTask = createWidgetClickTask(categoryWidget, "Category: " + category.getName());
+        Widget categoryWidget = null;
+        int categoryEnumIndex = category.getIndex();
+        
+        Widget[] dynamicChildren = categoriesContainer.getDynamicChildren();
+        
+        // Widget structure verified from logs:
+        // Index 9=Activities, 19=Audio, 29=Chat, 39=Controls, 49=Display, 59=Gameplay, 69=Interfaces, 79=Warnings
+        // Formula: widgetIndex = (categoryEnumIndex * 10) - 1
+        // Note: ALL_SETTINGS(0) is not a clickable tab in this container
+        
+        if (categoryEnumIndex == 0) {
+            log.warn("ALL_SETTINGS is not a clickable category tab - use a specific category");
+            currentPhase = Phase.DONE;
+            transitionTo(TaskState.FAILED);
+            return;
+        }
+        
+        int widgetIndex = (categoryEnumIndex * 10) - 1;
+        
+        if (dynamicChildren != null && widgetIndex >= 0 && widgetIndex < dynamicChildren.length) {
+            categoryWidget = dynamicChildren[widgetIndex];
+            log.debug("Found category {} at dynamic child index {} (enum index {}, {} total children)", 
+                    category.getName(), widgetIndex, categoryEnumIndex, dynamicChildren.length);
+            
+            // Create WidgetInteractTask using the parent container + dynamic child index
+            // NOT using widget.getId() which returns the parent's ID for dynamic children!
+            currentSubTask = new WidgetInteractTask(SETTINGS_GROUP, SETTINGS_CATEGORIES_TABS)
+                    .withDynamicChild(widgetIndex)
+                    .withDescription("Category: " + category.getName())
+                    .withForceClick(true);
             advancePhase(Phase.WAIT_FOR_CATEGORY);
         } else {
-            log.warn("Could not find category widget for: {}", category.getName());
+            log.warn("Could not find category widget for: {} (index {} out of range)", 
+                    category.getName(), widgetIndex);
         }
     }
     
     private void executeWaitForCategory(TaskContext ctx) {
         // Give time for category content to load
         if (ticksInPhase >= 2) {
+            if (isDropdownSetting && dropdownLabelText != null) {
+                advancePhase(Phase.CLICK_DROPDOWN);
+            } else {
+            advancePhase(Phase.FIND_AND_CLICK_SETTING);
+            }
+        }
+    }
+    
+    /**
+     * Click the dropdown button to open dropdown options.
+     * For dropdown settings, we find the label (e.g., "Game client layout") 
+     * and then click the dropdown widget next to it.
+     */
+    private void executeClickDropdown(TaskContext ctx) {
+        Client client = ctx.getClient();
+        
+        Widget contentContainer = client.getWidget(SETTINGS_GROUP, SETTINGS_CONTENT);
+        if (contentContainer == null || contentContainer.isHidden()) {
+            log.debug("Waiting for settings content for dropdown");
+            return;
+        }
+        
+        Widget[] dynamicChildren = contentContainer.getDynamicChildren();
+        if (dynamicChildren == null) {
+            log.warn("Content container has no dynamic children");
+            return;
+        }
+        
+        // Find the label widget (e.g., "Game client layout")
+        int labelIndex = -1;
+        for (int i = 0; i < dynamicChildren.length; i++) {
+            Widget child = dynamicChildren[i];
+            if (child != null) {
+                String text = child.getText();
+                if (text != null && text.equals(dropdownLabelText)) {
+                    labelIndex = i;
+                    log.debug("Found dropdown label '{}' at index {}", dropdownLabelText, i);
+                    break;
+                }
+            }
+        }
+        
+        if (labelIndex == -1) {
+            log.warn("Could not find dropdown label: {}", dropdownLabelText);
+            fail("Dropdown label not found: " + dropdownLabelText);
+            return;
+        }
+        
+        // The dropdown widget is typically 5 indices after the label
+        // Pattern observed: dyn[3]="Game client layout", dyn[8]="Resizable - Modern layout"
+        int dropdownIndex = labelIndex + 5;
+        
+        if (dropdownIndex >= dynamicChildren.length) {
+            log.warn("Dropdown index {} out of bounds (max {})", dropdownIndex, dynamicChildren.length);
+            fail("Dropdown widget not found");
+            return;
+        }
+        
+        Widget dropdownWidget = dynamicChildren[dropdownIndex];
+        if (dropdownWidget == null) {
+            log.warn("Dropdown widget at index {} is null", dropdownIndex);
+            fail("Dropdown widget is null");
+            return;
+        }
+        
+        String dropdownText = dropdownWidget.getText();
+        log.info("Clicking dropdown at index {} with current value: '{}'", dropdownIndex, dropdownText);
+        
+        // Click the dropdown using dynamic child
+        currentSubTask = new WidgetInteractTask(SETTINGS_GROUP, SETTINGS_CONTENT)
+                .withDynamicChild(dropdownIndex)
+                .withDescription("Open dropdown: " + dropdownLabelText)
+                .withForceClick(true);
+        advancePhase(Phase.WAIT_FOR_DROPDOWN);
+    }
+    
+    /**
+     * Wait for the dropdown options to appear after clicking.
+     */
+    private void executeWaitForDropdown(TaskContext ctx) {
+        // Give time for dropdown to open
+        if (ticksInPhase >= 5) {
+            log.debug("Dropdown should be open, searching for option: {}", settingText);
             advancePhase(Phase.FIND_AND_CLICK_SETTING);
         }
     }
@@ -461,19 +600,33 @@ public class SettingsTask extends AbstractTask {
     private void executeFindAndClickSetting(TaskContext ctx) {
         Client client = ctx.getClient();
         
-        // Find settings content area
-        Widget contentContainer = client.getWidget(SETTINGS_GROUP, SETTINGS_CONTENT);
-        if (contentContainer == null || contentContainer.isHidden()) {
+        // For dropdown options, search from the whole settings group (dropdown popup is at 134:29)
+        // For regular settings, search from the content area (134:19)
+        Widget searchContainer;
+        if (isDropdownSetting) {
+            // Dropdown options are in 134:29 - search from root of settings group
+            searchContainer = client.getWidget(SETTINGS_GROUP, 0);
+            if (searchContainer == null || searchContainer.isHidden()) {
+                log.debug("Waiting for settings panel (dropdown mode)");
+                return;
+            }
+            log.debug("Searching for dropdown option '{}' in whole settings group", settingText);
+        } else {
+            // Regular settings are in content area 134:19
+            searchContainer = client.getWidget(SETTINGS_GROUP, SETTINGS_CONTENT);
+            if (searchContainer == null || searchContainer.isHidden()) {
             log.debug("Waiting for settings content");
             return;
+            }
         }
+        
         
         // Search for the setting widget
         Widget settingWidget = null;
         if (settingMatcher != null) {
-            settingWidget = findChildByPredicate(contentContainer, settingMatcher);
+            settingWidget = findChildByPredicate(searchContainer, settingMatcher);
         } else if (settingText != null) {
-            settingWidget = findChildByText(contentContainer, settingText);
+            settingWidget = findChildByText(searchContainer, settingText);
         }
         
         if (settingWidget != null) {
@@ -575,7 +728,9 @@ public class SettingsTask extends AbstractTask {
     
     private void executeVerifyChange(TaskContext ctx) {
         // Give time for the change to apply
-        if (ticksInPhase < 2) {
+        // Interface mode changes need more time as the UI completely restructures
+        int minWaitTicks = (settingText != null && settingText.contains("layout")) ? 5 : 2;
+        if (ticksInPhase < minWaitTicks) {
             return;
         }
         
@@ -654,6 +809,17 @@ public class SettingsTask extends AbstractTask {
         String parentText = parent.getText();
         if (parentText != null && parentText.contains(text)) {
             return parent;
+        }
+        
+        // Check getChildren() - this is where dropdown options are!
+        Widget[] children = parent.getChildren();
+        if (children != null) {
+            for (Widget child : children) {
+                Widget found = findChildByText(child, text);
+                if (found != null) {
+                    return found;
+                }
+            }
         }
         
         // Check dynamic children

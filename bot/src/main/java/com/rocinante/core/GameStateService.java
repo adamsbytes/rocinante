@@ -128,8 +128,10 @@ public class GameStateService {
     @Nullable
     private final XpTracker xpTracker;
     
+    // TaskExecutor is set via setter to break circular dependency
+    // GameStateService <-> TaskContext <-> TaskExecutor
     @Nullable
-    private final Provider<TaskExecutor> taskExecutorProvider;
+    private Provider<TaskExecutor> taskExecutorProvider;
 
     // ========================================================================
     // Data Services
@@ -144,8 +146,10 @@ public class GameStateService {
     @Nullable
     private final ProjectileDataLoader projectileDataLoader;
 
+    // SlayerPluginService is set via setter - it's a RuneLite plugin service that
+    // may not be available if the Slayer plugin isn't loaded
     @Nullable
-    private final SlayerPluginService slayerPluginService;
+    private SlayerPluginService slayerPluginService;
 
     // ========================================================================
     // Cached State Snapshots
@@ -308,11 +312,9 @@ public class GameStateService {
                            @Nullable BreakScheduler breakScheduler,
                            @Nullable AttentionModel attentionModel,
                            @Nullable XpTracker xpTracker,
-                           @Nullable Provider<TaskExecutor> taskExecutorProvider,
                            @Nullable WeaponDataService weaponDataService,
                            @Nullable NpcCombatDataLoader npcCombatDataLoader,
-                           @Nullable ProjectileDataLoader projectileDataLoader,
-                           @Nullable SlayerPluginService slayerPluginService) {
+                           @Nullable ProjectileDataLoader projectileDataLoader) {
         this.client = client;
         this.itemManager = itemManager;
         this.bankStateManager = bankStateManager;
@@ -323,11 +325,9 @@ public class GameStateService {
         this.breakScheduler = breakScheduler;
         this.attentionModel = attentionModel;
         this.xpTracker = xpTracker;
-        this.taskExecutorProvider = taskExecutorProvider;
         this.weaponDataService = weaponDataService;
         this.npcCombatDataLoader = npcCombatDataLoader;
         this.projectileDataLoader = projectileDataLoader;
-        this.slayerPluginService = slayerPluginService;
 
         // Initialize caches with appropriate policies
         this.playerStateCache = new CachedValue<>("PlayerState", CachePolicy.TICK_CACHED);
@@ -339,6 +339,28 @@ public class GameStateService {
 
         log.info("GameStateService initialized (behavioral components: {})", 
                 playerProfile != null && fatigueModel != null && breakScheduler != null && attentionModel != null);
+    }
+
+    /**
+     * Set the TaskExecutor provider.
+     * This is done via setter to break circular dependency:
+     * GameStateService -> TaskExecutor -> TaskContext -> GameStateService
+     *
+     * @param taskExecutorProvider the task executor provider
+     */
+    public void setTaskExecutorProvider(@Nullable Provider<TaskExecutor> taskExecutorProvider) {
+        this.taskExecutorProvider = taskExecutorProvider;
+    }
+
+    /**
+     * Set the SlayerPluginService.
+     * This is done via setter because SlayerPluginService is a RuneLite plugin service
+     * that may not be available if the Slayer plugin isn't loaded.
+     *
+     * @param slayerPluginService the slayer plugin service, or null if not available
+     */
+    public void setSlayerPluginService(@Nullable SlayerPluginService slayerPluginService) {
+        this.slayerPluginService = slayerPluginService;
     }
 
     // ========================================================================

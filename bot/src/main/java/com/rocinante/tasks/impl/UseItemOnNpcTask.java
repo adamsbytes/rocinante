@@ -1,6 +1,7 @@
 package com.rocinante.tasks.impl;
 
 import com.rocinante.input.InventoryClickHelper;
+import com.rocinante.input.SafeClickExecutor;
 import com.rocinante.state.InventoryState;
 import com.rocinante.state.PlayerState;
 import com.rocinante.tasks.AbstractTask;
@@ -10,6 +11,7 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
+import net.runelite.api.ItemComposition;
 import net.runelite.api.NPC;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.widgets.Widget;
@@ -18,6 +20,10 @@ import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.Shape;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -86,16 +92,33 @@ public class UseItemOnNpcTask extends AbstractTask {
     // ========================================================================
 
     /**
-     * The item ID to use.
+     * Acceptable item IDs to use.
+     * Ordered by priority - first match wins.
      */
     @Getter
-    private final int itemId;
+    private final List<Integer> itemIds;
 
     /**
-     * The NPC ID to use the item on.
+     * The primary NPC ID to use the item on.
      */
     @Getter
     private final int npcId;
+
+    /**
+     * Alternate NPC IDs that also satisfy this task.
+     */
+    @Getter
+    private final List<Integer> alternateNpcIds = new ArrayList<>();
+
+    /**
+     * The resolved item ID found in inventory.
+     */
+    private int resolvedItemId = -1;
+
+    /**
+     * The resolved NPC ID found nearby.
+     */
+    private int resolvedNpcId = -1;
 
     /**
      * Search radius for finding the NPC (tiles).
@@ -178,18 +201,51 @@ public class UseItemOnNpcTask extends AbstractTask {
     private static final int MAX_RETARGET_ATTEMPTS = 3;
 
     // ========================================================================
-    // Constructor
+    // Constructors
     // ========================================================================
 
     /**
-     * Create a use item on NPC task.
+     * Create a use item on NPC task with a single item.
      *
      * @param itemId the item ID to use
      * @param npcId  the NPC ID to use the item on
      */
     public UseItemOnNpcTask(int itemId, int npcId) {
-        this.itemId = itemId;
+        this.itemIds = Collections.singletonList(itemId);
         this.npcId = npcId;
+        this.timeout = Duration.ofSeconds(30);
+    }
+
+    /**
+     * Create a use item on NPC task accepting any of the provided items.
+     * Items are checked in order - first match wins (for priority ordering).
+     *
+     * @param itemIds acceptable item IDs to use, ordered by priority
+     * @param npcId   the NPC ID to use the item on
+     */
+    public UseItemOnNpcTask(Collection<Integer> itemIds, int npcId) {
+        this.itemIds = new ArrayList<>(itemIds);
+        this.npcId = npcId;
+        this.timeout = Duration.ofSeconds(30);
+    }
+
+    /**
+     * Create a use item on NPC task accepting any of the provided items on any of the provided NPCs.
+     * Both items and NPCs are checked in order - first match wins (for priority ordering).
+     *
+     * @param itemIds acceptable item IDs to use, ordered by priority
+     * @param npcIds  acceptable NPC IDs to use the item on, ordered by priority
+     */
+    public UseItemOnNpcTask(Collection<Integer> itemIds, Collection<Integer> npcIds) {
+        if (npcIds == null || npcIds.isEmpty()) {
+            throw new IllegalArgumentException("npcIds must not be empty");
+        }
+        this.itemIds = new ArrayList<>(itemIds);
+        List<Integer> ids = new ArrayList<>(npcIds);
+        this.npcId = ids.get(0);
+        if (ids.size() > 1) {
+            this.alternateNpcIds.addAll(ids.subList(1, ids.size()));
+        }
         this.timeout = Duration.ofSeconds(30);
     }
 
@@ -262,14 +318,30 @@ public class UseItemOnNpcTask extends AbstractTask {
             return false;
         }
 
-        // Check if we have the item in inventory
+        // Find any matching item in inventory
         InventoryState inventory = ctx.getInventoryState();
-        if (!inventory.hasItem(itemId)) {
-            log.debug("Item {} not in inventory", itemId);
+        resolvedItemId = findFirstMatchingItem(inventory, itemIds);
+        if (resolvedItemId == -1) {
+            log.debug("No item from {} found in inventory. Inventory contains: {}",
+                    itemIds, formatInventoryContents(inventory));
             return false;
         }
 
+        log.debug("Resolved item {} from acceptable set {}", resolvedItemId, itemIds);
         return true;
+    }
+
+    /**
+     * Find the first item ID from the list that exists in inventory.
+     * Returns in priority order (first in list = highest priority).
+     */
+    private int findFirstMatchingItem(InventoryState inventory, List<Integer> itemIds) {
+        for (int itemId : itemIds) {
+            if (inventory.hasItem(itemId)) {
+                return itemId;
+            }
+        }
+        return -1;
     }
 
     @Override
@@ -310,17 +382,19 @@ public class UseItemOnNpcTask extends AbstractTask {
         }
 
         InventoryState inventory = ctx.getInventoryState();
-        int slot = inventory.getSlotOf(itemId);
+        int slot = inventory.getSlotOf(resolvedItemId);
 
         if (slot < 0) {
-            fail("Item " + itemId + " not found in inventory");
+            log.debug("Item {} no longer in inventory. Inventory contains: {}",
+                    resolvedItemId, formatInventoryContents(inventory));
+            fail("Item " + resolvedItemId + " not found in inventory");
             return;
         }
 
-        log.debug("Clicking item {} in slot {}", itemId, slot);
+        log.debug("Clicking item {} in slot {}", resolvedItemId, slot);
         operationPending = true;
 
-        inventoryHelper.executeClick(slot, "Use item " + itemId)
+        inventoryHelper.executeClick(slot, "Use item " + resolvedItemId)
                 .thenAccept(success -> {
                     operationPending = false;
                     if (success) {
@@ -349,7 +423,9 @@ public class UseItemOnNpcTask extends AbstractTask {
         targetNpc = findNearestNpc(ctx, playerPos);
 
         if (targetNpc == null) {
-            log.warn("NPC {} not found within {} tiles", npcId, searchRadius);
+            log.warn("NPC {} (alternates: {}) not found within {} tiles", 
+                    npcId, alternateNpcIds, searchRadius);
+            logNearbyNpcs(ctx, playerPos);
             fail("NPC not found: " + npcId);
             return;
         }
@@ -436,21 +512,42 @@ public class UseItemOnNpcTask extends AbstractTask {
             }
         }
 
-        log.debug("Clicking NPC {} with 'Use' cursor", getNpcDescription());
-
+        log.debug("Clicking NPC {} with item {}", getNpcDescription(), resolvedItemId);
         operationPending = true;
-        CompletableFuture<Void> clickFuture = ctx.getMouseController().click();
 
-        clickFuture.thenRun(() -> {
+        // Get item name for menu matching
+        String itemName = getItemName(ctx, resolvedItemId);
+
+        // Use SafeClickExecutor for overlap-aware clicking
+        ctx.getSafeClickExecutor().clickNpc(targetNpc, "Use", itemName)
+                .thenAccept(success -> {
             operationPending = false;
+                    if (success) {
             interactionTicks = 0;
             phase = UseItemPhase.WAIT_RESPONSE;
-        }).exceptionally(e -> {
+                    } else {
+                        fail("Click failed for NPC " + getNpcDescription());
+                    }
+                })
+                .exceptionally(e -> {
             operationPending = false;
-            log.error("Failed to click NPC", e);
+                    log.error("Click failed", e);
             fail("Click failed: " + e.getMessage());
             return null;
         });
+    }
+
+    /**
+     * Get item name from client definitions for menu matching.
+     */
+    private String getItemName(TaskContext ctx, int itemId) {
+        try {
+            ItemComposition def = ctx.getClient().getItemDefinition(itemId);
+            return def != null ? def.getName() : null;
+        } catch (Exception e) {
+            log.trace("Could not get item name for {}", itemId);
+            return null;
+        }
     }
 
     // ========================================================================
@@ -501,7 +598,7 @@ public class UseItemOnNpcTask extends AbstractTask {
         }
 
         if (success) {
-            log.info("Use item on NPC successful: item {} on NPC {} ({})", itemId, npcId, successReason);
+            log.info("Use item on NPC successful: item {} on NPC {} ({})", resolvedItemId, npcId, successReason);
             complete();
             return;
         }
@@ -527,8 +624,9 @@ public class UseItemOnNpcTask extends AbstractTask {
                 continue;
             }
 
-            // Check ID match
-            if (npc.getId() != npcId) {
+            // Check ID match - accept primary or alternate IDs
+            int id = npc.getId();
+            if (id != npcId && !alternateNpcIds.contains(id)) {
                 continue;
             }
 
@@ -550,10 +648,44 @@ public class UseItemOnNpcTask extends AbstractTask {
             if (distance <= searchRadius && distance < nearestDistance) {
                 nearest = npc;
                 nearestDistance = distance;
+                resolvedNpcId = id; // Track which NPC ID was resolved
             }
         }
 
         return nearest;
+    }
+
+    /**
+     * Log all nearby NPCs for debugging when the target NPC is not found.
+     */
+    private void logNearbyNpcs(TaskContext ctx, WorldPoint playerPos) {
+        Client client = ctx.getClient();
+        StringBuilder sb = new StringBuilder("Nearby NPCs within ").append(searchRadius).append(" tiles:\n");
+        int count = 0;
+
+        for (NPC npc : client.getNpcs()) {
+            if (npc == null) continue;
+
+            WorldPoint npcPos = npc.getWorldLocation();
+            if (npcPos == null) continue;
+
+            int distance = playerPos.distanceTo(npcPos);
+            if (distance <= searchRadius) {
+                sb.append(String.format("  - ID=%d, Name=%s, Pos=%s, Distance=%d%s\n",
+                        npc.getId(),
+                        npc.getName(),
+                        npcPos,
+                        distance,
+                        npc.isDead() ? " (DEAD)" : ""));
+                count++;
+            }
+        }
+
+        if (count == 0) {
+            sb.append("  (none found)");
+        }
+
+        log.debug(sb.toString());
     }
 
     // ========================================================================
@@ -635,6 +767,24 @@ public class UseItemOnNpcTask extends AbstractTask {
         return widget != null && !widget.isHidden();
     }
 
+    /**
+     * Format inventory contents for debug logging.
+     */
+    private String formatInventoryContents(InventoryState inventory) {
+        StringBuilder sb = new StringBuilder("[");
+        boolean first = true;
+        for (net.runelite.api.Item item : inventory.getNonEmptyItems()) {
+            if (!first) sb.append(", ");
+            sb.append(item.getId());
+            if (item.getQuantity() > 1) {
+                sb.append("x").append(item.getQuantity());
+            }
+            first = false;
+        }
+        sb.append("]");
+        return sb.toString();
+    }
+
     // ========================================================================
     // Description
     // ========================================================================
@@ -651,7 +801,10 @@ public class UseItemOnNpcTask extends AbstractTask {
         if (description != null) {
             return description;
         }
-        return String.format("UseItemOnNpc[item=%d, npc=%d]", itemId, npcId);
+        if (itemIds.size() == 1) {
+            return String.format("UseItemOnNpc[item=%d, npc=%d]", itemIds.get(0), npcId);
+        }
+        return String.format("UseItemOnNpc[items=%s, npc=%d]", itemIds, npcId);
     }
 
     // ========================================================================

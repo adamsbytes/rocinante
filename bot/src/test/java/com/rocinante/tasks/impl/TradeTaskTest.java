@@ -79,7 +79,7 @@ public class TradeTaskTest {
         // Set up TaskContext
         taskContext = new TaskContext(
                 client,
-                gameStateService,
+                () -> gameStateService,
                 mouseController,
                 keyboardController,
                 humanTimer,

@@ -17,6 +17,7 @@ import com.rocinante.input.MenuHelper;
 import com.rocinante.input.MouseCameraCoupler;
 import com.rocinante.input.RobotKeyboardController;
 import com.rocinante.input.RobotMouseController;
+import com.rocinante.input.SafeClickExecutor;
 import com.rocinante.input.WidgetClickHelper;
 import com.rocinante.agility.AgilityCourseRepository;
 import com.rocinante.progression.UnlockTracker;
@@ -37,6 +38,7 @@ import net.runelite.api.Client;
 
 import javax.annotation.Nullable;
 import javax.inject.Inject;
+import javax.inject.Provider;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -65,8 +67,19 @@ public class TaskContext {
     @Getter
     private final Client client;
 
-    @Getter
-    private final GameStateService gameStateService;
+    /**
+     * Provider for GameStateService to break circular dependency.
+     * Use getGameStateService() to access.
+     */
+    private final Provider<GameStateService> gameStateServiceProvider;
+    
+    /**
+     * Get the GameStateService instance.
+     * Uses a Provider internally to break circular dependency with TaskExecutor.
+     */
+    public GameStateService getGameStateService() {
+        return gameStateServiceProvider.get();
+    }
 
     @Getter
     private final RobotMouseController mouseController;
@@ -112,6 +125,10 @@ public class TaskContext {
     @Getter
     @Nullable
     private final MenuHelper menuHelper;
+
+    @Getter
+    @Nullable
+    private final SafeClickExecutor safeClickExecutor;
 
     // ========================================================================
     // Progression System
@@ -225,7 +242,7 @@ public class TaskContext {
     @Inject
     public TaskContext(
             Client client,
-            GameStateService gameStateService,
+            Provider<GameStateService> gameStateServiceProvider,
             RobotMouseController mouseController,
             RobotKeyboardController keyboardController,
             HumanTimer humanTimer,
@@ -237,6 +254,7 @@ public class TaskContext {
             @Nullable GroundItemClickHelper groundItemClickHelper,
             @Nullable WidgetClickHelper widgetClickHelper,
             @Nullable MenuHelper menuHelper,
+            @Nullable SafeClickExecutor safeClickExecutor,
             @Nullable UnlockTracker unlockTracker,
             @Nullable AgilityCourseRepository agilityCourseRepository,
             @Nullable PlayerProfile playerProfile,
@@ -253,7 +271,7 @@ public class TaskContext {
             @Nullable com.rocinante.navigation.ObstacleHandler obstacleHandler,
             @Nullable com.rocinante.navigation.PlaneTransitionHandler planeTransitionHandler) {
         this.client = client;
-        this.gameStateService = gameStateService;
+        this.gameStateServiceProvider = gameStateServiceProvider;
         this.mouseController = mouseController;
         this.keyboardController = keyboardController;
         this.humanTimer = humanTimer;
@@ -265,6 +283,7 @@ public class TaskContext {
         this.groundItemClickHelper = groundItemClickHelper;
         this.widgetClickHelper = widgetClickHelper;
         this.menuHelper = menuHelper;
+        this.safeClickExecutor = safeClickExecutor;
         this.unlockTracker = unlockTracker;
         this.agilityCourseRepository = agilityCourseRepository;
         this.playerProfile = playerProfile;
@@ -295,9 +314,9 @@ public class TaskContext {
             HumanTimer humanTimer,
             @Nullable TargetSelector targetSelector,
             @Nullable CombatManager combatManager) {
-        this(client, gameStateService, mouseController, keyboardController, humanTimer, 
+        this(client, () -> gameStateService, mouseController, keyboardController, humanTimer, 
                 targetSelector, combatManager, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     /**
@@ -310,9 +329,9 @@ public class TaskContext {
             RobotMouseController mouseController,
             RobotKeyboardController keyboardController,
             HumanTimer humanTimer) {
-        this(client, gameStateService, mouseController, keyboardController, humanTimer, 
+        this(client, () -> gameStateService, mouseController, keyboardController, humanTimer, 
                 null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     // ========================================================================
@@ -325,7 +344,7 @@ public class TaskContext {
      * @return immutable PlayerState
      */
     public PlayerState getPlayerState() {
-        return gameStateService.getPlayerState();
+        return gameStateServiceProvider.get().getPlayerState();
     }
 
     /**
@@ -334,7 +353,7 @@ public class TaskContext {
      * @return immutable InventoryState
      */
     public InventoryState getInventoryState() {
-        return gameStateService.getInventoryState();
+        return gameStateServiceProvider.get().getInventoryState();
     }
 
     /**
@@ -343,7 +362,7 @@ public class TaskContext {
      * @return immutable EquipmentState
      */
     public EquipmentState getEquipmentState() {
-        return gameStateService.getEquipmentState();
+        return gameStateServiceProvider.get().getEquipmentState();
     }
 
     /**
@@ -353,7 +372,7 @@ public class TaskContext {
      * @return immutable WorldState
      */
     public WorldState getWorldState() {
-        return gameStateService.getWorldState();
+        return gameStateServiceProvider.get().getWorldState();
     }
 
     /**
@@ -363,7 +382,7 @@ public class TaskContext {
      * @return immutable CombatState
      */
     public CombatState getCombatState() {
-        return gameStateService.getCombatState();
+        return gameStateServiceProvider.get().getCombatState();
     }
 
     /**
@@ -374,7 +393,7 @@ public class TaskContext {
      * @return immutable BankState
      */
     public BankState getBankState() {
-        return gameStateService.getBankState();
+        return gameStateServiceProvider.get().getBankState();
     }
 
     /**
@@ -385,7 +404,7 @@ public class TaskContext {
      * @return immutable GrandExchangeState
      */
     public GrandExchangeState getGrandExchangeState() {
-        return gameStateService.getGrandExchangeState();
+        return gameStateServiceProvider.get().getGrandExchangeState();
     }
 
     /**
@@ -395,7 +414,7 @@ public class TaskContext {
      */
     @javax.annotation.Nullable
     public com.rocinante.state.IronmanState getIronmanState() {
-        return gameStateService.getIronmanState();
+        return gameStateServiceProvider.get().getIronmanState();
     }
 
     /**
@@ -405,7 +424,7 @@ public class TaskContext {
      * @return immutable SlayerState
      */
     public SlayerState getSlayerState() {
-        return gameStateService.getSlayerState();
+        return gameStateServiceProvider.get().getSlayerState();
     }
 
     /**
@@ -414,7 +433,7 @@ public class TaskContext {
      * @return the current tick
      */
     public int getCurrentTick() {
-        return gameStateService.getCurrentTick();
+        return gameStateServiceProvider.get().getCurrentTick();
     }
 
     /**
@@ -423,7 +442,7 @@ public class TaskContext {
      * @return true if logged in
      */
     public boolean isLoggedIn() {
-        return gameStateService.isLoggedIn();
+        return gameStateServiceProvider.get().isLoggedIn();
     }
 
     // ========================================================================

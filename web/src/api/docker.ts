@@ -168,7 +168,7 @@ export async function startBot(bot: BotConfig): Promise<void> {
   appendBotLogs(bot.id, ['\n--- New container starting ---\n']);
 
   // Ensure status directory exists for bind mount
-  ensureStatusDir(bot.id);
+  await ensureStatusDir(bot.id);
   const statusDir = getStatusDir(bot.id);
 
   // Build environment variables for Jagex Launcher authentication
@@ -240,7 +240,8 @@ export async function startBot(bot: BotConfig): Promise<void> {
         // Bolt launcher stores login session here
         `rocinante_bolt_${bot.id}:/home/runelite/.local/share/bolt-launcher`,
         // Status directory for bot-to-web communication (bind mount for file watching)
-        `${statusDir}:/home/runelite/.runelite/rocinante`,
+        // Note: Bolt launcher uses .local/share/bolt-launcher/.runelite instead of ~/.runelite
+        `${statusDir}:/home/runelite/.local/share/bolt-launcher/.runelite/rocinante`,
       ],
       // Auto-restart on crash, but respect explicit stop commands
       RestartPolicy: {

@@ -12,6 +12,7 @@ import net.runelite.api.coords.WorldPoint;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -97,6 +98,25 @@ public class NpcQuestStep extends QuestStep {
     public NpcQuestStep(int npcId) {
         super("Talk to NPC");
         this.npcId = npcId;
+    }
+
+    /**
+     * Create an NPC quest step accepting any of the provided NPC IDs.
+     * NPCs are checked in order - first match wins (for priority ordering).
+     *
+     * @param npcIds acceptable NPC IDs, ordered by priority
+     * @param text   instruction text
+     */
+    public NpcQuestStep(Collection<Integer> npcIds, String text) {
+        super(text);
+        if (npcIds == null || npcIds.isEmpty()) {
+            throw new IllegalArgumentException("npcIds must not be empty");
+        }
+        List<Integer> ids = new ArrayList<>(npcIds);
+        this.npcId = ids.get(0);
+        if (ids.size() > 1) {
+            this.alternateNpcIds.addAll(ids.subList(1, ids.size()));
+        }
     }
 
     @Override

@@ -1,5 +1,6 @@
-import { watch, existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
-import { join, dirname } from 'path';
+import { watch } from 'fs';
+import { mkdir } from 'fs/promises';
+import { join } from 'path';
 import type { BotRuntimeStatus, BotCommand, CommandsFile } from '../shared/types';
 
 /**
@@ -7,6 +8,8 @@ import type { BotRuntimeStatus, BotCommand, CommandsFile } from '../shared/types
  * 
  * Watches status.json files in Docker volumes and broadcasts updates
  * to connected WebSocket clients.
+ * 
+ * Uses Bun's native file I/O APIs for better performance.
  */
 
 // Base path for bot status directories
@@ -38,11 +41,9 @@ export function getCommandsFilePath(botId: string): string {
 /**
  * Ensure status directory exists for a bot.
  */
-export function ensureStatusDir(botId: string): void {
+export async function ensureStatusDir(botId: string): Promise<void> {
   const dir = getStatusDir(botId);
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
-  }
+  await mkdir(dir, { recursive: true });
 }
 
 // ============================================================================
@@ -53,15 +54,16 @@ export function ensureStatusDir(botId: string): void {
  * Read current status for a bot.
  * Returns null if status file doesn't exist or can't be read.
  */
-export function readBotStatus(botId: string): BotRuntimeStatus | null {
+export async function readBotStatus(botId: string): Promise<BotRuntimeStatus | null> {
   const filePath = getStatusFilePath(botId);
+  const file = Bun.file(filePath);
   
-  if (!existsSync(filePath)) {
+  if (!(await file.exists())) {
     return null;
   }
   
   try {
-    const content = readFileSync(filePath, 'utf-8');
+    const content = await file.text();
     return JSON.parse(content) as BotRuntimeStatus;
   } catch (error) {
     console.error(`Error reading status for bot ${botId}:`, error);
@@ -127,15 +129,14 @@ export function watchBotStatus(botId: string, callback: StatusCallback): () => v
 /**
  * Start the file watcher for a bot's status file.
  */
-function startWatcher(botId: string, entry: WatcherEntry): void {
+async function startWatcher(botId: string, entry: WatcherEntry): Promise<void> {
   const statusDir = getStatusDir(botId);
-  const statusFile = getStatusFilePath(botId);
   
   // Ensure directory exists
-  ensureStatusDir(botId);
+  await ensureStatusDir(botId);
   
   // Read initial status
-  const initialStatus = readBotStatus(botId);
+  const initialStatus = await readBotStatus(botId);
   if (initialStatus) {
     entry.lastStatus = initialStatus;
   }
@@ -176,8 +177,8 @@ function startPolling(botId: string, entry: WatcherEntry): void {
 /**
  * Handle status file change.
  */
-function handleStatusChange(botId: string, entry: WatcherEntry): void {
-  const status = readBotStatus(botId);
+async function handleStatusChange(botId: string, entry: WatcherEntry): Promise<void> {
+  const status = await readBotStatus(botId);
   
   if (!status) {
     return;
@@ -223,15 +224,16 @@ function stopWatcher(botId: string, entry: WatcherEntry): void {
  * Send a command to a bot.
  * Writes the command to the bot's commands.json file.
  */
-export function sendBotCommand(botId: string, command: Omit<BotCommand, 'timestamp'>): void {
-  const commandsFile = getCommandsFilePath(botId);
-  ensureStatusDir(botId);
+export async function sendBotCommand(botId: string, command: Omit<BotCommand, 'timestamp'>): Promise<void> {
+  const commandsFilePath = getCommandsFilePath(botId);
+  await ensureStatusDir(botId);
   
   // Read existing commands
   let commandsData: CommandsFile = { commands: [] };
-  if (existsSync(commandsFile)) {
+  const file = Bun.file(commandsFilePath);
+  if (await file.exists()) {
     try {
-      const content = readFileSync(commandsFile, 'utf-8');
+      const content = await file.text();
       commandsData = JSON.parse(content);
     } catch (error) {
       console.warn(`Error reading commands file for bot ${botId}, creating new:`, error);
@@ -250,9 +252,9 @@ export function sendBotCommand(botId: string, command: Omit<BotCommand, 'timesta
     commandsData.commands = commandsData.commands.slice(-100);
   }
   
-  // Write back
+  // Write back using Bun.write
   try {
-    writeFileSync(commandsFile, JSON.stringify(commandsData, null, 2));
+    await Bun.write(commandsFilePath, JSON.stringify(commandsData, null, 2));
     console.log(`Command sent to bot ${botId}:`, fullCommand.type);
   } catch (error) {
     console.error(`Error writing command for bot ${botId}:`, error);
@@ -276,7 +278,7 @@ const wsClients = new Map<WebSocket, WebSocketClient>();
 /**
  * Handle a new WebSocket connection for bot status.
  */
-export function handleStatusWebSocket(ws: WebSocket, botId: string): void {
+export async function handleStatusWebSocket(ws: WebSocket, botId: string): Promise<void> {
   console.log(`WebSocket connected for bot ${botId}`);
   
   const client: WebSocketClient = {
@@ -298,13 +300,13 @@ export function handleStatusWebSocket(ws: WebSocket, botId: string): void {
   });
   
   // Handle incoming messages (commands from client)
-  ws.addEventListener('message', (event) => {
+  ws.addEventListener('message', async (event) => {
     try {
       const data = typeof event.data === 'string' ? event.data : event.data.toString();
       const message = JSON.parse(data);
       
       if (message.type === 'command' && message.command) {
-        sendBotCommand(botId, message.command);
+        await sendBotCommand(botId, message.command);
       }
     } catch (error) {
       console.error(`Error handling WebSocket message:`, error);
@@ -327,7 +329,7 @@ export function handleStatusWebSocket(ws: WebSocket, botId: string): void {
   });
   
   // Send initial status if available
-  const currentStatus = readBotStatus(botId);
+  const currentStatus = await readBotStatus(botId);
   if (currentStatus && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(currentStatus));
   }

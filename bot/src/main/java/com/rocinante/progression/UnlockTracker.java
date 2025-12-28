@@ -14,6 +14,7 @@ import net.runelite.api.Skill;
 
 import javax.annotation.Nullable;
 import javax.inject.Inject;
+import javax.inject.Provider;
 import javax.inject.Singleton;
 import java.util.*;
 
@@ -37,7 +38,7 @@ import java.util.*;
 public class UnlockTracker {
 
     private final Client client;
-    private final GameStateService gameStateService;
+    private final Provider<GameStateService> gameStateServiceProvider;
 
     // Cache of quest completion states (refreshed on demand)
     private final Map<Quest, Boolean> questCompletionCache = new HashMap<>();
@@ -48,9 +49,9 @@ public class UnlockTracker {
     private final Map<Skill, Integer> skillLevelCache = new HashMap<>();
 
     @Inject
-    public UnlockTracker(Client client, GameStateService gameStateService) {
+    public UnlockTracker(Client client, Provider<GameStateService> gameStateServiceProvider) {
         this.client = client;
-        this.gameStateService = gameStateService;
+        this.gameStateServiceProvider = gameStateServiceProvider;
         log.info("UnlockTracker initialized");
     }
 
@@ -335,7 +336,7 @@ public class UnlockTracker {
      * Refresh quest cache if TTL has expired.
      */
     private void refreshQuestCacheIfNeeded() {
-        int currentTick = gameStateService.getCurrentTick();
+        int currentTick = gameStateServiceProvider.get().getCurrentTick();
         if (currentTick - lastQuestCacheRefreshTick > QUEST_CACHE_TTL_TICKS) {
             questCompletionCache.clear();
             lastQuestCacheRefreshTick = currentTick;
@@ -482,7 +483,7 @@ public class UnlockTracker {
         int itemId = requirement.getItemId();
         int quantity = Math.max(1, requirement.getValue());
 
-        InventoryState inventory = gameStateService.getInventoryState();
+        InventoryState inventory = gameStateServiceProvider.get().getInventoryState();
         if (inventory == null) {
             log.debug("Inventory state not available for item requirement check");
             return false;
@@ -508,7 +509,7 @@ public class UnlockTracker {
             return true;
         }
 
-        InventoryState inventory = gameStateService.getInventoryState();
+        InventoryState inventory = gameStateServiceProvider.get().getInventoryState();
         if (inventory == null) {
             log.debug("Inventory state not available for rune requirement check");
             return false;
@@ -534,7 +535,7 @@ public class UnlockTracker {
      * @return true if player has enough of the item
      */
     public boolean hasItem(int itemId, int quantity) {
-        InventoryState inventory = gameStateService.getInventoryState();
+        InventoryState inventory = gameStateServiceProvider.get().getInventoryState();
         if (inventory == null) {
             return false;
         }
