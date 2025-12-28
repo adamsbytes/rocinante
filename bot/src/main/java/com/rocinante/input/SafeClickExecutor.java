@@ -61,10 +61,27 @@ public class SafeClickExecutor {
     private static final double MENU_STRATEGY_PROBABILITY = 0.4;
 
     /**
-     * Probability of using right-click menu even when NOT blocked (paranoid mode).
-     * This adds unpredictability to click patterns.
+     * Minimum probability of using right-click menu even when NOT blocked (at close range).
+     * Semi-exponential scaling from MIN to MAX based on distance.
      */
-    private static final double PARANOID_MENU_PROBABILITY = 0.05;
+    private static final double PARANOID_MENU_PROBABILITY_MIN = 0.01;  // 1% at close range (<3 tiles)
+
+    /**
+     * Maximum probability of using right-click menu even when NOT blocked (at max range).
+     */
+    private static final double PARANOID_MENU_PROBABILITY_MAX = 0.15;  // 15% at max distance
+
+    /**
+     * Distance threshold for minimum probability (tiles).
+     * Below this distance, probability stays at MIN.
+     */
+    private static final int PARANOID_CLOSE_DISTANCE = 3;
+
+    /**
+     * Maximum distance for probability scaling (tiles).
+     * At or beyond this distance, probability is at MAX.
+     */
+    private static final int PARANOID_MAX_DISTANCE = 15;
 
     // ========================================================================
     // Dependencies
@@ -133,17 +150,30 @@ public class SafeClickExecutor {
         // Pre-click validation
         OverlapResult overlap = overlapChecker.checkPointForObject(initialPoint, target);
 
+        // Calculate distance-based paranoid probability
+        int distance = -1;
+        net.runelite.api.coords.WorldPoint objLocation = target.getWorldLocation();
+        if (objLocation != null) {
+            distance = calculateDistanceToPlayer(objLocation.getX(), objLocation.getY());
+        }
+        double paranoidProb = distance >= 0 
+                ? calculateParanoidProbability(distance) 
+                : PARANOID_MENU_PROBABILITY_MIN;
+
         // Sometimes use menu even when clear (adds unpredictability)
-        boolean forceMenu = ThreadLocalRandom.current().nextDouble() < PARANOID_MENU_PROBABILITY;
+        boolean forceMenu = ThreadLocalRandom.current().nextDouble() < paranoidProb;
 
         if (!overlap.hasBlockingEntity() && !forceMenu) {
             // Clear to click - use left click
-            log.debug("Click point clear, using left-click at ({}, {})", initialPoint.x, initialPoint.y);
+            log.debug("Click point clear, using left-click at ({}, {}) [dist={}, paranoid={}%]", 
+                    initialPoint.x, initialPoint.y, distance, Math.round(paranoidProb * 100));
             return executeLeftClick(initialPoint);
         }
 
         if (overlap.hasBlockingEntity()) {
             log.debug("Click blocked by {}", overlap.getBlockerDescription());
+        } else {
+            log.debug("Using paranoid right-click at distance {} (prob {}%)", distance, Math.round(paranoidProb * 100));
         }
 
         // Blocked or paranoid mode - choose strategy
@@ -216,15 +246,28 @@ public class SafeClickExecutor {
         // Pre-click validation
         OverlapResult overlap = overlapChecker.checkPointForNpc(initialPoint, target);
 
-        boolean forceMenu = ThreadLocalRandom.current().nextDouble() < PARANOID_MENU_PROBABILITY;
+        // Calculate distance-based paranoid probability
+        int distance = -1;
+        net.runelite.api.coords.WorldPoint npcLocation = target.getWorldLocation();
+        if (npcLocation != null) {
+            distance = calculateDistanceToPlayer(npcLocation.getX(), npcLocation.getY());
+        }
+        double paranoidProb = distance >= 0 
+                ? calculateParanoidProbability(distance) 
+                : PARANOID_MENU_PROBABILITY_MIN;
+
+        boolean forceMenu = ThreadLocalRandom.current().nextDouble() < paranoidProb;
 
         if (!overlap.hasBlockingEntity() && !forceMenu) {
-            log.debug("NPC click point clear, using left-click at ({}, {})", initialPoint.x, initialPoint.y);
+            log.debug("NPC click point clear, using left-click at ({}, {}) [dist={}, paranoid={}%]", 
+                    initialPoint.x, initialPoint.y, distance, Math.round(paranoidProb * 100));
             return executeLeftClick(initialPoint);
         }
 
         if (overlap.hasBlockingEntity()) {
             log.debug("NPC click blocked by {}", overlap.getBlockerDescription());
+        } else {
+            log.debug("Using paranoid right-click on NPC at distance {} (prob {}%)", distance, Math.round(paranoidProb * 100));
         }
 
         ClickStrategy strategy = chooseStrategy(overlap.hasBlockingEntity());
@@ -252,6 +295,19 @@ public class SafeClickExecutor {
      * @return CompletableFuture completing with true if click succeeded
      */
     public CompletableFuture<Boolean> clickGroundItem(Point canvasPoint, String itemName) {
+        return clickGroundItem(canvasPoint, itemName, null);
+    }
+
+    /**
+     * Click a ground item safely with automatic overlap detection and distance-based probability.
+     *
+     * @param canvasPoint the canvas point where the ground item is located
+     * @param itemName the item name for menu matching
+     * @param worldPosition the world position of the item for distance calculation (nullable)
+     * @return CompletableFuture completing with true if click succeeded
+     */
+    public CompletableFuture<Boolean> clickGroundItem(
+            Point canvasPoint, String itemName, @Nullable net.runelite.api.coords.WorldPoint worldPosition) {
         if (canvasPoint == null) {
             return CompletableFuture.completedFuture(false);
         }
@@ -272,15 +328,28 @@ public class SafeClickExecutor {
         // Pre-click validation for ground items
         OverlapResult overlap = overlapChecker.checkPointAtLocation(initialPoint);
 
-        boolean forceMenu = ThreadLocalRandom.current().nextDouble() < PARANOID_MENU_PROBABILITY;
+        // Calculate distance-based paranoid probability
+        int distance = -1;
+        if (worldPosition != null) {
+            distance = calculateDistanceToPlayer(worldPosition.getX(), worldPosition.getY());
+        }
+        double paranoidProb = distance >= 0 
+                ? calculateParanoidProbability(distance) 
+                : PARANOID_MENU_PROBABILITY_MIN;
+
+        boolean forceMenu = ThreadLocalRandom.current().nextDouble() < paranoidProb;
 
         if (!overlap.hasBlockingEntity() && !forceMenu) {
-            log.debug("Ground item click point clear, using left-click at ({}, {})", initialPoint.x, initialPoint.y);
+            log.debug("Ground item click point clear, using left-click at ({}, {}) [dist={}, paranoid={}%]", 
+                    initialPoint.x, initialPoint.y, distance, Math.round(paranoidProb * 100));
             return executeLeftClick(initialPoint);
         }
 
         if (overlap.hasBlockingEntity()) {
             log.debug("Ground item click blocked by {}", overlap.getBlockerDescription());
+        } else {
+            log.debug("Using paranoid right-click on ground item at distance {} (prob {}%)", 
+                    distance, Math.round(paranoidProb * 100));
         }
 
         ClickStrategy strategy = chooseStrategy(overlap.hasBlockingEntity());
@@ -426,6 +495,63 @@ public class SafeClickExecutor {
     // ========================================================================
     // Helpers
     // ========================================================================
+
+    /**
+     * Calculate distance-scaled paranoid menu probability.
+     * Uses semi-exponential scaling: 1% at close range, up to 15% at max distance.
+     *
+     * @param distanceTiles distance in tiles from player to target
+     * @return probability between PARANOID_MENU_PROBABILITY_MIN and PARANOID_MENU_PROBABILITY_MAX
+     */
+    private double calculateParanoidProbability(int distanceTiles) {
+        // Below close threshold, use minimum probability
+        if (distanceTiles <= PARANOID_CLOSE_DISTANCE) {
+            return PARANOID_MENU_PROBABILITY_MIN;
+        }
+
+        // At or beyond max distance, use maximum probability
+        if (distanceTiles >= PARANOID_MAX_DISTANCE) {
+            return PARANOID_MENU_PROBABILITY_MAX;
+        }
+
+        // Semi-exponential scaling between close and max distance
+        // normalized = (distance - close) / (max - close), range [0, 1]
+        double normalized = (double) (distanceTiles - PARANOID_CLOSE_DISTANCE) 
+                / (PARANOID_MAX_DISTANCE - PARANOID_CLOSE_DISTANCE);
+
+        // Exponential factor (squared for semi-exponential curve)
+        double exponentialFactor = normalized * normalized;
+
+        // Interpolate between min and max
+        double range = PARANOID_MENU_PROBABILITY_MAX - PARANOID_MENU_PROBABILITY_MIN;
+        return PARANOID_MENU_PROBABILITY_MIN + (range * exponentialFactor);
+    }
+
+    /**
+     * Calculate distance from player to a world point.
+     *
+     * @param targetWorldX target X coordinate
+     * @param targetWorldY target Y coordinate
+     * @return distance in tiles, or -1 if cannot calculate
+     */
+    private int calculateDistanceToPlayer(int targetWorldX, int targetWorldY) {
+        try {
+            net.runelite.api.Player localPlayer = client.getLocalPlayer();
+            if (localPlayer == null) {
+                return -1;
+            }
+            net.runelite.api.coords.WorldPoint playerPos = localPlayer.getWorldLocation();
+            if (playerPos == null) {
+                return -1;
+            }
+            int dx = Math.abs(targetWorldX - playerPos.getX());
+            int dy = Math.abs(targetWorldY - playerPos.getY());
+            return Math.max(dx, dy); // Chebyshev distance (OSRS uses this for most distance checks)
+        } catch (Exception e) {
+            log.trace("Could not calculate distance to player", e);
+            return -1;
+        }
+    }
 
     /**
      * Get object name from client definitions.

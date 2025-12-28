@@ -50,6 +50,11 @@ export const CombatTaskForm: Component<CombatTaskFormProps> = (props) => {
   const [safeSpotY, setSafeSpotY] = createSignal(0);
   const [stopWhenOutOfFood, setStopWhenOutOfFood] = createSignal(true);
   const [enableResupply, setEnableResupply] = createSignal(false);
+  
+  // Bone burying options
+  const [buryBonesEnabled, setBuryBonesEnabled] = createSignal(false);
+  const [buryBonesMinKills, setBuryBonesMinKills] = createSignal(2);
+  const [buryBonesMinSeconds, setBuryBonesMinSeconds] = createSignal(60);
 
   // Parse targets from input
   const parseTargets = () => {
@@ -111,6 +116,13 @@ export const CombatTaskForm: Component<CombatTaskFormProps> = (props) => {
     // Add resource management
     task.stopWhenOutOfFood = stopWhenOutOfFood();
     task.enableResupply = enableResupply();
+
+    // Add bone burying settings
+    if (buryBonesEnabled()) {
+      task.buryBonesEnabled = true;
+      task.buryBonesMinKills = buryBonesMinKills();
+      task.buryBonesMinSeconds = buryBonesMinSeconds();
+    }
 
     props.onSubmit(task);
   };
@@ -220,6 +232,30 @@ export const CombatTaskForm: Component<CombatTaskFormProps> = (props) => {
             <span class="text-sm text-gray-400">gp</span>
           </div>
         </Show>
+        
+        {/* Bone Burying Option */}
+        <div class="border-t border-gray-600 pt-3">
+          <div class="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="buryBonesEnabled"
+              checked={buryBonesEnabled()}
+              onChange={(e) => setBuryBonesEnabled(e.target.checked)}
+              class="w-4 h-4 rounded bg-gray-700 border-gray-600 text-amber-500 focus:ring-amber-500"
+            />
+            <label for="buryBonesEnabled" class="text-sm text-gray-300">
+              Bury bones while fighting
+            </label>
+            <span class="text-xs text-gray-500" title="Automatically loot and bury bones from kills">
+              ⓘ
+            </span>
+          </div>
+          <Show when={buryBonesEnabled()}>
+            <p class="text-xs text-gray-500 mt-1 pl-6">
+              Bones will be looted and buried periodically. Can also pick up bones from other players.
+            </p>
+          </Show>
+        </div>
       </div>
 
       {/* Combat Style */}
@@ -328,6 +364,45 @@ export const CombatTaskForm: Component<CombatTaskFormProps> = (props) => {
                 </label>
               </div>
             </div>
+
+            {/* Bone Burying Settings (only shown when burying is enabled) */}
+            <Show when={buryBonesEnabled()}>
+              <div class="border-t border-gray-600 pt-3 space-y-3">
+                <span class="text-sm text-gray-400">Bone Burying Settings</span>
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-xs text-gray-400 mb-1">
+                      Min kills before burying
+                    </label>
+                    <input
+                      type="number"
+                      value={buryBonesMinKills()}
+                      onInput={(e) => setBuryBonesMinKills(parseInt(e.target.value) || 2)}
+                      min={1}
+                      max={10}
+                      class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-xs text-gray-400 mb-1">
+                      Min seconds before burying
+                    </label>
+                    <input
+                      type="number"
+                      value={buryBonesMinSeconds()}
+                      onInput={(e) => setBuryBonesMinSeconds(parseInt(e.target.value) || 60)}
+                      min={10}
+                      max={300}
+                      step={10}
+                      class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                  </div>
+                </div>
+                <p class="text-xs text-gray-500">
+                  Burying triggers after enough kills OR enough time passes (whichever is first).
+                </p>
+              </div>
+            </Show>
           </div>
         </Show>
       </div>

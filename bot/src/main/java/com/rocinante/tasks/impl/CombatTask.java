@@ -212,6 +212,31 @@ public class CombatTask extends AbstractTask {
     private ResupplyTask activeResupplyTask;
 
     // ========================================================================
+    // Bone Burying State
+    // ========================================================================
+
+    /**
+     * Total bones buried in this combat session.
+     */
+    @Getter
+    private int totalBonesBuried = 0;
+
+    /**
+     * Kills since the last bone burying session.
+     */
+    private int killsSinceLastBury = 0;
+
+    /**
+     * Timestamp of the last kill (for timing bone burying).
+     */
+    private Instant lastKillTime;
+
+    /**
+     * Active bone burying task (when in BURY_BONES phase).
+     */
+    private BuryBonesTask activeBuryBonesTask;
+
+    // ========================================================================
     // Constructor
     // ========================================================================
 
@@ -348,6 +373,9 @@ public class CombatTask extends AbstractTask {
                 break;
             case LOOT:
                 executeLoot(ctx);
+                break;
+            case BURY_BONES:
+                executeBuryBones(ctx);
                 break;
             case RESUPPLY:
                 executeResupply(ctx);
@@ -897,17 +925,25 @@ public class CombatTask extends AbstractTask {
         if (currentTarget != null && currentTarget.isDead()) {
             log.info("Target {} killed! Total kills: {}", currentTarget.getName(), killsCompleted + 1);
             killsCompleted++;
+            killsSinceLastBury++;
+            lastKillTime = Instant.now();
             
             // Reset spell state for next target
             spellSelected = false;
             
             // Prepare to loot
-            if (config.isLootEnabled()) {
+            if (config.isLootEnabled() || config.isBuryBonesEnabled()) {
                 prepareLoot(ctx);
                 if (pendingLoot != null && !pendingLoot.isEmpty()) {
                     phase = CombatPhase.LOOT;
                     return;
                 }
+            }
+            
+            // Check if we should bury bones after looting (even if no loot)
+            if (shouldTriggerBoneBurying(ctx)) {
+                startBoneBurying(ctx);
+                return;
             }
             
             currentTarget = null;
@@ -949,9 +985,13 @@ public class CombatTask extends AbstractTask {
 
     private void executeLoot(TaskContext ctx) {
         if (pendingLoot == null || pendingLoot.isEmpty() || lootIndex >= pendingLoot.size()) {
-            // Done looting
+            // Done looting - check if we should bury bones
             pendingLoot = null;
             lootIndex = 0;
+            if (shouldTriggerBoneBurying(ctx)) {
+                startBoneBurying(ctx);
+                return;
+            }
             phase = CombatPhase.FIND_TARGET;
             return;
         }
@@ -961,6 +1001,10 @@ public class CombatTask extends AbstractTask {
             log.debug("Max loot per kill reached ({})", config.getMaxLootPerKill());
             pendingLoot = null;
             lootIndex = 0;
+            if (shouldTriggerBoneBurying(ctx)) {
+                startBoneBurying(ctx);
+                return;
+            }
             phase = CombatPhase.FIND_TARGET;
             return;
         }
@@ -971,6 +1015,11 @@ public class CombatTask extends AbstractTask {
             log.debug("Inventory full, skipping remaining loot");
             pendingLoot = null;
             lootIndex = 0;
+            // Bury bones to make room if enabled
+            if (shouldTriggerBoneBurying(ctx)) {
+                startBoneBurying(ctx);
+                return;
+            }
             phase = CombatPhase.FIND_TARGET;
             return;
         }
@@ -1024,19 +1073,127 @@ public class CombatTask extends AbstractTask {
             return;
         }
 
+        // Check if account is ironman for loot restrictions
+        var ironmanState = ctx.getIronmanState();
+        boolean isIronman = ironmanState != null && ironmanState.isIronman();
+
         // Get ground items near the kill location
         List<GroundItemSnapshot> nearbyItems = worldState.getGroundItems().stream()
                 .filter(item -> item.getWorldPosition().distanceTo(targetPos) <= 3)
                 .filter(item -> config.shouldLootItem(item.getId(), (int) item.getTotalGeValue()))
+                // Ironmen can only pick up their own loot (private items)
+                .filter(item -> !isIronman || item.isPrivateItem())
                 .sorted(Comparator.comparingLong(GroundItemSnapshot::getTotalGeValue).reversed())
                 .collect(Collectors.toList());
 
         if (!nearbyItems.isEmpty()) {
             pendingLoot = nearbyItems;
             lootIndex = 0;
-            log.debug("Found {} items to loot", nearbyItems.size());
+            log.debug("Found {} items to loot{}", nearbyItems.size(), 
+                    isIronman ? " (ironman mode - own drops only)" : "");
         } else {
             pendingLoot = null;
+        }
+    }
+
+    // ========================================================================
+    // Phase: Bury Bones
+    // ========================================================================
+
+    /**
+     * Check if bone burying should be triggered.
+     * Based on config settings: min kills, min time, and inventory bones.
+     */
+    private boolean shouldTriggerBoneBurying(TaskContext ctx) {
+        if (!config.isBuryBonesEnabled()) {
+            return false;
+        }
+
+        // Check if we have any bones in inventory
+        InventoryState inventory = ctx.getInventoryState();
+        boolean hasBones = com.rocinante.util.ItemCollections.BONES.stream()
+                .anyMatch(inventory::hasItem);
+        
+        if (!hasBones) {
+            return false;
+        }
+
+        // Check if we've reached max ratio (never bury more than kills * ratio)
+        int maxBones = config.getMaxBonesToBury(killsCompleted);
+        if (totalBonesBuried >= maxBones) {
+            log.debug("At max bone bury ratio ({}/{}), skipping", totalBonesBuried, maxBones);
+            return false;
+        }
+
+        // Calculate seconds since last kill
+        long secondsSinceLastKill = 0;
+        if (lastKillTime != null) {
+            secondsSinceLastKill = Duration.between(lastKillTime, Instant.now()).getSeconds();
+        }
+
+        // Use config method to check timing
+        boolean shouldBury = config.shouldBuryBones(killsSinceLastBury, secondsSinceLastKill);
+        
+        if (shouldBury) {
+            log.debug("Bone burying triggered: {} kills since last bury, {}s since last kill",
+                    killsSinceLastBury, secondsSinceLastKill);
+        }
+        
+        return shouldBury;
+    }
+
+    /**
+     * Start a bone burying session.
+     */
+    private void startBoneBurying(TaskContext ctx) {
+        // Calculate how many bones we can bury (respect ratio limit)
+        int maxAllowed = config.getMaxBonesToBury(killsCompleted) - totalBonesBuried;
+        
+        if (maxAllowed <= 0) {
+            log.debug("Cannot bury more bones - at ratio limit");
+            phase = CombatPhase.FIND_TARGET;
+            return;
+        }
+
+        log.info("Starting bone burying session (max {} bones, buried {} so far)", 
+                maxAllowed, totalBonesBuried);
+        
+        // Create the BuryBonesTask with the max limit
+        activeBuryBonesTask = new BuryBonesTask()
+                .withMaxBones(maxAllowed)
+                .withDescription("Bury bones during combat");
+        
+        phase = CombatPhase.BURY_BONES;
+    }
+
+    /**
+     * Execute bone burying phase - delegates to BuryBonesTask.
+     */
+    private void executeBuryBones(TaskContext ctx) {
+        if (activeBuryBonesTask == null) {
+            log.error("Bury bones phase without active task");
+            phase = CombatPhase.FIND_TARGET;
+            return;
+        }
+
+        // Execute the bury bones task
+        activeBuryBonesTask.execute(ctx);
+
+        // Check if complete
+        if (activeBuryBonesTask.getState().isTerminal()) {
+            int buried = activeBuryBonesTask.getBonesBuried();
+            totalBonesBuried += buried;
+            killsSinceLastBury = 0; // Reset kill counter after burying
+            
+            if (activeBuryBonesTask.getState() == TaskState.FAILED) {
+                log.warn("Bone burying task failed: {}", activeBuryBonesTask.getFailureReason());
+            } else {
+                log.info("Buried {} bones (total: {})", buried, totalBonesBuried);
+            }
+            
+            activeBuryBonesTask = null;
+            currentTarget = null;
+            phase = CombatPhase.FIND_TARGET;
         }
     }
 
@@ -1280,10 +1437,14 @@ public class CombatTask extends AbstractTask {
         if (description != null) {
             return description;
         }
-        return String.format("CombatTask[%s, kills=%d/%d]", 
+        String base = String.format("CombatTask[%s, kills=%d/%d]", 
                 config.getTargetConfig().getSummary(),
                 killsCompleted,
                 config.hasKillCountLimit() ? config.getKillCount() : -1);
+        if (config.isBuryBonesEnabled() && totalBonesBuried > 0) {
+            return base + String.format(", buried=%d bones", totalBonesBuried);
+        }
+        return base;
     }
 
     // ========================================================================
@@ -1328,6 +1489,11 @@ public class CombatTask extends AbstractTask {
          * Collecting loot after kill.
          */
         LOOT,
+
+        /**
+         * Burying bones collected during combat.
+         */
+        BURY_BONES,
 
         /**
          * Banking for resupply.

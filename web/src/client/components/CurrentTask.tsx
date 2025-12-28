@@ -6,6 +6,8 @@ interface CurrentTaskProps {
   task: TaskInfo | null;
   queue: QueueInfo | null;
   class?: string;
+  /** When true, shows a disabled/offline state */
+  disabled?: boolean;
 }
 
 /**
@@ -53,28 +55,38 @@ export const CurrentTask: Component<CurrentTaskProps> = (props) => {
   });
 
   return (
-    <div class={`bg-gray-800/60 rounded-lg border border-gray-700 ${props.class || ''}`}>
+    <div class={`bg-gray-800/60 rounded-lg border border-gray-700 ${props.disabled ? 'opacity-50' : ''} ${props.class || ''}`}>
       {/* Header */}
       <div
-        class="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-700/30 transition-colors rounded-t-lg"
-        onClick={() => setExpanded(!expanded())}
+        class={`flex items-center justify-between px-4 py-3 ${props.disabled ? 'cursor-default' : 'cursor-pointer hover:bg-gray-700/30'} transition-colors rounded-t-lg`}
+        onClick={() => !props.disabled && setExpanded(!expanded())}
       >
         <div class="flex items-center gap-3">
           {/* Task indicator */}
           <div class="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center">
-            <Show when={props.task} fallback={<span class="text-gray-500">—</span>}>
-              <span class="text-lg">{stateDisplay()?.icon}</span>
+            <Show when={props.disabled}>
+              <span class="text-gray-600">💤</span>
+            </Show>
+            <Show when={!props.disabled}>
+              <Show when={props.task} fallback={<span class="text-gray-500">—</span>}>
+                <span class="text-lg">{stateDisplay()?.icon}</span>
+              </Show>
             </Show>
           </div>
 
           {/* Task description */}
           <div class="flex flex-col">
             <span class="font-semibold text-gray-100">
-              <Show when={props.task} fallback="No Active Task">
-                {props.task!.description}
+              <Show when={props.disabled}>
+                <span class="text-gray-500">Bot Offline</span>
+              </Show>
+              <Show when={!props.disabled}>
+                <Show when={props.task} fallback="No Active Task">
+                  {props.task!.description}
+                </Show>
               </Show>
             </span>
-            <Show when={props.task}>
+            <Show when={!props.disabled && props.task}>
               <div class="flex items-center gap-2 text-sm">
                 <span class={stateDisplay()?.color}>{stateDisplay()?.label}</span>
                 <Show when={props.task!.elapsedMs > 0}>
@@ -83,24 +95,32 @@ export const CurrentTask: Component<CurrentTaskProps> = (props) => {
                 </Show>
               </div>
             </Show>
+            <Show when={props.disabled}>
+              <span class="text-sm text-gray-500">Start the bot to see task status</span>
+            </Show>
           </div>
         </div>
 
         {/* Queue badge and expand arrow */}
         <div class="flex items-center gap-3">
-          <Show when={hasQueue()}>
+          <Show when={!props.disabled && hasQueue()}>
             <div class="px-2 py-1 rounded bg-gray-700 text-xs text-gray-300">
               {props.queue!.pending} queued
             </div>
           </Show>
-          <svg
-            class={`w-5 h-5 text-gray-400 transform transition-transform ${expanded() ? 'rotate-180' : ''}`}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-          </svg>
+          <Show when={props.disabled}>
+            <span class="text-xs px-2 py-0.5 rounded bg-gray-700 text-gray-500">Offline</span>
+          </Show>
+          <Show when={!props.disabled}>
+            <svg
+              class={`w-5 h-5 text-gray-400 transform transition-transform ${expanded() ? 'rotate-180' : ''}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </Show>
         </div>
       </div>
 
@@ -120,8 +140,8 @@ export const CurrentTask: Component<CurrentTaskProps> = (props) => {
         </div>
       </Show>
 
-      {/* Expanded details */}
-      <Show when={expanded()}>
+      {/* Expanded details - only show when not disabled */}
+      <Show when={expanded() && !props.disabled}>
         <div class="px-4 pb-4 border-t border-gray-700 mt-2 pt-3 space-y-3">
           {/* Subtasks */}
           <Show when={hasSubtasks()}>

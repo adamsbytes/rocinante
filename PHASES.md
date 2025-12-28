@@ -118,7 +118,7 @@
 - [X] `TravelTask` with behavioral profile preferences
 - [X] Full Grand Exchange handling (incl. `GrandExchangeTask`)
 - [ ] `InventoryTask`
-- [X] `BankTask`, `DialogueTask`, `PuzzleTask`, `SettingsTask`, `TradeTask`, `WidgetInteractTask`
+- [X] `BankTask`, `BuryBoneTask`, `DialogueTask`, `PuzzleTask`, `SettingsTask`, `TradeTask`, `WidgetInteractTask`
 
 **Test**: Give goal "complete Recipe for Disaster" - bot generates valid plan and begins execution.
 
@@ -216,7 +216,7 @@
 - [ ] `AlchTask` - High/low alchemy automation
 - [ ] `EnchantTask` - Jewelry/bolt enchanting
 - [ ] `SplashingTask` - Auto-combat with -65 magic bonus setup
-- [ ] `BuryBoneTask`, `AltarOfferTask` - Prayer training methods
+- [ ] `AltarOfferTask` - Prayer training method
 
 **9H: Minigame-Based Training**
 - [X] `ArceusLibraryTask` - Magic and Runecrafting options
@@ -237,7 +237,7 @@
 **Goal**: Full ironman support with HCIM death prevention.
 
 - [X] `IronmanState` - Account type detection
-- [~] `IronmanRestrictions` - GE/trade blocking
+- [X] `IronmanRestrictions` - GE/trade blocking
 - [ ] `SelfSufficiencyPlanner` - Item acquisition without GE
 - [ ] `ResourceGatheringPlanner` - Supply chain planning
 - [ ] `DropTableAnalyzer` - Monster farming optimization

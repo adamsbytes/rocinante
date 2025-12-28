@@ -253,6 +253,14 @@ export interface CombatTaskSpec {
   stopWhenOutOfFood?: boolean;
   /** Enable resupply runs (optional) */
   enableResupply?: boolean;
+  /** Enable bone burying while fighting (optional) */
+  buryBonesEnabled?: boolean;
+  /** Minimum kills before burying bones (optional, default 2) */
+  buryBonesMinKills?: number;
+  /** Minimum seconds since last kill before burying (optional, default 60) */
+  buryBonesMinSeconds?: number;
+  /** Maximum bones to bury per kill ratio (optional, default 2) */
+  buryBonesMaxRatio?: number;
 }
 
 /**

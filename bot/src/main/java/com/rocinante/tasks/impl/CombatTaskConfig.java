@@ -276,6 +276,44 @@ public class CombatTaskConfig {
     int maxLootPerKill = -1;
 
     // ========================================================================
+    // Bone Burying Configuration
+    // ========================================================================
+
+    /**
+     * Whether to bury bones while fighting.
+     * When enabled, bones are automatically looted and buried.
+     */
+    @Builder.Default
+    boolean buryBonesEnabled = false;
+
+    /**
+     * Minimum kills before triggering a bone burying session.
+     * After each kill ends, wait until this many kills have been made
+     * (or buryBonesMinSecondsBeforeBury, whichever is first) before burying.
+     * Default: 2 kills.
+     */
+    @Builder.Default
+    int buryBonesMinKillsBeforeBury = 2;
+
+    /**
+     * Minimum seconds since last kill before triggering bone burying.
+     * Used in conjunction with buryBonesMinKillsBeforeBury - whichever is first.
+     * Default: 60 seconds.
+     */
+    @Builder.Default
+    int buryBonesMinSecondsBeforeBury = 60;
+
+    /**
+     * Maximum ratio of bones buried to kills.
+     * Never bury more than (kills * ratio) bones.
+     * This allows picking up bones from other players while preventing
+     * excessive bone collection that could look suspicious.
+     * Default: 2 (bury up to 2x the kills made).
+     */
+    @Builder.Default
+    int buryBonesMaxRatio = 2;
+
+    // ========================================================================
     // Resource Management
     // ========================================================================
 
@@ -488,7 +526,7 @@ public class CombatTaskConfig {
     }
 
     /**
-     * Check if an item should be looted (by value or whitelist).
+     * Check if an item should be looted (by value, whitelist, or bone burying).
      *
      * @param itemId the item ID
      * @param geValue the item's GE value
@@ -498,10 +536,50 @@ public class CombatTaskConfig {
         if (!lootEnabled) {
             return false;
         }
+        // Always loot bones if bone burying is enabled
+        if (buryBonesEnabled && isBone(itemId)) {
+            return true;
+        }
         if (lootWhitelist.contains(itemId)) {
             return true;
         }
         return geValue >= lootMinValue;
+    }
+
+    /**
+     * Check if an item ID is a bone (from ItemCollections.BONES).
+     *
+     * @param itemId the item ID to check
+     * @return true if the item is a bone
+     */
+    public boolean isBone(int itemId) {
+        return com.rocinante.util.ItemCollections.BONES.contains(itemId);
+    }
+
+    /**
+     * Check if bone burying should be triggered based on kills and time.
+     *
+     * @param killsSinceLastBury kills since last bury session
+     * @param secondsSinceLastKill seconds since the last kill ended
+     * @return true if burying should be triggered
+     */
+    public boolean shouldBuryBones(int killsSinceLastBury, long secondsSinceLastKill) {
+        if (!buryBonesEnabled) {
+            return false;
+        }
+        // Trigger if we've made enough kills OR enough time has passed
+        return killsSinceLastBury >= buryBonesMinKillsBeforeBury
+                || secondsSinceLastKill >= buryBonesMinSecondsBeforeBury;
+    }
+
+    /**
+     * Calculate maximum bones that can be buried based on total kills.
+     *
+     * @param totalKills total kills made in this combat session
+     * @return max bones allowed to bury
+     */
+    public int getMaxBonesToBury(int totalKills) {
+        return totalKills * buryBonesMaxRatio;
     }
 
     /**
@@ -570,6 +648,10 @@ public class CombatTaskConfig {
         }
         if (lootEnabled) {
             sb.append(", loot>=").append(lootMinValue).append("gp");
+        }
+        if (buryBonesEnabled) {
+            sb.append(", buryBones(").append(buryBonesMinKillsBeforeBury).append("kills/")
+                    .append(buryBonesMinSecondsBeforeBury).append("s, max").append(buryBonesMaxRatio).append("x)");
         }
         if (stopWhenLowResources) {
             sb.append(", bankWhenLow");

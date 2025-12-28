@@ -6,6 +6,8 @@ import { XpGainBadge } from './SkillIcon';
 interface SessionStatsPanelProps {
   session: SessionInfo | null;
   class?: string;
+  /** When true, shows a disabled/offline state */
+  disabled?: boolean;
 }
 
 /**
@@ -69,28 +71,33 @@ export const SessionStatsPanel: Component<SessionStatsPanelProps> = (props) => {
   });
 
   return (
-    <div class={`bg-gray-800/60 rounded-lg border border-gray-700 ${props.class || ''}`}>
+    <div class={`bg-gray-800/60 rounded-lg border border-gray-700 ${props.disabled ? 'opacity-50' : ''} ${props.class || ''}`}>
       {/* Header with basic stats */}
       <div
-        class="px-4 py-3 cursor-pointer hover:bg-gray-700/30 transition-colors rounded-t-lg"
-        onClick={() => setExpanded(!expanded())}
+        class={`px-4 py-3 ${props.disabled ? 'cursor-default' : 'cursor-pointer hover:bg-gray-700/30'} transition-colors rounded-t-lg`}
+        onClick={() => !props.disabled && setExpanded(!expanded())}
       >
         <div class="flex items-center justify-between mb-3">
           <h3 class="font-semibold text-gray-100 flex items-center gap-2">
-            <svg class="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg class={`w-5 h-5 ${props.disabled ? 'text-gray-500' : 'text-amber-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
                 d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             Session Stats
+            <Show when={props.disabled}>
+              <span class="text-xs px-2 py-0.5 rounded bg-gray-700 text-gray-500">Offline</span>
+            </Show>
           </h3>
-          <svg
-            class={`w-5 h-5 text-gray-400 transform transition-transform ${expanded() ? 'rotate-180' : ''}`}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-          </svg>
+          <Show when={!props.disabled}>
+            <svg
+              class={`w-5 h-5 text-gray-400 transform transition-transform ${expanded() ? 'rotate-180' : ''}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </Show>
         </div>
 
         {/* Quick stats grid */}
@@ -98,31 +105,39 @@ export const SessionStatsPanel: Component<SessionStatsPanelProps> = (props) => {
           {/* Runtime */}
           <div class="bg-gray-700/50 rounded px-3 py-2">
             <div class="text-xs text-gray-400 mb-0.5">Runtime</div>
-            <div class="font-mono text-lg text-white">{formattedRuntime()}</div>
+            <div class={`font-mono text-lg ${props.disabled ? 'text-gray-500' : 'text-white'}`}>
+              {props.disabled ? '--:--:--' : formattedRuntime()}
+            </div>
           </div>
 
           {/* Total XP */}
           <div class="bg-gray-700/50 rounded px-3 py-2">
             <div class="text-xs text-gray-400 mb-0.5">Total XP</div>
-            <div class="text-lg text-green-400 font-semibold">{formattedTotalXp()}</div>
+            <div class={`text-lg font-semibold ${props.disabled ? 'text-gray-500' : 'text-green-400'}`}>
+              {props.disabled ? '--' : formattedTotalXp()}
+            </div>
           </div>
 
           {/* XP/hr */}
           <div class="bg-gray-700/50 rounded px-3 py-2">
             <div class="text-xs text-gray-400 mb-0.5">XP/hr</div>
-            <div class="text-lg text-cyan-400 font-semibold">{formattedXpPerHour()}</div>
+            <div class={`text-lg font-semibold ${props.disabled ? 'text-gray-500' : 'text-cyan-400'}`}>
+              {props.disabled ? '--' : formattedXpPerHour()}
+            </div>
           </div>
 
           {/* Actions */}
           <div class="bg-gray-700/50 rounded px-3 py-2">
             <div class="text-xs text-gray-400 mb-0.5">Actions</div>
-            <div class="text-lg text-white">{props.session?.actions?.toLocaleString() || '0'}</div>
+            <div class={`text-lg ${props.disabled ? 'text-gray-500' : 'text-white'}`}>
+              {props.disabled ? '--' : (props.session?.actions?.toLocaleString() || '0')}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Expanded details */}
-      <Show when={expanded()}>
+      {/* Expanded details - only show when not disabled */}
+      <Show when={expanded() && !props.disabled}>
         <div class="px-4 pb-4 border-t border-gray-700 pt-3 space-y-4">
           {/* Breaks & Fatigue */}
           <div class="grid grid-cols-2 gap-4">

@@ -164,11 +164,11 @@ export const BotDetail: Component = () => {
                 <LogsViewer botId={params().id} onClose={() => setShowLogs(false)} />
               </Show>
 
-              {/* VNC Viewer */}
-              <Show when={isRunning()}>
-                <div class="mb-6">
-                  <div class="flex items-center gap-3 mb-3">
-                    <h3 class="text-lg font-semibold">Live View</h3>
+              {/* VNC Viewer - always show, with offline placeholder when not running */}
+              <div class="mb-6">
+                <div class="flex items-center gap-3 mb-3">
+                  <h3 class="text-lg font-semibold">Live View</h3>
+                  <Show when={isRunning()}>
                     <span class="flex items-center gap-1.5 text-xs">
                       <span
                         class={`w-2 h-2 rounded-full ${
@@ -192,83 +192,104 @@ export const BotDetail: Component = () => {
                         {vncStatus() === 'error' && (vncError() || 'Error')}
                       </span>
                     </span>
-                  </div>
+                  </Show>
+                  <Show when={!isRunning()}>
+                    <span class="flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full bg-gray-800">
+                      <span class="w-1.5 h-1.5 rounded-full bg-gray-500" />
+                      <span class="text-gray-400">Offline</span>
+                    </span>
+                  </Show>
+                </div>
+                <Show
+                  when={isRunning()}
+                  fallback={
+                    <VncOfflinePlaceholder state={bot().status.state} />
+                  }
+                >
                   <VncViewer 
                     botId={params().id} 
                     shouldConnect={isRunning}
                     onStatusChange={handleVncStatusChange} 
                   />
-                </div>
-              </Show>
+                </Show>
+              </div>
 
-              {/* Real-time Status Section */}
-              <Show when={isRunning()}>
-                <div class="mb-6 space-y-4">
-                  {/* Current Task */}
-                  <CurrentTask 
-                    task={runtimeStatus()?.task || null}
-                    queue={runtimeStatus()?.queue || null}
-                  />
+              {/* Real-time Status Section - always visible, disabled when offline */}
+              <div class="mb-6 space-y-4">
+                {/* Current Task */}
+                <CurrentTask 
+                  task={runtimeStatus()?.task || null}
+                  queue={runtimeStatus()?.queue || null}
+                  disabled={!isRunning()}
+                />
 
-                  {/* Session Stats */}
-                  <SessionStatsPanel session={runtimeStatus()?.session || null} />
+                {/* Session Stats */}
+                <SessionStatsPanel 
+                  session={runtimeStatus()?.session || null} 
+                  disabled={!isRunning()}
+                />
 
-                  {/* Manual Task Panel */}
-                  <Show when={statusStore()}>
-                    <ManualTaskPanel 
-                      statusStore={statusStore()!}
-                      playerSkills={runtimeStatus()?.player?.skills}
-                    />
-                  </Show>
+                {/* Manual Task Panel */}
+                <ManualTaskPanel 
+                  statusStore={statusStore() || undefined}
+                  playerSkills={runtimeStatus()?.player?.skills}
+                  disabled={!isRunning()}
+                />
 
-                  {/* Account Stats with view toggle */}
-                  <div>
-                    <div class="flex items-center justify-between mb-3">
-                      <h3 class="text-lg font-semibold flex items-center gap-2">
-                        <span>Account Stats</span>
-                        <Show when={runtimeStatus()?.gameState}>
-                          <span class="text-xs px-2 py-0.5 rounded bg-gray-700 text-gray-300">
-                            {runtimeStatus()!.gameState}
-                          </span>
-                        </Show>
-                      </h3>
-                      <div class="flex gap-1 bg-gray-800 rounded-lg p-1">
-                        <button
-                          onClick={() => setStatsView('grid')}
-                          class={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-                            statsView() === 'grid'
-                              ? 'bg-amber-600 text-white'
-                              : 'text-gray-400 hover:text-white'
-                          }`}
-                        >
-                          Grid
-                        </button>
-                        <button
-                          onClick={() => setStatsView('table')}
-                          class={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-                            statsView() === 'table'
-                              ? 'bg-amber-600 text-white'
-                              : 'text-gray-400 hover:text-white'
-                          }`}
-                        >
-                          Table
-                        </button>
-                      </div>
+                {/* Account Stats with view toggle */}
+                <div class={!isRunning() ? 'opacity-50' : ''}>
+                  <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-lg font-semibold flex items-center gap-2">
+                      <span>Account Stats</span>
+                      <Show when={isRunning() && runtimeStatus()?.gameState}>
+                        <span class="text-xs px-2 py-0.5 rounded bg-gray-700 text-gray-300">
+                          {runtimeStatus()!.gameState}
+                        </span>
+                      </Show>
+                      <Show when={!isRunning()}>
+                        <span class="text-xs px-2 py-0.5 rounded bg-gray-700 text-gray-500">
+                          Offline
+                        </span>
+                      </Show>
+                    </h3>
+                    <div class="flex gap-1 bg-gray-800 rounded-lg p-1">
+                      <button
+                        onClick={() => setStatsView('grid')}
+                        disabled={!isRunning()}
+                        class={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                          statsView() === 'grid'
+                            ? 'bg-amber-600 text-white'
+                            : 'text-gray-400 hover:text-white'
+                        } disabled:cursor-not-allowed`}
+                      >
+                        Grid
+                      </button>
+                      <button
+                        onClick={() => setStatsView('table')}
+                        disabled={!isRunning()}
+                        class={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                          statsView() === 'table'
+                            ? 'bg-amber-600 text-white'
+                            : 'text-gray-400 hover:text-white'
+                        } disabled:cursor-not-allowed`}
+                      >
+                        Table
+                      </button>
                     </div>
-                    <Show
-                      when={statsView() === 'grid'}
-                      fallback={
-                        <AccountStatsHiscores 
-                          player={runtimeStatus()?.player || null}
-                          session={runtimeStatus()?.session || null}
-                        />
-                      }
-                    >
-                      <AccountStatsGrid player={runtimeStatus()?.player || null} />
-                    </Show>
                   </div>
+                  <Show
+                    when={statsView() === 'grid'}
+                    fallback={
+                      <AccountStatsHiscores 
+                        player={runtimeStatus()?.player || null}
+                        session={runtimeStatus()?.session || null}
+                      />
+                    }
+                  >
+                    <AccountStatsGrid player={runtimeStatus()?.player || null} />
+                  </Show>
                 </div>
-              </Show>
+              </div>
 
               {/* Bot Details */}
               <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -391,6 +412,52 @@ const StatusConnectionBadge: Component<{ state: ConnectionState }> = (props) => 
       <span class={`w-1.5 h-1.5 rounded-full ${config().color}`} />
       <span class={config().text}>{config().label}</span>
     </span>
+  );
+};
+
+/**
+ * VNC Offline placeholder - shows when bot is not running.
+ */
+const VncOfflinePlaceholder: Component<{ state: string }> = (props) => {
+  const stateText = () => {
+    switch (props.state) {
+      case 'stopped':
+        return 'Bot is offline';
+      case 'starting':
+        return 'Bot is starting...';
+      case 'stopping':
+        return 'Bot is stopping...';
+      case 'error':
+        return 'Bot has an error';
+      default:
+        return 'Bot is offline';
+    }
+  };
+
+  const stateIcon = () => {
+    switch (props.state) {
+      case 'starting':
+        return '🚀';
+      case 'stopping':
+        return '⏳';
+      case 'error':
+        return '⚠️';
+      default:
+        return '💤';
+    }
+  };
+
+  return (
+    <div class="relative bg-black rounded-lg overflow-hidden aspect-video flex items-center justify-center">
+      <div class="absolute inset-0 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900" />
+      <div class="relative text-center">
+        <div class="text-4xl mb-3">{stateIcon()}</div>
+        <p class="text-gray-400 text-lg">{stateText()}</p>
+        <p class="text-gray-500 text-sm mt-2">
+          Start the bot to see the live view
+        </p>
+      </div>
+    </div>
   );
 };
 

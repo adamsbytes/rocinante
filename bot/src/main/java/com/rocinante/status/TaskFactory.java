@@ -262,6 +262,10 @@ public class TaskFactory {
      * - xpGoal: String - ATTACK, STRENGTH, DEFENCE, etc. (optional)
      * - useSafeSpot: Boolean - Enable safe-spotting (optional)
      * - safeSpotX, safeSpotY, safeSpotPlane: Numbers - Safe spot position (optional)
+     * - buryBonesEnabled: Boolean - Enable bone burying while fighting (optional)
+     * - buryBonesMinKills: Number - Min kills before burying (optional, default 2)
+     * - buryBonesMinSeconds: Number - Min seconds since kill before burying (optional, default 60)
+     * - buryBonesMaxRatio: Number - Max bones to bury per kill (optional, default 2)
      */
     private Optional<Task> createCombatTask(JsonObject spec) {
         CombatTaskConfig.CombatTaskConfigBuilder configBuilder = CombatTaskConfig.builder();
@@ -373,6 +377,20 @@ public class TaskFactory {
         }
         if (spec.has("enableResupply")) {
             configBuilder.enableResupply(spec.get("enableResupply").getAsBoolean());
+        }
+
+        // Bone burying configuration
+        if (spec.has("buryBonesEnabled")) {
+            configBuilder.buryBonesEnabled(spec.get("buryBonesEnabled").getAsBoolean());
+        }
+        if (spec.has("buryBonesMinKills")) {
+            configBuilder.buryBonesMinKillsBeforeBury(spec.get("buryBonesMinKills").getAsInt());
+        }
+        if (spec.has("buryBonesMinSeconds")) {
+            configBuilder.buryBonesMinSecondsBeforeBury(spec.get("buryBonesMinSeconds").getAsInt());
+        }
+        if (spec.has("buryBonesMaxRatio")) {
+            configBuilder.buryBonesMaxRatio(spec.get("buryBonesMaxRatio").getAsInt());
         }
 
         // Check for required dependencies
