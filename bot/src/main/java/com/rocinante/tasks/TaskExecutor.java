@@ -354,15 +354,15 @@ public class TaskExecutor {
                     log.debug("URGENT interrupted BEHAVIORAL task - preserving pause stack");
                     // Just cancel the behavioral task - pause stack remains intact
                     currentTask = null;
-                    urgentPending = checkForMoreUrgent();
-                    return;
+                    // Continue to pick up the urgent task below (don't return)
+                } else {
+                    // Re-queue current task if it's still runnable
+                    if (currentTask.getState() == TaskState.RUNNING) {
+                        requeueCurrentTask();
+                    }
+                    currentTask = null;
                 }
-                
-                // Re-queue current task if it's still runnable
-                if (currentTask.getState() == TaskState.RUNNING) {
-                    requeueCurrentTask();
-                }
-                currentTask = null;
+                urgentPending = checkForMoreUrgent();
             }
         }
 
@@ -424,7 +424,8 @@ public class TaskExecutor {
     }
 
     /**
-     * Check if there's already a behavioral task in the queue.
+     * Check if there's already a behavioral task in the queue (not including current).
+     * Allows behavioral task nesting - current behavioral can be paused for new one.
      */
     private boolean hasBehavioralTaskQueued() {
         for (QueuedTask qt : taskQueue) {
@@ -432,7 +433,8 @@ public class TaskExecutor {
                 return true;
             }
         }
-        return currentTask != null && currentTask.getPriority() == TaskPriority.BEHAVIORAL;
+        // Don't block nesting - allow new behavioral to pause current behavioral
+        return false;
     }
 
     /**
@@ -560,12 +562,14 @@ public class TaskExecutor {
                     currentTask != null ? currentTask.getDescription() : "null");
         }
         
-        // Check if this was a behavioral task and we have a paused task to resume
-        if (currentTask != null && currentTask.getPriority() == TaskPriority.BEHAVIORAL) {
+        // Check if we have a paused task to resume after behavioral/urgent task completes
+        if (currentTask != null && 
+            (currentTask.getPriority() == TaskPriority.BEHAVIORAL || 
+             currentTask.getPriority() == TaskPriority.URGENT)) {
             if (!pausedTaskStack.isEmpty()) {
                 Task pausedTask = pausedTaskStack.pop();
-                log.debug("Resuming paused task after behavioral break: {}", 
-                        pausedTask.getDescription());
+                log.debug("Resuming paused task after {} priority task: {}", 
+                        currentTask.getPriority(), pausedTask.getDescription());
                 // Re-queue the paused task to resume it
                 queueTask(pausedTask, pausedTask.getPriority());
             }

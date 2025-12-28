@@ -203,14 +203,13 @@
 - [ ] HP monitoring with food consumption during thieving
 - [ ] `DodgyNecklaceTracker` - Track charges, auto-equip replacements
 - [ ] `PickpocketTarget` - NPC selection and cycling
-- [ ] `StallThievingTask` - Different mechanics than pickpocketing
+- [ ] `StallThievingTask` - Different mechanics than pickpocketing, include a specific `Ardy Cake Stall Safespot` training method for low level food gathering/decent XP
 - [ ] Ardy knight splashing setup support
 
 **9F: Firemaking System**
-- [ ] `FiremakingTask` - Line-based log burning
-- [ ] Starting position selection with obstacle awareness
-- [ ] Line completion detection and repositioning
-- [ ] `WintertodtTask` - Minigame-based training (separate orchestrator)
+- [X] `FiremakingTask` - Line-based log burning
+- [X] Starting position selection with obstacle awareness
+- [X] Line completion detection and repositioning
 
 **9G: Spell-Based Training**
 - [ ] `MagicTrainingTask` - Spell casting for XP
@@ -218,6 +217,17 @@
 - [ ] `EnchantTask` - Jewelry/bolt enchanting
 - [ ] `SplashingTask` - Auto-combat with -65 magic bonus setup
 - [ ] `BuryBoneTask`, `AltarOfferTask` - Prayer training methods
+
+**9H: Minigame-Based Training**
+- [X] `ArceusLibraryTask` - Magic and Runecrafting options
+- [X] `WintertodtTask` - Fletch and feed methods
+- [ ] `GiantsFoundryTask`
+- [ ] `TemporossTask`
+- [ ] `GOTRTask` - Guardians of the Rift
+- [ ] `PestControlTask` - would need world hop support
+- [ ] `SoulWarsTask` - would need world hop support
+- [ ] `VolcanicMineTask`
+- [ ] `HallowedSepulchreTask`
 
 **Test**: Complete a farm run across all patch types. Train Hunter to 63 via red chins. Complete 50 Runecraft laps via ZMI.
 

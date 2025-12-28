@@ -74,8 +74,17 @@ public class TrainingMethod {
 
     /**
      * XP gained per successful action.
+     * For methods with level-based XP (xpMultiplier > 0), this is ignored.
      */
     double xpPerAction;
+
+    /**
+     * Multiplier for level-based XP calculation.
+     * When > 0, XP per action = level * xpMultiplier (overrides xpPerAction).
+     * Examples: Arceuus Library Magic = 15, Arceuus Library Runecraft = 5.
+     */
+    @Builder.Default
+    double xpMultiplier = 0;
 
     /**
      * Theoretical maximum actions per hour (used for efficiency calculations).
@@ -255,6 +264,31 @@ public class TrainingMethod {
     String courseId;
 
     // ========================================================================
+    // Minigame Configuration
+    // ========================================================================
+
+    /**
+     * Minigame identifier for MINIGAME method type.
+     * Examples: "wintertodt", "tempoross", "guardians_of_the_rift".
+     */
+    String minigameId;
+
+    /**
+     * Minigame strategy (e.g., "simple", "fletch" for Wintertodt).
+     */
+    String minigameStrategy;
+
+    // ========================================================================
+    // Firemaking Configuration
+    // ========================================================================
+
+    /**
+     * Log item ID for FIREMAKING method type.
+     */
+    @Builder.Default
+    int logItemId = -1;
+
+    // ========================================================================
     // Utility Methods
     // ========================================================================
 
@@ -272,11 +306,50 @@ public class TrainingMethod {
     }
 
     /**
-     * Calculate theoretical XP per hour.
+     * Check if this method uses level-based XP calculation.
      *
+     * @return true if xpMultiplier is set (> 0)
+     */
+    public boolean hasLevelBasedXp() {
+        return xpMultiplier > 0;
+    }
+
+    /**
+     * Get XP per action at a specific level.
+     * For level-based methods, calculates level * xpMultiplier.
+     * For static methods, returns xpPerAction.
+     *
+     * @param level the player's current level in the trained skill
+     * @return XP gained per successful action
+     */
+    public double getXpPerAction(int level) {
+        if (hasLevelBasedXp()) {
+            return level * xpMultiplier;
+        }
+        return xpPerAction;
+    }
+
+    /**
+     * Calculate theoretical XP per hour at a specific level.
+     * For level-based methods, uses level * xpMultiplier * actionsPerHour.
+     *
+     * @param level the player's current level in the trained skill
      * @return estimated XP per hour
      */
+    public double getXpPerHour(int level) {
+        return getXpPerAction(level) * actionsPerHour;
+    }
+
+    /**
+     * Calculate theoretical XP per hour using static xpPerAction.
+     * For level-based methods, this returns 0 - use getXpPerHour(int level) instead.
+     *
+     * @return estimated XP per hour (0 if level-based)
+     */
     public double getXpPerHour() {
+        if (hasLevelBasedXp()) {
+            return 0; // Must use getXpPerHour(level) for level-based methods
+        }
         return xpPerAction * actionsPerHour;
     }
 
@@ -362,17 +435,59 @@ public class TrainingMethod {
     }
 
     /**
+     * Check if this is a minigame-based training method.
+     *
+     * @return true if method type is MINIGAME and minigameId is set
+     */
+    public boolean isMinigameMethod() {
+        return methodType == MethodType.MINIGAME && minigameId != null && !minigameId.isEmpty();
+    }
+
+    /**
+     * Check if this is a firemaking method.
+     *
+     * @return true if method type is FIREMAKING and logItemId is set
+     */
+    public boolean isFiremakingMethod() {
+        return methodType == MethodType.FIREMAKING && logItemId > 0;
+    }
+
+    /**
      * Get a summary string for logging.
      *
      * @return human-readable summary
      */
     public String getSummary() {
+        if (hasLevelBasedXp()) {
+            return String.format("%s [%s] (lvl %d-%s, %.0fx level xp/action)",
+                    name,
+                    skill.getName(),
+                    minLevel,
+                    maxLevel < 0 ? "99" : String.valueOf(maxLevel),
+                    xpMultiplier);
+        }
         return String.format("%s [%s] (lvl %d-%s, %.0f xp/hr)",
                 name,
                 skill.getName(),
                 minLevel,
                 maxLevel < 0 ? "99" : String.valueOf(maxLevel),
                 getXpPerHour());
+    }
+
+    /**
+     * Get a summary string with level-specific XP rates.
+     *
+     * @param level the player's current level
+     * @return human-readable summary with actual XP rates
+     */
+    public String getSummary(int level) {
+        return String.format("%s [%s] (lvl %d-%s, %.0f xp/hr @ lvl %d)",
+                name,
+                skill.getName(),
+                minLevel,
+                maxLevel < 0 ? "99" : String.valueOf(maxLevel),
+                getXpPerHour(level),
+                level);
     }
 }
 

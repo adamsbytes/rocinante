@@ -384,12 +384,17 @@ public class CompositeTask extends AbstractTask {
 
         // Execute current child in sequence
         if (currentIndex >= children.size()) {
-            // Completed one iteration - check stop condition BEFORE incrementing
+            // Completed one iteration - increment counter first
+            currentIteration++;
+            
+            // Check stop condition after completing iteration
             if (stopCondition != null && stopCondition.test(ctx)) {
                 log.debug("Loop stop condition met after {} iterations", currentIteration);
                 complete();
                 return;
             }
+            
+            // Check max iterations (currentIteration is now 1-indexed count of completed iterations)
             if (maxIterations > 0 && currentIteration >= maxIterations) {
                 log.debug("Loop reached max iterations: {}", maxIterations);
                 complete();
@@ -397,11 +402,10 @@ public class CompositeTask extends AbstractTask {
             }
             
             // Continue to next iteration
-            currentIteration++;
             currentIndex = 0;
             resetChildren();
             log.debug("Loop iteration {} completed, starting iteration {}",
-                    currentIteration - 1, currentIteration);
+                    currentIteration, currentIteration + 1);
         }
 
         // Execute like sequential

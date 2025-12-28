@@ -500,6 +500,93 @@ public class SkillTask extends AbstractTask {
             activeSubTask = new AgilityCourseTask(courseConfig)
                     .withDescription("Train Agility at " + course.getName());
             log.info("Starting agility training at {}", course.getName());
+
+        } else if (method.getMethodType() == MethodType.FIREMAKING) {
+            // Firemaking training - delegate to FiremakingTask
+            if (!method.isFiremakingMethod()) {
+                log.warn("FIREMAKING method {} doesn't have logItemId configured", method.getId());
+                fail("Invalid firemaking method configuration");
+                return;
+            }
+
+            // Create FiremakingConfig from method and SkillTaskConfig
+            FiremakingConfig fmConfig = FiremakingConfig.builder()
+                    .logItemId(method.getLogItemId())
+                    .targetLevel(config.getTargetLevel())
+                    .targetXp(config.getTargetXp())
+                    .maxDuration(config.getMaxDuration())
+                    .bankForLogs(method.requiresBanking())
+                    .build();
+
+            // Delegate to FiremakingTask
+            activeSubTask = new FiremakingTask(fmConfig)
+                    .withDescription("Train Firemaking with " + method.getName());
+            log.info("Starting firemaking training: {}", method.getName());
+
+        } else if (method.getMethodType() == MethodType.MINIGAME) {
+            // Minigame-based training - delegate to appropriate MinigameTask
+            if (!method.isMinigameMethod()) {
+                log.warn("MINIGAME method {} doesn't have minigameId configured", method.getId());
+                fail("Invalid minigame method configuration");
+                return;
+            }
+
+            String minigameId = method.getMinigameId();
+
+            if ("wintertodt".equalsIgnoreCase(minigameId)) {
+                // Create WintertodtConfig based on method strategy
+                com.rocinante.tasks.minigame.wintertodt.WintertodtConfig.WintertodtConfigBuilder<?, ?> wtBuilder = 
+                        com.rocinante.tasks.minigame.wintertodt.WintertodtConfig.builder()
+                        .targetLevel(config.getTargetLevel())
+                        .targetXp(config.getTargetXp())
+                        .maxDuration(config.getMaxDuration());
+
+                // Set strategy from method
+                String strategyStr = method.getMinigameStrategy();
+                if ("fletch".equalsIgnoreCase(strategyStr)) {
+                    wtBuilder.strategy(com.rocinante.tasks.minigame.wintertodt.WintertodtStrategy.FLETCH);
+                } else {
+                    wtBuilder.strategy(com.rocinante.tasks.minigame.wintertodt.WintertodtStrategy.SIMPLE);
+                }
+
+                com.rocinante.tasks.minigame.wintertodt.WintertodtConfig wtConfig = wtBuilder.build();
+
+                // Delegate to WintertodtTask
+                activeSubTask = new com.rocinante.tasks.minigame.wintertodt.WintertodtTask(wtConfig);
+                log.info("Starting Wintertodt training: {} strategy", strategyStr != null ? strategyStr : "simple");
+
+            } else if ("arceuus_library".equalsIgnoreCase(minigameId)) {
+                // Determine target skill from minigame strategy
+                Skill targetSkill = Skill.MAGIC;
+                String strategyStr = method.getMinigameStrategy();
+                if ("runecraft".equalsIgnoreCase(strategyStr)) {
+                    targetSkill = Skill.RUNECRAFT;
+                }
+
+                // Create ArceuusLibraryConfig
+                com.rocinante.tasks.minigame.library.ArceuusLibraryConfig libraryConfig;
+                if (config.getTargetLevel() > 0) {
+                    libraryConfig = targetSkill == Skill.MAGIC
+                            ? com.rocinante.tasks.minigame.library.ArceuusLibraryConfig.forMagic(config.getTargetLevel())
+                            : com.rocinante.tasks.minigame.library.ArceuusLibraryConfig.forRunecraft(config.getTargetLevel());
+                } else if (config.getTargetXp() > 0) {
+                    libraryConfig = com.rocinante.tasks.minigame.library.ArceuusLibraryConfig.forXp(targetSkill, config.getTargetXp());
+                } else {
+                    // Default to level 99 target
+                    libraryConfig = targetSkill == Skill.MAGIC
+                            ? com.rocinante.tasks.minigame.library.ArceuusLibraryConfig.forMagic(99)
+                            : com.rocinante.tasks.minigame.library.ArceuusLibraryConfig.forRunecraft(99);
+                }
+
+                // Delegate to ArceuusLibraryTask (uses reflection to access RuneLite plugin)
+                activeSubTask = new com.rocinante.tasks.minigame.library.ArceuusLibraryTask(libraryConfig);
+                log.info("Starting Arceuus Library training: {} ({})", targetSkill.getName(), strategyStr);
+
+            } else {
+                log.warn("Unknown minigame: {}", minigameId);
+                fail("Unsupported minigame: " + minigameId);
+                return;
+            }
         }
 
         phaseWaitTicks = 0;

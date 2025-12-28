@@ -580,6 +580,46 @@
       "type": "GENERIC",
       "tags": ["f2p", "safe", "shortcut"],
       "metadata": {}
+    },
+    {
+      "id": "arceuus_library",
+      "name": "Arceuus Library",
+      "x": 1632,
+      "y": 3807,
+      "plane": 0,
+      "type": "TRAINING",
+      "tags": ["p2p", "safe", "minigame"],
+      "metadata": {"minigame": "arceuus_library", "region_id": "6459", "resource": "magic,runecraft"}
+    },
+    {
+      "id": "arceuus_bank",
+      "name": "Arceuus Bank",
+      "x": 1624,
+      "y": 3743,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["p2p", "safe"],
+      "metadata": {"bank_type": "booth"}
+    },
+    {
+      "id": "arceuus_center",
+      "name": "Arceuus Center",
+      "x": 1700,
+      "y": 3750,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["p2p", "safe"],
+      "metadata": {}
+    },
+    {
+      "id": "wintertodt",
+      "name": "Wintertodt Camp",
+      "x": 1630,
+      "y": 3959,
+      "plane": 0,
+      "type": "TRAINING",
+      "tags": ["p2p", "safe", "minigame"],
+      "metadata": {"minigame": "wintertodt", "region_id": "6461,6462", "resource": "firemaking"}
     }
   ],
   "edges": [
@@ -1304,6 +1344,33 @@
       "bidirectional": true,
       "requirements": [],
       "metadata": {}
+    },
+    {
+      "from": "arceuus_library",
+      "to": "arceuus_bank",
+      "type": "WALK",
+      "cost_ticks": 80,
+      "bidirectional": true,
+      "requirements": [],
+      "metadata": {"notes": "Walk south from library to bank"}
+    },
+    {
+      "from": "arceuus_bank",
+      "to": "arceuus_center",
+      "type": "WALK",
+      "cost_ticks": 100,
+      "bidirectional": true,
+      "requirements": [],
+      "metadata": {}
+    },
+    {
+      "from": "arceuus_library",
+      "to": "wintertodt",
+      "type": "WALK",
+      "cost_ticks": 200,
+      "bidirectional": true,
+      "requirements": [],
+      "metadata": {"notes": "Walk north from library to Wintertodt camp"}
     }
   ],
   "regions": [
@@ -1355,6 +1422,13 @@
       "nodes": ["wilderness_ditch"],
       "members_only": false,
       "wilderness": true
+    },
+    {
+      "id": "great_kourend",
+      "name": "Great Kourend",
+      "nodes": ["arceuus_library", "arceuus_bank", "arceuus_center", "wintertodt"],
+      "members_only": true,
+      "wilderness": false
     }
   ]
 }

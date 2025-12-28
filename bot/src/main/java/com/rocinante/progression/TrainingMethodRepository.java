@@ -130,7 +130,13 @@ public class TrainingMethodRepository {
         }
 
         // XP and efficiency
-        builder.xpPerAction(obj.get("xpPerAction").getAsDouble());
+        // xpPerAction is optional when xpMultiplier is used for level-based XP
+        if (obj.has("xpPerAction")) {
+            builder.xpPerAction(obj.get("xpPerAction").getAsDouble());
+        }
+        if (obj.has("xpMultiplier")) {
+            builder.xpMultiplier(obj.get("xpMultiplier").getAsDouble());
+        }
         builder.actionsPerHour(obj.get("actionsPerHour").getAsInt());
         if (obj.has("gpPerHour")) {
             builder.gpPerHour(obj.get("gpPerHour").getAsInt());
@@ -219,6 +225,19 @@ public class TrainingMethodRepository {
         // Agility configuration
         if (obj.has("courseId")) {
             builder.courseId(obj.get("courseId").getAsString());
+        }
+
+        // Minigame configuration
+        if (obj.has("minigameId")) {
+            builder.minigameId(obj.get("minigameId").getAsString());
+        }
+        if (obj.has("minigameStrategy")) {
+            builder.minigameStrategy(obj.get("minigameStrategy").getAsString());
+        }
+
+        // Firemaking configuration
+        if (obj.has("logItemId")) {
+            builder.logItemId(obj.get("logItemId").getAsInt());
         }
 
         return builder.build();
@@ -325,6 +344,7 @@ public class TrainingMethodRepository {
 
     /**
      * Get the best (highest XP/hr) method for a skill at a given level.
+     * Properly calculates XP/hr for level-based methods (e.g., Arceuus Library).
      *
      * @param skill the skill
      * @param level the player's current level
@@ -332,11 +352,12 @@ public class TrainingMethodRepository {
      */
     public Optional<TrainingMethod> getBestMethod(Skill skill, int level) {
         return getMethodsForSkill(skill, level).stream()
-                .max(Comparator.comparingDouble(TrainingMethod::getXpPerHour));
+                .max(Comparator.comparingDouble(m -> m.getXpPerHour(level)));
     }
 
     /**
      * Get the best method for a skill, filtered by ironman viability.
+     * Properly calculates XP/hr for level-based methods (e.g., Arceuus Library).
      *
      * @param skill   the skill
      * @param level   the player's current level
@@ -345,7 +366,7 @@ public class TrainingMethodRepository {
      */
     public Optional<TrainingMethod> getBestMethod(Skill skill, int level, boolean ironman) {
         return getMethodsForSkill(skill, level, ironman).stream()
-                .max(Comparator.comparingDouble(TrainingMethod::getXpPerHour));
+                .max(Comparator.comparingDouble(m -> m.getXpPerHour(level)));
     }
 
     /**

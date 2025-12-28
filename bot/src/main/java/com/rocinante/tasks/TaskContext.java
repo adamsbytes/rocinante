@@ -6,6 +6,7 @@ import com.rocinante.behavior.InefficiencyInjector;
 import com.rocinante.behavior.LogoutHandler;
 import com.rocinante.behavior.PlayerProfile;
 import com.rocinante.combat.CombatManager;
+import com.rocinante.combat.FoodManager;
 import com.rocinante.combat.GearSwitcher;
 import com.rocinante.combat.TargetSelector;
 import com.rocinante.core.GameStateService;
@@ -90,6 +91,10 @@ public class TaskContext {
     @Getter
     @Nullable
     private final GearSwitcher gearSwitcher;
+
+    @Getter
+    @Nullable
+    private final FoodManager foodManager;
 
     @Getter
     @Nullable
@@ -184,6 +189,10 @@ public class TaskContext {
     private final PuzzleSolverRegistry puzzleSolverRegistry;
 
     // ========================================================================
+    // RuneLite Plugin References
+    // ========================================================================
+
+    // ========================================================================
     // Task Variables
     // ========================================================================
 
@@ -222,6 +231,7 @@ public class TaskContext {
             @Nullable TargetSelector targetSelector,
             @Nullable CombatManager combatManager,
             @Nullable GearSwitcher gearSwitcher,
+            @Nullable FoodManager foodManager,
             @Nullable InventoryClickHelper inventoryClickHelper,
             @Nullable GroundItemClickHelper groundItemClickHelper,
             @Nullable WidgetClickHelper widgetClickHelper,
@@ -249,6 +259,7 @@ public class TaskContext {
         this.targetSelector = targetSelector;
         this.combatManager = combatManager;
         this.gearSwitcher = gearSwitcher;
+        this.foodManager = foodManager;
         this.inventoryClickHelper = inventoryClickHelper;
         this.groundItemClickHelper = groundItemClickHelper;
         this.widgetClickHelper = widgetClickHelper;
@@ -285,7 +296,7 @@ public class TaskContext {
             @Nullable CombatManager combatManager) {
         this(client, gameStateService, mouseController, keyboardController, humanTimer, 
                 targetSelector, combatManager, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     /**
@@ -300,7 +311,7 @@ public class TaskContext {
             HumanTimer humanTimer) {
         this(client, gameStateService, mouseController, keyboardController, humanTimer, 
                 null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     // ========================================================================

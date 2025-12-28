@@ -123,6 +123,7 @@ echo "Ironman Type: ${IRONMAN_TYPE:-N/A}"
 echo "Game Size: ${GAME_SIZE:-1920x1080}"
 echo "Quest Helper: Pre-configured for auto-install"
 echo "VNC: Enabled (port 5900)"
+echo "Fast Track: $([ -f "$JAGEX_SESSION_FILE" ] && [ -s "$JAGEX_SESSION_FILE" ] && echo 'Available (saved session)' || echo 'Not available (first run)')"
 echo "================================================="
 
 # Check for Bolt launcher
@@ -142,6 +143,8 @@ REPO_DIR="$BOLT_HOME/.runelite/repository2"
 PLUGIN_JAR="$BOLT_HOME/.runelite/plugins/rocinante-0.1.0-SNAPSHOT.jar"
 CREDENTIALS_FILE="$BOLT_HOME/.runelite/credentials.properties"
 BOLT_RUNELITE_PLUGINS="$BOLT_HOME/.runelite/plugins"
+# Persistent Jagex session env vars - enables fast track on subsequent launches
+JAGEX_SESSION_FILE="$BOLT_HOME/jagex_session.env"
 
 # Copy Rocinante plugin to Bolt's RuneLite plugins directory
 mkdir -p "$BOLT_RUNELITE_PLUGINS"
@@ -254,8 +257,80 @@ launch_runelite_with_plugin() {
 }
 
 # =========================================================================
-# ALWAYS USE BOLT FOR AUTHENTICATION
-# Jagex accounts require OAuth flow through Bolt - can't skip it
+# FAST TRACK: If we have saved Jagex session vars, skip Bolt entirely
+# =========================================================================
+if [ -f "$JAGEX_SESSION_FILE" ] && [ -s "$JAGEX_SESSION_FILE" ] && [ -f "$PLUGIN_JAR" ] && [ -d "$REPO_DIR" ]; then
+    echo "================================================="
+    echo "FAST TRACK: Found saved Jagex session"
+    echo "================================================="
+    
+    # Source the saved session variables
+    echo "Loading Jagex session from: $JAGEX_SESSION_FILE"
+    source "$JAGEX_SESSION_FILE"
+    
+    # Verify we got the vars
+    if [ -n "$JX_SESSION_ID" ] && [ -n "$JX_CHARACTER_ID" ]; then
+        echo "Jagex session loaded:"
+        echo "  JX_SESSION_ID: ${JX_SESSION_ID:0:20}... (truncated)"
+        echo "  JX_CHARACTER_ID: $JX_CHARACTER_ID"
+        echo "  JX_DISPLAY_NAME: $JX_DISPLAY_NAME"
+        
+        # Export them for RuneLite
+        export JX_SESSION_ID
+        export JX_CHARACTER_ID
+        export JX_DISPLAY_NAME
+        
+        configure_runelite_settings
+        RUNELITE_CP=$(build_classpath)
+        launch_runelite_with_plugin "$RUNELITE_CP"
+        
+        # Wait for RuneLite window
+        sleep 10
+        if xdotool search --name "RuneLite" > /dev/null 2>&1; then
+            echo "RuneLite started via fast track!"
+            
+            # Run post-launch automation
+            echo "Running post-launch automation..."
+            python3 /home/runelite/post_launch.py || {
+                echo "WARNING: Post-launch automation encountered issues"
+            }
+            
+            # Skip to monitoring loop
+            echo "================================================="
+            echo "RuneLite running with Rocinante plugin (fast track)"
+            echo "================================================="
+            
+            # Monitor loop
+            while true; do
+                if ! xdotool search --name "RuneLite" > /dev/null 2>&1; then
+                    echo "WARNING: RuneLite window not detected"
+                    if [ -n "$RUNELITE_PID" ] && kill -0 $RUNELITE_PID 2>/dev/null; then
+                        echo "RuneLite process still running, waiting for window..."
+                    else
+                        echo "RuneLite process died - container will restart and retry fast track"
+                        # Don't delete session file - crash could be unrelated to session validity
+                        # If session is truly invalid, we'll add detection for that later
+                        exit 1
+                    fi
+                fi
+                sleep 30
+            done
+        else
+            echo "WARNING: Fast track failed - RuneLite window not detected"
+            echo "Removing stale session file and falling back to Bolt..."
+            rm -f "$JAGEX_SESSION_FILE"
+            # Fall through to Bolt authentication below
+        fi
+    else
+        echo "WARNING: Session file exists but variables are empty"
+        echo "Removing invalid session file..."
+        rm -f "$JAGEX_SESSION_FILE"
+        # Fall through to Bolt authentication
+    fi
+fi
+
+# =========================================================================
+# BOLT AUTHENTICATION (first run or if fast track failed)
 # =========================================================================
 echo "================================================="
 echo "Launching Bolt for Jagex account authentication"
@@ -353,6 +428,19 @@ echo "================================================="
             export JX_SESSION_ID
             export JX_CHARACTER_ID
             export JX_DISPLAY_NAME
+            
+            # SAVE session to persistent file for fast track on future launches
+            if [ -n "$JX_SESSION_ID" ] && [ -n "$JX_CHARACTER_ID" ]; then
+                echo "Saving Jagex session for fast track..."
+                cat > "$JAGEX_SESSION_FILE" << EOF
+# Jagex session captured from Bolt - enables fast track on restart
+# Generated: $(date)
+export JX_SESSION_ID="$JX_SESSION_ID"
+export JX_CHARACTER_ID="$JX_CHARACTER_ID"
+export JX_DISPLAY_NAME="$JX_DISPLAY_NAME"
+EOF
+                echo "Session saved to: $JAGEX_SESSION_FILE"
+            fi
         else
             echo "WARNING: Could not capture Jagex session - PID: $BOLT_RUNELITE_PID"
         fi

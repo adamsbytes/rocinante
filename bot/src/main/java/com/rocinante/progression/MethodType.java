@@ -49,6 +49,18 @@ public enum MethodType {
      * Thieving from NPCs or stalls.
      * Pattern: Pickpocket NPC or steal from stall, handle stun, repeat.
      */
-    THIEVING
+    THIEVING,
+
+    /**
+     * Firemaking (line-based log burning).
+     * Pattern: Use tinderbox on logs, move west after each fire, reposition at line end.
+     */
+    FIREMAKING,
+
+    /**
+     * Minigame-based training (Wintertodt, Tempoross, Guardians of the Rift, etc.).
+     * Pattern: Delegate to specific MinigameTask implementation.
+     */
+    MINIGAME
 }
 

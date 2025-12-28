@@ -51,6 +51,24 @@ public class BreakScheduler {
      */
     @Getter
     private int actionsSinceMicroPause = 0;
+
+    /**
+     * Total micro-pauses taken this session.
+     */
+    @Getter
+    private int microPausesTaken = 0;
+
+    /**
+     * Total short breaks taken this session.
+     */
+    @Getter
+    private int shortBreaksTaken = 0;
+
+    /**
+     * Total long breaks taken this session.
+     */
+    @Getter
+    private int longBreaksTaken = 0;
     
     /**
      * Actions threshold for next micro-pause.
@@ -574,6 +592,28 @@ public class BreakScheduler {
      */
     public Duration getSessionDuration() {
         return Duration.between(sessionStartTime, Instant.now());
+    }
+
+    /**
+     * Get the number of breaks taken this session.
+     *
+     * @return count of breaks taken
+     */
+    public int getBreaksTaken() {
+        return microPausesTaken + shortBreaksTaken + longBreaksTaken;
+    }
+
+    /**
+     * Get total break duration this session.
+     *
+     * @return total duration of all breaks
+     */
+    public Duration getTotalBreakDuration() {
+        // Estimate based on average break durations
+        long microPauseSecs = microPausesTaken * 5; // ~5 sec average
+        long shortBreakSecs = shortBreaksTaken * 60; // ~1 min average
+        long longBreakSecs = longBreaksTaken * 600; // ~10 min average
+        return Duration.ofSeconds(microPauseSecs + shortBreakSecs + longBreakSecs);
     }
 
     /**

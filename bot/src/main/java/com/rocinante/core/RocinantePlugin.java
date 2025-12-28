@@ -11,6 +11,8 @@ import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.plugins.PluginInstantiationException;
+import net.runelite.client.plugins.PluginManager;
 import com.rocinante.behavior.BotActivityTracker;
 import com.rocinante.behavior.BreakScheduler;
 import com.rocinante.behavior.BreakType;
@@ -71,6 +73,9 @@ public class RocinantePlugin extends Plugin
 
     @Inject
     private EventBus eventBus;
+
+    @Inject
+    private PluginManager pluginManager;
 
     @Inject
     @Getter
@@ -285,6 +290,9 @@ public class RocinantePlugin extends Plugin
         statusPublisher.start();
         commandProcessor.start();
 
+        // Ensure required RuneLite plugins are enabled
+        ensureRequiredPluginsEnabled();
+
         log.info("Rocinante plugin started - Services registered");
         log.info("  GameStateService: registered");
         log.info("  LoginFlowHandler: registered (auto-active)");
@@ -297,6 +305,57 @@ public class RocinantePlugin extends Plugin
                 inefficiencyInjector != null, logoutHandler != null);
         log.info("  StatusSystem: registered (xpTracker={}, publisher={}, commands={})",
                 xpTracker != null, statusPublisher != null, commandProcessor != null);
+    }
+
+    /**
+     * Ensure required RuneLite plugins are enabled for full functionality.
+     * 
+     * Required plugins:
+     * - Kourend Library: For Arceuus Library book location predictions
+     */
+    private void ensureRequiredPluginsEnabled() {
+        // List of required plugin class names
+        String[] requiredPlugins = {
+                "net.runelite.client.plugins.kourendlibrary.KourendLibraryPlugin"
+        };
+
+        for (String pluginClassName : requiredPlugins) {
+            try {
+                Class<?> pluginClass = Class.forName(pluginClassName);
+                
+                // Find the plugin instance
+                Plugin targetPlugin = null;
+                for (Plugin plugin : pluginManager.getPlugins()) {
+                    if (pluginClass.isInstance(plugin)) {
+                        targetPlugin = plugin;
+                        break;
+                    }
+                }
+
+                if (targetPlugin == null) {
+                    log.warn("Required plugin not found: {}", pluginClassName);
+                    continue;
+                }
+
+                // Check if enabled
+                if (!pluginManager.isPluginEnabled(targetPlugin)) {
+                    log.info("Enabling required plugin: {}", targetPlugin.getName());
+                    pluginManager.setPluginEnabled(targetPlugin, true);
+                    
+                    // Start the plugin if not already active
+                    try {
+                        pluginManager.startPlugin(targetPlugin);
+                        log.info("Started required plugin: {}", targetPlugin.getName());
+                    } catch (PluginInstantiationException e) {
+                        log.error("Failed to start required plugin: {}", targetPlugin.getName(), e);
+                    }
+                } else {
+                    log.debug("Required plugin already enabled: {}", targetPlugin.getName());
+                }
+            } catch (ClassNotFoundException e) {
+                log.warn("Required plugin class not found: {} - this plugin may not be available", pluginClassName);
+            }
+        }
     }
     
     /**

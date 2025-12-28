@@ -51,8 +51,8 @@ public class TaskExecutorPauseResumeTest {
 
     @Test
     public void testBehavioralTask_PausesCurrentTask() {
-        // Queue a normal task
-        CountingTask normalTask = new CountingTask("Normal Task", TaskPriority.NORMAL);
+        // Queue a normal task that takes multiple ticks
+        CountingTask normalTask = new CountingTask("Normal Task", TaskPriority.NORMAL, 5);
         taskExecutor.queueTask(normalTask);
         
         // Execute one tick to start the task
@@ -62,8 +62,8 @@ public class TaskExecutorPauseResumeTest {
         // Simulate step completion
         taskExecutor.setCurrentStepComplete(true);
         
-        // Queue a behavioral task
-        CountingTask behavioralTask = new CountingTask("Behavioral Task", TaskPriority.BEHAVIORAL);
+        // Queue a behavioral task (needs multiple ticks to still be current after onGameTick)
+        CountingTask behavioralTask = new CountingTask("Behavioral Task", TaskPriority.BEHAVIORAL, 3);
         when(breakScheduler.getScheduledBreak()).thenReturn(Optional.of(behavioralTask));
         
         // Execute tick - should pause normal and start behavioral
@@ -110,25 +110,26 @@ public class TaskExecutorPauseResumeTest {
         taskExecutor.onGameTick(null);
         taskExecutor.setCurrentStepComplete(true);
         
-        // Queue behavioral task (pauses normal)
+        // Queue behavioral task (pauses normal) - needs multiple ticks
         CountingTask behavioralTask = new CountingTask("Behavioral Task", TaskPriority.BEHAVIORAL, 5);
         when(breakScheduler.getScheduledBreak())
             .thenReturn(Optional.of(behavioralTask))
             .thenReturn(Optional.empty());
         taskExecutor.onGameTick(null);
+        assertEquals("Behavioral task should be running", behavioralTask, taskExecutor.getCurrentTask());
         
-        // While behavioral task runs, trigger urgent emergency
-        CountingTask emergencyTask = new CountingTask("Emergency Task", TaskPriority.URGENT, 1);
+        // While behavioral task runs, trigger urgent emergency (needs multiple ticks)
+        CountingTask emergencyTask = new CountingTask("Emergency Task", TaskPriority.URGENT, 2);
         taskExecutor.queueTask(emergencyTask, TaskPriority.URGENT);
         
         // Execute - should interrupt behavioral
         taskExecutor.onGameTick(null);
         assertEquals("Emergency should be running", emergencyTask, taskExecutor.getCurrentTask());
         
-        // Complete emergency
+        // Complete emergency (takes 2 ticks)
         taskExecutor.onGameTick(null);
         
-        // Should resume normal task (NOT behavioral)
+        // Should resume normal task (NOT behavioral) after emergency completes
         taskExecutor.onGameTick(null);
         assertEquals("Should resume original normal task", normalTask, taskExecutor.getCurrentTask());
     }
@@ -139,36 +140,40 @@ public class TaskExecutorPauseResumeTest {
         CountingTask normalTask = new CountingTask("Normal Task", TaskPriority.NORMAL, 10);
         taskExecutor.queueTask(normalTask);
         taskExecutor.onGameTick(null);
+        assertEquals("Normal task should be running", normalTask, taskExecutor.getCurrentTask());
         taskExecutor.setCurrentStepComplete(true);
         
-        // First behavioral task
-        CountingTask behavioral1 = new CountingTask("Behavioral 1", TaskPriority.BEHAVIORAL, 3);
+        // First behavioral task (pauses normal)
+        CountingTask behavioral1 = new CountingTask("Behavioral 1", TaskPriority.BEHAVIORAL, 5);
         when(breakScheduler.getScheduledBreak())
             .thenReturn(Optional.of(behavioral1))
             .thenReturn(Optional.empty());
         taskExecutor.onGameTick(null);
+        assertEquals("Behavioral1 should be running", behavioral1, taskExecutor.getCurrentTask());
         
-        // Second behavioral task (nested)
-        CountingTask behavioral2 = new CountingTask("Behavioral 2", TaskPriority.BEHAVIORAL, 2);
+        // Second behavioral task (nested - pauses behavioral1)
+        CountingTask behavioral2 = new CountingTask("Behavioral 2", TaskPriority.BEHAVIORAL, 3);
         when(breakScheduler.getScheduledBreak())
             .thenReturn(Optional.of(behavioral2))
             .thenReturn(Optional.empty());
         taskExecutor.setCurrentStepComplete(true);
         taskExecutor.onGameTick(null);
+        assertEquals("Behavioral2 should be running", behavioral2, taskExecutor.getCurrentTask());
         
-        // Complete behavioral2
+        // Complete behavioral2 (3 ticks total)
         taskExecutor.onGameTick(null);
         taskExecutor.onGameTick(null);
         
-        // Should resume behavioral1
+        // Should resume behavioral1 after behavioral2 completes
         taskExecutor.onGameTick(null);
         assertEquals("Should resume behavioral1", behavioral1, taskExecutor.getCurrentTask());
         
-        // Complete behavioral1
-        taskExecutor.onGameTick(null);
-        taskExecutor.onGameTick(null);
+        // Complete behavioral1 (remaining ticks)
+        for (int i = 0; i < 5; i++) {
+            taskExecutor.onGameTick(null);
+        }
         
-        // Should resume normal task
+        // Should resume normal task after behavioral1 completes
         taskExecutor.onGameTick(null);
         assertEquals("Should resume normal task", normalTask, taskExecutor.getCurrentTask());
     }

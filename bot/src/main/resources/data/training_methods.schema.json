@@ -51,7 +51,7 @@
         "methodType": {
           "type": "string",
           "description": "Type of training method",
-          "enum": ["GATHER", "PROCESS", "COMBAT", "RUNECRAFT", "AGILITY", "THIEVING"]
+          "enum": ["GATHER", "PROCESS", "COMBAT", "RUNECRAFT", "AGILITY", "THIEVING", "FIREMAKING", "MINIGAME"]
         },
         "minLevel": {
           "type": "integer",
@@ -173,6 +173,57 @@
           "items": {
             "type": "integer"
           }
+        },
+        "courseId": {
+          "type": "string",
+          "description": "Agility course ID (for AGILITY method type)"
+        },
+        "minigameId": {
+          "type": "string",
+          "description": "Minigame identifier (for MINIGAME method type, e.g., 'wintertodt', 'tempoross')"
+        },
+        "minigameStrategy": {
+          "type": "string",
+          "description": "Minigame strategy (e.g., 'simple', 'fletch' for Wintertodt)"
+        },
+        "logItemId": {
+          "type": "integer",
+          "description": "Log item ID (for FIREMAKING method type)"
+        },
+        "watchedGroundItems": {
+          "type": "array",
+          "description": "Ground items to watch for and pick up during training",
+          "items": {
+            "$ref": "#/definitions/groundItemWatch"
+          }
+        }
+      }
+    },
+    "groundItemWatch": {
+      "type": "object",
+      "required": ["itemIds"],
+      "properties": {
+        "itemIds": {
+          "type": "array",
+          "description": "Item IDs to watch for",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "maxPickupDistance": {
+          "type": "integer",
+          "description": "Maximum distance to pick up item",
+          "default": 10
+        },
+        "priority": {
+          "type": "integer",
+          "description": "Priority for picking up (higher = more important)",
+          "default": 1
+        },
+        "interruptAction": {
+          "type": "boolean",
+          "description": "Whether to interrupt current action to pick up",
+          "default": true
         }
       }
     },
