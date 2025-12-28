@@ -5,6 +5,7 @@ import com.rocinante.navigation.*;
 import com.rocinante.state.PlayerState;
 import com.rocinante.tasks.AbstractTask;
 import com.rocinante.tasks.TaskContext;
+import com.rocinante.tasks.TaskState;
 import com.rocinante.util.Randomization;
 import lombok.Getter;
 import lombok.Setter;
@@ -16,6 +17,7 @@ import net.runelite.api.NPC;
 import net.runelite.api.Perspective;
 import net.runelite.api.Player;
 import net.runelite.api.Scene;
+import net.runelite.api.Skill;
 import net.runelite.api.Tile;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
@@ -24,6 +26,7 @@ import java.awt.Point;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -37,6 +40,10 @@ import java.util.concurrent.CompletableFuture;
  *   <li>Incorporate humanized path deviations: occasional 1-2 tile detours (10% of walks)</li>
  *   <li>Click ahead on minimap for long walks; click in viewport for short walks</li>
  * </ul>
+ *
+ * <p>This task integrates with {@link ObstacleHandler} to detect and handle obstacles
+ * (doors, gates, agility shortcuts) that block the path, and with {@link PlaneTransitionHandler}
+ * to handle stairs, ladders, and trapdoors for multi-floor navigation.
  *
  * <p>Example usage:
  * <pre>{@code
@@ -121,6 +128,16 @@ public class WalkToTask extends AbstractTask {
      */
     private static final int RUN_ORB_CHILD = 27;
 
+    /**
+     * Maximum obstacle handling attempts before re-pathing.
+     */
+    private static final int MAX_OBSTACLE_ATTEMPTS = 3;
+
+    /**
+     * Search radius for plane transitions.
+     */
+    private static final int PLANE_TRANSITION_SEARCH_RADIUS = 15;
+
     // ========================================================================
     // Destination Configuration
     // ========================================================================
@@ -159,6 +176,14 @@ public class WalkToTask extends AbstractTask {
     @Setter
     private String description;
 
+    /**
+     * Risk threshold for avoiding risky agility shortcuts.
+     * Default is 10% failure rate. Set to 1.0 to allow any shortcut.
+     */
+    @Getter
+    @Setter
+    private double agilityRiskThreshold = 0.10;
+
     // ========================================================================
     // Navigation Services (retrieved from context)
     // ========================================================================
@@ -166,6 +191,7 @@ public class WalkToTask extends AbstractTask {
     private PathFinder pathFinder;
     private WebWalker webWalker;
     private ObstacleHandler obstacleHandler;
+    private PlaneTransitionHandler planeTransitionHandler;
     
     /**
      * Whether navigation services have been initialized.
@@ -248,6 +274,44 @@ public class WalkToTask extends AbstractTask {
     private boolean isBacktrackWalk = false;
 
     // ========================================================================
+    // Obstacle Handling State
+    // ========================================================================
+
+    /**
+     * Currently detected blocking obstacle.
+     */
+    private ObstacleHandler.DetectedObstacle currentObstacle;
+
+    /**
+     * Task to handle the current obstacle.
+     */
+    private InteractObjectTask obstacleTask;
+
+    /**
+     * Number of attempts to handle current obstacle.
+     */
+    private int obstacleAttempts = 0;
+
+    // ========================================================================
+    // Plane Transition State
+    // ========================================================================
+
+    /**
+     * Currently detected plane transition.
+     */
+    private PlaneTransitionHandler.DetectedTransition currentTransition;
+
+    /**
+     * Task to use the plane transition.
+     */
+    private InteractObjectTask transitionTask;
+
+    /**
+     * Target plane we're trying to reach.
+     */
+    private int targetPlane = -1;
+
+    // ========================================================================
     // Constructors
     // ========================================================================
 
@@ -327,6 +391,42 @@ public class WalkToTask extends AbstractTask {
     }
 
     // ========================================================================
+    // Configuration Methods
+    // ========================================================================
+
+    /**
+     * Set a custom description for this task.
+     *
+     * @param description the description
+     * @return this task for chaining
+     */
+    public WalkToTask withDescription(String description) {
+        this.description = description;
+        return this;
+    }
+
+    /**
+     * Configure the agility risk threshold.
+     *
+     * @param threshold maximum acceptable failure rate (0.0 to 1.0)
+     * @return this task for chaining
+     */
+    public WalkToTask withAgilityRiskThreshold(double threshold) {
+        this.agilityRiskThreshold = threshold;
+        return this;
+    }
+
+    /**
+     * Allow all agility shortcuts regardless of failure rate.
+     *
+     * @return this task for chaining
+     */
+    public WalkToTask allowAllShortcuts() {
+        this.agilityRiskThreshold = 1.0;
+        return this;
+    }
+
+    // ========================================================================
     // Task Implementation
     // ========================================================================
 
@@ -357,6 +457,9 @@ public class WalkToTask extends AbstractTask {
                 break;
             case HANDLE_OBSTACLE:
                 executeHandleObstacle(ctx);
+                break;
+            case HANDLE_PLANE_TRANSITION:
+                executeHandlePlaneTransition(ctx);
                 break;
             case BACKTRACKING:
                 executeBacktracking(ctx);
@@ -438,11 +541,18 @@ public class WalkToTask extends AbstractTask {
         // Check if already at destination
         if (playerPos != null && destination != null) {
             int distance = playerPos.distanceTo(destination);
-            if (distance <= ARRIVAL_DISTANCE) {
+            if (distance <= ARRIVAL_DISTANCE && playerPos.getPlane() == destination.getPlane()) {
                 log.info("Already at destination");
                 phase = WalkPhase.ARRIVED;
                 return;
             }
+        }
+
+        // Check if we need a plane transition
+        if (playerPos != null && destination != null && 
+                playerPos.getPlane() != destination.getPlane()) {
+            targetPlane = destination.getPlane();
+            log.debug("Need plane transition: {} -> {}", playerPos.getPlane(), targetPlane);
         }
 
         phase = WalkPhase.CALCULATE_PATH;
@@ -459,6 +569,16 @@ public class WalkToTask extends AbstractTask {
         if (playerPos == null || destination == null) {
             fail("Invalid player position or destination");
             return;
+        }
+
+        // Check if we need a plane transition first
+        if (playerPos.getPlane() != destination.getPlane()) {
+            findPlaneTransition(ctx, playerPos, destination.getPlane());
+            if (currentTransition != null) {
+                log.debug("Found plane transition to reach destination plane");
+                phase = WalkPhase.HANDLE_PLANE_TRANSITION;
+                return;
+            }
         }
 
         int distance = playerPos.distanceTo(destination);
@@ -566,7 +686,8 @@ public class WalkToTask extends AbstractTask {
 
         // Check if arrived at final destination
         if (playerPos != null && destination != null &&
-                playerPos.distanceTo(destination) <= ARRIVAL_DISTANCE) {
+                playerPos.distanceTo(destination) <= ARRIVAL_DISTANCE &&
+                playerPos.getPlane() == destination.getPlane()) {
             log.info("Arrived at destination: {}", destination);
             
             // Check for backtracking (2% chance per REQUIREMENTS.md 3.4.4)
@@ -646,7 +767,21 @@ public class WalkToTask extends AbstractTask {
         if (obstacleHandler != null) {
             var blockingObstacle = obstacleHandler.findBlockingObstacle(playerPos, clickTarget);
             if (blockingObstacle.isPresent()) {
-                log.debug("Obstacle detected: {}", blockingObstacle.get());
+                currentObstacle = blockingObstacle.get();
+                log.debug("Obstacle detected: {}", currentObstacle);
+                
+                // Check if we should avoid this obstacle (risky agility shortcut)
+                int playerAgilityLevel = ctx.getClient().getRealSkillLevel(Skill.AGILITY);
+                if (obstacleHandler.shouldAvoidObstacle(
+                        currentObstacle.getObject().getId(), 
+                        playerAgilityLevel, 
+                        agilityRiskThreshold)) {
+                    log.debug("Avoiding risky shortcut, recalculating path");
+                    currentObstacle = null;
+                    phase = WalkPhase.CALCULATE_PATH;
+                    return;
+                }
+                
                 phase = WalkPhase.HANDLE_OBSTACLE;
                 return;
             }
@@ -723,10 +858,168 @@ public class WalkToTask extends AbstractTask {
         PlayerState player = ctx.getPlayerState();
         WorldPoint playerPos = player.getWorldPosition();
 
-        // For now, simply try to recalculate path
-        // In future, this could trigger an InteractObjectTask for doors/gates
-        log.debug("Handling obstacle - recalculating path");
+        // If no current obstacle, go back to walking
+        if (currentObstacle == null) {
+            phase = WalkPhase.WALKING;
+            return;
+        }
+
+        // Create obstacle handling task if needed
+        if (obstacleTask == null) {
+            Optional<InteractObjectTask> taskOpt = obstacleHandler.createHandleTask(currentObstacle);
+            if (taskOpt.isEmpty()) {
+                log.debug("Could not create task for obstacle: {}", currentObstacle);
+                currentObstacle = null;
         phase = WalkPhase.CALCULATE_PATH;
+                return;
+            }
+            obstacleTask = taskOpt.get();
+            obstacleAttempts = 0;
+            log.debug("Created obstacle task: {}", obstacleTask.getDescription());
+        }
+
+        // Execute the obstacle task
+        TaskState taskState = obstacleTask.getState();
+        if (taskState != TaskState.COMPLETED && taskState != TaskState.FAILED) {
+            obstacleTask.execute(ctx);
+            return;
+        }
+
+        // Check if obstacle was successfully handled
+        if (taskState == TaskState.COMPLETED) {
+            log.debug("Successfully handled obstacle: {}", currentObstacle.getDefinition().getName());
+            currentObstacle = null;
+            obstacleTask = null;
+            obstacleAttempts = 0;
+            
+            // Wait a moment for game state to update, then recalculate path
+            ctx.getHumanTimer().sleep(ctx.getRandomization().uniformRandomLong(300, 600))
+                    .thenRun(() -> {
+                        phase = WalkPhase.CALCULATE_PATH;
+                    });
+            return;
+        }
+
+        // Obstacle handling failed
+        obstacleAttempts++;
+        log.warn("Failed to handle obstacle (attempt {}): {}", 
+                obstacleAttempts, currentObstacle.getDefinition().getName());
+
+        if (obstacleAttempts >= MAX_OBSTACLE_ATTEMPTS) {
+            log.error("Max obstacle attempts reached, trying to find alternate path");
+            currentObstacle = null;
+            obstacleTask = null;
+            obstacleAttempts = 0;
+            repathAttempts++;
+            phase = WalkPhase.CALCULATE_PATH;
+            return;
+        }
+
+        // Reset task for retry by creating a new one
+        obstacleTask = obstacleHandler.createHandleTask(currentObstacle).orElse(null);
+    }
+
+    // ========================================================================
+    // Phase: Handle Plane Transition
+    // ========================================================================
+
+    private void executeHandlePlaneTransition(TaskContext ctx) {
+        PlayerState player = ctx.getPlayerState();
+        WorldPoint playerPos = player.getWorldPosition();
+
+        // Check if we've reached the target plane
+        if (playerPos != null && playerPos.getPlane() == targetPlane) {
+            log.info("Reached target plane: {}", targetPlane);
+            currentTransition = null;
+            transitionTask = null;
+            targetPlane = -1;
+            phase = WalkPhase.CALCULATE_PATH;
+            return;
+        }
+
+        // Find transition if not set
+        if (currentTransition == null) {
+            findPlaneTransition(ctx, playerPos, targetPlane);
+            if (currentTransition == null) {
+                log.warn("Could not find plane transition to plane {}", targetPlane);
+                fail("No plane transition found to reach destination");
+                return;
+            }
+        }
+
+        // Create transition task if needed
+        if (transitionTask == null) {
+            boolean goUp = targetPlane > playerPos.getPlane();
+            Optional<InteractObjectTask> taskOpt = planeTransitionHandler.createTransitionTask(currentTransition, goUp);
+            if (taskOpt.isEmpty()) {
+                log.debug("Could not create task for transition: {}", currentTransition);
+                currentTransition = null;
+                fail("Could not create transition task");
+                return;
+            }
+            transitionTask = taskOpt.get();
+            log.debug("Created plane transition task: {}", transitionTask.getDescription());
+        }
+
+        // Walk to transition if not nearby
+        int distToTransition = playerPos.distanceTo(currentTransition.getLocation());
+        if (distToTransition > 3) {
+            // Need to walk to the transition first
+            log.debug("Walking to plane transition at {}", currentTransition.getLocation());
+            // Temporarily set destination to transition location
+            WorldPoint savedDest = destination;
+            destination = currentTransition.getLocation();
+            phase = WalkPhase.CALCULATE_PATH;
+            // After walking there, we'll detect the plane difference and come back here
+            return;
+        }
+
+        // Execute the transition task
+        TaskState taskState = transitionTask.getState();
+        if (taskState != TaskState.COMPLETED && taskState != TaskState.FAILED) {
+            transitionTask.execute(ctx);
+            return;
+        }
+
+        // Check if transition was successful
+        if (taskState == TaskState.COMPLETED) {
+            log.debug("Successfully used transition: {}", currentTransition.getDefinition().getName());
+            
+            // Wait for plane change to take effect
+            ctx.getHumanTimer().sleep(ctx.getRandomization().uniformRandomLong(600, 1200))
+                    .thenRun(() -> {
+                        // Re-check plane and continue
+                        currentTransition = null;
+                        transitionTask = null;
+                        phase = WalkPhase.CALCULATE_PATH;
+                    });
+            return;
+        }
+
+        // Transition failed
+        log.warn("Failed to use transition: {}", currentTransition.getDefinition().getName());
+        currentTransition = null;
+        transitionTask = null;
+        fail("Failed to use plane transition");
+    }
+
+    /**
+     * Find a plane transition to reach the target plane.
+     */
+    private void findPlaneTransition(TaskContext ctx, WorldPoint playerPos, int targetPlane) {
+        if (planeTransitionHandler == null) {
+            return;
+        }
+
+        Optional<PlaneTransitionHandler.DetectedTransition> transition = 
+                planeTransitionHandler.findTransitionToPlane(playerPos, targetPlane, PLANE_TRANSITION_SEARCH_RADIUS);
+        
+        if (transition.isPresent()) {
+            currentTransition = transition.get();
+            log.debug("Found plane transition: {} at {}", 
+                    currentTransition.getDefinition().getName(), 
+                    currentTransition.getLocation());
+        }
     }
 
     // ========================================================================
@@ -1015,6 +1308,7 @@ public class WalkToTask extends AbstractTask {
         pathFinder = ctx.getPathFinder();
         webWalker = ctx.getWebWalker();
         obstacleHandler = ctx.getObstacleHandler();
+        planeTransitionHandler = ctx.getPlaneTransitionHandler();
 
         // If not available in context, create fallback instances
         if (pathFinder == null) {
@@ -1032,6 +1326,11 @@ public class WalkToTask extends AbstractTask {
             obstacleHandler = new ObstacleHandler(ctx.getClient());
         }
 
+        if (planeTransitionHandler == null) {
+            log.warn("PlaneTransitionHandler not available in TaskContext, creating instance");
+            planeTransitionHandler = new PlaneTransitionHandler(ctx.getClient());
+        }
+
         // Set ironman state on WebWalker if available
         if (webWalker != null && ctx.getIronmanState() != null) {
             webWalker.setIronman(ctx.getIronmanState().isIronman());
@@ -1041,11 +1340,11 @@ public class WalkToTask extends AbstractTask {
         }
 
         servicesInitialized = true;
-        log.debug("Navigation services initialized (UnlockTracker: {}, PathFinder: {}, WebWalker: {}, ObstacleHandler: {})",
-                ctx.getUnlockTracker() != null ? "available" : "not available",
+        log.debug("Navigation services initialized (PathFinder: {}, WebWalker: {}, ObstacleHandler: {}, PlaneTransitionHandler: {})",
                 pathFinder != null ? "available" : "not available",
                 webWalker != null ? "available" : "not available",
-                obstacleHandler != null ? "available" : "not available");
+                obstacleHandler != null ? "available" : "not available",
+                planeTransitionHandler != null ? "available" : "not available");
     }
 
     // ========================================================================
@@ -1087,6 +1386,7 @@ public class WalkToTask extends AbstractTask {
         CALCULATE_PATH,
         WALKING,
         HANDLE_OBSTACLE,
+        HANDLE_PLANE_TRANSITION,
         BACKTRACKING,
         BACKTRACK_WAIT,
         ARRIVED

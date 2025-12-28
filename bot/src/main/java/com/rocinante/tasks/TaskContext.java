@@ -130,6 +130,10 @@ public class TaskContext {
     @Nullable
     private final com.rocinante.navigation.ObstacleHandler obstacleHandler;
 
+    @Getter
+    @Nullable
+    private final com.rocinante.navigation.PlaneTransitionHandler planeTransitionHandler;
+
     // ========================================================================
     // Behavioral System
     // ========================================================================
@@ -229,7 +233,8 @@ public class TaskContext {
             @Nullable Randomization randomization,
             @Nullable com.rocinante.navigation.PathFinder pathFinder,
             @Nullable com.rocinante.navigation.WebWalker webWalker,
-            @Nullable com.rocinante.navigation.ObstacleHandler obstacleHandler) {
+            @Nullable com.rocinante.navigation.ObstacleHandler obstacleHandler,
+            @Nullable com.rocinante.navigation.PlaneTransitionHandler planeTransitionHandler) {
         this.client = client;
         this.gameStateService = gameStateService;
         this.mouseController = mouseController;
@@ -255,6 +260,7 @@ public class TaskContext {
         this.pathFinder = pathFinder;
         this.webWalker = webWalker;
         this.obstacleHandler = obstacleHandler;
+        this.planeTransitionHandler = planeTransitionHandler;
         log.debug("TaskContext created");
     }
 
@@ -272,7 +278,7 @@ public class TaskContext {
             @Nullable CombatManager combatManager) {
         this(client, gameStateService, mouseController, keyboardController, humanTimer, 
                 targetSelector, combatManager, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, null);
     }
 
     /**
@@ -287,7 +293,7 @@ public class TaskContext {
             HumanTimer humanTimer) {
         this(client, gameStateService, mouseController, keyboardController, humanTimer, 
                 null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, null);
     }
 
     // ========================================================================
