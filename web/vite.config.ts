@@ -11,6 +11,23 @@ export default defineConfig({
         target: 'http://localhost:3000',
         changeOrigin: true,
         ws: true,
+        // Increase proxy timeout for WebSocket connections
+        // Default timeout is very short which causes frequent 1005 disconnects
+        timeout: 0, // Disable timeout (infinite)
+        proxyTimeout: 0, // Disable proxy timeout
+        configure: (proxy, _options) => {
+          // Set longer timeout on the proxy itself
+          proxy.on('proxyReqWs', (_proxyReq, _req, socket) => {
+            // Disable socket timeout for WebSocket connections
+            socket.setTimeout(0);
+            socket.setKeepAlive(true, 30000);
+          });
+          proxy.on('open', (proxySocket) => {
+            // Disable timeout on the proxied socket as well
+            proxySocket.setTimeout(0);
+            proxySocket.setKeepAlive(true, 30000);
+          });
+        },
       },
     },
   },

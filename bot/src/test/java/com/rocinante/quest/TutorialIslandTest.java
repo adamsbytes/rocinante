@@ -1,8 +1,10 @@
 package com.rocinante.quest;
 
+import com.rocinante.behavior.AccountType;
 import com.rocinante.quest.impl.TutorialIsland;
 import com.rocinante.quest.steps.QuestStep;
 import com.rocinante.quest.steps.QuestStep.StepType;
+import com.rocinante.state.IronmanState;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -11,6 +13,8 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.Assert.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * Unit tests for the Tutorial Island quest implementation.
@@ -20,6 +24,10 @@ import static org.junit.Assert.*;
  * - ALL expected varbit steps are defined
  * - Step types are appropriate for their actions
  * - No gaps in varbit coverage
+ * 
+ * Note: Ironman selection steps are tested separately as they are conditional
+ * based on the IronmanState provided to the TutorialIsland constructor.
+ * The default constructor (used in these tests) creates a normal account variant.
  */
 public class TutorialIslandTest {
 
@@ -29,6 +37,11 @@ public class TutorialIslandTest {
     /**
      * All required varbit values for Tutorial Island (except 1 which is character creation).
      * Varbit 1000 is the completion value, not a step.
+     * 
+     * Note: Ironman selection steps (611-615) are NOT included here because they are
+     * conditionally added only when an IronmanState with an ironman-type account is provided.
+     * For normal accounts (the default), step 610 handles exit chapel only.
+     * For ironman accounts, step 610 is a CompositeQuestStep that includes ironman selection.
      */
     private static final List<Integer> REQUIRED_VARBITS = Arrays.asList(
             // Section 1: Gielinor Guide (var 2-10)
@@ -275,7 +288,9 @@ public class TutorialIslandTest {
         assertEquals(StepType.NPC, steps.get(570).getType());    // Talk again
         assertEquals(StepType.WIDGET, steps.get(580).getType()); // Open friends list
         assertEquals(StepType.NPC, steps.get(600).getType());    // Talk again
-        assertEquals(StepType.OBJECT, steps.get(610).getType()); // Exit chapel
+        // Step 610: Exit chapel - OBJECT for normal accounts, COMPOSITE for ironman accounts
+        // Default constructor creates normal account, so expect OBJECT
+        assertEquals(StepType.OBJECT, steps.get(610).getType()); // Exit chapel (normal account)
     }
 
     @Test
@@ -415,5 +430,69 @@ public class TutorialIslandTest {
         assertTrue("Final step text should mention Magic Instructor or leave",
                 finalStep.getText().toLowerCase().contains("magic instructor") ||
                         finalStep.getText().toLowerCase().contains("leave"));
+    }
+
+    // ========================================================================
+    // Ironman Account Tests
+    // ========================================================================
+
+    @Test
+    public void testIronmanAccountStep610IsComposite() {
+        // Create a mock IronmanState that returns an ironman type
+        IronmanState ironmanState = mock(IronmanState.class);
+        when(ironmanState.getIntendedType()).thenReturn(AccountType.IRONMAN);
+        
+        TutorialIsland ironmanTutorial = new TutorialIsland(ironmanState);
+        Map<Integer, QuestStep> ironmanSteps = ironmanTutorial.loadSteps();
+        
+        // Step 610 should be COMPOSITE for ironman accounts (exit chapel + ironman selection)
+        assertEquals("Step 610 should be COMPOSITE for ironman accounts",
+                StepType.COMPOSITE, ironmanSteps.get(610).getType());
+    }
+
+    @Test
+    public void testNormalAccountStep610IsObject() {
+        // Default constructor = normal account
+        assertEquals("Step 610 should be OBJECT for normal accounts",
+                StepType.OBJECT, steps.get(610).getType());
+    }
+
+    @Test
+    public void testIronmanStepCountSameAsNormal() {
+        // Even though ironman has more sub-tasks, the step count should be the same
+        // because ironman selection is bundled into step 610 as a composite
+        IronmanState ironmanState = mock(IronmanState.class);
+        when(ironmanState.getIntendedType()).thenReturn(AccountType.IRONMAN);
+        
+        TutorialIsland ironmanTutorial = new TutorialIsland(ironmanState);
+        Map<Integer, QuestStep> ironmanSteps = ironmanTutorial.loadSteps();
+        
+        // Both should have the same number of steps (same varbit keys)
+        assertEquals("Step count should be same for normal and ironman accounts",
+                steps.size(), ironmanSteps.size());
+    }
+
+    @Test
+    public void testHardcoreIronmanStep610IsComposite() {
+        IronmanState ironmanState = mock(IronmanState.class);
+        when(ironmanState.getIntendedType()).thenReturn(AccountType.HARDCORE_IRONMAN);
+        
+        TutorialIsland hardcoreTutorial = new TutorialIsland(ironmanState);
+        Map<Integer, QuestStep> hardcoreSteps = hardcoreTutorial.loadSteps();
+        
+        assertEquals("Step 610 should be COMPOSITE for hardcore ironman accounts",
+                StepType.COMPOSITE, hardcoreSteps.get(610).getType());
+    }
+
+    @Test
+    public void testUltimateIronmanStep610IsComposite() {
+        IronmanState ironmanState = mock(IronmanState.class);
+        when(ironmanState.getIntendedType()).thenReturn(AccountType.ULTIMATE_IRONMAN);
+        
+        TutorialIsland ultimateTutorial = new TutorialIsland(ironmanState);
+        Map<Integer, QuestStep> ultimateSteps = ultimateTutorial.loadSteps();
+        
+        assertEquals("Step 610 should be COMPOSITE for ultimate ironman accounts",
+                StepType.COMPOSITE, ultimateSteps.get(610).getType());
     }
 }

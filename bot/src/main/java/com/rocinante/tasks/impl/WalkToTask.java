@@ -1826,11 +1826,6 @@ public class WalkToTask extends AbstractTask {
             pathFinder = new PathFinder(ctx.getClient());
         }
 
-        if (webWalker == null) {
-            log.warn("WebWalker not available in TaskContext, creating instance");
-            webWalker = new WebWalker(ctx.getClient(), ctx.getUnlockTracker());
-        }
-
         if (obstacleHandler == null) {
             log.warn("ObstacleHandler not available in TaskContext, creating instance");
             obstacleHandler = new ObstacleHandler(ctx.getClient());
@@ -1839,6 +1834,11 @@ public class WalkToTask extends AbstractTask {
         if (planeTransitionHandler == null) {
             log.warn("PlaneTransitionHandler not available in TaskContext, creating instance");
             planeTransitionHandler = new PlaneTransitionHandler(ctx.getClient());
+        }
+
+        if (webWalker == null) {
+            log.warn("WebWalker not available in TaskContext, creating instance");
+            webWalker = new WebWalker(ctx.getClient(), ctx.getUnlockTracker(), planeTransitionHandler);
         }
 
         // Set ironman state on WebWalker if available

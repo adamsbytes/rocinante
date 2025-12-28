@@ -5,8 +5,8 @@
 
 import type { TrainingMethodInfo, LocationInfo, QuestInfo, SkillName } from '../shared/types';
 
-// Path to bot's data directory (relative to workspace root)
-const BOT_DATA_PATH = process.env.BOT_DATA_PATH || './bot/src/main/resources/data';
+// Path to bot's data directory (symlinked at web/bot-data -> ../bot/src/main/resources/data)
+const BOT_DATA_PATH = process.env.BOT_DATA_PATH || './bot-data';
 
 // ============================================================================
 // Training Methods

@@ -11,6 +11,7 @@ import com.rocinante.state.IronmanState;
 import com.rocinante.state.StateCondition;
 import com.rocinante.tasks.impl.DialogueTask;
 import com.rocinante.tasks.impl.IronmanSelectionTask;
+import com.rocinante.tasks.impl.SettingsTask;
 
 import javax.annotation.Nullable;
 import java.util.HashMap;
@@ -236,8 +237,9 @@ public class TutorialIsland implements Quest {
                 .withMenuAction("Talk-to")
                 .withDialogueExpected(true));
 
-        // var 3: Open settings menu (Tutorial Island teaches clicking tabs, not hotkeys)
-        steps.put(3, WidgetQuestStep.openSettingsByClick("Open the settings menu"));
+        // var 3: Open settings menu, then set to fixed mode
+        // This is a composite step: first open settings (tutorial requirement), then ensure fixed mode
+        steps.put(3, createOpenSettingsAndSetFixedModeStep());
 
         // var 7: Talk to Gielinor Guide after opening settings
         steps.put(7, new NpcQuestStep(NPC_GIELINOR_GUIDE, "Talk to the Gielinor Guide again")
@@ -278,8 +280,13 @@ public class TutorialIsland implements Quest {
         // var 90: Cook raw shrimp
         steps.put(90, createCookShrimpStep());
 
+        // Note: Varp gap 90→120 is intentional. Successfully cooking shrimp may
+        // advance varp through intermediate values as the game processes the action.
+
         // var 120: Exit Survival Expert area
         steps.put(120, new ObjectQuestStep(OBJECT_SURVIVAL_GATE, "Open", "Go through the gate"));
+
+        // Note: Varp gap 120→130 is intentional. Walking through the gate advances varp.
 
         // ====================================================================
         // Section 3: Master Chef (var 130-170)
@@ -300,6 +307,9 @@ public class TutorialIsland implements Quest {
 
         // var 170: Exit Chef's house
         steps.put(170, new ObjectQuestStep(OBJECT_CHEF_DOOR_EXIT, "Open", "Exit the cook's building"));
+
+        // Note: Varp gap 170→200 is intentional. Walking between the Chef's house
+        // and Quest Guide's house may advance varp through intermediate values.
 
         // ====================================================================
         // Section 4: Quest Guide (var 200-250)
@@ -322,6 +332,8 @@ public class TutorialIsland implements Quest {
         // var 250: Go down ladder
         steps.put(250, new ObjectQuestStep(OBJECT_QUEST_LADDER, "Climb-down", "Climb down the ladder"));
 
+        // Note: Varp gap 250→260 is intentional. Climbing the ladder advances varp.
+
         // ====================================================================
         // Section 5: Mining Instructor (var 260-360)
         // ====================================================================
@@ -329,6 +341,10 @@ public class TutorialIsland implements Quest {
         // var 260: Talk to Mining Instructor
         steps.put(260, new NpcQuestStep(NPC_MINING_INSTRUCTOR, "Talk to the Mining Instructor")
                 .withDialogueExpected(true));
+
+        // Note: Varp gap 260→300 is intentional. The dialogue with Mining Instructor
+        // automatically advances varp through intermediate values (270, 280, 290) as
+        // the instructor gives items and explains mining. These don't require bot action.
 
         // var 300: Mine tin
         steps.put(300, new ObjectQuestStep(OBJECT_TIN_ROCK, "Mine", "Mine some tin ore"));
@@ -450,45 +466,11 @@ public class TutorialIsland implements Quest {
         steps.put(600, new NpcQuestStep(NPC_BROTHER_BRACE, "Talk to Brother Brace")
                 .withDialogueExpected(true));
 
-        // var 610: Exit chapel
-        steps.put(610, new ObjectQuestStep(OBJECT_PRAYER_EXIT, "Open", "Exit the chapel"));
-
-        // ====================================================================
-        // Section 8.5: Paul - Ironman Tutor (Optional - var 611-619)
-        // ====================================================================
-        // Paul appears on the path between Prayer chapel and Magic instructor.
-        // Only talk to him if ironman mode is desired.
-        //
-        // Dialogue flow (from OSRS Wiki):
-        // 1. Talk to Paul → "Hello, [player name]. I'm Paul, the Ironman tutor. What can I do for you?"
-        // 2. Select an Option → "Tell me about Ironman"
-        // 3. Ironman tutor: *tons of info about ironman mode*
-        // 4. Select an Option → "I'd like to change my Ironman mode"
-        // 5. (Ironman interface opens - group 890)
-        // 6. Click appropriate button (Standard/Hardcore/Ultimate)
-        // 7. Interface closes and varbit 1777 updates
-        
-        if (shouldSelectIronmanMode()) {
-            // var 611: Talk to Paul
-            steps.put(611, new NpcQuestStep(NPC_IRONMAN_TUTOR, "Talk to Paul, the Ironman tutor")
-                    .withDialogueExpected(true));
-            
-            // var 612: Select "Tell me about Ironman"
-            steps.put(612, new DialogueQuestStep("Select: Tell me about Ironman")
-                    .withOptionText("Tell me about Ironman"));
-            
-            // var 613: Paul explains ironman mode (click through)
-            steps.put(613, new DialogueQuestStep("Listen to Paul explain Ironman mode")
-                    .withClickThrough(true));
-            
-            // var 614: Select "I'd like to change my Ironman mode"
-            steps.put(614, new DialogueQuestStep("Select: I'd like to change my Ironman mode")
-                    .withOptionText("change my Ironman mode"));
-            
-            // var 615: Select ironman type in interface (890)
-            steps.put(615, new CustomQuestStep("Select ironman type in interface", 
-                    ctx -> new IronmanSelectionTask(ironmanState)));
-        }
+        // var 610: Exit chapel (and optionally select ironman mode)
+        // Note: The game's varp 281 jumps directly from 610 to 620, so ironman selection
+        // must happen as part of this step before reaching the Magic Instructor.
+        // Paul (Ironman tutor) is on the path between the chapel and Magic instructor.
+        steps.put(610, createExitChapelStep());
 
         // ====================================================================
         // Section 9: Magic Instructor (var 620-1000)
@@ -617,6 +599,85 @@ public class TutorialIsland implements Quest {
         equipStep.addStep(ItemQuestStep.equip(ITEM_WOODEN_SHIELD, "Equip the wooden shield"));
 
         return equipStep;
+    }
+
+    /**
+     * Create the step for exiting the chapel and optionally selecting ironman mode.
+     * 
+     * The game's varp 281 jumps directly from 610 to 620, so ironman selection
+     * must happen within this step. Paul (Ironman tutor) is on the path between
+     * the chapel exit and the Magic Instructor.
+     * 
+     * Dialogue flow for ironman selection (from OSRS Wiki):
+     * 1. Talk to Paul -> "Hello, [player name]. I'm Paul, the Ironman tutor."
+     * 2. Select "Tell me about Ironman"
+     * 3. Paul explains ironman mode (click through)
+     * 4. Select "I'd like to change my Ironman mode"
+     * 5. Ironman interface opens (widget group 890)
+     * 6. Click appropriate button (Standard/Hardcore/Ultimate)
+     * 7. Interface closes and varbit 1777 updates with ironman status
+     */
+    private QuestStep createExitChapelStep() {
+        QuestStep exitChapel = new ObjectQuestStep(OBJECT_PRAYER_EXIT, "Open", "Exit the chapel");
+        
+        if (!shouldSelectIronmanMode()) {
+            // Normal account - just exit chapel
+            return exitChapel;
+        }
+        
+        // Ironman account - exit chapel then talk to Paul and select ironman mode
+        ConditionalQuestStep.CompositeQuestStep withIronman = 
+                new ConditionalQuestStep.CompositeQuestStep("Exit chapel and select ironman mode");
+        
+        // Step 1: Exit the chapel
+        withIronman.addStep(exitChapel);
+        
+        // Step 2: Talk to Paul (Ironman tutor)
+        withIronman.addStep(new NpcQuestStep(NPC_IRONMAN_TUTOR, "Talk to Paul, the Ironman tutor")
+                .withDialogueExpected(true));
+        
+        // Step 3: Select "Tell me about Ironman" dialogue option
+        withIronman.addStep(new DialogueQuestStep("Select: Tell me about Ironman")
+                .withOptionText("Tell me about Ironman"));
+        
+        // Step 4: Click through Paul's explanation
+        withIronman.addStep(new DialogueQuestStep("Listen to Paul explain Ironman mode")
+                .withClickThrough(true));
+        
+        // Step 5: Select "I'd like to change my Ironman mode"
+        withIronman.addStep(new DialogueQuestStep("Select: I'd like to change my Ironman mode")
+                .withOptionText("change my Ironman mode"));
+        
+        // Step 6: Click the appropriate button in the ironman interface (890)
+        withIronman.addStep(new CustomQuestStep("Select ironman type in interface", 
+                ctx -> new IronmanSelectionTask(ironmanState)));
+        
+        return withIronman;
+    }
+    
+    /**
+     * Create the step for opening settings and setting fixed mode.
+     * 
+     * The tutorial instructs the player to open the settings tab at step 3.
+     * We use this opportunity to also ensure fixed mode is set, which prevents
+     * UI occlusion issues in resizable modes.
+     * 
+     * This is a composite step:
+     * 1. Open settings by click (tutorial requirement)
+     * 2. Set to fixed mode via SettingsTask (if not already in fixed mode)
+     */
+    private QuestStep createOpenSettingsAndSetFixedModeStep() {
+        ConditionalQuestStep.CompositeQuestStep composite = 
+                new ConditionalQuestStep.CompositeQuestStep("Open settings and set fixed mode");
+        
+        // Step 1: Open settings tab by clicking (tutorial requirement)
+        composite.addStep(WidgetQuestStep.openSettingsByClick("Open the settings menu"));
+        
+        // Step 2: Set to fixed mode (SettingsTask handles check for already in fixed mode)
+        composite.addStep(new CustomQuestStep("Set interface to fixed mode",
+                ctx -> SettingsTask.setFixedMode()));
+        
+        return composite;
     }
 }
 

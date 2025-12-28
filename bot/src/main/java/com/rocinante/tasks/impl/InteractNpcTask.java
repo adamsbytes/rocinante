@@ -89,6 +89,11 @@ public class InteractNpcTask extends AbstractTask {
      * Maximum movement distance before re-targeting (tiles).
      */
     private static final int MAX_NPC_MOVEMENT = 3;
+    
+    /**
+     * Maximum camera rotation retries to get NPC in viewport.
+     */
+    private static final int MAX_CAMERA_RETRIES = 3;
 
     // ========================================================================
     // Configuration
@@ -177,6 +182,11 @@ public class InteractNpcTask extends AbstractTask {
      * Current execution phase.
      */
     private NpcInteractionPhase phase = NpcInteractionPhase.FIND_NPC;
+    
+    /**
+     * Camera rotation retry count for viewport issues.
+     */
+    private int cameraRetryCount = 0;
 
     /**
      * The NPC we found and are interacting with.
@@ -507,6 +517,38 @@ public class InteractNpcTask extends AbstractTask {
             log.warn("Could not calculate click point for NPC {}", npcId);
             fail("Cannot determine click point");
             return;
+        }
+        
+        // Check viewport visibility
+        if (ctx.getGameStateService() != null) {
+            boolean isVisible = ctx.getGameStateService().isPointVisibleInViewport(clickPoint.x, clickPoint.y);
+            
+            if (!isVisible) {
+                // Not visible at all - need to rotate camera
+                // After rotation, we want it in the center 2/3 (safe zone)
+                log.debug("Click point ({}, {}) not visible, rotating camera to center target", clickPoint.x, clickPoint.y);
+                cameraRetryCount++;
+                if (cameraRetryCount > MAX_CAMERA_RETRIES) {
+                    fail("Cannot get NPC into viewport after " + MAX_CAMERA_RETRIES + " camera rotations");
+                    return;
+                }
+                phase = NpcInteractionPhase.ROTATE_CAMERA;
+                return;
+            }
+            
+            // If we already rotated camera this interaction, verify target ended up in safe zone
+            // This ensures camera rotation actually centered the target
+            if (cameraRetryCount > 0 && !ctx.getGameStateService().isPointInViewport(clickPoint.x, clickPoint.y)) {
+                log.debug("Camera rotated but target still at edge, rotating more");
+                cameraRetryCount++;
+                if (cameraRetryCount > MAX_CAMERA_RETRIES) {
+                    // Target visible but at edge after max retries - proceed anyway
+                    log.debug("Target at edge after max retries, proceeding with click");
+                } else {
+                    phase = NpcInteractionPhase.ROTATE_CAMERA;
+                    return;
+                }
+            }
         }
 
         log.debug("Moving mouse to NPC at canvas point ({}, {})", clickPoint.x, clickPoint.y);

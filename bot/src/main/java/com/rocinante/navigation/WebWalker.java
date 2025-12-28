@@ -87,21 +87,9 @@ public class WebWalker {
     @Setter
     private double maxAcceptableRisk = 0.10;
 
-    @Inject
-    public WebWalker(Client client, @Nullable UnlockTracker unlockTracker) {
-        this.client = client;
-        this.unlockTracker = unlockTracker;
-        loadNavigationWeb();
-        
-        if (unlockTracker != null) {
-            log.info("WebWalker initialized with UnlockTracker integration");
-        } else {
-            log.info("WebWalker initialized without UnlockTracker (limited requirement checking)");
-        }
-    }
-
     /**
-     * Constructor with PlaneTransitionHandler for unified graph support.
+     * Primary constructor for dependency injection.
+     * Uses the full constructor with all optional dependencies.
      */
     @Inject
     public WebWalker(Client client, @Nullable UnlockTracker unlockTracker, 

@@ -50,6 +50,7 @@ type StatusWebSocketData = {
   type: 'status';
   botId: string;
   cleanup: (() => void) | null;
+  pingInterval: ReturnType<typeof setInterval> | null;
 };
 
 type WebSocketData = VncWebSocketData | StatusWebSocketData;
@@ -122,6 +123,7 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
         type: 'status',
         botId,
         cleanup: null,
+        pingInterval: null,
       } as StatusWebSocketData,
     });
 
@@ -430,6 +432,9 @@ const bunServer = Bun.serve({
   port: PORT,
   fetch: handleRequest,
   websocket: {
+    // Idle timeout in seconds - set to 120s, ping every 30s keeps connection alive
+    idleTimeout: 120,
+    
     // Called when WebSocket connection opens
     async open(ws: ServerWebSocket<WebSocketData>) {
       if (ws.data.type === 'vnc') {
@@ -492,6 +497,13 @@ const bunServer = Bun.serve({
           }
         });
 
+        // Start ping interval to keep connection alive (every 30 seconds)
+        statusData.pingInterval = setInterval(() => {
+          if (ws.readyState === 1) { // OPEN
+            ws.ping();
+          }
+        }, 30000);
+
         // Send initial status if available
         const initialStatus = readBotStatus(botId);
         if (initialStatus && ws.readyState === 1) {
@@ -540,6 +552,9 @@ const bunServer = Bun.serve({
       } else if (ws.data.type === 'status') {
         const statusData = ws.data as StatusWebSocketData;
         console.log(`Status WebSocket closed for bot ${statusData.botId}: ${code} ${reason}`);
+        if (statusData.pingInterval) {
+          clearInterval(statusData.pingInterval);
+        }
         if (statusData.cleanup) {
           statusData.cleanup();
         }
@@ -557,6 +572,9 @@ const bunServer = Bun.serve({
       } else if (ws.data.type === 'status') {
         const statusData = ws.data as StatusWebSocketData;
         console.error(`Status WebSocket error for bot ${statusData.botId}:`, error);
+        if (statusData.pingInterval) {
+          clearInterval(statusData.pingInterval);
+        }
         if (statusData.cleanup) {
           statusData.cleanup();
         }

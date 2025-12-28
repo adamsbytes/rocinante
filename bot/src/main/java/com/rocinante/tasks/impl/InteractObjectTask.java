@@ -82,6 +82,11 @@ public class InteractObjectTask extends AbstractTask {
      * Maximum ticks to wait for interaction response.
      */
     private static final int INTERACTION_TIMEOUT_TICKS = 10;
+    
+    /**
+     * Maximum camera rotation retries to get object in viewport.
+     */
+    private static final int MAX_CAMERA_RETRIES = 3;
 
     // ========================================================================
     // Configuration
@@ -157,6 +162,11 @@ public class InteractObjectTask extends AbstractTask {
      * Current execution phase.
      */
     protected InteractionPhase phase = InteractionPhase.FIND_OBJECT;
+    
+    /**
+     * Camera rotation retry count for viewport issues.
+     */
+    protected int cameraRetryCount = 0;
 
     /**
      * The object we found and are interacting with.
@@ -426,6 +436,38 @@ public class InteractObjectTask extends AbstractTask {
             log.warn("Could not calculate click point for object {}", objectId);
             fail("Cannot determine click point");
             return;
+        }
+        
+        // Check viewport visibility
+        if (ctx.getGameStateService() != null) {
+            boolean isVisible = ctx.getGameStateService().isPointVisibleInViewport(clickPoint.x, clickPoint.y);
+            
+            if (!isVisible) {
+                // Not visible at all - need to rotate camera
+                // After rotation, we want it in the center 2/3 (safe zone)
+                log.debug("Click point ({}, {}) not visible, rotating camera to center target", clickPoint.x, clickPoint.y);
+                cameraRetryCount++;
+                if (cameraRetryCount > MAX_CAMERA_RETRIES) {
+                    fail("Cannot get object into viewport after " + MAX_CAMERA_RETRIES + " camera rotations");
+                    return;
+                }
+                phase = InteractionPhase.ROTATE_CAMERA;
+                return;
+            }
+            
+            // If we already rotated camera this interaction, verify target ended up in safe zone
+            // This ensures camera rotation actually centered the target
+            if (cameraRetryCount > 0 && !ctx.getGameStateService().isPointInViewport(clickPoint.x, clickPoint.y)) {
+                log.debug("Camera rotated but target still at edge, rotating more");
+                cameraRetryCount++;
+                if (cameraRetryCount > MAX_CAMERA_RETRIES) {
+                    // Target visible but at edge after max retries - proceed anyway
+                    log.debug("Target at edge after max retries, proceeding with click");
+                } else {
+                    phase = InteractionPhase.ROTATE_CAMERA;
+                    return;
+                }
+            }
         }
 
         log.debug("Moving mouse to object at canvas point ({}, {})", clickPoint.x, clickPoint.y);

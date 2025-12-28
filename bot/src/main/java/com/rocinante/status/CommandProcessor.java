@@ -218,7 +218,8 @@ public class CommandProcessor {
                 return;
             }
 
-            JsonObject root = JsonParser.parseString(content).getAsJsonObject();
+            // Use older Gson API for compatibility with RuneLite's bundled Gson version
+            JsonObject root = new JsonParser().parse(content).getAsJsonObject();
             JsonArray commands = root.getAsJsonArray("commands");
             
             if (commands == null || commands.isEmpty()) {

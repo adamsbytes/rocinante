@@ -408,7 +408,7 @@ public class WidgetQuestStep extends QuestStep {
      */
     public static WidgetQuestStep openFriendsListByClick(String text) {
         return new WidgetQuestStep(429, text)
-                .withTabId(9)
+                .withTabId(8)  // TAB_FRIENDS = 8
                 .withTabSwitch(true)
                 .withForceClick(true);
     }
@@ -434,7 +434,7 @@ public class WidgetQuestStep extends QuestStep {
      */
     public static WidgetQuestStep openAccountManagementByClick(String text) {
         return new WidgetQuestStep(109, text)
-                .withTabId(10)
+                .withTabId(9)  // TAB_ACCOUNT = 9
                 .withTabSwitch(true)
                 .withForceClick(true);
     }

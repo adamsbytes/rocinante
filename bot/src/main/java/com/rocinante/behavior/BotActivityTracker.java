@@ -13,6 +13,7 @@ import net.runelite.client.eventbus.Subscribe;
 
 import javax.annotation.Nullable;
 import javax.inject.Inject;
+import javax.inject.Provider;
 import javax.inject.Singleton;
 import java.time.Duration;
 import java.time.Instant;
@@ -112,22 +113,31 @@ public class BotActivityTracker {
     @Inject
     public BotActivityTracker(Client client,
                               @Nullable com.rocinante.state.IronmanState ironmanState,
-                              @Nullable TaskExecutor taskExecutor,
-                              @Nullable com.rocinante.core.GameStateService gameStateService) {
+                              @Nullable Provider<TaskExecutor> taskExecutorProvider,
+                              @Nullable Provider<com.rocinante.core.GameStateService> gameStateServiceProvider) {
         this.client = client;
         this.ironmanState = ironmanState;
         
         // Create suppliers that safely handle null dependencies
+        // Using Provider<T> breaks circular dependencies:
+        // - TaskContext -> GameStateService -> FatigueModel -> BotActivityTracker -> TaskExecutor -> TaskContext
+        // - GameStateService -> AttentionModel -> BotActivityTracker -> GameStateService
         this.combatStateSupplier = () -> {
-            if (gameStateService != null) {
-                return gameStateService.getCombatState();
+            if (gameStateServiceProvider != null) {
+                com.rocinante.core.GameStateService gss = gameStateServiceProvider.get();
+                if (gss != null) {
+                    return gss.getCombatState();
+                }
             }
             return CombatState.EMPTY;
         };
         
         this.currentTaskSupplier = () -> {
-            if (taskExecutor != null) {
-                return taskExecutor.getCurrentTask();
+            if (taskExecutorProvider != null) {
+                TaskExecutor executor = taskExecutorProvider.get();
+                if (executor != null) {
+                    return executor.getCurrentTask();
+                }
             }
             return null;
         };

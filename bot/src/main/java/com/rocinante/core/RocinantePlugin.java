@@ -37,6 +37,10 @@ import com.rocinante.tasks.TaskExecutor;
 import com.rocinante.tasks.TaskPriority;
 import com.rocinante.timing.HumanTimer;
 import com.rocinante.quest.QuestExecutor;
+import com.rocinante.util.Randomization;
+import com.rocinante.behavior.tasks.MicroPauseTask;
+import com.rocinante.behavior.tasks.ShortBreakTask;
+import com.rocinante.behavior.tasks.LongBreakTask;
 
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
@@ -95,6 +99,10 @@ public class RocinantePlugin extends Plugin
 
     @Inject
     @Getter
+    private Randomization randomization;
+
+    @Inject
+    @Getter
     private TaskContext taskContext;
 
     @Inject
@@ -141,7 +149,7 @@ public class RocinantePlugin extends Plugin
     @Getter
     private EmergencyHandler emergencyHandler;
 
-    @Inject
+    // Break task factory - created manually in startUp() as it requires runtime wiring
     private Function<BreakType, Task> breakTaskFactory;
 
     // === Behavioral Anti-Detection Components ===
@@ -241,7 +249,25 @@ public class RocinantePlugin extends Plugin
         // Wire up TradeHandler with TaskExecutor
         tradeHandler.setTaskExecutor(taskExecutor);
         
-        // Wire up BreakScheduler with its task factory
+        // Create and wire up BreakScheduler with its task factory
+        breakTaskFactory = breakType -> {
+            switch (breakType) {
+                case MICRO_PAUSE:
+                    return new MicroPauseTask(breakScheduler, fatigueModel, randomization);
+                case SHORT_BREAK:
+                    return new ShortBreakTask(breakScheduler, fatigueModel, playerProfile, 
+                            randomization, humanTimer);
+                case LONG_BREAK:
+                    return new LongBreakTask(breakScheduler, fatigueModel, playerProfile,
+                            randomization, humanTimer);
+                case SESSION_END:
+                    log.info("Session end triggered - should logout");
+                    return null;
+                default:
+                    log.warn("Unknown break type: {}", breakType);
+                    return null;
+            }
+        };
         breakScheduler.setBreakTaskFactory(breakTaskFactory);
         
         // Wire up TaskExecutor with behavioral components

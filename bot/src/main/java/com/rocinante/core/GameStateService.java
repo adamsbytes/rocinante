@@ -5,6 +5,11 @@ import com.rocinante.behavior.BreakScheduler;
 import com.rocinante.behavior.FatigueModel;
 import com.rocinante.behavior.PlayerProfile;
 import com.rocinante.combat.WeaponDataService;
+import com.rocinante.quest.impl.TutorialIsland;
+import com.rocinante.status.XpTracker;
+import com.rocinante.tasks.TaskExecutor;
+import com.rocinante.tasks.impl.SettingsTask;
+import javax.inject.Provider;
 import com.rocinante.data.NpcCombatDataLoader;
 import com.rocinante.data.ProjectileDataLoader;
 import com.rocinante.state.*;
@@ -110,6 +115,12 @@ public class GameStateService {
     
     @Nullable
     private final AttentionModel attentionModel;
+    
+    @Nullable
+    private final XpTracker xpTracker;
+    
+    @Nullable
+    private final Provider<TaskExecutor> taskExecutorProvider;
 
     // ========================================================================
     // Data Services
@@ -143,6 +154,19 @@ public class GameStateService {
 
     @Getter
     private volatile boolean loggedIn = false;
+    
+    /** Whether behavioral session has been successfully initialized */
+    private volatile boolean behaviorsInitialized = false;
+    
+    /** Whether we've already ensured fixed mode this session */
+    private volatile boolean fixedModeEnsured = false;
+    
+    /**
+     * Current interface mode (fixed vs resizable variants).
+     * Updated on login and when interface changes.
+     */
+    @Getter
+    private volatile InterfaceMode interfaceMode = InterfaceMode.UNKNOWN;
 
     // Dirty flags for event-invalidated caches
     private volatile boolean inventoryDirty = true;
@@ -156,6 +180,68 @@ public class GameStateService {
     
     // Widget discovery tracking (prevents log spam)
     private final Set<Integer> discoveredWidgetGroups = new HashSet<>();
+    
+    /**
+     * Interface mode enum - determines which widget IDs to use for tabs, etc.
+     * Values from RuneLite InterfaceID.java
+     */
+    public enum InterfaceMode {
+        /** Fixed mode (group 548 = TOPLEVEL) */
+        FIXED(548),
+        /** Resizable classic/stretch (group 161 = TOPLEVEL_OSRS_STRETCH) */
+        RESIZABLE_CLASSIC(161),
+        /** Resizable modern/bottom line (group 164 = TOPLEVEL_PRE_EOC) */
+        RESIZABLE_MODERN(164),
+        /** Unknown/not yet detected */
+        UNKNOWN(-1);
+        
+        @Getter
+        private final int topLevelGroupId;
+        
+        InterfaceMode(int topLevelGroupId) {
+            this.topLevelGroupId = topLevelGroupId;
+        }
+        
+        public boolean isResizable() {
+            return this == RESIZABLE_CLASSIC || this == RESIZABLE_MODERN;
+        }
+        
+        public boolean isFixed() {
+            return this == FIXED;
+        }
+        
+        /**
+         * Check if this mode has a "safe" viewport (no UI occlusion).
+         * Only Fixed mode guarantees the entire viewport is visible.
+         */
+        public boolean hasSafeViewport() {
+            return this == FIXED;
+        }
+        
+        /**
+         * Get the fixed viewport dimensions for this mode.
+         * In fixed mode, viewport is always at a known position.
+         * In resizable modes, use client.getViewport* methods.
+         */
+        public java.awt.Rectangle getFixedViewportBounds() {
+            // Fixed mode viewport: starts at (4, 4) and is 512x334
+            // These are the 3D game area bounds in fixed mode
+            return this == FIXED ? new java.awt.Rectangle(4, 4, 512, 334) : null;
+        }
+        
+        public static InterfaceMode fromTopLevelId(int id) {
+            for (InterfaceMode mode : values()) {
+                if (mode.topLevelGroupId == id) {
+                    return mode;
+                }
+            }
+            // Log unknown interface ID for debugging
+            if (id > 0) {
+                // Will be logged at TRACE level to avoid spam
+            }
+            return UNKNOWN;
+        }
+    }
 
     // ========================================================================
     // VarPlayer/Varbit Constants
@@ -184,6 +270,14 @@ public class GameStateService {
      * 1 = in multi-combat, 0 = single combat.
      */
     private static final int VARBIT_MULTICOMBAT = 4605;
+    
+    /**
+     * Varbit for resizable stone arrangement.
+     * Only relevant when client.isResized() is true.
+     * 0 = Resizable Classic (stones on side)
+     * 1 = Resizable Modern / Pre-EOC (stones on bottom)
+     */
+    private static final int VARBIT_RESIZABLE_STONE_ARRANGEMENT = 4607;
 
     @Inject
     public GameStateService(Client client, 
@@ -194,6 +288,8 @@ public class GameStateService {
                            @Nullable FatigueModel fatigueModel,
                            @Nullable BreakScheduler breakScheduler,
                            @Nullable AttentionModel attentionModel,
+                           @Nullable XpTracker xpTracker,
+                           @Nullable Provider<TaskExecutor> taskExecutorProvider,
                            @Nullable WeaponDataService weaponDataService,
                            @Nullable NpcCombatDataLoader npcCombatDataLoader,
                            @Nullable ProjectileDataLoader projectileDataLoader) {
@@ -205,6 +301,8 @@ public class GameStateService {
         this.fatigueModel = fatigueModel;
         this.breakScheduler = breakScheduler;
         this.attentionModel = attentionModel;
+        this.xpTracker = xpTracker;
+        this.taskExecutorProvider = taskExecutorProvider;
         this.weaponDataService = weaponDataService;
         this.npcCombatDataLoader = npcCombatDataLoader;
         this.projectileDataLoader = projectileDataLoader;
@@ -236,11 +334,23 @@ public class GameStateService {
 
         currentTick++;
         long startTime = System.nanoTime();
+        
+        // Retry session initialization if it failed on login (player name wasn't ready)
+        if (!behaviorsInitialized) {
+            initializeSessionBehaviors();
+        }
 
         // Update IronmanState from varbit (tracks actual account type)
         if (ironmanState != null) {
             ironmanState.updateFromVarbit();
         }
+        
+        // Update interface mode (cheap check, cached result)
+        updateInterfaceMode();
+        
+        // Ensure fixed mode if settings tab is unlocked
+        // varp 281: Tutorial progress (0 = non-tutorial, 7+ = past settings step, 1000 = complete)
+        ensureFixedModeIfUnlocked();
 
         // Update tick on BankStateManager for freshness tracking
         bankStateManager.setCurrentTick(currentTick);
@@ -297,19 +407,25 @@ public class GameStateService {
     /**
      * Initialize behavioral components when player logs in.
      * Loads player profile and resets behavioral tracking for new session.
+     * May be called multiple times (from login event + game tick) until successful.
      */
     private void initializeSessionBehaviors() {
+        if (behaviorsInitialized) {
+            return; // Already done
+        }
+        
         // Get player name for profile loading
         Player localPlayer = client.getLocalPlayer();
         if (localPlayer == null) {
-            log.warn("Cannot initialize session behaviors: local player is null");
-            // Will retry on first game tick when player is available
+            log.debug("Cannot initialize session behaviors yet: local player is null");
+            // Will retry on next game tick
             return;
         }
         
         String accountName = localPlayer.getName();
         if (accountName == null || accountName.isEmpty()) {
-            log.warn("Cannot initialize session behaviors: account name is null");
+            log.debug("Cannot initialize session behaviors yet: account name is null");
+            // Will retry on next game tick
             return;
         }
         
@@ -338,6 +454,12 @@ public class GameStateService {
             attentionModel.reset();
         }
         
+        // Start XP/stats tracking session
+        if (xpTracker != null) {
+            xpTracker.startSession();
+        }
+        
+        behaviorsInitialized = true;
         log.info("Behavioral session initialized for account type: {}", accountType);
     }
     
@@ -384,6 +506,14 @@ public class GameStateService {
         if (playerProfile != null) {
             playerProfile.recordLogout();
         }
+        
+        // End XP tracking session
+        if (xpTracker != null) {
+            xpTracker.endSession();
+        }
+        
+        behaviorsInitialized = false;
+        fixedModeEnsured = false;
     }
 
     /**
@@ -648,6 +778,198 @@ public class GameStateService {
     // ========================================================================
     // State Refresh Methods
     // ========================================================================
+
+    /**
+     * Update the interface mode from client.
+     * Uses client.isResized() and varbit 4607 (RESIZABLE_STONE_ARRANGEMENT) for detection.
+     * 
+     * Detection logic:
+     * - Fixed: !client.isResized()
+     * - Resizable Classic: client.isResized() && varbit 4607 == 0 (stones on side)
+     * - Resizable Modern: client.isResized() && varbit 4607 == 1 (stones on bottom)
+     */
+    private void updateInterfaceMode() {
+        try {
+            boolean resized = client.isResized();
+            InterfaceMode newMode;
+            
+            if (!resized) {
+                newMode = InterfaceMode.FIXED;
+            } else {
+                // Check varbit 4607 for stone arrangement
+                int stoneArrangement = client.getVarbitValue(VARBIT_RESIZABLE_STONE_ARRANGEMENT);
+                newMode = (stoneArrangement == 1) ? InterfaceMode.RESIZABLE_MODERN : InterfaceMode.RESIZABLE_CLASSIC;
+            }
+            
+            if (newMode != interfaceMode) {
+                log.info("Interface mode changed: {} -> {} (resized={}, stoneArrangement={})", 
+                        interfaceMode, newMode, resized, 
+                        resized ? client.getVarbitValue(VARBIT_RESIZABLE_STONE_ARRANGEMENT) : "n/a");
+                interfaceMode = newMode;
+            }
+        } catch (Exception e) {
+            log.trace("Could not detect interface mode: {}", e.getMessage());
+        }
+    }
+    
+    /**
+     * Ensure fixed mode is set if the settings tab is unlocked.
+     * 
+     * This handles:
+     * - Existing accounts (varp 281 >=7)
+     * 
+     * varp 281 values:
+     * - 3: Tutorial step to open settings
+     * - 7+: Past the settings step (settings unlocked)
+     * - 1000: Tutorial complete
+     */
+    private void ensureFixedModeIfUnlocked() {
+        if (fixedModeEnsured) {
+            return; // Already handled this session
+        }
+        
+        // Already in fixed mode?
+        if (interfaceMode == InterfaceMode.FIXED) {
+            fixedModeEnsured = true;
+            log.debug("Already in fixed mode");
+            return;
+        }
+        
+        // Check if settings tab is unlocked
+        int tutorialProgress = client.getVarpValue(TutorialIsland.VARP_TUTORIAL_PROGRESS);
+
+        // Any accounts before step 7 will have this enforced by the tutorial completion
+        if (tutorialProgress >= 7) {
+            log.info("Settings tab unlocked (varp 281 = {}), ensuring fixed mode", tutorialProgress);
+            queueFixedModeTask();
+            fixedModeEnsured = true;
+        }
+    }
+    
+    /**
+     * Queue the SettingsTask to change to fixed mode.
+     */
+    private void queueFixedModeTask() {
+        if (taskExecutorProvider == null) {
+            log.warn("Cannot queue fixed mode task: TaskExecutor not available");
+            return;
+        }
+        
+        try {
+            TaskExecutor executor = taskExecutorProvider.get();
+            if (executor != null) {
+                executor.queueTask(SettingsTask.setFixedMode());
+                log.info("Queued SettingsTask to set fixed mode");
+            }
+        } catch (Exception e) {
+            log.warn("Failed to queue fixed mode task: {}", e.getMessage());
+        }
+    }
+
+    // ========================================================================
+    // Viewport Utilities
+    // ========================================================================
+    
+    /**
+     * Get the current viewport bounds (the 3D game area).
+     * This is where game world clicks should land.
+     * 
+     * @return viewport rectangle in canvas coordinates
+     */
+    public java.awt.Rectangle getViewportBounds() {
+        // In fixed mode, viewport is at a known position
+        if (interfaceMode == InterfaceMode.FIXED) {
+            return new java.awt.Rectangle(4, 4, 512, 334);
+        }
+        
+        // In resizable modes, use client API
+        int x = client.getViewportXOffset();
+        int y = client.getViewportYOffset();
+        int w = client.getViewportWidth();
+        int h = client.getViewportHeight();
+        
+        return new java.awt.Rectangle(x, y, w, h);
+    }
+    
+    /**
+     * Get the "safe" center zone of the viewport (middle 2/3rds).
+     * Humans don't click targets at the very edge of their vision - they 
+     * naturally move/rotate to center targets before interacting.
+     * 
+     * @return the center 2/3 rectangle of the viewport
+     */
+    public java.awt.Rectangle getViewportSafeZone() {
+        java.awt.Rectangle viewport = getViewportBounds();
+        
+        // Calculate inset: 1/6th on each side = middle 2/3
+        int insetX = viewport.width / 6;
+        int insetY = viewport.height / 6;
+        
+        return new java.awt.Rectangle(
+                viewport.x + insetX,
+                viewport.y + insetY,
+                viewport.width - (2 * insetX),
+                viewport.height - (2 * insetY)
+        );
+    }
+    
+    /**
+     * Check if a point is within the "safe zone" (center 2/3) of the viewport.
+     * This is the area humans would naturally target - not the edges.
+     * 
+     * @param x canvas x coordinate
+     * @param y canvas y coordinate
+     * @return true if point is in safe zone
+     */
+    public boolean isPointInViewport(int x, int y) {
+        java.awt.Rectangle safeZone = getViewportSafeZone();
+        return safeZone.contains(x, y);
+    }
+    
+    /**
+     * Check if a rectangle's CENTER is within the viewport safe zone.
+     * We check the center because the entire clickbox doesn't need to be
+     * centered - just close enough that clicking won't look unnatural.
+     * 
+     * @param bounds the rectangle to check
+     * @return true if bounds center is in safe zone
+     */
+    public boolean isInViewport(java.awt.Rectangle bounds) {
+        if (bounds == null) {
+            return false;
+        }
+        // Check if the CENTER of the bounds is in the safe zone
+        int centerX = bounds.x + bounds.width / 2;
+        int centerY = bounds.y + bounds.height / 2;
+        return isPointInViewport(centerX, centerY);
+    }
+    
+    /**
+     * Check if a point is anywhere in the viewport (including edges).
+     * Use this for "is it visible at all" checks, not for "should we click it".
+     * 
+     * @param x canvas x coordinate
+     * @param y canvas y coordinate
+     * @return true if point is in viewport
+     */
+    public boolean isPointVisibleInViewport(int x, int y) {
+        java.awt.Rectangle viewport = getViewportBounds();
+        return viewport.contains(x, y);
+    }
+    
+    /**
+     * Clamp a point to be within the viewport bounds.
+     * 
+     * @param x canvas x coordinate
+     * @param y canvas y coordinate
+     * @return clamped point within viewport
+     */
+    public java.awt.Point clampToViewport(int x, int y) {
+        java.awt.Rectangle viewport = getViewportBounds();
+        int clampedX = Math.max(viewport.x, Math.min(x, viewport.x + viewport.width - 1));
+        int clampedY = Math.max(viewport.y, Math.min(y, viewport.y + viewport.height - 1));
+        return new java.awt.Point(clampedX, clampedY);
+    }
 
     /**
      * Refresh player state from client API.

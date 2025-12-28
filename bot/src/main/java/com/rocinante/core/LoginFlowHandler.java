@@ -5,6 +5,7 @@ import com.rocinante.input.RobotMouseController;
 import com.rocinante.quest.QuestExecutor;
 import com.rocinante.quest.impl.TutorialIsland;
 import com.rocinante.tasks.TaskExecutor;
+import com.rocinante.tasks.impl.SettingsTask;
 import com.rocinante.timing.DelayProfile;
 import com.rocinante.timing.HumanTimer;
 import com.rocinante.util.Randomization;

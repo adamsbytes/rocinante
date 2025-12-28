@@ -89,25 +89,67 @@ public class WidgetInteractTask extends AbstractTask {
             0                                    // Music (13) - no default key
     };
 
-    // Widget group IDs for tab icons (resizable mode stone icons)
+    // Widget group IDs for tab icons (stone icons) in different interface modes
     // Used when forceClick=true to click the tab icon directly
-    private static final int TAB_STONE_GROUP = 161;  // Resizable classic layout
-    private static final int[] TAB_STONE_CHILDREN = {
-            51,  // Combat (0)
-            52,  // Skills (1)
-            53,  // Quests (2)
-            54,  // Inventory (3)
-            55,  // Equipment (4)
-            56,  // Prayer (5)
-            57,  // Spellbook (6)
-            37,  // Clan (7)
-            38,  // Friends (8)
-            39,  // Account (9)
-            40,  // Logout (10)
-            41,  // Settings (11)
-            42,  // Emotes (12)
-            43   // Music (13)
+    // Values from RuneLite InterfaceID.java
+    
+    // Resizable classic layout (group 161 = ToplevelOsrsStretch)
+    private static final int TAB_STONE_GROUP_RESIZABLE_CLASSIC = 161;
+    private static final int[] TAB_STONE_CHILDREN_RESIZABLE_CLASSIC = {
+            59,  // Combat (0) - STONE0
+            60,  // Skills (1) - STONE1
+            61,  // Quests (2) - STONE2
+            62,  // Inventory (3) - STONE3
+            63,  // Equipment (4) - STONE4
+            64,  // Prayer (5) - STONE5
+            65,  // Spellbook (6) - STONE6
+            43,  // Clan (7) - STONE7
+            45,  // Friends (8) - STONE9 (note: 8 and 9 swapped in RuneLite)
+            44,  // Ignores (9) - STONE8
+            46,  // Logout (10) - STONE10
+            47,  // Settings (11) - STONE11
+            48,  // Emotes (12) - STONE12
+            49   // Music (13) - STONE13
     };
+    
+    // Resizable modern/bottom-line layout (group 164 = ToplevelPreEoc)
+    private static final int TAB_STONE_GROUP_RESIZABLE_MODERN = 164;
+    private static final int[] TAB_STONE_CHILDREN_RESIZABLE_MODERN = {
+            52,  // Combat (0) - STONE0
+            53,  // Skills (1) - STONE1
+            54,  // Quests (2) - STONE2
+            55,  // Inventory (3) - STONE3
+            56,  // Equipment (4) - STONE4
+            57,  // Prayer (5) - STONE5
+            58,  // Spellbook (6) - STONE6
+            38,  // Clan (7) - STONE7
+            40,  // Friends (8) - STONE9 (swapped)
+            39,  // Account (9) - STONE8 (swapped)
+            34,  // Logout (10) - STONE10
+            41,  // Settings (11) - STONE11
+            42,  // Emotes (12) - STONE12
+            43   // Music (13) - STONE13
+    };
+    
+    // Fixed mode layout (group 548 = Toplevel)
+    private static final int TAB_STONE_GROUP_FIXED = 548;
+    private static final int[] TAB_STONE_CHILDREN_FIXED = {
+            64,  // Combat (0) - STONE0
+            65,  // Skills (1) - STONE1
+            66,  // Quests (2) - STONE2
+            67,  // Inventory (3) - STONE3
+            68,  // Equipment (4) - STONE4
+            69,  // Prayer (5) - STONE5
+            70,  // Spellbook (6) - STONE6
+            48,  // Clan (7) - STONE7
+            50,  // Friends (8) - STONE9
+            49,  // Account (9) - STONE8
+            51,  // Logout (10) - STONE10
+            52,  // Settings (11) - STONE11
+            53,  // Emotes (12) - STONE12
+            54   // Music (13) - STONE13
+    };
+    
 
     // ========================================================================
     // Action Types
@@ -235,6 +277,11 @@ public class WidgetInteractTask extends AbstractTask {
      * Whether a click is pending.
      */
     private boolean clickPending = false;
+    
+    /**
+     * Cached reference to TaskContext for interface mode lookup.
+     */
+    private TaskContext lastContext = null;
 
     /**
      * Whether a key press is pending.
@@ -306,7 +353,8 @@ public class WidgetInteractTask extends AbstractTask {
             task = pressKey(keyCode);
         } else {
             // No hotkey available, will need to click
-            task = new WidgetInteractTask(TAB_STONE_GROUP, TAB_STONE_CHILDREN[tabIndex]);
+            // Use sentinel values (-1) - actual widget lookup happens at runtime via findTabStoneWidget()
+            task = new WidgetInteractTask(-1, -1);
             task.setForceClick(true);  // Must click, no hotkey available
         }
         
@@ -324,11 +372,12 @@ public class WidgetInteractTask extends AbstractTask {
      * @return widget task configured to click the tab icon
      */
     public static WidgetInteractTask openTabByClick(int tabIndex) {
-        if (tabIndex < 0 || tabIndex >= TAB_STONE_CHILDREN.length) {
+        if (tabIndex < 0 || tabIndex > TAB_MUSIC) {
             throw new IllegalArgumentException("Invalid tab index: " + tabIndex);
         }
 
-        WidgetInteractTask task = new WidgetInteractTask(TAB_STONE_GROUP, TAB_STONE_CHILDREN[tabIndex]);
+        // Use sentinel values (-1) - actual widget lookup happens at runtime via findTabStoneWidget()
+        WidgetInteractTask task = new WidgetInteractTask(-1, -1);
         task.setTabIndex(tabIndex);
         task.setForceClick(true);
         task.setDescription("Click tab " + tabIndex);
@@ -553,6 +602,9 @@ public class WidgetInteractTask extends AbstractTask {
 
     @Override
     protected void executeImpl(TaskContext ctx) {
+        // Cache context for interface mode lookup
+        this.lastContext = ctx;
+        
         if (clickPending || keyPending) {
             return;
         }
@@ -668,17 +720,84 @@ public class WidgetInteractTask extends AbstractTask {
      */
     private Widget findClickTargetWidget(Client client) {
         // If this is a tab switch, use the tab stone widget for clicking
-        if (tabIndex >= 0 && tabIndex < TAB_STONE_CHILDREN.length) {
-            Widget tabWidget = client.getWidget(TAB_STONE_GROUP, TAB_STONE_CHILDREN[tabIndex]);
+        if (tabIndex >= 0 && tabIndex <= TAB_MUSIC) {
+            Widget tabWidget = findTabStoneWidget(client, tabIndex);
             if (tabWidget != null) {
                 return tabWidget;
             }
-            // Fall back to normal widget if tab stone not found (different interface mode?)
+            
+            // Don't fall back if widgetChildId is invalid - that would crash
+            if (widgetChildId < 0) {
+                log.warn("Tab stone widget not found for tabIndex={}, and no valid fallback widget (childId={})", 
+                        tabIndex, widgetChildId);
+                return null;
+            }
+            
             log.debug("Tab stone widget not found, falling back to default widget");
         }
 
-        // Otherwise use the normal target widget
+        // Otherwise use the normal target widget (only if valid)
+        if (widgetChildId < 0) {
+            log.warn("Cannot find target widget: invalid childId={}", widgetChildId);
+            return null;
+        }
         return findTargetWidget(client);
+    }
+    
+    /**
+     * Find the tab stone widget for a given tab index, using the correct interface mode.
+     * Uses GameStateService's cached interface mode for efficiency.
+     */
+    private Widget findTabStoneWidget(Client client, int tabIdx) {
+        // Try to get interface mode from context (if available during execution)
+        com.rocinante.core.GameStateService.InterfaceMode mode = null;
+        if (lastContext != null && lastContext.getGameStateService() != null) {
+            mode = lastContext.getGameStateService().getInterfaceMode();
+        }
+        
+        // Use cached mode if available
+        if (mode != null && mode != com.rocinante.core.GameStateService.InterfaceMode.UNKNOWN) {
+            Widget widget = null;
+            switch (mode) {
+                case FIXED:
+                    widget = client.getWidget(TAB_STONE_GROUP_FIXED, TAB_STONE_CHILDREN_FIXED[tabIdx]);
+                    break;
+                case RESIZABLE_CLASSIC:
+                    widget = client.getWidget(TAB_STONE_GROUP_RESIZABLE_CLASSIC, TAB_STONE_CHILDREN_RESIZABLE_CLASSIC[tabIdx]);
+                    break;
+                case RESIZABLE_MODERN:
+                    widget = client.getWidget(TAB_STONE_GROUP_RESIZABLE_MODERN, TAB_STONE_CHILDREN_RESIZABLE_MODERN[tabIdx]);
+                    break;
+            }
+            if (widget != null && !widget.isHidden()) {
+                return widget;
+            }
+            // Mode was set but widget not found - log this
+            log.debug("Tab stone not found for mode={}, tabIdx={}, trying all modes", mode, tabIdx);
+        }
+        
+        // Fallback: try ALL modes if we don't have cached info or the cached mode failed
+        // Order: resizable classic (most common), resizable modern, fixed
+        Widget widget = client.getWidget(TAB_STONE_GROUP_RESIZABLE_CLASSIC, TAB_STONE_CHILDREN_RESIZABLE_CLASSIC[tabIdx]);
+        if (widget != null && !widget.isHidden()) {
+            log.debug("Found tab stone in RESIZABLE_CLASSIC mode");
+            return widget;
+        }
+        
+        widget = client.getWidget(TAB_STONE_GROUP_RESIZABLE_MODERN, TAB_STONE_CHILDREN_RESIZABLE_MODERN[tabIdx]);
+        if (widget != null && !widget.isHidden()) {
+            log.debug("Found tab stone in RESIZABLE_MODERN mode");
+            return widget;
+        }
+        
+        widget = client.getWidget(TAB_STONE_GROUP_FIXED, TAB_STONE_CHILDREN_FIXED[tabIdx]);
+        if (widget != null && !widget.isHidden()) {
+            log.debug("Found tab stone in FIXED mode");
+            return widget;
+        }
+        
+        log.warn("Tab stone widget not found in ANY mode for tabIdx={}", tabIdx);
+        return null;
     }
 
     // ========================================================================

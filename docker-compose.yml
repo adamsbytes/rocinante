@@ -30,6 +30,7 @@ services:
       - CONFIG_PATH=/data/bots.json
       - BOT_IMAGE=rocinante-bot:latest
       - BOT_PATH=/bot
+      - BOT_DATA_PATH=/bot/src/main/resources/data
       - CLAUDE_API_KEY=${CLAUDE_API_KEY:-}
     volumes:
       # Docker socket for container management

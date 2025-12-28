@@ -840,7 +840,8 @@ public class WikiDataService {
      */
     private String parseWikitextFromResponse(String response) {
         try {
-            JsonObject json = JsonParser.parseString(response).getAsJsonObject();
+            // Use older Gson API for compatibility with RuneLite's bundled Gson version
+            JsonObject json = new JsonParser().parse(response).getAsJsonObject();
             if (json.has("parse")) {
                 JsonObject parse = json.getAsJsonObject("parse");
                 if (parse.has("wikitext")) {
@@ -866,7 +867,8 @@ public class WikiDataService {
     private List<String> parseSearchResults(String response) {
         List<String> results = new ArrayList<>();
         try {
-            JsonArray json = JsonParser.parseString(response).getAsJsonArray();
+            // Use older Gson API for compatibility with RuneLite's bundled Gson version
+            JsonArray json = new JsonParser().parse(response).getAsJsonArray();
             if (json.size() > 1) {
                 JsonArray names = json.get(1).getAsJsonArray();
                 for (JsonElement elem : names) {

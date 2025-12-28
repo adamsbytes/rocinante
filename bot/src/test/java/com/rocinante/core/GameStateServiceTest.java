@@ -84,6 +84,8 @@ public class GameStateServiceTest {
         gameStateService = new GameStateService(client, itemManager, bankStateManager, 
                 null,  // ironmanState
                 playerProfile, fatigueModel, breakScheduler, attentionModel,
+                null,  // xpTracker
+                null,  // taskExecutorProvider
                 weaponDataService, npcCombatDataLoader, projectileDataLoader);
     }
 

@@ -91,7 +91,8 @@ public class AgilityCourseRepository {
                 return;
             }
 
-            JsonObject root = JsonParser.parseReader(
+            // Use older Gson API for compatibility with RuneLite's bundled Gson version
+            JsonObject root = new JsonParser().parse(
                     new InputStreamReader(is, StandardCharsets.UTF_8)
             ).getAsJsonObject();
 

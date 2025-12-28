@@ -118,7 +118,7 @@
 - [X] `UnlockTracker` - Teleports, areas, features (integrated with WebWalker)
 - [X] `TeleportTask` with behavioral profile preferences
 - [ ] `InventoryTask`
-- [X] `BankTask`, `DialogueTask`, `PuzzleTask`, `TradeTask`, `WidgetInteractTask`
+- [X] `BankTask`, `DialogueTask`, `PuzzleTask`, `SettingsTask`, `TradeTask`, `WidgetInteractTask`
 
 **Test**: Give goal "complete Recipe for Disaster" - bot generates valid plan and begins execution.
 
