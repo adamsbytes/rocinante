@@ -9,11 +9,12 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.ItemID;
 
+import com.rocinante.util.Randomization;
+
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.util.Optional;
-import java.util.Random;
 
 /**
  * Manages food consumption during combat.
@@ -33,7 +34,7 @@ public class FoodManager {
 
     private final Client client;
     private final GameStateService gameStateService;
-    private final Random random = new Random();
+    private final Randomization randomization;
 
     // ========================================================================
     // Item IDs
@@ -92,9 +93,10 @@ public class FoodManager {
     // ========================================================================
 
     @Inject
-    public FoodManager(Client client, GameStateService gameStateService) {
+    public FoodManager(Client client, GameStateService gameStateService, Randomization randomization) {
         this.client = client;
         this.gameStateService = gameStateService;
+        this.randomization = randomization;
         log.info("FoodManager initialized");
     }
 
@@ -152,7 +154,7 @@ public class FoodManager {
 
         // Humanization: occasional panic eat in extra range
         if (config.isInPanicEatRange(healthPercent)) {
-            if (random.nextDouble() < config.getPanicEatExtraProbability()) {
+            if (randomization.chance(config.getPanicEatExtraProbability())) {
                 log.debug("Humanized panic eat at {}% health", healthPercent * 100);
                 return createEatAction(inventoryState, playerState, false);
             }
@@ -404,7 +406,7 @@ public class FoodManager {
         }
 
         // Random chance based on config
-        return random.nextDouble() < config.getComboEatProbability();
+        return randomization.chance(config.getComboEatProbability());
     }
 
     // ========================================================================

@@ -8,8 +8,9 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
+import com.rocinante.util.Randomization;
+
 import java.time.Duration;
-import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -134,11 +135,6 @@ public class WaitForConditionTask extends AbstractTask {
      * Whether an idle mouse movement is in progress.
      */
     private boolean idleMousePending = false;
-
-    /**
-     * Random for idle behavior.
-     */
-    private final Random random = new Random();
 
     // ========================================================================
     // Constructor
@@ -329,12 +325,21 @@ public class WaitForConditionTask extends AbstractTask {
             return;
         }
 
+        // Get randomization for humanized behavior
+        Randomization rand = ctx.getRandomization();
+
         // Reset countdown
-        resetIdleMouseCountdown();
+        resetIdleMouseCountdown(rand);
 
         // Decide if we should move the mouse (not every time)
-        if (random.nextDouble() > 0.6) {
-            return;
+        if (rand != null) {
+            if (!rand.chance(0.6)) {
+                return;
+            }
+        } else {
+            if (Math.random() > 0.6) {
+                return;
+            }
         }
 
         // Get current mouse position
@@ -344,13 +349,23 @@ public class WaitForConditionTask extends AbstractTask {
         }
 
         // Calculate random drift
-        int driftX = random.nextInt(IDLE_MOUSE_MAX_DRIFT * 2) - IDLE_MOUSE_MAX_DRIFT;
-        int driftY = random.nextInt(IDLE_MOUSE_MAX_DRIFT * 2) - IDLE_MOUSE_MAX_DRIFT;
-
-        // Apply smaller movements more often
-        if (random.nextDouble() < 0.7) {
-            driftX = driftX / 3;
-            driftY = driftY / 3;
+        int driftX, driftY;
+        if (rand != null) {
+            driftX = rand.uniformRandomInt(-IDLE_MOUSE_MAX_DRIFT, IDLE_MOUSE_MAX_DRIFT);
+            driftY = rand.uniformRandomInt(-IDLE_MOUSE_MAX_DRIFT, IDLE_MOUSE_MAX_DRIFT);
+            
+            // Apply smaller movements more often
+            if (rand.chance(0.7)) {
+                driftX = driftX / 3;
+                driftY = driftY / 3;
+            }
+        } else {
+            driftX = (int)(Math.random() * IDLE_MOUSE_MAX_DRIFT * 2) - IDLE_MOUSE_MAX_DRIFT;
+            driftY = (int)(Math.random() * IDLE_MOUSE_MAX_DRIFT * 2) - IDLE_MOUSE_MAX_DRIFT;
+            if (Math.random() < 0.7) {
+                driftX = driftX / 3;
+                driftY = driftY / 3;
+            }
         }
 
         int newX = mousePos.x + driftX;
@@ -376,11 +391,25 @@ public class WaitForConditionTask extends AbstractTask {
     }
 
     /**
-     * Reset the idle mouse countdown.
+     * Reset the idle mouse countdown using default randomization.
+     * Called from constructor before TaskContext is available.
      */
     private void resetIdleMouseCountdown() {
-        idleMouseCountdown = IDLE_MOUSE_MIN_INTERVAL
-                + random.nextInt(IDLE_MOUSE_MAX_INTERVAL - IDLE_MOUSE_MIN_INTERVAL);
+        resetIdleMouseCountdown(null);
+    }
+
+    /**
+     * Reset the idle mouse countdown.
+     * 
+     * @param rand the randomization instance (may be null)
+     */
+    private void resetIdleMouseCountdown(Randomization rand) {
+        if (rand != null) {
+            idleMouseCountdown = rand.uniformRandomInt(IDLE_MOUSE_MIN_INTERVAL, IDLE_MOUSE_MAX_INTERVAL);
+        } else {
+            idleMouseCountdown = IDLE_MOUSE_MIN_INTERVAL
+                    + (int)(Math.random() * (IDLE_MOUSE_MAX_INTERVAL - IDLE_MOUSE_MIN_INTERVAL));
+        }
     }
 
     // ========================================================================

@@ -3,6 +3,7 @@ package com.rocinante.combat;
 import com.rocinante.core.GameStateService;
 import com.rocinante.state.InventoryState;
 import com.rocinante.state.PlayerState;
+import com.rocinante.util.Randomization;
 import net.runelite.api.Client;
 import net.runelite.api.Item;
 import net.runelite.api.ItemID;
@@ -27,11 +28,13 @@ public class FoodManagerTest {
     @Mock
     private GameStateService gameStateService;
 
+    private Randomization randomization;
     private FoodManager foodManager;
 
     @Before
     public void setUp() {
-        foodManager = new FoodManager(client, gameStateService);
+        randomization = new Randomization(12345L);
+        foodManager = new FoodManager(client, gameStateService, randomization);
         foodManager.setConfig(FoodConfig.DEFAULT);
         foodManager.setHcimMode(false);
     }

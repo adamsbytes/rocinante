@@ -1,13 +1,13 @@
 package com.rocinante.state;
 
+import com.rocinante.util.ItemData;
 import lombok.Value;
 import net.runelite.api.Item;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -21,6 +21,8 @@ import java.util.Set;
  * Instances are created by {@link com.rocinante.core.GameStateService} when inventory changes.
  *
  * All fields are immutable to ensure thread-safety and prevent accidental modification.
+ * 
+ * Item metadata (food IDs, healing amounts, etc.) is centralized in {@link ItemData}.
  */
 @Value
 public class InventoryState {
@@ -37,113 +39,26 @@ public class InventoryState {
 
     /**
      * Common food item IDs for food detection.
+     * @deprecated Use {@link ItemData#FOOD_IDS} directly for new code.
      */
-    private static final Set<Integer> FOOD_IDS;
+    @Deprecated
+    private static final Set<Integer> FOOD_IDS = ItemData.FOOD_IDS;
 
     /**
      * Healing amounts for common food items.
      * Used by getBestFood() to determine optimal food usage.
+     * @deprecated Use {@link ItemData#FOOD_HEALING} directly for new code.
      */
-    private static final Map<Integer, Integer> FOOD_HEALING;
+    @Deprecated
+    private static final Map<Integer, Integer> FOOD_HEALING = ItemData.FOOD_HEALING;
 
     /**
      * Antipoison/antidote item IDs for poison cure detection.
      * Includes all variants (different dose levels).
+     * @deprecated Use {@link ItemData#ANTIPOISON_IDS} directly for new code.
      */
-    private static final Set<Integer> ANTIPOISON_IDS;
-
-    static {
-        // Initialize antipoison IDs
-        Set<Integer> antipoisonIds = new HashSet<>();
-        // Regular antipoison (1-4 dose)
-        antipoisonIds.add(2446);  // Antipoison(4)
-        antipoisonIds.add(175);   // Antipoison(3)
-        antipoisonIds.add(177);   // Antipoison(2)
-        antipoisonIds.add(179);   // Antipoison(1)
-        // Superantipoison (1-4 dose)
-        antipoisonIds.add(2448);  // Superantipoison(4)
-        antipoisonIds.add(181);   // Superantipoison(3)
-        antipoisonIds.add(183);   // Superantipoison(2)
-        antipoisonIds.add(185);   // Superantipoison(1)
-        // Antidote+ (1-4 dose)
-        antipoisonIds.add(5943);  // Antidote+(4)
-        antipoisonIds.add(5945);  // Antidote+(3)
-        antipoisonIds.add(5947);  // Antidote+(2)
-        antipoisonIds.add(5949);  // Antidote+(1)
-        // Antidote++ (1-4 dose)
-        antipoisonIds.add(5952);  // Antidote++(4)
-        antipoisonIds.add(5954);  // Antidote++(3)
-        antipoisonIds.add(5956);  // Antidote++(2)
-        antipoisonIds.add(5958);  // Antidote++(1)
-        // Anti-venom (1-4 dose)
-        antipoisonIds.add(12905); // Anti-venom(4)
-        antipoisonIds.add(12907); // Anti-venom(3)
-        antipoisonIds.add(12909); // Anti-venom(2)
-        antipoisonIds.add(12911); // Anti-venom(1)
-        // Anti-venom+ (1-4 dose)
-        antipoisonIds.add(12913); // Anti-venom+(4)
-        antipoisonIds.add(12915); // Anti-venom+(3)
-        antipoisonIds.add(12917); // Anti-venom+(2)
-        antipoisonIds.add(12919); // Anti-venom+(1)
-        // Sanfew serum (cures poison and restores stats)
-        antipoisonIds.add(10925); // Sanfew serum(4)
-        antipoisonIds.add(10927); // Sanfew serum(3)
-        antipoisonIds.add(10929); // Sanfew serum(2)
-        antipoisonIds.add(10931); // Sanfew serum(1)
-        ANTIPOISON_IDS = Collections.unmodifiableSet(antipoisonIds);
-
-        // Initialize food IDs
-        Set<Integer> foodIds = new HashSet<>();
-        // Low-tier food
-        foodIds.add(315);   // Shrimps
-        foodIds.add(319);   // Anchovies
-        foodIds.add(329);   // Trout
-        foodIds.add(333);   // Salmon
-        foodIds.add(339);   // Tuna
-        foodIds.add(347);   // Lobster
-        foodIds.add(355);   // Swordfish
-        foodIds.add(361);   // Monkfish
-        foodIds.add(379);   // Shark
-        foodIds.add(385);   // Bass
-        foodIds.add(391);   // Manta ray
-        foodIds.add(3144);  // Cooked karambwan
-        foodIds.add(6685);  // Saradomin brew(4)
-        foodIds.add(6687);  // Saradomin brew(3)
-        foodIds.add(6689);  // Saradomin brew(2)
-        foodIds.add(6691);  // Saradomin brew(1)
-        // Cakes and pies
-        foodIds.add(1891);  // Cake
-        foodIds.add(1893);  // 2/3 cake
-        foodIds.add(1895);  // Slice of cake
-        foodIds.add(2309);  // Bread
-        foodIds.add(1897);  // Chocolate cake
-        foodIds.add(1899);  // 2/3 chocolate cake
-        foodIds.add(1901);  // Chocolate slice
-        // High-tier
-        foodIds.add(13441); // Anglerfish
-        foodIds.add(22521); // Dark crab
-        FOOD_IDS = Collections.unmodifiableSet(foodIds);
-
-        // Initialize healing amounts
-        Map<Integer, Integer> healing = new HashMap<>();
-        healing.put(315, 3);      // Shrimps
-        healing.put(319, 1);      // Anchovies
-        healing.put(329, 7);      // Trout
-        healing.put(333, 9);      // Salmon
-        healing.put(339, 10);     // Tuna
-        healing.put(347, 12);     // Lobster
-        healing.put(355, 14);     // Swordfish
-        healing.put(379, 20);     // Shark
-        healing.put(385, 13);     // Bass
-        healing.put(361, 16);     // Monkfish
-        healing.put(391, 22);     // Manta ray
-        healing.put(3144, 18);    // Karambwan
-        healing.put(13441, 22);   // Anglerfish (can overheal)
-        healing.put(22521, 22);   // Dark crab
-        healing.put(1891, 12);    // Cake (total)
-        healing.put(2309, 5);     // Bread
-        FOOD_HEALING = Collections.unmodifiableMap(healing);
-    }
+    @Deprecated
+    private static final Set<Integer> ANTIPOISON_IDS = ItemData.ANTIPOISON_IDS;
 
     /**
      * The inventory items array. Null entries indicate empty slots.

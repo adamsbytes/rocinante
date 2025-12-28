@@ -36,11 +36,12 @@ import net.runelite.client.eventbus.Subscribe;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import com.rocinante.util.Randomization;
+
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.Shape;
 import java.util.Optional;
-import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -82,7 +83,7 @@ public class CombatManager {
     private final FoodManager foodManager;
     private final PrayerFlicker prayerFlicker;
     private final SpecialAttackManager specialAttackManager;
-    private final Random random = new Random();
+    private final Randomization randomization;
 
     // ========================================================================
     // Widget Constants (from RuneLite InterfaceID)
@@ -188,7 +189,8 @@ public class CombatManager {
             HCIMSafetyManager hcimSafetyManager,
             FoodManager foodManager,
             PrayerFlicker prayerFlicker,
-            SpecialAttackManager specialAttackManager) {
+            SpecialAttackManager specialAttackManager,
+            Randomization randomization) {
         this.client = client;
         this.gameStateService = gameStateService;
         this.inventoryClickHelper = inventoryClickHelper;
@@ -203,6 +205,7 @@ public class CombatManager {
         this.foodManager = foodManager;
         this.prayerFlicker = prayerFlicker;
         this.specialAttackManager = specialAttackManager;
+        this.randomization = randomization;
         log.info("CombatManager initialized with delegated managers");
     }
 
@@ -700,7 +703,7 @@ public class CombatManager {
             // Press F5 and then wait for tab to open
             keyboardController.pressKey(KeyEvent.VK_F5).thenCompose(v -> {
                 // Wait 50-100ms for tab to open
-                long tabOpenDelay = 50 + random.nextInt(50);
+                long tabOpenDelay = randomization.uniformRandomLong(50, 100);
                 return humanTimer.sleep(tabOpenDelay);
             }).thenRun(() -> {
                 widgetClickHelper.clickWidget(PrayerTask.PRAYERBOOK_GROUP_ID, finalPrayerChildId, finalPrayerName)
@@ -840,8 +843,8 @@ public class CombatManager {
                 int centerY = bounds.y + bounds.height / 2;
                 
                 // Apply Gaussian offset (σ = 25% of dimension)
-                double offsetX = random.nextGaussian() * (bounds.width / 4.0);
-                double offsetY = random.nextGaussian() * (bounds.height / 4.0);
+                double offsetX = randomization.gaussianRandom(0, bounds.width / 4.0);
+                double offsetY = randomization.gaussianRandom(0, bounds.height / 4.0);
                 
                 int clickX = centerX + (int) offsetX;
                 int clickY = centerY + (int) offsetY;

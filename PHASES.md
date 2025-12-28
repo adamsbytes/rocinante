@@ -255,6 +255,7 @@
 **Goal**: Make it awesome.
 
 - [ ] "Full Self Recovery" - awareness and retries such that it's VERY hard to get stuck, even when things go wrong
+- [ ] Moneymaking-focused tasks/plans, such as merching/shop runs/collecting/etc
 - [ ] `Sailing` skill support
 - [ ] Charter ships, etc.
 - [ ] `ClaudeAPIClient` - Anthropic API integration

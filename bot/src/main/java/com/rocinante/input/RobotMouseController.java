@@ -108,7 +108,7 @@ public class RobotMouseController {
     private final Client client;
     private final Randomization randomization;
     private final PerlinNoise perlinNoise;
-    private final InputProfile inputProfile;
+    private final PlayerProfile playerProfile;
     private final ScheduledExecutorService executor;
 
     /**
@@ -118,14 +118,6 @@ public class RobotMouseController {
     @Setter
     @Nullable
     private FatigueModel fatigueModel;
-
-    /**
-     * PlayerProfile for behavioral preferences (future use).
-     * Takes precedence over InputProfile when set.
-     */
-    @Setter
-    @Nullable
-    private PlayerProfile playerProfile;
 
     /**
      * Flag indicating a click operation is currently in progress.
@@ -167,13 +159,13 @@ public class RobotMouseController {
     private static final long CANVAS_OFFSET_UPDATE_INTERVAL_MS = 1000;
 
     @Inject
-    public RobotMouseController(Client client, Randomization randomization, PerlinNoise perlinNoise, InputProfile inputProfile) throws AWTException {
+    public RobotMouseController(Client client, Randomization randomization, PerlinNoise perlinNoise, PlayerProfile playerProfile) throws AWTException {
         this.robot = new Robot();
         this.robot.setAutoDelay(0); // We handle delays ourselves
         this.client = client;
         this.randomization = randomization;
         this.perlinNoise = perlinNoise;
-        this.inputProfile = inputProfile;
+        this.playerProfile = playerProfile;
         this.executor = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "RobotMouseController");
             t.setDaemon(true);
@@ -393,7 +385,7 @@ public class RobotMouseController {
         long duration = calculateMovementDuration(distance);
 
         // Apply profile speed multiplier
-        duration = Math.round(duration / inputProfile.getMouseSpeedMultiplier());
+        duration = Math.round(duration / playerProfile.getMouseSpeedMultiplier());
         duration = Randomization.clamp(duration, MIN_DURATION_MS, MAX_DURATION_MS);
 
         // Calculate noise amplitude for this movement
@@ -534,10 +526,11 @@ public class RobotMouseController {
     /**
      * Calculate movement duration based on distance.
      * Formula: sqrt(distance) * 10 + gaussianRandom(50, 150)
+     * Per REQUIREMENTS.md 3.1.1: bounded to 50-150ms for the random component.
      */
     private long calculateMovementDuration(double distance) {
         double baseDuration = Math.sqrt(distance) * DURATION_DISTANCE_FACTOR;
-        double randomAddition = randomization.gaussianRandom(DURATION_RANDOM_MEAN, DURATION_RANDOM_STDDEV);
+        double randomAddition = randomization.gaussianRandom(DURATION_RANDOM_MEAN, DURATION_RANDOM_STDDEV, 50.0, 150.0);
         return Math.round(baseDuration + randomAddition);
     }
 
@@ -545,7 +538,7 @@ public class RobotMouseController {
      * Check if this movement should include overshoot.
      */
     private boolean shouldOvershoot() {
-        double probability = inputProfile.getOvershootProbability();
+        double probability = playerProfile.getOvershootProbability();
         return randomization.chance(probability);
     }
 
@@ -578,7 +571,7 @@ public class RobotMouseController {
      * Check if this movement should include micro-correction.
      */
     private boolean shouldMicroCorrect() {
-        return randomization.chance(inputProfile.getMicroCorrectionProbability());
+        return randomization.chance(playerProfile.getMicroCorrectionProbability());
     }
 
     /**
@@ -756,7 +749,7 @@ public class RobotMouseController {
                 MIN_CLICK_DURATION_MS, MAX_CLICK_DURATION_MS);
 
         // Apply click variance modifier from profile
-        baseDuration *= inputProfile.getClickVarianceModifier();
+        baseDuration *= playerProfile.getClickVarianceModifier();
 
         return Math.round(baseDuration);
     }
@@ -838,7 +831,7 @@ public class RobotMouseController {
         if (playerProfile != null) {
             return playerProfile.getBaseMisclickRate();
         }
-        return inputProfile.getBaseMisclickRate();
+        return playerProfile.getBaseMisclickRate();
     }
 
     /**
@@ -962,7 +955,7 @@ public class RobotMouseController {
      * ScreenRegion coordinates are canvas-relative, so we translate them.
      */
     private CompletableFuture<Void> moveToRestPosition() {
-        ScreenRegion restRegion = inputProfile.selectIdlePosition();
+        ScreenRegion restRegion = playerProfile.selectIdlePosition();
         int[] restPos = restRegion.getGaussianPoint(randomization);
 
         log.trace("Idle: move to rest position ({})", restRegion.name());

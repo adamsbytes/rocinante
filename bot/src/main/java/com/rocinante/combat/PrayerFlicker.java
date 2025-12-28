@@ -13,11 +13,12 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.Prayer;
 
+import com.rocinante.util.Randomization;
+
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.util.Optional;
-import java.util.Random;
 
 // Use explicit import to avoid conflict with com.rocinante.combat.AttackStyle
 import com.rocinante.state.AttackStyle;
@@ -49,7 +50,7 @@ public class PrayerFlicker {
     private final Client client;
     private final GameStateService gameStateService;
     private final UnlockTracker unlockTracker;
-    private final Random random = new Random();
+    private final Randomization randomization;
 
     // ========================================================================
     // Configuration
@@ -107,10 +108,12 @@ public class PrayerFlicker {
     // ========================================================================
 
     @Inject
-    public PrayerFlicker(Client client, GameStateService gameStateService, UnlockTracker unlockTracker) {
+    public PrayerFlicker(Client client, GameStateService gameStateService, UnlockTracker unlockTracker,
+                         Randomization randomization) {
         this.client = client;
         this.gameStateService = gameStateService;
         this.unlockTracker = unlockTracker;
+        this.randomization = randomization;
         log.info("PrayerFlicker initialized");
     }
 
@@ -350,7 +353,7 @@ public class PrayerFlicker {
      */
     private boolean shouldMissFlick() {
         double missProbability = config.getEffectiveMissProbability();
-        return random.nextDouble() < missProbability;
+        return randomization.chance(missProbability);
     }
 
     // ========================================================================

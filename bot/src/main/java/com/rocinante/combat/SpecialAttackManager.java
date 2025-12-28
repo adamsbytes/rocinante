@@ -10,12 +10,13 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.client.game.ItemManager;
 
+import com.rocinante.util.Randomization;
+
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -48,7 +49,7 @@ public class SpecialAttackManager {
     private final GearSwitcher gearSwitcher;
     private final WikiDataService wikiDataService;
     private final ItemManager itemManager;
-    private final Random random = new Random();
+    private final Randomization randomization;
 
     /**
      * Cache for weapon info from WikiDataService.
@@ -116,12 +117,14 @@ public class SpecialAttackManager {
             GameStateService gameStateService,
             GearSwitcher gearSwitcher,
             WikiDataService wikiDataService,
-            ItemManager itemManager) {
+            ItemManager itemManager,
+            Randomization randomization) {
         this.client = client;
         this.gameStateService = gameStateService;
         this.gearSwitcher = gearSwitcher;
         this.wikiDataService = wikiDataService;
         this.itemManager = itemManager;
+        this.randomization = randomization;
         log.info("SpecialAttackManager initialized with WikiDataService");
     }
 

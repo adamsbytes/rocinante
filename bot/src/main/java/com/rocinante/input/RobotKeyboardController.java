@@ -146,16 +146,8 @@ public class RobotKeyboardController {
 
     private final Robot robot;
     private final Randomization randomization;
-    private final InputProfile inputProfile;
+    private final PlayerProfile playerProfile;
     private final ScheduledExecutorService executor;
-
-    /**
-     * PlayerProfile for behavioral preferences.
-     * Takes precedence over InputProfile when set.
-     */
-    @Setter
-    @Nullable
-    private PlayerProfile playerProfile;
 
     // F-key learning tracking
     @Getter
@@ -165,11 +157,11 @@ public class RobotKeyboardController {
     private final Map<Integer, Long> fKeyLastUsedTime = new ConcurrentHashMap<>();
 
     @Inject
-    public RobotKeyboardController(Randomization randomization, InputProfile inputProfile) throws AWTException {
+    public RobotKeyboardController(Randomization randomization, PlayerProfile playerProfile) throws AWTException {
         this.robot = new Robot();
         this.robot.setAutoDelay(0);
         this.randomization = randomization;
-        this.inputProfile = inputProfile;
+        this.playerProfile = playerProfile;
         this.executor = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "RobotKeyboardController");
             t.setDaemon(true);
@@ -321,23 +313,23 @@ public class RobotKeyboardController {
     }
 
     /**
-     * Get the effective base typing delay from PlayerProfile or InputProfile.
+     * Get the effective base typing delay from PlayerProfile.
      */
     private long getEffectiveBaseTypingDelay() {
         if (playerProfile != null) {
             return playerProfile.getBaseTypingDelay();
         }
-        return inputProfile.getBaseTypingDelay();
+        return playerProfile.getBaseTypingDelay();
     }
 
     /**
-     * Get the effective typing speed WPM from PlayerProfile or InputProfile.
+     * Get the effective typing speed WPM from PlayerProfile.
      */
     private int getEffectiveTypingSpeedWPM() {
         if (playerProfile != null) {
             return playerProfile.getTypingSpeedWPM();
         }
-        return inputProfile.getTypingSpeedWPM();
+        return playerProfile.getTypingSpeedWPM();
     }
 
     /**
@@ -349,13 +341,13 @@ public class RobotKeyboardController {
     }
 
     /**
-     * Get the effective typo rate from PlayerProfile or InputProfile.
+     * Get the effective typo rate from PlayerProfile.
      */
     private double getEffectiveTypoRate() {
         if (playerProfile != null) {
             return playerProfile.getBaseTypoRate();
         }
-        return inputProfile.getBaseTypoRate();
+        return playerProfile.getBaseTypoRate();
     }
 
     /**

@@ -264,10 +264,8 @@ public class RocinantePlugin extends Plugin
         mouseController.setInefficiencyInjector(inefficiencyInjector);
         
         // Wire behavioral models to input controllers
+        // (PlayerProfile is already injected via constructor)
         mouseController.setFatigueModel(fatigueModel);
-        mouseController.setPlayerProfile(playerProfile);
-        
-        keyboardController.setPlayerProfile(playerProfile);
         
         humanTimer.setFatigueModel(fatigueModel);
         humanTimer.setAttentionModel(attentionModel);

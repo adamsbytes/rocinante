@@ -1,11 +1,14 @@
 package com.rocinante.input;
 
+import com.rocinante.behavior.PlayerProfile;
 import com.rocinante.util.PerlinNoise;
 import com.rocinante.util.Randomization;
 import org.junit.Before;
 import org.junit.Test;
 
 import java.awt.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 
 import static org.junit.Assert.*;
 
@@ -24,14 +27,16 @@ public class RobotMouseControllerTest {
 
     private Randomization randomization;
     private PerlinNoise perlinNoise;
-    private InputProfile inputProfile;
+    private PlayerProfile playerProfile;
+    private ScheduledExecutorService testExecutor;
 
     @Before
     public void setUp() {
         randomization = new Randomization(12345L);
         perlinNoise = new PerlinNoise(12345L);
-        inputProfile = new InputProfile(randomization);
-        inputProfile.initializeDefault();
+        testExecutor = Executors.newSingleThreadScheduledExecutor();
+        playerProfile = new PlayerProfile(randomization, testExecutor);
+        playerProfile.initializeDefault();
     }
 
     // ========================================================================

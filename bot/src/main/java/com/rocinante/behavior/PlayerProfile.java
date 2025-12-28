@@ -20,6 +20,8 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -522,6 +524,8 @@ public class PlayerProfile {
                 if (loaded.schemaVersion < CURRENT_SCHEMA_VERSION) {
                     migrateProfile(loaded);
                 }
+                // Convert to thread-safe collections (Gson deserializes to standard collections)
+                ensureThreadSafeCollections(loaded);
                 this.profileData = loaded;
                 log.info("Loaded profile from: {} (session #{}, {} hours played)", 
                         path, loaded.sessionCount, String.format("%.1f", loaded.totalPlaytimeHours));
@@ -532,6 +536,34 @@ public class PlayerProfile {
         } catch (IOException e) {
             log.warn("Failed to load profile, generating new: {}", e.getMessage());
             generateNewProfile(accountHash, null);
+        }
+    }
+
+    /**
+     * Ensure all collections in ProfileData are thread-safe.
+     * Gson deserializes to standard collections, so we need to convert them.
+     */
+    private void ensureThreadSafeCollections(ProfileData data) {
+        // Convert lists to CopyOnWriteArrayList
+        if (data.preferredIdlePositions != null && !(data.preferredIdlePositions instanceof CopyOnWriteArrayList)) {
+            data.preferredIdlePositions = new CopyOnWriteArrayList<>(data.preferredIdlePositions);
+        }
+        if (data.sessionRituals != null && !(data.sessionRituals instanceof CopyOnWriteArrayList)) {
+            data.sessionRituals = new CopyOnWriteArrayList<>(data.sessionRituals);
+        }
+        
+        // Convert maps to ConcurrentHashMap
+        if (data.breakActivityWeights != null && !(data.breakActivityWeights instanceof ConcurrentHashMap)) {
+            data.breakActivityWeights = new ConcurrentHashMap<>(data.breakActivityWeights);
+        }
+        if (data.bankingSequenceWeights != null && !(data.bankingSequenceWeights instanceof ConcurrentHashMap)) {
+            data.bankingSequenceWeights = new ConcurrentHashMap<>(data.bankingSequenceWeights);
+        }
+        if (data.combatPrepSequenceWeights != null && !(data.combatPrepSequenceWeights instanceof ConcurrentHashMap)) {
+            data.combatPrepSequenceWeights = new ConcurrentHashMap<>(data.combatPrepSequenceWeights);
+        }
+        if (data.teleportMethodWeights != null && !(data.teleportMethodWeights instanceof ConcurrentHashMap)) {
+            data.teleportMethodWeights = new ConcurrentHashMap<>(data.teleportMethodWeights);
         }
     }
 
@@ -1017,69 +1049,78 @@ public class PlayerProfile {
      * Data class for profile persistence.
      * All fields are serialized to JSON.
      */
+    /**
+     * Inner data class holding all profile fields.
+     * 
+     * Thread safety notes:
+     * - Maps use ConcurrentHashMap for safe concurrent access during reinforcement
+     * - Lists use CopyOnWriteArrayList for safe iteration during reads
+     * - Volatile primitives ensure visibility across threads (game thread, save thread)
+     * - Gson will deserialize into standard collections, but we convert on load
+     */
     @Getter
     @Setter
     public static class ProfileData {
         // Schema versioning
         int schemaVersion = CURRENT_SCHEMA_VERSION;
         String accountHash;
-        Instant createdAt;
-        Instant lastSessionStart;
-        Instant lastLogout;
+        volatile Instant createdAt;
+        volatile Instant lastSessionStart;
+        volatile Instant lastLogout;
 
         // === Input characteristics ===
-        double mouseSpeedMultiplier = 1.0;
-        double clickVarianceModifier = 1.0;
-        int typingSpeedWPM = 60;
-        double dominantHandBias = 0.6;
-        List<String> preferredIdlePositions = new ArrayList<>();
-        double baseMisclickRate = 0.02;
-        double baseTypoRate = 0.01;
-        double overshootProbability = 0.12;
-        double microCorrectionProbability = 0.20;
+        volatile double mouseSpeedMultiplier = 1.0;
+        volatile double clickVarianceModifier = 1.0;
+        volatile int typingSpeedWPM = 60;
+        volatile double dominantHandBias = 0.6;
+        List<String> preferredIdlePositions = new CopyOnWriteArrayList<>();
+        volatile double baseMisclickRate = 0.02;
+        volatile double baseTypoRate = 0.01;
+        volatile double overshootProbability = 0.12;
+        volatile double microCorrectionProbability = 0.20;
 
         // === Break behavior ===
-        double breakFatigueThreshold = 0.80;
-        Map<String, Double> breakActivityWeights = new LinkedHashMap<>();
+        volatile double breakFatigueThreshold = 0.80;
+        Map<String, Double> breakActivityWeights = new ConcurrentHashMap<>();
 
         // === Camera preferences ===
-        double preferredCompassAngle = 0.0;
-        String pitchPreference = "MEDIUM";
-        double cameraChangeFrequency = 10.0;
+        volatile double preferredCompassAngle = 0.0;
+        volatile String pitchPreference = "MEDIUM";
+        volatile double cameraChangeFrequency = 10.0;
         
         // === Camera hold preferences (fidgeting behavior) ===
         /**
          * Frequency of camera hold during idle periods (0.05-0.30 = 5-30%).
          * Camera hold is when player holds arrow key to spin camera out of boredom.
          */
-        double cameraHoldFrequency = 0.15;
+        volatile double cameraHoldFrequency = 0.15;
         
         /**
          * Preferred direction for camera hold: "LEFT_BIAS", "RIGHT_BIAS", or "NO_PREFERENCE".
          */
-        String cameraHoldPreferredDirection = "NO_PREFERENCE";
+        volatile String cameraHoldPreferredDirection = "NO_PREFERENCE";
         
         /**
          * Speed preference for camera hold: "SLOW", "MEDIUM", or "FAST".
          */
-        String cameraHoldSpeedPreference = "MEDIUM";
+        volatile String cameraHoldSpeedPreference = "MEDIUM";
 
         // === Session patterns ===
-        List<String> sessionRituals = new ArrayList<>();
-        double ritualExecutionProbability = 0.80;
-        double xpCheckFrequency = 5.0;
-        double playerInspectionFrequency = 2.0;
+        List<String> sessionRituals = new CopyOnWriteArrayList<>();
+        volatile double ritualExecutionProbability = 0.80;
+        volatile double xpCheckFrequency = 5.0;
+        volatile double playerInspectionFrequency = 2.0;
         
         // === XP Check method preferences (must sum to 1.0) ===
         /**
          * Probability of checking XP via skill orb hover.
          */
-        double xpCheckOrbProbability = 0.70;
+        volatile double xpCheckOrbProbability = 0.70;
         
         /**
          * Probability of checking XP via skills tab.
          */
-        double xpCheckTabProbability = 0.25;
+        volatile double xpCheckTabProbability = 0.25;
         
         /**
          * Probability of checking XP via XP tracker overlay.
@@ -1091,12 +1132,12 @@ public class PlayerProfile {
         /**
          * Probability of inspecting random nearby players (30-80%).
          */
-        double inspectionNearbyProbability = 0.60;
+        volatile double inspectionNearbyProbability = 0.60;
         
         /**
          * Probability of inspecting high-level players.
          */
-        double inspectionHighLevelProbability = 0.30;
+        volatile double inspectionHighLevelProbability = 0.30;
         
         /**
          * Probability of inspecting low-level players.
@@ -1105,12 +1146,12 @@ public class PlayerProfile {
         // Note: lowLevel probability is implicit (1 - nearby - high)
 
         // === Action sequencing ===
-        Map<String, Double> bankingSequenceWeights = new LinkedHashMap<>();
-        Map<String, Double> combatPrepSequenceWeights = new LinkedHashMap<>();
+        Map<String, Double> bankingSequenceWeights = new ConcurrentHashMap<>();
+        Map<String, Double> combatPrepSequenceWeights = new ConcurrentHashMap<>();
 
         // === Teleport preferences ===
-        Map<String, Double> teleportMethodWeights = new LinkedHashMap<>();
-        double lawRuneAversion = 0.0;
+        Map<String, Double> teleportMethodWeights = new ConcurrentHashMap<>();
+        volatile double lawRuneAversion = 0.0;
 
         // === Interface interaction preferences ===
         /**
@@ -1118,11 +1159,11 @@ public class PlayerProfile {
          * Some players are habitual clickers, others prefer keyboard shortcuts.
          * This affects WidgetInteractTask behavior when opening tabs.
          */
-        boolean prefersHotkeys = true;
+        volatile boolean prefersHotkeys = true;
 
         // === Metrics ===
-        int sessionCount = 0;
-        double totalPlaytimeHours = 0;
+        volatile int sessionCount = 0;
+        volatile double totalPlaytimeHours = 0;
 
         /**
          * Validate profile data is within expected bounds.

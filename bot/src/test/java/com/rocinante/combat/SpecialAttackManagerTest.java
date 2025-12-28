@@ -4,6 +4,7 @@ import com.rocinante.core.GameStateService;
 import com.rocinante.data.WikiDataService;
 import com.rocinante.data.model.WeaponInfo;
 import com.rocinante.state.*;
+import com.rocinante.util.Randomization;
 import net.runelite.api.Client;
 import net.runelite.api.ItemComposition;
 import net.runelite.api.ItemID;
@@ -54,11 +55,13 @@ public class SpecialAttackManagerTest {
     @Mock
     private ItemComposition itemComposition;
 
+    private Randomization randomization;
     private SpecialAttackManager specManager;
 
     @Before
     public void setUp() {
-        specManager = new SpecialAttackManager(client, gameStateService, gearSwitcher, wikiDataService, itemManager);
+        randomization = new Randomization(12345L);
+        specManager = new SpecialAttackManager(client, gameStateService, gearSwitcher, wikiDataService, itemManager, randomization);
         specManager.setConfig(SpecialAttackConfig.DEFAULT);
 
         when(gameStateService.getCombatState()).thenReturn(combatState);

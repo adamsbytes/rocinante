@@ -15,9 +15,10 @@ import net.runelite.api.Client;
 import net.runelite.api.Skill;
 import net.runelite.api.coords.WorldPoint;
 
+import com.rocinante.util.Randomization;
+
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Random;
 
 /**
  * Task for line-based firemaking training.
@@ -137,11 +138,6 @@ public class FiremakingTask extends AbstractTask {
      * Current click phase (tinderbox or logs).
      */
     private ClickPhase clickPhase = ClickPhase.CLICK_TINDERBOX;
-
-    /**
-     * Random for humanization.
-     */
-    private final Random random = new Random();
 
     // ========================================================================
     // Constructor
@@ -289,8 +285,8 @@ public class FiremakingTask extends AbstractTask {
             WorldPoint targetPos = config.getStartPosition();
 
             // Randomize start position slightly for humanization
-            if (config.isRandomizeStartPosition()) {
-                int xOffset = random.nextInt(5) - 2; // -2 to +2
+            if (config.isRandomizeStartPosition() && ctx.getRandomization() != null) {
+                int xOffset = ctx.getRandomization().uniformRandomInt(-2, 2);
                 targetPos = new WorldPoint(
                         targetPos.getX() + xOffset,
                         targetPos.getY(),

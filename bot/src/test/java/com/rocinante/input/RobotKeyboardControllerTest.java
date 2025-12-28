@@ -1,8 +1,12 @@
 package com.rocinante.input;
 
+import com.rocinante.behavior.PlayerProfile;
 import com.rocinante.util.Randomization;
 import org.junit.Before;
 import org.junit.Test;
+
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 
 import static org.junit.Assert.*;
 
@@ -20,13 +24,15 @@ public class RobotKeyboardControllerTest {
     private static final double TOLERANCE = 0.15; // 15% tolerance
 
     private Randomization randomization;
-    private InputProfile inputProfile;
+    private PlayerProfile playerProfile;
+    private ScheduledExecutorService testExecutor;
 
     @Before
     public void setUp() {
         randomization = new Randomization(12345L);
-        inputProfile = new InputProfile(randomization);
-        inputProfile.initializeDefault();
+        testExecutor = Executors.newSingleThreadScheduledExecutor();
+        playerProfile = new PlayerProfile(randomization, testExecutor);
+        playerProfile.initializeDefault();
     }
 
     // ========================================================================
@@ -251,7 +257,7 @@ public class RobotKeyboardControllerTest {
     public void testTypingDelay_ReasonableRange() {
         // From profile (40-80 WPM), delay should be 150-300ms per char
 
-        long delay = inputProfile.getBaseTypingDelay();
+        long delay = playerProfile.getBaseTypingDelay();
 
         assertTrue("Base typing delay should be >= 100ms", delay >= 100);
         assertTrue("Base typing delay should be <= 400ms", delay <= 400);

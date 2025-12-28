@@ -9,6 +9,8 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.widgets.Widget;
 
+import com.rocinante.util.Randomization;
+
 import java.awt.*;
 import java.time.Duration;
 import java.util.*;
@@ -149,11 +151,6 @@ public class PuzzleTask extends AbstractTask {
      * Total clicks executed (for logging).
      */
     private int totalClicks = 0;
-
-    /**
-     * Random for humanized delays.
-     */
-    private final Random random = new Random();
 
     // ========================================================================
     // Constructors
@@ -406,9 +403,12 @@ public class PuzzleTask extends AbstractTask {
         // Store state before click for verification
         stateBeforeClick = currentState;
 
+        // Capture randomization for use in this method
+        Randomization rand = ctx.getRandomization();
+
         // Calculate click point
         Rectangle bounds = widget.getBounds();
-        Point clickPoint = calculateClickPoint(bounds);
+        Point clickPoint = calculateClickPoint(bounds, rand);
 
         // Execute click
         clickPending = true;
@@ -420,7 +420,9 @@ public class PuzzleTask extends AbstractTask {
                 .thenCompose(v -> ctx.getMouseController().click())
                 .thenCompose(v -> {
                     // Add humanized delay after click
-                    int delay = minClickDelay + random.nextInt(maxClickDelay - minClickDelay);
+                    int delay = rand != null 
+                            ? rand.uniformRandomInt(minClickDelay, maxClickDelay)
+                            : minClickDelay + (int)(Math.random() * (maxClickDelay - minClickDelay));
                     return delayAsync(delay);
                 })
                 .thenRun(() -> {
@@ -456,11 +458,21 @@ public class PuzzleTask extends AbstractTask {
 
     /**
      * Calculate a humanized click point within widget bounds.
+     * 
+     * @param bounds the widget bounds
+     * @param rand the randomization instance (may be null)
      */
-    private Point calculateClickPoint(Rectangle bounds) {
-        // Gaussian distribution centered at widget center
-        double offsetX = (random.nextGaussian() * 0.15) * bounds.width;
-        double offsetY = (random.nextGaussian() * 0.15) * bounds.height;
+    private Point calculateClickPoint(Rectangle bounds, Randomization rand) {
+        // Gaussian distribution centered at widget center (σ = 15% of dimension)
+        double offsetX, offsetY;
+        if (rand != null) {
+            offsetX = rand.gaussianRandom(0, 0.15 * bounds.width);
+            offsetY = rand.gaussianRandom(0, 0.15 * bounds.height);
+        } else {
+            // Fallback if randomization unavailable
+            offsetX = (new java.util.Random().nextGaussian() * 0.15) * bounds.width;
+            offsetY = (new java.util.Random().nextGaussian() * 0.15) * bounds.height;
+        }
 
         int x = bounds.x + bounds.width / 2 + (int) offsetX;
         int y = bounds.y + bounds.height / 2 + (int) offsetY;

@@ -9,6 +9,7 @@ import com.rocinante.state.InventoryState;
 import com.rocinante.state.PlayerState;
 // Use explicit import to avoid conflict with com.rocinante.combat.AttackStyle
 import com.rocinante.state.AttackStyle;
+import com.rocinante.util.Randomization;
 import net.runelite.api.Client;
 import net.runelite.api.Prayer;
 import net.runelite.api.Skill;
@@ -41,11 +42,13 @@ public class PrayerFlickerTest {
     @Mock
     private UnlockTracker unlockTracker;
 
+    private Randomization randomization;
     private PrayerFlicker prayerFlicker;
 
     @Before
     public void setUp() {
-        prayerFlicker = new PrayerFlicker(client, gameStateService, unlockTracker);
+        randomization = new Randomization(12345L);
+        prayerFlicker = new PrayerFlicker(client, gameStateService, unlockTracker, randomization);
         prayerFlicker.setConfig(PrayerConfig.DEFAULT);
     }
 
