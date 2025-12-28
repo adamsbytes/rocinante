@@ -132,7 +132,7 @@
         "action": {
           "type": "string",
           "description": "Menu action to perform",
-          "enum": ["Climb", "Cross", "Balance", "Jump", "Jump-up", "Jump-off", "Leap", "Hurdle", "Climb-down", "Swing", "Swing-across", "Walk-on", "Walk-across"]
+          "enum": ["Climb", "Climb-up", "Climb-on", "Climb-down", "Cross", "Balance", "Jump", "Jump-up", "Jump-off", "Jump-on", "Jump-to", "Jump-in", "Leap", "Hurdle", "Swing", "Swing-across", "Walk-on", "Walk-across", "Teeth-grip", "Grab", "Vault", "Enter"]
         },
         "interactArea": {
           "$ref": "#/definitions/worldArea",

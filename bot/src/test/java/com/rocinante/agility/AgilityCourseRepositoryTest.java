@@ -23,9 +23,20 @@ public class AgilityCourseRepositoryTest {
 
     @Test
     public void testLoadCourses() {
-        // Verify at least the Draynor course was loaded
-        assertTrue("Should have at least one course", repository.getCourseCount() > 0);
+        // Verify all 10 courses were loaded
+        assertEquals("Should have 10 courses", 10, repository.getCourseCount());
+        
+        // Verify each course exists
         assertTrue("Should have Draynor rooftop course", repository.hasCourse("draynor_rooftop"));
+        assertTrue("Should have Al Kharid rooftop course", repository.hasCourse("al_kharid_rooftop"));
+        assertTrue("Should have Varrock rooftop course", repository.hasCourse("varrock_rooftop"));
+        assertTrue("Should have Canifis rooftop course", repository.hasCourse("canifis_rooftop"));
+        assertTrue("Should have Falador rooftop course", repository.hasCourse("falador_rooftop"));
+        assertTrue("Should have Seers rooftop course", repository.hasCourse("seers_rooftop"));
+        assertTrue("Should have Pollnivneach rooftop course", repository.hasCourse("pollnivneach_rooftop"));
+        assertTrue("Should have Rellekka rooftop course", repository.hasCourse("rellekka_rooftop"));
+        assertTrue("Should have Ardougne rooftop course", repository.hasCourse("ardougne_rooftop"));
+        assertTrue("Should have Prifddinas agility course", repository.hasCourse("prifddinas_agility"));
     }
 
     @Test
@@ -41,10 +52,17 @@ public class AgilityCourseRepositoryTest {
 
     @Test
     public void testGetCourseByRegion() {
-        Optional<AgilityCourse> course = repository.getCourseByRegion(12338);
-
-        assertTrue("Should find course by region 12338", course.isPresent());
-        assertEquals("draynor_rooftop", course.get().getId());
+        // Test all course regions
+        assertEquals("draynor_rooftop", repository.getCourseByRegion(12338).map(AgilityCourse::getId).orElse(null));
+        assertEquals("al_kharid_rooftop", repository.getCourseByRegion(13105).map(AgilityCourse::getId).orElse(null));
+        assertEquals("varrock_rooftop", repository.getCourseByRegion(12853).map(AgilityCourse::getId).orElse(null));
+        assertEquals("canifis_rooftop", repository.getCourseByRegion(13878).map(AgilityCourse::getId).orElse(null));
+        assertEquals("falador_rooftop", repository.getCourseByRegion(12084).map(AgilityCourse::getId).orElse(null));
+        assertEquals("seers_rooftop", repository.getCourseByRegion(10806).map(AgilityCourse::getId).orElse(null));
+        assertEquals("pollnivneach_rooftop", repository.getCourseByRegion(13358).map(AgilityCourse::getId).orElse(null));
+        assertEquals("rellekka_rooftop", repository.getCourseByRegion(10553).map(AgilityCourse::getId).orElse(null));
+        assertEquals("ardougne_rooftop", repository.getCourseByRegion(10547).map(AgilityCourse::getId).orElse(null));
+        assertEquals("prifddinas_agility", repository.getCourseByRegion(12895).map(AgilityCourse::getId).orElse(null));
     }
 
     @Test
@@ -65,10 +83,22 @@ public class AgilityCourseRepositoryTest {
         assertTrue("Draynor available at level 15",
                 level15.stream().anyMatch(c -> c.getId().equals("draynor_rooftop")));
 
-        // Level 50 - should not get Draynor (maxLevel is 30)
+        // Level 50 - should not get Draynor (maxLevel is 20), should get Falador
         List<AgilityCourse> level50 = repository.getCoursesForLevel(50);
         assertFalse("Draynor not recommended at level 50",
                 level50.stream().anyMatch(c -> c.getId().equals("draynor_rooftop")));
+        assertTrue("Falador available at level 50",
+                level50.stream().anyMatch(c -> c.getId().equals("falador_rooftop")));
+
+        // Level 90 - should get Ardougne
+        List<AgilityCourse> level90 = repository.getCoursesForLevel(90);
+        assertTrue("Ardougne available at level 90",
+                level90.stream().anyMatch(c -> c.getId().equals("ardougne_rooftop")));
+
+        // Level 75 - should get Prifddinas  
+        List<AgilityCourse> level75 = repository.getCoursesForLevel(75);
+        assertTrue("Prifddinas available at level 75",
+                level75.stream().anyMatch(c -> c.getId().equals("prifddinas_agility")));
     }
 
     @Test
@@ -210,6 +240,105 @@ public class AgilityCourseRepositoryTest {
         assertTrue("Summary should contain name", summary.contains("Draynor Village Rooftop"));
         assertTrue("Summary should contain level", summary.contains("10"));
         assertTrue("Summary should contain obstacle count", summary.contains("7"));
+    }
+
+    @Test
+    public void testAllCoursesHaveObstacles() {
+        // Verify each course has correct obstacle count
+        verifyObstacleCount("draynor_rooftop", 7);
+        verifyObstacleCount("al_kharid_rooftop", 8);
+        verifyObstacleCount("varrock_rooftop", 9);
+        verifyObstacleCount("canifis_rooftop", 8);
+        verifyObstacleCount("falador_rooftop", 13);
+        verifyObstacleCount("seers_rooftop", 6);
+        verifyObstacleCount("pollnivneach_rooftop", 9);
+        verifyObstacleCount("rellekka_rooftop", 7);
+        verifyObstacleCount("ardougne_rooftop", 7);
+        verifyObstacleCount("prifddinas_agility", 12);
+    }
+
+    private void verifyObstacleCount(String courseId, int expectedCount) {
+        Optional<AgilityCourse> course = repository.getCourseById(courseId);
+        assertTrue("Course " + courseId + " should exist", course.isPresent());
+        assertEquals("Course " + courseId + " should have " + expectedCount + " obstacles",
+                expectedCount, course.get().getObstacles().size());
+    }
+
+    @Test
+    public void testAllCoursesHaveRequiredData() {
+        for (String courseId : repository.getAllCourseIds()) {
+            AgilityCourse course = repository.getCourseById(courseId).orElseThrow();
+            
+            // Basic course data
+            assertNotNull("Course " + courseId + " should have name", course.getName());
+            assertTrue("Course " + courseId + " should have positive required level", 
+                    course.getRequiredLevel() > 0);
+            assertTrue("Course " + courseId + " should have positive XP per lap", 
+                    course.getXpPerLap() > 0);
+            assertTrue("Course " + courseId + " should have positive region ID", 
+                    course.getRegionId() > 0);
+            
+            // Obstacle data
+            assertFalse("Course " + courseId + " should have obstacles", 
+                    course.getObstacles().isEmpty());
+            
+            for (AgilityObstacle obstacle : course.getObstacles()) {
+                assertNotNull("Obstacle should have name", obstacle.getName());
+                assertTrue("Obstacle should have object ID", obstacle.getObjectId() > 0);
+                assertNotNull("Obstacle should have action", obstacle.getAction());
+            }
+        }
+    }
+
+    @Test
+    public void testCanifisCourseSpecificDetails() {
+        // Canifis is known for high mark rate - verify it's configured correctly
+        AgilityCourse canifis = repository.getCourseById("canifis_rooftop").orElseThrow();
+        
+        assertEquals("Canifis Rooftop", canifis.getName());
+        assertEquals(40, canifis.getRequiredLevel());
+        assertEquals(240.0, canifis.getXpPerLap(), 0.1);
+        assertEquals(17.0, canifis.getMarksPerHour(), 0.1); // Double mark rate
+        assertEquals(13878, canifis.getRegionId());
+        assertFalse("Canifis should not require diary", canifis.isRequiresDiary());
+    }
+
+    @Test
+    public void testArdougneCourseSpecificDetails() {
+        // Ardougne is high-level course with diary bonus
+        AgilityCourse ardougne = repository.getCourseById("ardougne_rooftop").orElseThrow();
+        
+        assertEquals("Ardougne Rooftop", ardougne.getName());
+        assertEquals(90, ardougne.getRequiredLevel());
+        assertEquals(889.0, ardougne.getXpPerLap(), 0.1);
+        assertEquals(22.0, ardougne.getMarksPerHour(), 0.1);
+        assertTrue("Ardougne should require diary", ardougne.isRequiresDiary());
+        assertEquals("Ardougne Elite", ardougne.getDiaryName());
+    }
+
+    @Test
+    public void testPrifddinasNoMarks() {
+        // Prifddinas gives crystal shards, not marks
+        AgilityCourse prif = repository.getCourseById("prifddinas_agility").orElseThrow();
+        
+        assertEquals("Prifddinas Agility Course", prif.getName());
+        assertEquals(75, prif.getRequiredLevel());
+        assertEquals(1337.0, prif.getXpPerLap(), 0.1);
+        assertEquals(0.0, prif.getMarksPerHour(), 0.01); // No marks!
+        assertTrue("Prifddinas should have empty mark spawn tiles", 
+                prif.getMarkSpawnTiles().isEmpty());
+    }
+
+    @Test
+    public void testRooftopCoursesFilter() {
+        List<AgilityCourse> rooftopCourses = repository.getRooftopCourses();
+        
+        // Should include all rooftop courses (9 rooftop + prifddinas is NOT rooftop)
+        assertEquals("Should have 9 rooftop courses", 9, rooftopCourses.size());
+        
+        // Verify prifddinas is not in the list (it's not a rooftop course)
+        assertFalse("Prifddinas should not be in rooftop list",
+                rooftopCourses.stream().anyMatch(c -> c.getId().equals("prifddinas_agility")));
     }
 }
 
