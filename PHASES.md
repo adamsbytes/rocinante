@@ -95,13 +95,12 @@
 ## Phase 6: Slayer System
 **Goal**: Bot can complete slayer tasks autonomously.
 
-- [ ] `SlayerState` - Task tracking, points, unlocks
-- [ ] `SlayerManager` - Task lifecycle
-- [ ] `TaskLocationResolver` - Find where to kill assignments
-- [ ] `SlayerMasterData` - Master locations and task weights
-- [ ] Special requirements handling (items, gear, mechanics)
-- [ ] Cannon integration (optional)
-- [ ] Block/skip/extend preferences
+- [X] `SlayerState` - Task tracking, points, unlocks
+- [X] `SlayerManager` - Task lifecycle
+- [X] `TaskLocationResolver` - Find where to kill assignments
+- [X] `SlayerMasterData` - Master locations and task weights
+- [X] Special requirements handling (items, gear, mechanics)
+- [X] Block/skip/extend preferences
 
 **Test**: Complete 10 consecutive slayer tasks across 3 different masters.
 
@@ -116,7 +115,7 @@
 - [ ] `QuestOrderPlanner` - Optimal quest ordering
 - [ ] `GearProgressionPlanner` - Equipment upgrade paths
 - [X] `UnlockTracker` - Teleports, areas, features (integrated with WebWalker)
-- [X] `TeleportTask` with behavioral profile preferences
+- [X] `TravelTask` with behavioral profile preferences
 - [X] Full Grand Exchange handling (incl. `GrandExchangeTask`)
 - [ ] `InventoryTask`
 - [X] `BankTask`, `DialogueTask`, `PuzzleTask`, `SettingsTask`, `TradeTask`, `WidgetInteractTask`
@@ -261,6 +260,7 @@
 - [ ] Charter ships, etc.
 - [ ] `ClaudeAPIClient` - Anthropic API integration
 - [ ] `AIDirector` - Decision layer for ambiguous situations
+- [ ] Cannon integration (optional)
 
 ---
 

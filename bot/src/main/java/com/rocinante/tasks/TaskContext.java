@@ -21,6 +21,7 @@ import com.rocinante.input.WidgetClickHelper;
 import com.rocinante.agility.AgilityCourseRepository;
 import com.rocinante.progression.UnlockTracker;
 import com.rocinante.puzzle.PuzzleSolverRegistry;
+import com.rocinante.slayer.SlayerState;
 import com.rocinante.state.BankState;
 import com.rocinante.state.CombatState;
 import com.rocinante.state.EquipmentState;
@@ -45,15 +46,14 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * Per REQUIREMENTS.md Section 5.2, TaskContext provides:
  * <ul>
- *   <li>Read-only access to PlayerState, InventoryState, EquipmentState, WorldState, CombatState</li>
+ *   <li>Read-only access to PlayerState, InventoryState, EquipmentState, WorldState, CombatState, SlayerState</li>
  *   <li>Access to RobotMouseController and RobotKeyboardController</li>
  *   <li>Access to HumanTimer for delay scheduling</li>
  *   <li>Mutable taskVariables map for passing data between subtasks</li>
  *   <li>abortTask() method for immediate task termination</li>
  * </ul>
  *
- * <p>Note: QuestState and SlayerState will be added in later phases as those
- * state classes are implemented.
+ * <p>Note: QuestState will be added in later phases as that state class is implemented.
  */
 @Slf4j
 public class TaskContext {
@@ -396,6 +396,16 @@ public class TaskContext {
     @javax.annotation.Nullable
     public com.rocinante.state.IronmanState getIronmanState() {
         return gameStateService.getIronmanState();
+    }
+
+    /**
+     * Get the current slayer state snapshot.
+     * Contains task info, points, streak, unlocks, and target NPCs.
+     *
+     * @return immutable SlayerState
+     */
+    public SlayerState getSlayerState() {
+        return gameStateService.getSlayerState();
     }
 
     /**

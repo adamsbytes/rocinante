@@ -207,35 +207,9 @@ public class CombatTask extends AbstractTask {
     private int resupplyTripsCompleted = 0;
 
     /**
-     * Position before starting resupply (for return).
+     * Active resupply task (when in RESUPPLY phase).
      */
-    private WorldPoint preResupplyPosition;
-
-    /**
-     * Current phase of resupply process.
-     */
-    private ResupplyPhase resupplyPhase = ResupplyPhase.WALK_TO_BANK;
-
-    /**
-     * Phases within resupply process.
-     */
-    private enum ResupplyPhase {
-        WALK_TO_BANK,
-        DEPOSIT_INVENTORY,
-        WITHDRAW_ITEMS,
-        CLOSE_BANK,
-        RETURN_TO_SPOT
-    }
-
-    /**
-     * Index of current item being withdrawn during resupply.
-     */
-    private int resupplyItemIndex = 0;
-
-    /**
-     * List of items to withdraw (from config).
-     */
-    private java.util.List<java.util.Map.Entry<Integer, Integer>> resupplyItemList;
+    private ResupplyTask activeResupplyTask;
 
     // ========================================================================
     // Constructor
@@ -466,7 +440,21 @@ public class CombatTask extends AbstractTask {
             }
         }
 
-        // Select a new target
+        // Check for forced target from subclass (e.g., superior creatures in SlayerTask)
+        Optional<NpcSnapshot> forcedTarget = getForcedTarget(ctx);
+        if (forcedTarget.isPresent()) {
+            currentTarget = forcedTarget.get();
+            lastTargetPosition = currentTarget.getWorldPosition();
+            idleTicks = 0;
+            phaseWaitTicks = 0;
+            log.debug("Using forced target: {}", currentTarget.getSummary());
+            
+            // Go directly to attack for priority targets
+            phase = CombatPhase.ATTACK;
+            return;
+        }
+
+        // Select a new target via normal selection
         Optional<NpcSnapshot> target = targetSelector.selectTarget();
 
         if (target.isEmpty()) {
@@ -490,6 +478,20 @@ public class CombatTask extends AbstractTask {
         } else {
             phase = CombatPhase.ATTACK;
         }
+    }
+    
+    /**
+     * Hook for subclasses to provide a forced target that takes priority over normal selection.
+     * 
+     * <p>Override this method to implement priority targeting (e.g., superior creatures
+     * in SlayerTask). When this returns a non-empty Optional, that target will be used
+     * instead of the normal target selection logic.
+     *
+     * @param ctx the task context
+     * @return Optional containing the forced target, or empty to use normal selection
+     */
+    protected Optional<NpcSnapshot> getForcedTarget(TaskContext ctx) {
+        return Optional.empty();
     }
 
     // ========================================================================
@@ -1116,18 +1118,35 @@ public class CombatTask extends AbstractTask {
      * Initialize and start the resupply process.
      */
     private void startResupply(TaskContext ctx) {
-        // Store current position for return
+        // Determine return position
+        WorldPoint returnPos = null;
         if (config.isReturnToSameSpot()) {
-            preResupplyPosition = ctx.getPlayerState().getWorldPosition();
-            log.debug("Stored pre-resupply position: {}", preResupplyPosition);
+            returnPos = ctx.getPlayerState().getWorldPosition();
+            log.debug("Stored pre-resupply position: {}", returnPos);
         }
 
-        // Reset resupply state
-        resupplyPhase = ResupplyPhase.WALK_TO_BANK;
-        resupplyItemIndex = 0;
-        resupplyItemList = config.getResupplyItems() != null
-                ? new java.util.ArrayList<>(config.getResupplyItems().entrySet())
-                : new java.util.ArrayList<>();
+        // Build resupply task
+        ResupplyTask.ResupplyTaskBuilder builder = ResupplyTask.builder()
+                .depositInventory(true);
+        
+        // Add configured bank location
+        if (config.getResupplyBankLocation() != null) {
+            builder.bankLocation(config.getResupplyBankLocation());
+        }
+        
+        // Add items to withdraw
+        if (config.getResupplyItems() != null) {
+            builder.withdrawItems(config.getResupplyItems());
+        }
+        
+        // Add return position if configured
+        if (returnPos != null) {
+            builder.returnPosition(returnPos);
+        }
+        
+        activeResupplyTask = builder.build();
+        log.info("Starting resupply task for {} item types", 
+                config.getResupplyItems() != null ? config.getResupplyItems().size() : 0);
 
         // Switch to resupply phase
         phase = CombatPhase.RESUPPLY;
@@ -1138,199 +1157,30 @@ public class CombatTask extends AbstractTask {
     // ========================================================================
 
     /**
-     * Execute resupply phase - bank trip for supplies.
+     * Execute resupply phase - delegates to ResupplyTask.
      */
     private void executeResupply(TaskContext ctx) {
-        if (activeSubTask != null) {
-            activeSubTask.execute(ctx);
-            if (!activeSubTask.getState().isTerminal()) {
-                return;  // Sub-task still running
+        if (activeResupplyTask == null) {
+            log.error("Resupply phase without active resupply task");
+            phase = CombatPhase.FIND_TARGET;
+            return;
+        }
+        
+        // Execute the resupply task
+        activeResupplyTask.execute(ctx);
+        
+        // Check if complete
+        if (activeResupplyTask.getState().isTerminal()) {
+            if (activeResupplyTask.getState() == TaskState.FAILED) {
+                log.warn("Resupply task failed: {}", activeResupplyTask.getDescription());
+                // Try to recover by resuming combat anyway
+            } else {
+                log.info("Resupply trip #{} complete", resupplyTripsCompleted + 1);
             }
-            activeSubTask = null;
-        }
-
-        switch (resupplyPhase) {
-            case WALK_TO_BANK:
-                executeResupplyWalkToBank(ctx);
-                break;
-            case DEPOSIT_INVENTORY:
-                executeResupplyDeposit(ctx);
-                break;
-            case WITHDRAW_ITEMS:
-                executeResupplyWithdraw(ctx);
-                break;
-            case CLOSE_BANK:
-                executeResupplyCloseBank(ctx);
-                break;
-            case RETURN_TO_SPOT:
-                executeResupplyReturn(ctx);
-                break;
-        }
-    }
-
-    /**
-     * Walk to bank for resupply.
-     */
-    private void executeResupplyWalkToBank(TaskContext ctx) {
-        WorldPoint bankLocation = config.getResupplyBankLocation();
-
-        // If no specific bank, just open nearest
-        // For now, we'll try to open bank directly if nearby
-        Client client = ctx.getClient();
-        Widget bankWidget = client.getWidget(BankTask.WIDGET_BANK_GROUP, BankTask.WIDGET_BANK_CONTAINER);
-        if (bankWidget != null && !bankWidget.isHidden()) {
-            // Bank is already open
-            log.debug("Bank already open, proceeding to deposit");
-            resupplyPhase = ResupplyPhase.DEPOSIT_INVENTORY;
-            return;
-        }
-
-        // Need to walk to bank and open it
-        if (bankLocation != null) {
-            PlayerState player = ctx.getPlayerState();
-            WorldPoint playerPos = player.getWorldPosition();
-
-            if (playerPos != null && playerPos.distanceTo(bankLocation) <= 5) {
-                // We're at the bank, open it
-                log.debug("At bank location, opening bank");
-                activeSubTask = BankTask.open();
-                return;
-            }
-
-            // Walk to bank
-            log.debug("Walking to bank at {}", bankLocation);
-            WalkToTask walkTask = new WalkToTask(bankLocation);
-            walkTask.setDescription("Walk to bank for resupply");
-            activeSubTask = walkTask;
-        } else {
-            // Try to open nearest bank
-            log.debug("Opening nearest bank");
-            activeSubTask = BankTask.open();
-        }
-    }
-
-    /**
-     * Deposit inventory before withdrawing supplies.
-     */
-    private void executeResupplyDeposit(TaskContext ctx) {
-        Client client = ctx.getClient();
-
-        // Check if bank is open
-        Widget bankWidget = client.getWidget(BankTask.WIDGET_BANK_GROUP, BankTask.WIDGET_BANK_CONTAINER);
-        if (bankWidget == null || bankWidget.isHidden()) {
-            // Bank closed unexpectedly
-            log.warn("Bank closed during resupply, returning to walk phase");
-            resupplyPhase = ResupplyPhase.WALK_TO_BANK;
-            return;
-        }
-
-        // Deposit all inventory
-        log.debug("Depositing inventory");
-        activeSubTask = BankTask.depositAll();
-        resupplyPhase = ResupplyPhase.WITHDRAW_ITEMS;
-    }
-
-    /**
-     * Withdraw required items from bank.
-     */
-    private void executeResupplyWithdraw(TaskContext ctx) {
-        Client client = ctx.getClient();
-
-        // Check if bank is still open
-        Widget bankWidget = client.getWidget(BankTask.WIDGET_BANK_GROUP, BankTask.WIDGET_BANK_CONTAINER);
-        if (bankWidget == null || bankWidget.isHidden()) {
-            log.warn("Bank closed during resupply withdraw");
-            resupplyPhase = ResupplyPhase.WALK_TO_BANK;
-            return;
-        }
-
-        // Check if we've withdrawn all items
-        if (resupplyItemList == null || resupplyItemIndex >= resupplyItemList.size()) {
-            log.debug("All items withdrawn, closing bank");
-            resupplyPhase = ResupplyPhase.CLOSE_BANK;
-            return;
-        }
-
-        // Withdraw next item
-        java.util.Map.Entry<Integer, Integer> item = resupplyItemList.get(resupplyItemIndex);
-        int itemId = item.getKey();
-        int quantity = item.getValue();
-
-        log.debug("Withdrawing item {} x{}", itemId, quantity);
-        activeSubTask = BankTask.withdraw(itemId, quantity);
-        resupplyItemIndex++;
-    }
-
-    /**
-     * Close bank after withdrawing items.
-     */
-    private void executeResupplyCloseBank(TaskContext ctx) {
-        Client client = ctx.getClient();
-
-        // Check if bank is still open
-        Widget bankWidget = client.getWidget(BankTask.WIDGET_BANK_GROUP, BankTask.WIDGET_BANK_CONTAINER);
-        if (bankWidget == null || bankWidget.isHidden()) {
-            // Already closed
-            log.debug("Bank already closed");
+            
             resupplyTripsCompleted++;
-            resupplyPhase = config.isReturnToSameSpot() && preResupplyPosition != null
-                    ? ResupplyPhase.RETURN_TO_SPOT
-                    : null;
-
-            if (resupplyPhase == null) {
-                // No return needed, resume combat
-                phase = CombatPhase.FIND_TARGET;
-            }
-            return;
-        }
-
-        // Close bank by pressing Escape
-        clickPending = true;
-        ctx.getKeyboardController().pressKey(java.awt.event.KeyEvent.VK_ESCAPE)
-                .thenRun(() -> {
-                    clickPending = false;
-                    resupplyTripsCompleted++;
-                    resupplyPhase = config.isReturnToSameSpot() && preResupplyPosition != null
-                            ? ResupplyPhase.RETURN_TO_SPOT
-                            : null;
-
-                    if (resupplyPhase == null) {
-                        phase = CombatPhase.FIND_TARGET;
-                    }
-                })
-                .exceptionally(e -> {
-                    clickPending = false;
-                    log.error("Failed to close bank", e);
-                    return null;
-                });
-    }
-
-    /**
-     * Return to previous position after resupply.
-     */
-    private void executeResupplyReturn(TaskContext ctx) {
-        if (preResupplyPosition == null) {
-            log.debug("No return position stored, resuming combat");
+            activeResupplyTask = null;
             phase = CombatPhase.FIND_TARGET;
-            return;
-        }
-
-        PlayerState player = ctx.getPlayerState();
-        WorldPoint playerPos = player.getWorldPosition();
-
-        if (playerPos != null && playerPos.distanceTo(preResupplyPosition) <= 3) {
-            log.info("Returned to combat position, resuming (trip #{})", resupplyTripsCompleted);
-            preResupplyPosition = null;
-            phase = CombatPhase.FIND_TARGET;
-            return;
-        }
-
-        // Walk back to original position
-        if (activeSubTask == null) {
-            log.debug("Walking back to {}", preResupplyPosition);
-            WalkToTask walkTask = new WalkToTask(preResupplyPosition);
-            walkTask.setDescription("Return to combat spot after resupply");
-            activeSubTask = walkTask;
         }
     }
 

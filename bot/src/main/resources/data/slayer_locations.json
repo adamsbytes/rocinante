@@ -1,0 +1,1001 @@
+{
+  "version": "1.0.0",
+  "description": "Slayer creature data with recommended locations. Per REQUIREMENTS.md Section 11.2.",
+  "creatures": [
+    {
+      "name": "Aberrant spectres",
+      "slayerLevel": 60,
+      "npcIds": [2, 3, 7801, 7802],
+      "superiorNpcIds": [7402],
+      "superiorName": "Abhorrent spectre",
+      "hasSuperior": true,
+      "requiredEquipment": [4168, 11864, 21888],
+      "weakness": "magic",
+      "attackStyles": ["magic"],
+      "canPoison": false,
+      "baseSlayerXp": 90,
+      "taskWeight": 8,
+      "notes": "Requires nose peg, slayer helmet, or face mask",
+      "locations": [
+        {
+          "name": "Slayer Tower (Top Floor)",
+          "center": {"x": 3436, "y": 3548, "plane": 2},
+          "radius": 20,
+          "nearestBank": "canifis_bank",
+          "nearestTeleport": "slayer_ring_tower",
+          "multiCombat": false,
+          "hcimSafetyRating": 8,
+          "monsterDensity": 7,
+          "konarRegion": "Slayer Tower"
+        },
+        {
+          "name": "Catacombs of Kourend",
+          "center": {"x": 1698, "y": 10098, "plane": 0},
+          "radius": 25,
+          "nearestBank": "kourend_castle_bank",
+          "nearestTeleport": "xeric_heart",
+          "multiCombat": true,
+          "hcimSafetyRating": 5,
+          "monsterDensity": 10,
+          "konarRegion": "Catacombs of Kourend",
+          "notes": "Multi-combat, good for prayer training with bone drops"
+        }
+      ]
+    },
+    {
+      "name": "Abyssal demons",
+      "slayerLevel": 85,
+      "npcIds": [415, 7241],
+      "superiorNpcIds": [7410],
+      "superiorName": "Greater abyssal demon",
+      "hasSuperior": true,
+      "weakness": "slash",
+      "attackStyles": ["melee"],
+      "canPoison": false,
+      "baseSlayerXp": 150,
+      "taskWeight": 12,
+      "locations": [
+        {
+          "name": "Slayer Tower (Top Floor)",
+          "center": {"x": 3418, "y": 3569, "plane": 2},
+          "radius": 15,
+          "nearestBank": "canifis_bank",
+          "nearestTeleport": "slayer_ring_tower",
+          "multiCombat": false,
+          "hcimSafetyRating": 8,
+          "monsterDensity": 8,
+          "konarRegion": "Slayer Tower"
+        },
+        {
+          "name": "Catacombs of Kourend",
+          "center": {"x": 1668, "y": 10097, "plane": 0},
+          "radius": 20,
+          "nearestBank": "kourend_castle_bank",
+          "nearestTeleport": "xeric_heart",
+          "multiCombat": true,
+          "hcimSafetyRating": 4,
+          "monsterDensity": 12,
+          "konarRegion": "Catacombs of Kourend"
+        }
+      ]
+    },
+    {
+      "name": "Ankou",
+      "slayerLevel": 1,
+      "npcIds": [2514, 2515, 2516, 2517, 2518, 2519],
+      "hasSuperior": false,
+      "weakness": "crush",
+      "attackStyles": ["melee"],
+      "canPoison": false,
+      "baseSlayerXp": 60,
+      "taskWeight": 6,
+      "locations": [
+        {
+          "name": "Stronghold of Security (Level 4)",
+          "center": {"x": 1860, "y": 5244, "plane": 0},
+          "radius": 20,
+          "nearestBank": "edgeville_bank",
+          "nearestTeleport": "varrock_teleport",
+          "multiCombat": true,
+          "hcimSafetyRating": 5,
+          "monsterDensity": 8,
+          "konarRegion": "Stronghold of Security"
+        },
+        {
+          "name": "Catacombs of Kourend",
+          "center": {"x": 1638, "y": 10068, "plane": 0},
+          "radius": 15,
+          "nearestBank": "kourend_castle_bank",
+          "nearestTeleport": "xeric_heart",
+          "multiCombat": true,
+          "hcimSafetyRating": 5,
+          "monsterDensity": 10,
+          "konarRegion": "Catacombs of Kourend"
+        }
+      ]
+    },
+    {
+      "name": "Banshees",
+      "slayerLevel": 15,
+      "npcIds": [414],
+      "superiorNpcIds": [7391],
+      "superiorName": "Screaming banshee",
+      "hasSuperior": true,
+      "requiredEquipment": [4166, 11864, 21888],
+      "weakness": "magic",
+      "attackStyles": ["magic"],
+      "canPoison": false,
+      "baseSlayerXp": 22,
+      "taskWeight": 5,
+      "notes": "Requires earmuffs, slayer helmet, or masked earmuffs",
+      "locations": [
+        {
+          "name": "Slayer Tower (Basement)",
+          "center": {"x": 3436, "y": 3548, "plane": 0},
+          "radius": 15,
+          "nearestBank": "canifis_bank",
+          "nearestTeleport": "slayer_ring_tower",
+          "multiCombat": false,
+          "hcimSafetyRating": 9,
+          "monsterDensity": 6,
+          "konarRegion": "Slayer Tower"
+        }
+      ]
+    },
+    {
+      "name": "Basilisks",
+      "slayerLevel": 40,
+      "npcIds": [417, 9283, 9284, 9285, 9286],
+      "superiorNpcIds": [9292],
+      "superiorName": "Monstrous basilisk",
+      "hasSuperior": true,
+      "requiredEquipment": [4156, 11864, 21888],
+      "weakness": "stab",
+      "attackStyles": ["melee"],
+      "canPoison": false,
+      "baseSlayerXp": 75,
+      "taskWeight": 7,
+      "notes": "Requires mirror shield or V's shield. Basilisk Knights require 60 Slayer.",
+      "locations": [
+        {
+          "name": "Fremennik Slayer Dungeon",
+          "center": {"x": 2745, "y": 10008, "plane": 0},
+          "radius": 15,
+          "nearestBank": "rellekka_bank",
+          "nearestTeleport": "fremennik_sea_boots",
+          "multiCombat": false,
+          "hcimSafetyRating": 7,
+          "monsterDensity": 5,
+          "konarRegion": "Fremennik Slayer Dungeon"
+        },
+        {
+          "name": "Jormungand's Prison",
+          "center": {"x": 2449, "y": 10410, "plane": 0},
+          "radius": 20,
+          "nearestBank": "rellekka_bank",
+          "nearestTeleport": "fremennik_sea_boots",
+          "multiCombat": false,
+          "hcimSafetyRating": 6,
+          "monsterDensity": 8,
+          "konarRegion": "Jormungand's Prison",
+          "slayerLevelRequired": 60,
+          "requiredQuest": "The Fremennik Exiles",
+          "notes": "Basilisk Knights - better drops but harder"
+        }
+      ]
+    },
+    {
+      "name": "Black demons",
+      "slayerLevel": 1,
+      "npcIds": [240, 241, 7874, 7875, 7876],
+      "superiorNpcIds": [7411],
+      "superiorName": "Greater black demon",
+      "hasSuperior": true,
+      "weakness": "ranged",
+      "attackStyles": ["melee"],
+      "canPoison": false,
+      "baseSlayerXp": 157,
+      "taskWeight": 9,
+      "locations": [
+        {
+          "name": "Catacombs of Kourend",
+          "center": {"x": 1729, "y": 10073, "plane": 0},
+          "radius": 20,
+          "nearestBank": "kourend_castle_bank",
+          "nearestTeleport": "xeric_heart",
+          "multiCombat": true,
+          "hcimSafetyRating": 4,
+          "monsterDensity": 8,
+          "konarRegion": "Catacombs of Kourend"
+        },
+        {
+          "name": "Taverley Dungeon",
+          "center": {"x": 2858, "y": 9778, "plane": 0},
+          "radius": 15,
+          "nearestBank": "falador_west_bank",
+          "nearestTeleport": "falador_teleport",
+          "multiCombat": false,
+          "hcimSafetyRating": 7,
+          "monsterDensity": 4,
+          "konarRegion": "Taverley Dungeon",
+          "requiredItems": [1590]
+        }
+      ]
+    },
+    {
+      "name": "Black dragons",
+      "slayerLevel": 1,
+      "npcIds": [252, 253, 254, 7862, 7863],
+      "hasSuperior": false,
+      "weakness": "ranged",
+      "attackStyles": ["melee", "magic"],
+      "canPoison": false,
+      "baseSlayerXp": 199,
+      "taskWeight": 6,
+      "notes": "Anti-dragon shield or dragonfire protection required",
+      "locations": [
+        {
+          "name": "Taverley Dungeon",
+          "center": {"x": 2901, "y": 9811, "plane": 0},
+          "radius": 15,
+          "nearestBank": "falador_west_bank",
+          "nearestTeleport": "falador_teleport",
+          "multiCombat": false,
+          "hcimSafetyRating": 6,
+          "monsterDensity": 4,
+          "konarRegion": "Taverley Dungeon",
+          "requiredItems": [1540]
+        },
+        {
+          "name": "Catacombs of Kourend",
+          "center": {"x": 1609, "y": 10083, "plane": 0},
+          "radius": 15,
+          "nearestBank": "kourend_castle_bank",
+          "nearestTeleport": "xeric_heart",
+          "multiCombat": true,
+          "hcimSafetyRating": 4,
+          "monsterDensity": 5,
+          "konarRegion": "Catacombs of Kourend"
+        }
+      ]
+    },
+    {
+      "name": "Bloodveld",
+      "slayerLevel": 50,
+      "npcIds": [484, 485, 7276, 7277],
+      "superiorNpcIds": [7397],
+      "superiorName": "Insatiable Bloodveld",
+      "hasSuperior": true,
+      "weakness": "slash",
+      "attackStyles": ["magic"],
+      "canPoison": false,
+      "baseSlayerXp": 120,
+      "taskWeight": 8,
+      "locations": [
+        {
+          "name": "Slayer Tower (2nd Floor)",
+          "center": {"x": 3418, "y": 3548, "plane": 1},
+          "radius": 20,
+          "nearestBank": "canifis_bank",
+          "nearestTeleport": "slayer_ring_tower",
+          "multiCombat": false,
+          "hcimSafetyRating": 8,
+          "monsterDensity": 7,
+          "konarRegion": "Slayer Tower"
+        },
+        {
+          "name": "Catacombs of Kourend",
+          "center": {"x": 1627, "y": 10044, "plane": 0},
+          "radius": 20,
+          "nearestBank": "kourend_castle_bank",
+          "nearestTeleport": "xeric_heart",
+          "multiCombat": true,
+          "hcimSafetyRating": 5,
+          "monsterDensity": 10,
+          "konarRegion": "Catacombs of Kourend"
+        },
+        {
+          "name": "God Wars Dungeon",
+          "center": {"x": 2910, "y": 5243, "plane": 0},
+          "radius": 15,
+          "nearestBank": "trollheim_bank",
+          "nearestTeleport": "trollheim_teleport",
+          "multiCombat": true,
+          "hcimSafetyRating": 3,
+          "monsterDensity": 6,
+          "konarRegion": "God Wars Dungeon",
+          "requiredQuest": "Troll Stronghold"
+        }
+      ]
+    },
+    {
+      "name": "Cave crawlers",
+      "slayerLevel": 10,
+      "npcIds": [406, 407, 408, 409],
+      "superiorNpcIds": [7389],
+      "superiorName": "Chasm crawler",
+      "hasSuperior": true,
+      "weakness": "crush",
+      "attackStyles": ["melee"],
+      "canPoison": true,
+      "baseSlayerXp": 22,
+      "taskWeight": 5,
+      "notes": "Can poison - bring antipoison",
+      "locations": [
+        {
+          "name": "Fremennik Slayer Dungeon",
+          "center": {"x": 2790, "y": 10015, "plane": 0},
+          "radius": 15,
+          "nearestBank": "rellekka_bank",
+          "nearestTeleport": "fremennik_sea_boots",
+          "multiCombat": false,
+          "hcimSafetyRating": 8,
+          "monsterDensity": 6,
+          "konarRegion": "Fremennik Slayer Dungeon"
+        },
+        {
+          "name": "Lumbridge Swamp Caves",
+          "center": {"x": 3195, "y": 9571, "plane": 0},
+          "radius": 15,
+          "nearestBank": "lumbridge_bank",
+          "nearestTeleport": "lumbridge_teleport",
+          "multiCombat": false,
+          "hcimSafetyRating": 7,
+          "monsterDensity": 5,
+          "konarRegion": "Lumbridge Swamp Caves",
+          "requiredItems": [952]
+        }
+      ]
+    },
+    {
+      "name": "Cave horrors",
+      "slayerLevel": 58,
+      "npcIds": [1047, 1048, 1049],
+      "superiorNpcIds": [7401],
+      "superiorName": "Cave abomination",
+      "hasSuperior": true,
+      "requiredEquipment": [8923, 11864, 21888],
+      "weakness": "slash",
+      "attackStyles": ["melee"],
+      "canPoison": false,
+      "baseSlayerXp": 55,
+      "taskWeight": 7,
+      "notes": "Requires witchwood icon. Drop black mask for slayer helm.",
+      "locations": [
+        {
+          "name": "Mos Le'Harmless Cave",
+          "center": {"x": 3750, "y": 9373, "plane": 0},
+          "radius": 25,
+          "nearestBank": "mos_leharmless_bank",
+          "nearestTeleport": "ectophial",
+          "multiCombat": true,
+          "hcimSafetyRating": 6,
+          "monsterDensity": 10,
+          "konarRegion": "Mos Le'Harmless Cave",
+          "requiredQuest": "Cabin Fever",
+          "requiredItems": [596]
+        }
+      ]
+    },
+    {
+      "name": "Cockatrice",
+      "slayerLevel": 25,
+      "npcIds": [419],
+      "superiorNpcIds": [7393],
+      "superiorName": "Cockathrice",
+      "hasSuperior": true,
+      "requiredEquipment": [4156, 11864, 21888],
+      "weakness": "crush",
+      "attackStyles": ["melee"],
+      "canPoison": false,
+      "baseSlayerXp": 37,
+      "taskWeight": 5,
+      "notes": "Requires mirror shield or V's shield",
+      "locations": [
+        {
+          "name": "Fremennik Slayer Dungeon",
+          "center": {"x": 2800, "y": 9998, "plane": 0},
+          "radius": 15,
+          "nearestBank": "rellekka_bank",
+          "nearestTeleport": "fremennik_sea_boots",
+          "multiCombat": false,
+          "hcimSafetyRating": 8,
+          "monsterDensity": 5,
+          "konarRegion": "Fremennik Slayer Dungeon"
+        }
+      ]
+    },
+    {
+      "name": "Dagannoth",
+      "slayerLevel": 1,
+      "npcIds": [970, 971, 972, 973, 974, 2881, 2882, 2883],
+      "hasSuperior": false,
+      "weakness": "melee",
+      "attackStyles": ["melee", "ranged"],
+      "canPoison": false,
+      "baseSlayerXp": 75,
+      "taskWeight": 8,
+      "locations": [
+        {
+          "name": "Lighthouse",
+          "center": {"x": 2507, "y": 3635, "plane": 0},
+          "radius": 20,
+          "nearestBank": "rellekka_bank",
+          "nearestTeleport": "fairy_ring_alp",
+          "multiCombat": true,
+          "hcimSafetyRating": 5,
+          "monsterDensity": 8,
+          "konarRegion": "Lighthouse",
+          "requiredQuest": "Horror from the Deep"
+        },
+        {
+          "name": "Catacombs of Kourend",
+          "center": {"x": 1664, "y": 10051, "plane": 0},
+          "radius": 15,
+          "nearestBank": "kourend_castle_bank",
+          "nearestTeleport": "xeric_heart",
+          "multiCombat": true,
+          "hcimSafetyRating": 5,
+          "monsterDensity": 7,
+          "konarRegion": "Catacombs of Kourend"
+        }
+      ]
+    },
+    {
+      "name": "Dark beasts",
+      "slayerLevel": 90,
+      "npcIds": [4005, 7250, 7251],
+      "superiorNpcIds": [7409],
+      "superiorName": "Night beast",
+      "hasSuperior": true,
+      "weakness": "magic",
+      "attackStyles": ["melee"],
+      "canPoison": false,
+      "baseSlayerXp": 225,
+      "taskWeight": 7,
+      "locations": [
+        {
+          "name": "Mourner Tunnels",
+          "center": {"x": 2013, "y": 4633, "plane": 0},
+          "radius": 20,
+          "nearestBank": "lletya_bank",
+          "nearestTeleport": "mourner_teleport",
+          "multiCombat": false,
+          "hcimSafetyRating": 7,
+          "monsterDensity": 6,
+          "konarRegion": "Mourner Tunnels",
+          "requiredQuest": "Mourning's End Part II"
+        },
+        {
+          "name": "Catacombs of Kourend",
+          "center": {"x": 1605, "y": 10025, "plane": 0},
+          "radius": 15,
+          "nearestBank": "kourend_castle_bank",
+          "nearestTeleport": "xeric_heart",
+          "multiCombat": true,
+          "hcimSafetyRating": 4,
+          "monsterDensity": 5,
+          "konarRegion": "Catacombs of Kourend"
+        }
+      ]
+    },
+    {
+      "name": "Dust devils",
+      "slayerLevel": 65,
+      "npcIds": [423, 7249],
+      "superiorNpcIds": [7404],
+      "superiorName": "Choke devil",
+      "hasSuperior": true,
+      "requiredEquipment": [4164, 11864, 21888],
+      "weakness": "magic",
+      "attackStyles": ["melee"],
+      "canPoison": false,
+      "baseSlayerXp": 105,
+      "taskWeight": 8,
+      "notes": "Requires face mask, slayer helmet, or slayer helmet (i)",
+      "locations": [
+        {
+          "name": "Smoke Dungeon",
+          "center": {"x": 3206, "y": 9379, "plane": 0},
+          "radius": 20,
+          "nearestBank": "shantay_pass_bank",
+          "nearestTeleport": "fairy_ring_dlq",
+          "multiCombat": false,
+          "hcimSafetyRating": 7,
+          "monsterDensity": 8,
+          "konarRegion": "Smoke Dungeon",
+          "requiredQuest": "Desert Treasure",
+          "requiredItems": [596]
+        },
+        {
+          "name": "Catacombs of Kourend",
+          "center": {"x": 1720, "y": 10041, "plane": 0},
+          "radius": 15,
+          "nearestBank": "kourend_castle_bank",
+          "nearestTeleport": "xeric_heart",
+          "multiCombat": true,
+          "hcimSafetyRating": 5,
+          "monsterDensity": 8,
+          "konarRegion": "Catacombs of Kourend"
+        }
+      ]
+    },
+    {
+      "name": "Fire giants",
+      "slayerLevel": 1,
+      "npcIds": [2075, 2076, 2077, 2078, 2079, 2080],
+      "hasSuperior": false,
+      "weakness": "slash",
+      "attackStyles": ["melee"],
+      "canPoison": false,
+      "baseSlayerXp": 111,
+      "taskWeight": 7,
+      "locations": [
+        {
+          "name": "Catacombs of Kourend",
+          "center": {"x": 1643, "y": 10050, "plane": 0},
+          "radius": 20,
+          "nearestBank": "kourend_castle_bank",
+          "nearestTeleport": "xeric_heart",
+          "multiCombat": true,
+          "hcimSafetyRating": 5,
+          "monsterDensity": 10,
+          "konarRegion": "Catacombs of Kourend"
+        },
+        {
+          "name": "Waterfall Dungeon",
+          "center": {"x": 2570, "y": 9888, "plane": 0},
+          "radius": 15,
+          "nearestBank": "ardougne_north_bank",
+          "nearestTeleport": "ardougne_teleport",
+          "multiCombat": true,
+          "hcimSafetyRating": 6,
+          "monsterDensity": 7,
+          "konarRegion": "Waterfall Dungeon"
+        },
+        {
+          "name": "Karuulm Slayer Dungeon",
+          "center": {"x": 1312, "y": 10189, "plane": 0},
+          "radius": 15,
+          "nearestBank": "mount_karuulm_bank",
+          "nearestTeleport": "xeric_inferno",
+          "multiCombat": true,
+          "hcimSafetyRating": 6,
+          "monsterDensity": 8,
+          "konarRegion": "Karuulm Slayer Dungeon"
+        }
+      ]
+    },
+    {
+      "name": "Gargoyles",
+      "slayerLevel": 75,
+      "npcIds": [412, 413, 1543],
+      "superiorNpcIds": [7407],
+      "superiorName": "Marble gargoyle",
+      "hasSuperior": true,
+      "finishOffItems": [4162],
+      "finishOffThreshold": 9,
+      "weakness": "crush",
+      "attackStyles": ["melee"],
+      "canPoison": false,
+      "baseSlayerXp": 105,
+      "taskWeight": 8,
+      "notes": "Requires rock hammer to kill below 9 HP, or auto-smash unlock",
+      "locations": [
+        {
+          "name": "Slayer Tower (3rd Floor)",
+          "center": {"x": 3440, "y": 3541, "plane": 2},
+          "radius": 20,
+          "nearestBank": "canifis_bank",
+          "nearestTeleport": "slayer_ring_tower",
+          "multiCombat": false,
+          "hcimSafetyRating": 9,
+          "monsterDensity": 8,
+          "konarRegion": "Slayer Tower"
+        }
+      ]
+    },
+    {
+      "name": "Greater demons",
+      "slayerLevel": 1,
+      "npcIds": [2025, 2026, 2027, 2028],
+      "superiorNpcIds": [7412],
+      "superiorName": "Greater hellhound",
+      "hasSuperior": true,
+      "weakness": "ranged",
+      "attackStyles": ["melee"],
+      "canPoison": false,
+      "baseSlayerXp": 87,
+      "taskWeight": 7,
+      "locations": [
+        {
+          "name": "Catacombs of Kourend",
+          "center": {"x": 1697, "y": 10089, "plane": 0},
+          "radius": 20,
+          "nearestBank": "kourend_castle_bank",
+          "nearestTeleport": "xeric_heart",
+          "multiCombat": true,
+          "hcimSafetyRating": 5,
+          "monsterDensity": 8,
+          "konarRegion": "Catacombs of Kourend"
+        },
+        {
+          "name": "Chasm of Fire",
+          "center": {"x": 1435, "y": 10076, "plane": 0},
+          "radius": 20,
+          "nearestBank": "kourend_castle_bank",
+          "nearestTeleport": "fairy_ring_djr",
+          "multiCombat": true,
+          "hcimSafetyRating": 6,
+          "monsterDensity": 10,
+          "konarRegion": "Chasm of Fire"
+        }
+      ]
+    },
+    {
+      "name": "Hellhounds",
+      "slayerLevel": 1,
+      "npcIds": [104, 135, 3133],
+      "superiorNpcIds": [7398],
+      "superiorName": "Greater hellhound",
+      "hasSuperior": true,
+      "weakness": "slash",
+      "attackStyles": ["melee"],
+      "canPoison": false,
+      "baseSlayerXp": 116,
+      "taskWeight": 10,
+      "locations": [
+        {
+          "name": "Catacombs of Kourend",
+          "center": {"x": 1640, "y": 10059, "plane": 0},
+          "radius": 20,
+          "nearestBank": "kourend_castle_bank",
+          "nearestTeleport": "xeric_heart",
+          "multiCombat": true,
+          "hcimSafetyRating": 5,
+          "monsterDensity": 10,
+          "konarRegion": "Catacombs of Kourend"
+        },
+        {
+          "name": "Taverley Dungeon",
+          "center": {"x": 2869, "y": 9847, "plane": 0},
+          "radius": 15,
+          "nearestBank": "falador_west_bank",
+          "nearestTeleport": "falador_teleport",
+          "multiCombat": false,
+          "hcimSafetyRating": 7,
+          "monsterDensity": 5,
+          "konarRegion": "Taverley Dungeon",
+          "requiredItems": [1590]
+        }
+      ]
+    },
+    {
+      "name": "Kalphite",
+      "slayerLevel": 1,
+      "npcIds": [955, 956, 957, 958, 959],
+      "hasSuperior": false,
+      "weakness": "ranged",
+      "attackStyles": ["melee"],
+      "canPoison": false,
+      "baseSlayerXp": 40,
+      "taskWeight": 7,
+      "locations": [
+        {
+          "name": "Kalphite Cave",
+          "center": {"x": 3297, "y": 9517, "plane": 0},
+          "radius": 20,
+          "nearestBank": "shantay_pass_bank",
+          "nearestTeleport": "fairy_ring_biq",
+          "multiCombat": false,
+          "hcimSafetyRating": 8,
+          "monsterDensity": 10,
+          "konarRegion": "Kalphite Cave"
+        },
+        {
+          "name": "Kalphite Lair",
+          "center": {"x": 3505, "y": 9528, "plane": 2},
+          "radius": 15,
+          "nearestBank": "shantay_pass_bank",
+          "nearestTeleport": "fairy_ring_biq",
+          "multiCombat": true,
+          "hcimSafetyRating": 5,
+          "monsterDensity": 8,
+          "konarRegion": "Kalphite Lair",
+          "requiredItems": [954]
+        }
+      ]
+    },
+    {
+      "name": "Kurask",
+      "slayerLevel": 70,
+      "npcIds": [410, 411, 7799],
+      "superiorNpcIds": [7405],
+      "superiorName": "King kurask",
+      "hasSuperior": true,
+      "validWeapons": [4158, 4718, 20727, 22971],
+      "broadAmmoValid": true,
+      "magicDartValid": true,
+      "weakness": "stab",
+      "attackStyles": ["melee"],
+      "canPoison": false,
+      "baseSlayerXp": 97,
+      "taskWeight": 6,
+      "notes": "Requires leaf-bladed weapons, broad bolts/arrows, or Magic Dart",
+      "locations": [
+        {
+          "name": "Fremennik Slayer Dungeon",
+          "center": {"x": 2702, "y": 10020, "plane": 0},
+          "radius": 20,
+          "nearestBank": "rellekka_bank",
+          "nearestTeleport": "fremennik_sea_boots",
+          "multiCombat": false,
+          "hcimSafetyRating": 8,
+          "monsterDensity": 6,
+          "konarRegion": "Fremennik Slayer Dungeon"
+        }
+      ]
+    },
+    {
+      "name": "Nechryael",
+      "slayerLevel": 80,
+      "npcIds": [8, 7278, 7279],
+      "superiorNpcIds": [7411],
+      "superiorName": "Nechryarch",
+      "hasSuperior": true,
+      "weakness": "crush",
+      "attackStyles": ["melee"],
+      "canPoison": false,
+      "baseSlayerXp": 105,
+      "taskWeight": 9,
+      "locations": [
+        {
+          "name": "Slayer Tower (3rd Floor)",
+          "center": {"x": 3433, "y": 3560, "plane": 2},
+          "radius": 15,
+          "nearestBank": "canifis_bank",
+          "nearestTeleport": "slayer_ring_tower",
+          "multiCombat": false,
+          "hcimSafetyRating": 7,
+          "monsterDensity": 6,
+          "konarRegion": "Slayer Tower"
+        },
+        {
+          "name": "Catacombs of Kourend",
+          "center": {"x": 1690, "y": 10089, "plane": 0},
+          "radius": 20,
+          "nearestBank": "kourend_castle_bank",
+          "nearestTeleport": "xeric_heart",
+          "multiCombat": true,
+          "hcimSafetyRating": 4,
+          "monsterDensity": 10,
+          "konarRegion": "Catacombs of Kourend"
+        }
+      ]
+    },
+    {
+      "name": "Rockslugs",
+      "slayerLevel": 20,
+      "npcIds": [421],
+      "superiorNpcIds": [7392],
+      "superiorName": "Giant rockslug",
+      "hasSuperior": true,
+      "finishOffItems": [4161],
+      "finishOffThreshold": 4,
+      "weakness": "crush",
+      "attackStyles": ["melee"],
+      "canPoison": false,
+      "baseSlayerXp": 27,
+      "taskWeight": 5,
+      "notes": "Requires bag of salt to kill below 4 HP, or auto-kill unlock",
+      "locations": [
+        {
+          "name": "Fremennik Slayer Dungeon",
+          "center": {"x": 2790, "y": 10012, "plane": 0},
+          "radius": 15,
+          "nearestBank": "rellekka_bank",
+          "nearestTeleport": "fremennik_sea_boots",
+          "multiCombat": false,
+          "hcimSafetyRating": 8,
+          "monsterDensity": 5,
+          "konarRegion": "Fremennik Slayer Dungeon"
+        },
+        {
+          "name": "Lumbridge Swamp Caves",
+          "center": {"x": 3184, "y": 9569, "plane": 0},
+          "radius": 15,
+          "nearestBank": "lumbridge_bank",
+          "nearestTeleport": "lumbridge_teleport",
+          "multiCombat": false,
+          "hcimSafetyRating": 7,
+          "monsterDensity": 4,
+          "konarRegion": "Lumbridge Swamp Caves",
+          "requiredItems": [952]
+        }
+      ]
+    },
+    {
+      "name": "Smoke devils",
+      "slayerLevel": 93,
+      "npcIds": [498, 499, 8482, 8483],
+      "superiorNpcIds": [7406],
+      "superiorName": "Nuclear smoke devil",
+      "hasSuperior": true,
+      "requiredEquipment": [4164, 11864, 21888],
+      "weakness": "magic",
+      "attackStyles": ["magic"],
+      "canPoison": false,
+      "baseSlayerXp": 185,
+      "taskWeight": 9,
+      "notes": "Requires face mask or slayer helmet",
+      "locations": [
+        {
+          "name": "Smoke Devil Dungeon",
+          "center": {"x": 2401, "y": 9418, "plane": 0},
+          "radius": 20,
+          "nearestBank": "castle_wars_bank",
+          "nearestTeleport": "fairy_ring_bls",
+          "multiCombat": true,
+          "hcimSafetyRating": 6,
+          "monsterDensity": 12,
+          "konarRegion": "Smoke Devil Dungeon"
+        }
+      ]
+    },
+    {
+      "name": "Trolls",
+      "slayerLevel": 1,
+      "npcIds": [937, 938, 939, 940, 941, 1095],
+      "hasSuperior": false,
+      "weakness": "crush",
+      "attackStyles": ["melee", "ranged"],
+      "canPoison": false,
+      "baseSlayerXp": 60,
+      "taskWeight": 6,
+      "locations": [
+        {
+          "name": "Fremennik Slayer Dungeon",
+          "center": {"x": 2772, "y": 10007, "plane": 0},
+          "radius": 15,
+          "nearestBank": "rellekka_bank",
+          "nearestTeleport": "fremennik_sea_boots",
+          "multiCombat": false,
+          "hcimSafetyRating": 7,
+          "monsterDensity": 4,
+          "konarRegion": "Fremennik Slayer Dungeon"
+        },
+        {
+          "name": "Mount Quidamortem",
+          "center": {"x": 1248, "y": 3507, "plane": 0},
+          "radius": 20,
+          "nearestBank": "mount_quidamortem_bank",
+          "nearestTeleport": "xeric_inferno",
+          "multiCombat": true,
+          "hcimSafetyRating": 6,
+          "monsterDensity": 8,
+          "konarRegion": "Mount Quidamortem"
+        }
+      ]
+    },
+    {
+      "name": "Turoth",
+      "slayerLevel": 55,
+      "npcIds": [426, 427, 428, 429, 430, 431],
+      "superiorNpcIds": [7400],
+      "superiorName": "Spiked Turoth",
+      "hasSuperior": true,
+      "validWeapons": [4158, 4718, 20727, 22971],
+      "broadAmmoValid": true,
+      "magicDartValid": true,
+      "weakness": "stab",
+      "attackStyles": ["melee"],
+      "canPoison": false,
+      "baseSlayerXp": 79,
+      "taskWeight": 6,
+      "notes": "Requires leaf-bladed weapons, broad bolts/arrows, or Magic Dart",
+      "locations": [
+        {
+          "name": "Fremennik Slayer Dungeon",
+          "center": {"x": 2723, "y": 10005, "plane": 0},
+          "radius": 20,
+          "nearestBank": "rellekka_bank",
+          "nearestTeleport": "fremennik_sea_boots",
+          "multiCombat": false,
+          "hcimSafetyRating": 8,
+          "monsterDensity": 7,
+          "konarRegion": "Fremennik Slayer Dungeon"
+        }
+      ]
+    },
+    {
+      "name": "Wyrms",
+      "slayerLevel": 62,
+      "npcIds": [8610, 8611],
+      "superiorNpcIds": [8612],
+      "superiorName": "Shadow Wyrm",
+      "hasSuperior": true,
+      "weakness": "magic",
+      "attackStyles": ["melee", "magic"],
+      "canPoison": false,
+      "baseSlayerXp": 133,
+      "taskWeight": 8,
+      "locations": [
+        {
+          "name": "Karuulm Slayer Dungeon",
+          "center": {"x": 1271, "y": 10190, "plane": 0},
+          "radius": 20,
+          "nearestBank": "mount_karuulm_bank",
+          "nearestTeleport": "xeric_inferno",
+          "multiCombat": false,
+          "hcimSafetyRating": 7,
+          "monsterDensity": 10,
+          "konarRegion": "Karuulm Slayer Dungeon"
+        }
+      ]
+    }
+  ],
+  "specialItems": {
+    "rockHammer": {
+      "itemId": 4162,
+      "creatures": ["Gargoyles"],
+      "threshold": 9,
+      "description": "Used to finish gargoyles below 9 HP"
+    },
+    "bagOfSalt": {
+      "itemId": 4161,
+      "creatures": ["Rockslugs"],
+      "threshold": 4,
+      "description": "Used to finish rockslugs below 4 HP"
+    },
+    "iceCoolers": {
+      "itemId": 6696,
+      "creatures": ["Desert lizards"],
+      "threshold": 4,
+      "description": "Used to finish desert lizards below 4 HP"
+    },
+    "fungicideSpray": {
+      "itemId": 7421,
+      "creatures": ["Mutated zygomites"],
+      "threshold": 7,
+      "description": "Used to finish zygomites below 7 HP"
+    }
+  },
+  "protectiveEquipment": {
+    "nosePeg": {
+      "itemId": 4168,
+      "creatures": ["Aberrant spectres"],
+      "description": "Prevents stat drain from aberrant spectres"
+    },
+    "earmuffs": {
+      "itemId": 4166,
+      "creatures": ["Banshees"],
+      "description": "Prevents stat drain from banshees"
+    },
+    "mirrorShield": {
+      "itemId": 4156,
+      "creatures": ["Basilisks", "Cockatrice"],
+      "description": "Prevents instant kill from basilisks and cockatrice"
+    },
+    "faceMask": {
+      "itemId": 4164,
+      "creatures": ["Dust devils", "Smoke devils"],
+      "description": "Prevents stat drain from dust devils and smoke devils"
+    },
+    "witchwoodIcon": {
+      "itemId": 8923,
+      "creatures": ["Cave horrors"],
+      "description": "Prevents special attack from cave horrors"
+    },
+    "slayerHelmet": {
+      "itemId": 11864,
+      "creatures": ["Aberrant spectres", "Banshees", "Basilisks", "Cockatrice", "Dust devils", "Smoke devils", "Cave horrors"],
+      "description": "Combines all protective equipment effects"
+    },
+    "slayerHelmetImbued": {
+      "itemId": 21888,
+      "creatures": ["Aberrant spectres", "Banshees", "Basilisks", "Cockatrice", "Dust devils", "Smoke devils", "Cave horrors"],
+      "description": "Imbued slayer helmet with all protection and damage bonus"
+    }
+  }
+}
+

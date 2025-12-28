@@ -12,6 +12,9 @@ import com.rocinante.tasks.impl.SettingsTask;
 import javax.inject.Provider;
 import com.rocinante.data.NpcCombatDataLoader;
 import com.rocinante.data.ProjectileDataLoader;
+import com.rocinante.slayer.SlayerMaster;
+import com.rocinante.slayer.SlayerState;
+import com.rocinante.slayer.SlayerUnlock;
 import com.rocinante.state.*;
 import com.rocinante.state.GrandExchangeStateManager;
 import lombok.Getter;
@@ -49,6 +52,8 @@ import net.runelite.api.events.AnimationChanged;
 import net.runelite.api.events.StatChanged;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.game.ItemManager;
+import net.runelite.api.gameval.VarbitID;
+import net.runelite.client.plugins.slayer.SlayerPluginService;
 
 import javax.annotation.Nullable;
 import javax.inject.Inject;
@@ -137,6 +142,9 @@ public class GameStateService {
     @Nullable
     private final ProjectileDataLoader projectileDataLoader;
 
+    @Nullable
+    private final SlayerPluginService slayerPluginService;
+
     // ========================================================================
     // Cached State Snapshots
     // ========================================================================
@@ -146,6 +154,7 @@ public class GameStateService {
     private final CachedValue<EquipmentState> equipmentStateCache;
     private final CachedValue<WorldState> worldStateCache;
     private final CachedValue<CombatState> combatStateCache;
+    private final CachedValue<SlayerState> slayerStateCache;
 
     // ========================================================================
     // State Tracking
@@ -300,7 +309,8 @@ public class GameStateService {
                            @Nullable Provider<TaskExecutor> taskExecutorProvider,
                            @Nullable WeaponDataService weaponDataService,
                            @Nullable NpcCombatDataLoader npcCombatDataLoader,
-                           @Nullable ProjectileDataLoader projectileDataLoader) {
+                           @Nullable ProjectileDataLoader projectileDataLoader,
+                           @Nullable SlayerPluginService slayerPluginService) {
         this.client = client;
         this.itemManager = itemManager;
         this.bankStateManager = bankStateManager;
@@ -315,6 +325,7 @@ public class GameStateService {
         this.weaponDataService = weaponDataService;
         this.npcCombatDataLoader = npcCombatDataLoader;
         this.projectileDataLoader = projectileDataLoader;
+        this.slayerPluginService = slayerPluginService;
 
         // Initialize caches with appropriate policies
         this.playerStateCache = new CachedValue<>("PlayerState", CachePolicy.TICK_CACHED);
@@ -322,6 +333,7 @@ public class GameStateService {
         this.equipmentStateCache = new CachedValue<>("EquipmentState", CachePolicy.EVENT_INVALIDATED);
         this.worldStateCache = new CachedValue<>("WorldState", CachePolicy.EXPENSIVE_COMPUTED);
         this.combatStateCache = new CachedValue<>("CombatState", CachePolicy.TICK_CACHED);
+        this.slayerStateCache = new CachedValue<>("SlayerState", CachePolicy.TICK_CACHED);
 
         log.info("GameStateService initialized (behavioral components: {})", 
                 playerProfile != null && fatigueModel != null && breakScheduler != null && attentionModel != null);
@@ -774,6 +786,113 @@ public class GameStateService {
     @Nullable
     public com.rocinante.state.IronmanState getIronmanState() {
         return ironmanState;
+    }
+
+    /**
+     * Get the current slayer state snapshot.
+     *
+     * Per REQUIREMENTS.md Section 6.2.7, includes:
+     * <ul>
+     *   <li>Current task name and location (Konar)</li>
+     *   <li>Kill counts (initial, remaining)</li>
+     *   <li>Slayer points and streak</li>
+     *   <li>Current master</li>
+     *   <li>Unlocked rewards</li>
+     *   <li>Target NPCs from SlayerPluginService</li>
+     * </ul>
+     *
+     * Uses TICK_CACHED policy for real-time slayer tracking.
+     *
+     * @return immutable SlayerState snapshot
+     */
+    public SlayerState getSlayerState() {
+        if (!loggedIn) {
+            return SlayerState.EMPTY;
+        }
+
+        SlayerState cached = slayerStateCache.getIfValid(currentTick);
+        if (cached != null) {
+            return cached;
+        }
+
+        return refreshSlayerState();
+    }
+
+    /**
+     * Refresh slayer state from client and SlayerPluginService.
+     */
+    private SlayerState refreshSlayerState() {
+        SlayerState state = buildSlayerState();
+        slayerStateCache.set(currentTick, state);
+        return state;
+    }
+
+    /**
+     * Build SlayerState from client varbits and SlayerPluginService.
+     * Per REQUIREMENTS.md Section 6.2.7 and 11.1.
+     */
+    private SlayerState buildSlayerState() {
+        // Get task info from SlayerPluginService if available
+        String taskName = null;
+        String taskLocation = null;
+        int remainingKills = 0;
+        int initialKills = 0;
+        java.util.List<NPC> targetNpcs = java.util.Collections.emptyList();
+
+        if (slayerPluginService != null) {
+            try {
+                // Use SlayerPluginService methods
+                taskName = slayerPluginService.getTask();
+                taskLocation = slayerPluginService.getTaskLocation();
+                initialKills = slayerPluginService.getInitialAmount();
+                remainingKills = slayerPluginService.getRemainingAmount();
+                targetNpcs = slayerPluginService.getTargets();
+            } catch (Exception e) {
+                log.debug("Error getting slayer info from plugin service: {}", e.getMessage());
+            }
+        }
+
+        // Fallback to varbits if plugin service not available or returned empty
+        if (taskName == null || taskName.isEmpty()) {
+            remainingKills = client.getVarpValue(net.runelite.api.VarPlayer.SLAYER_TASK_SIZE);
+            // Task name would need to come from varbit SLAYER_TARGET + lookup
+        }
+
+        // Read slayer varbits for points, streak, master, unlocks
+        // Using RuneLite VarbitID constants for accuracy
+        int slayerPoints = client.getVarbitValue(VarbitID.SLAYER_POINTS);
+        int taskStreak = client.getVarbitValue(VarbitID.SLAYER_TASKS_COMPLETED);
+        int wildernessStreak = client.getVarbitValue(VarbitID.SLAYER_WILDERNESS_TASKS_COMPLETED);
+        int masterId = client.getVarbitValue(VarbitID.SLAYER_MASTER);
+
+        SlayerMaster currentMaster = SlayerMaster.fromMasterId(masterId);
+
+        // Read unlocks from varbits
+        java.util.Set<SlayerUnlock> unlocks = java.util.EnumSet.noneOf(SlayerUnlock.class);
+        for (SlayerUnlock unlock : SlayerUnlock.values()) {
+            if (unlock.isUnlocked(client)) {
+                unlocks.add(unlock);
+            }
+        }
+
+        // Get slayer level
+        int slayerLevel = client.getRealSkillLevel(Skill.SLAYER);
+
+        return SlayerState.builder()
+                .taskName(taskName)
+                .taskLocation(taskLocation)
+                .remainingKills(remainingKills)
+                .initialKills(initialKills)
+                .slayerPoints(slayerPoints)
+                .taskStreak(taskStreak)
+                .wildernessStreak(wildernessStreak)
+                .currentMaster(currentMaster)
+                .unlocks(unlocks)
+                .blockedTasks(java.util.Collections.emptySet()) // TODO: Read from varplayers
+                .extendedTasks(java.util.Collections.emptySet()) // TODO: Read from varbits
+                .targetNpcs(targetNpcs != null ? targetNpcs : java.util.Collections.emptyList())
+                .slayerLevel(slayerLevel)
+                .build();
     }
 
     /**
@@ -1984,12 +2103,13 @@ public class GameStateService {
      */
     public String getCacheStats() {
         return String.format(
-                "Cache Stats - PlayerState: %.1f%%, InventoryState: %.1f%%, EquipmentState: %.1f%%, WorldState: %.1f%%, CombatState: %.1f%%",
+                "Cache Stats - PlayerState: %.1f%%, InventoryState: %.1f%%, EquipmentState: %.1f%%, WorldState: %.1f%%, CombatState: %.1f%%, SlayerState: %.1f%%",
                 playerStateCache.getHitRate() * 100,
                 inventoryStateCache.getHitRate() * 100,
                 equipmentStateCache.getHitRate() * 100,
                 worldStateCache.getHitRate() * 100,
-                combatStateCache.getHitRate() * 100
+                combatStateCache.getHitRate() * 100,
+                slayerStateCache.getHitRate() * 100
         );
     }
 

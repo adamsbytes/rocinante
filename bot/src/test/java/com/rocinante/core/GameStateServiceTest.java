@@ -9,6 +9,7 @@ import com.rocinante.data.NpcCombatDataLoader;
 import com.rocinante.data.ProjectileDataLoader;
 import com.rocinante.state.BankStateManager;
 import com.rocinante.state.GrandExchangeStateManager;
+import net.runelite.client.plugins.slayer.SlayerPluginService;
 import com.rocinante.state.EquipmentState;
 import com.rocinante.state.InventoryState;
 import com.rocinante.state.PlayerState;
@@ -80,6 +81,9 @@ public class GameStateServiceTest {
     @Mock
     private ProjectileDataLoader projectileDataLoader;
 
+    @Mock
+    private SlayerPluginService slayerPluginService;
+
     private GameStateService gameStateService;
 
     @Before
@@ -91,7 +95,8 @@ public class GameStateServiceTest {
                 playerProfile, fatigueModel, breakScheduler, attentionModel,
                 null,  // xpTracker
                 null,  // taskExecutorProvider
-                weaponDataService, npcCombatDataLoader, projectileDataLoader);
+                weaponDataService, npcCombatDataLoader, projectileDataLoader,
+                slayerPluginService);
     }
 
     // ========================================================================

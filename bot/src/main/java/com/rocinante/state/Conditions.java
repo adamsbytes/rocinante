@@ -979,5 +979,174 @@ public final class Conditions {
     public static StateCondition boostedLevelAtLeast(Skill skill, int level) {
         return ctx -> ctx.getClient().getBoostedSkillLevel(skill) >= level;
     }
+
+    // ========================================================================
+    // Slayer State Conditions
+    // ========================================================================
+
+    /**
+     * Check if player has an active slayer task.
+     *
+     * @return condition checking for active slayer task
+     */
+    public static StateCondition hasSlayerTask() {
+        return ctx -> {
+            com.rocinante.slayer.SlayerState slayer = ctx.getSlayerState();
+            return slayer != null && slayer.hasTask();
+        };
+    }
+
+    /**
+     * Check if the current slayer task is complete.
+     *
+     * @return condition checking task completion
+     */
+    public static StateCondition slayerTaskComplete() {
+        return ctx -> {
+            com.rocinante.slayer.SlayerState slayer = ctx.getSlayerState();
+            return slayer != null && slayer.isTaskComplete();
+        };
+    }
+
+    /**
+     * Check if remaining slayer kills is at or below a threshold.
+     *
+     * @param count the kill count threshold
+     * @return condition checking remaining kills
+     */
+    public static StateCondition slayerKillsBelow(int count) {
+        return ctx -> {
+            com.rocinante.slayer.SlayerState slayer = ctx.getSlayerState();
+            return slayer != null && slayer.getRemainingKills() <= count;
+        };
+    }
+
+    /**
+     * Check if slayer task progress is at or above a percentage.
+     *
+     * @param percent the percentage threshold (0-100)
+     * @return condition checking task progress
+     */
+    public static StateCondition slayerProgressAbove(int percent) {
+        return ctx -> {
+            com.rocinante.slayer.SlayerState slayer = ctx.getSlayerState();
+            return slayer != null && slayer.getCompletionPercentage() >= percent;
+        };
+    }
+
+    /**
+     * Check if slayer points are at or above a threshold.
+     *
+     * @param points the point threshold
+     * @return condition checking slayer points
+     */
+    public static StateCondition slayerPointsAtLeast(int points) {
+        return ctx -> {
+            com.rocinante.slayer.SlayerState slayer = ctx.getSlayerState();
+            return slayer != null && slayer.getSlayerPoints() >= points;
+        };
+    }
+
+    /**
+     * Check if player can afford to skip a task (30 points).
+     *
+     * @return condition checking skip affordability
+     */
+    public static StateCondition canSkipSlayerTask() {
+        return ctx -> {
+            com.rocinante.slayer.SlayerState slayer = ctx.getSlayerState();
+            return slayer != null && slayer.canSkipTask();
+        };
+    }
+
+    /**
+     * Check if player can afford to block a task (100 points).
+     *
+     * @return condition checking block affordability
+     */
+    public static StateCondition canBlockSlayerTask() {
+        return ctx -> {
+            com.rocinante.slayer.SlayerState slayer = ctx.getSlayerState();
+            return slayer != null && slayer.canBlockTask();
+        };
+    }
+
+    /**
+     * Check if a specific slayer unlock is active.
+     *
+     * @param unlock the unlock to check
+     * @return condition checking unlock status
+     */
+    public static StateCondition hasSlayerUnlock(com.rocinante.slayer.SlayerUnlock unlock) {
+        return ctx -> {
+            com.rocinante.slayer.SlayerState slayer = ctx.getSlayerState();
+            return slayer != null && slayer.hasUnlock(unlock);
+        };
+    }
+
+    /**
+     * Check if the current task is a wilderness task (from Krystilia).
+     *
+     * @return condition checking wilderness task
+     */
+    public static StateCondition isWildernessSlayerTask() {
+        return ctx -> {
+            com.rocinante.slayer.SlayerState slayer = ctx.getSlayerState();
+            return slayer != null && slayer.isWildernessTask();
+        };
+    }
+
+    /**
+     * Check if the current task is location-restricted (Konar).
+     *
+     * @return condition checking Konar task
+     */
+    public static StateCondition isKonarSlayerTask() {
+        return ctx -> {
+            com.rocinante.slayer.SlayerState slayer = ctx.getSlayerState();
+            return slayer != null && slayer.isLocationRestricted();
+        };
+    }
+
+    /**
+     * Check if slayer targets are nearby.
+     *
+     * @return condition checking for nearby targets
+     */
+    public static StateCondition slayerTargetsNearby() {
+        return ctx -> {
+            com.rocinante.slayer.SlayerState slayer = ctx.getSlayerState();
+            return slayer != null && slayer.hasTargetsNearby();
+        };
+    }
+
+    /**
+     * Check if slayer task streak is at or above a threshold.
+     *
+     * @param streak the streak threshold
+     * @return condition checking task streak
+     */
+    public static StateCondition slayerStreakAtLeast(int streak) {
+        return ctx -> {
+            com.rocinante.slayer.SlayerState slayer = ctx.getSlayerState();
+            return slayer != null && slayer.getRelevantStreak() >= streak;
+        };
+    }
+
+    /**
+     * Check if the current slayer task is a specific creature.
+     *
+     * @param taskName the task/creature name (case-insensitive)
+     * @return condition checking task name
+     */
+    public static StateCondition slayerTaskIs(String taskName) {
+        return ctx -> {
+            com.rocinante.slayer.SlayerState slayer = ctx.getSlayerState();
+            if (slayer == null || slayer.getTaskName() == null) {
+                return false;
+            }
+            return slayer.getTaskName().equalsIgnoreCase(taskName);
+        };
+    }
 }
 
