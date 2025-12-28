@@ -8,7 +8,7 @@ import com.rocinante.input.MenuHelper;
 import com.rocinante.input.RobotKeyboardController;
 import com.rocinante.input.WidgetClickHelper;
 import com.rocinante.tasks.impl.PrayerTask;
-import com.rocinante.tasks.impl.TeleportTask;
+import com.rocinante.tasks.impl.TravelTask;
 
 import java.awt.event.KeyEvent;
 
@@ -1055,7 +1055,7 @@ public class CombatManager {
      * Execute teleport via spellbook.
      * Per Section 12A.3.3: Secondary escape method.
      * 
-     * <p>Uses TeleportTask utility methods to find the best available teleport
+     * <p>Uses TravelTask utility methods to find the best available teleport
      * based on magic level and runes. Falls back to home teleport if no
      * standard teleports are available.
      */
@@ -1065,8 +1065,8 @@ public class CombatManager {
         InventoryState inventory = gameStateService.getInventoryState();
         EquipmentState equipment = gameStateService.getEquipmentState();
         
-        // Find the best available teleport spell using TeleportTask utility
-        TeleportTask.AvailableSpell spell = TeleportTask.findBestAvailableSpell(
+        // Find the best available teleport spell using TravelTask utility
+        TravelTask.AvailableSpell spell = TravelTask.findBestAvailableSpell(
                 client, inventory, equipment);
         
         if (spell != null) {
@@ -1103,7 +1103,7 @@ public class CombatManager {
     private void executeHomeTeleport() {
         log.warn("FLEE: Using Home Teleport (no standard teleports available)");
         
-        widgetClickHelper.clickWidget(TeleportTask.SPELLBOOK_GROUP, TeleportTask.HOME_TELEPORT_CHILD, 
+        widgetClickHelper.clickWidget(TravelTask.SPELLBOOK_GROUP, TravelTask.HOME_TELEPORT_CHILD, 
                 "EMERGENCY HOME TELEPORT")
                 .thenAccept(success -> {
                     if (success) {

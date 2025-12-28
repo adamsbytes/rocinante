@@ -1,0 +1,429 @@
+{
+  "_comment": "Morytania region nodes - validated from RuneLite worldmap plugin sources",
+  "_sources": [
+    "TeleportLocationData.java",
+    "DungeonLocation.java",
+    "AgilityCourseLocation.java",
+    "MinigameLocation.java"
+  ],
+  "region": {
+    "id": "morytania",
+    "name": "Morytania",
+    "bounds": {
+      "min_x": 3400,
+      "min_y": 2800,
+      "max_x": 3850,
+      "max_y": 3700
+    }
+  },
+  "nodes": [
+    {
+      "id": "canifis",
+      "name": "Canifis",
+      "x": 3494,
+      "y": 3473,
+      "plane": 0,
+      "type": "TELEPORT",
+      "tags": ["members", "safe", "teleport_ancient", "fairy_ring"],
+      "metadata": {"teleport_name": "Kharyrll Teleport", "magic_level": "66", "fairy_ring_code": "CKS", "source": "TeleportLocationData.KHARYRLL"}
+    },
+    {
+      "id": "canifis_bank",
+      "name": "Canifis Bank",
+      "x": 3512,
+      "y": 3480,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["members", "safe"],
+      "metadata": {"bank_type": "booth"}
+    },
+    {
+      "id": "canifis_agility",
+      "name": "Canifis Rooftop Course",
+      "x": 3506,
+      "y": 3490,
+      "plane": 0,
+      "type": "TRAINING",
+      "tags": ["members", "safe", "agility"],
+      "metadata": {"agility_level": "40", "source": "AgilityCourseLocation.CANIFIS_ROOFTOP_COURSE"}
+    },
+    {
+      "id": "myreque_hideout_canifis",
+      "name": "Myreque Hideout (Canifis)",
+      "x": 3494,
+      "y": 3464,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "dungeon", "quest"],
+      "metadata": {"source": "DungeonLocation.MYREQUE_HIDEOUT_CANIFIS"}
+    },
+    {
+      "id": "slayer_tower",
+      "name": "Slayer Tower",
+      "x": 3423,
+      "y": 3536,
+      "plane": 0,
+      "type": "SLAYER",
+      "tags": ["members", "dangerous", "teleport_slayer_ring"],
+      "metadata": {"source": "TeleportLocationData.SLAYER_TOWER"}
+    },
+    {
+      "id": "slayer_tower_basement",
+      "name": "Slayer Tower Basement",
+      "x": 3416,
+      "y": 3535,
+      "plane": 0,
+      "type": "SLAYER",
+      "tags": ["members", "dangerous", "dungeon"],
+      "metadata": {"source": "DungeonLocation.SLAYER_TOWER"}
+    },
+    {
+      "id": "barrows",
+      "name": "Barrows",
+      "x": 3565,
+      "y": 3315,
+      "plane": 0,
+      "type": "TELEPORT",
+      "tags": ["members", "dangerous", "teleport_arceuus", "minigame"],
+      "metadata": {"teleport_name": "Barrows Teleport", "magic_level": "83", "source": "TeleportLocationData.BARROWS"}
+    },
+    {
+      "id": "salve_graveyard",
+      "name": "Salve Graveyard",
+      "x": 3433,
+      "y": 3461,
+      "plane": 0,
+      "type": "TELEPORT",
+      "tags": ["members", "safe", "teleport_arceuus"],
+      "metadata": {"teleport_name": "Salve Graveyard Teleport", "magic_level": "40", "source": "TeleportLocationData.SALVE_GRAVEYARD"}
+    },
+    {
+      "id": "fenkenstrains_castle",
+      "name": "Fenkenstrain's Castle",
+      "x": 3548,
+      "y": 3528,
+      "plane": 0,
+      "type": "TELEPORT",
+      "tags": ["members", "safe", "teleport_arceuus"],
+      "metadata": {"teleport_name": "Fenkenstrain's Castle Teleport", "magic_level": "48", "source": "TeleportLocationData.FENKENSTRAINS_CASTLE"}
+    },
+    {
+      "id": "port_phasmatys",
+      "name": "Port Phasmatys",
+      "x": 3660,
+      "y": 3522,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["members", "safe", "teleport_ectophial", "charter_ship"],
+      "metadata": {"source": "TeleportLocationData.ECTOFUNTUS"}
+    },
+    {
+      "id": "ectofuntus",
+      "name": "Ectofuntus",
+      "x": 3651,
+      "y": 3519,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "prayer", "dungeon"],
+      "metadata": {"source": "DungeonLocation.ECTOFUNTUS"}
+    },
+    {
+      "id": "port_phasmatys_brewery",
+      "name": "Port Phasmatys Brewery",
+      "x": 3679,
+      "y": 3498,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "dungeon", "cooking"],
+      "metadata": {"source": "DungeonLocation.PORT_PHASMATYS_BREWERY"}
+    },
+    {
+      "id": "abandoned_mine",
+      "name": "Abandoned Mine",
+      "x": 3439,
+      "y": 3232,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "dangerous", "dungeon", "quest"],
+      "metadata": {"source": "DungeonLocation.ABANDONED_MINE"}
+    },
+    {
+      "id": "burgh_de_rott",
+      "name": "Burgh de Rott",
+      "x": 3482,
+      "y": 3231,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["members", "safe", "teleport_diary"],
+      "metadata": {"source": "TeleportLocationData.MORYTANIA_LEGS_BURGH_DE_ROTT"}
+    },
+    {
+      "id": "myreque_hideout_burgh",
+      "name": "Myreque Hideout (Burgh de Rott)",
+      "x": 3488,
+      "y": 3231,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "dungeon", "quest"],
+      "metadata": {"source": "DungeonLocation.MYREQUE_HIDEOUT_BURGH_DU_ROTT"}
+    },
+    {
+      "id": "shade_catacombs",
+      "name": "Shade Catacombs",
+      "x": 3484,
+      "y": 3321,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "dungeon"],
+      "metadata": {"source": "DungeonLocation.SHADE_CATACOMBS"}
+    },
+    {
+      "id": "shades_of_mortton",
+      "name": "Shades of Mort'ton",
+      "x": 3505,
+      "y": 3315,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "minigame"],
+      "metadata": {"source": "MinigameLocation.SHADES_OF_MORTTON"}
+    },
+    {
+      "id": "temple_trekking",
+      "name": "Temple Trekking",
+      "x": 3479,
+      "y": 3240,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "minigame"],
+      "metadata": {"source": "MinigameLocation.TEMPLE_TREKKING"}
+    },
+    {
+      "id": "burgh_de_rott_ramble",
+      "name": "Burgh de Rott Ramble",
+      "x": 3434,
+      "y": 3487,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "minigame"],
+      "metadata": {"source": "MinigameLocation.BURGH_DE_ROTT_RAMBLE"}
+    },
+    {
+      "id": "mortton",
+      "name": "Mort'ton",
+      "x": 3489,
+      "y": 3288,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "teleport_scroll"],
+      "metadata": {"source": "TeleportLocationData.MORTTON_SCROLL"}
+    },
+    {
+      "id": "ver_sinhaza",
+      "name": "Ver Sinhaza (Theatre of Blood)",
+      "x": 3649,
+      "y": 3230,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["members", "safe", "teleport_drakans_medallion", "raid"],
+      "metadata": {"source": "TeleportLocationData.DRAKANS_MEDALLION_VER_SINHAZA"}
+    },
+    {
+      "id": "theatre_of_blood",
+      "name": "Theatre of Blood",
+      "x": 3676,
+      "y": 3219,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "dangerous", "dungeon", "raid"],
+      "metadata": {"source": "DungeonLocation.THEATRE_OF_BLOOD"}
+    },
+    {
+      "id": "darkmeyer",
+      "name": "Darkmeyer",
+      "x": 3592,
+      "y": 3337,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["members", "safe", "teleport_drakans_medallion"],
+      "metadata": {"source": "TeleportLocationData.DRAKANS_MEDALLION_DARKMEYER"}
+    },
+    {
+      "id": "ranis_drakans_crypt",
+      "name": "Ranis Drakan's Crypt",
+      "x": 3681,
+      "y": 3231,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "dangerous", "dungeon"],
+      "metadata": {"source": "DungeonLocation.RANIS_DRAKANS_CRYPT"}
+    },
+    {
+      "id": "hallowed_sepulchre",
+      "name": "Hallowed Sepulchre",
+      "x": 3653,
+      "y": 3386,
+      "plane": 1,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "minigame", "agility"],
+      "metadata": {"agility_level": "52", "source": "MinigameLocation.HALLOWED_SEPULCHRE"}
+    },
+    {
+      "id": "slepe",
+      "name": "Slepe",
+      "x": 3718,
+      "y": 3307,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["members", "safe"],
+      "metadata": {}
+    },
+    {
+      "id": "slepe_basement",
+      "name": "Slepe Basement",
+      "x": 3718,
+      "y": 3307,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "dungeon"],
+      "metadata": {"source": "DungeonLocation.SLEPE_BASEMENT"}
+    },
+    {
+      "id": "sisterhood_sanctuary",
+      "name": "Sisterhood Sanctuary",
+      "x": 3727,
+      "y": 3300,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "dungeon"],
+      "metadata": {"source": "DungeonLocation.SISTERHOOD_SANCTUARY"}
+    },
+    {
+      "id": "spider_nest",
+      "name": "Morytania Spider Nest",
+      "x": 3656,
+      "y": 3409,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "dangerous", "dungeon"],
+      "metadata": {"source": "DungeonLocation.MORYTANIA_SPIDER_NEST"}
+    },
+    {
+      "id": "spider_cave_scroll",
+      "name": "Spider Cave (Teleport)",
+      "x": 3658,
+      "y": 3403,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "teleport_scroll"],
+      "metadata": {"source": "TeleportLocationData.SPIDER_CAVE_SCROLL"}
+    },
+    {
+      "id": "werewolf_agility",
+      "name": "Werewolf Agility Course",
+      "x": 3542,
+      "y": 3463,
+      "plane": 0,
+      "type": "TRAINING",
+      "tags": ["members", "safe", "agility"],
+      "metadata": {"agility_level": "60", "source": "AgilityCourseLocation.WEREWOLF_AGILITY_COURSE"}
+    },
+    {
+      "id": "werewolf_agility_dungeon",
+      "name": "Werewolf Agility Course Dungeon",
+      "x": 3542,
+      "y": 3461,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "dungeon", "agility"],
+      "metadata": {"source": "DungeonLocation.WEREWOLF_AGILITY"}
+    },
+    {
+      "id": "tarns_lair",
+      "name": "Tarn's Lair",
+      "x": 3187,
+      "y": 4601,
+      "plane": 0,
+      "type": "SLAYER",
+      "tags": ["members", "dangerous", "teleport_slayer_ring", "dungeon"],
+      "metadata": {"source": "TeleportLocationData.TARNS_LAIR"}
+    },
+    {
+      "id": "mos_leharmless",
+      "name": "Mos Le'Harmless",
+      "x": 3701,
+      "y": 2996,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["members", "safe", "teleport_scroll", "charter_ship"],
+      "metadata": {"source": "TeleportLocationData.MOS_LEHARMLESS_SCROLL"}
+    },
+    {
+      "id": "mos_leharmless_cave",
+      "name": "Mos Le'Harmless Cave",
+      "x": 3747,
+      "y": 2973,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "dangerous", "dungeon", "slayer"],
+      "metadata": {"source": "DungeonLocation.MOS_LE_HARMLESS"}
+    },
+    {
+      "id": "trouble_brewing",
+      "name": "Trouble Brewing",
+      "x": 3811,
+      "y": 3021,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "minigame", "cooking"],
+      "metadata": {"source": "MinigameLocation.TROUBLE_BREWING"}
+    },
+    {
+      "id": "harmony_island",
+      "name": "Harmony Island",
+      "x": 3797,
+      "y": 2866,
+      "plane": 0,
+      "type": "TELEPORT",
+      "tags": ["members", "safe", "teleport_arceuus", "farming"],
+      "metadata": {"teleport_name": "Harmony Island Teleport", "magic_level": "65", "source": "TeleportLocationData.HARMONY_ISLAND"}
+    }
+  ],
+  "edges": [
+    {"from": "canifis", "to": "canifis_bank", "type": "WALK", "cost_ticks": 15, "bidirectional": true},
+    {"from": "canifis", "to": "canifis_agility", "type": "WALK", "cost_ticks": 10, "bidirectional": true},
+    {"from": "canifis", "to": "myreque_hideout_canifis", "type": "WALK", "cost_ticks": 10, "bidirectional": true},
+    {"from": "canifis", "to": "slayer_tower", "type": "WALK", "cost_ticks": 50, "bidirectional": true},
+    {"from": "canifis", "to": "salve_graveyard", "type": "WALK", "cost_ticks": 20, "bidirectional": true},
+    {"from": "canifis", "to": "fenkenstrains_castle", "type": "WALK", "cost_ticks": 60, "bidirectional": true},
+    {"from": "canifis", "to": "port_phasmatys", "type": "WALK", "cost_ticks": 100, "bidirectional": true},
+    {"from": "canifis", "to": "mortton", "type": "WALK", "cost_ticks": 120, "bidirectional": true},
+    {"from": "canifis", "to": "werewolf_agility", "type": "WALK", "cost_ticks": 40, "bidirectional": true},
+    {"from": "salve_graveyard", "to": "burgh_de_rott_ramble", "type": "WALK", "cost_ticks": 25, "bidirectional": true},
+    {"from": "slayer_tower", "to": "slayer_tower_basement", "type": "STAIRS", "cost_ticks": 3, "bidirectional": true},
+    {"from": "port_phasmatys", "to": "ectofuntus", "type": "WALK", "cost_ticks": 10, "bidirectional": true},
+    {"from": "port_phasmatys", "to": "port_phasmatys_brewery", "type": "WALK", "cost_ticks": 20, "bidirectional": true},
+    {"from": "port_phasmatys", "to": "fenkenstrains_castle", "type": "WALK", "cost_ticks": 80, "bidirectional": true},
+    {"from": "port_phasmatys", "to": "spider_nest", "type": "WALK", "cost_ticks": 70, "bidirectional": true},
+    {"from": "spider_nest", "to": "spider_cave_scroll", "type": "WALK", "cost_ticks": 5, "bidirectional": true},
+    {"from": "mortton", "to": "barrows", "type": "WALK", "cost_ticks": 50, "bidirectional": true},
+    {"from": "mortton", "to": "burgh_de_rott", "type": "WALK", "cost_ticks": 40, "bidirectional": true},
+    {"from": "mortton", "to": "abandoned_mine", "type": "WALK", "cost_ticks": 35, "bidirectional": true},
+    {"from": "mortton", "to": "shade_catacombs", "type": "WALK", "cost_ticks": 25, "bidirectional": true},
+    {"from": "mortton", "to": "shades_of_mortton", "type": "WALK", "cost_ticks": 15, "bidirectional": true},
+    {"from": "burgh_de_rott", "to": "myreque_hideout_burgh", "type": "WALK", "cost_ticks": 10, "bidirectional": true},
+    {"from": "burgh_de_rott", "to": "temple_trekking", "type": "WALK", "cost_ticks": 15, "bidirectional": true},
+    {"from": "burgh_de_rott", "to": "ver_sinhaza", "type": "WALK", "cost_ticks": 100, "bidirectional": true},
+    {"from": "ver_sinhaza", "to": "theatre_of_blood", "type": "WALK", "cost_ticks": 20, "bidirectional": true},
+    {"from": "ver_sinhaza", "to": "ranis_drakans_crypt", "type": "WALK", "cost_ticks": 25, "bidirectional": true},
+    {"from": "ver_sinhaza", "to": "darkmeyer", "type": "WALK", "cost_ticks": 60, "bidirectional": true},
+    {"from": "darkmeyer", "to": "hallowed_sepulchre", "type": "WALK", "cost_ticks": 40, "bidirectional": true},
+    {"from": "darkmeyer", "to": "slepe", "type": "WALK", "cost_ticks": 80, "bidirectional": true},
+    {"from": "slepe", "to": "slepe_basement", "type": "STAIRS", "cost_ticks": 3, "bidirectional": true},
+    {"from": "slepe", "to": "sisterhood_sanctuary", "type": "WALK", "cost_ticks": 15, "bidirectional": true},
+    {"from": "werewolf_agility", "to": "werewolf_agility_dungeon", "type": "STAIRS", "cost_ticks": 3, "bidirectional": true},
+    {"from": "port_phasmatys", "to": "mos_leharmless", "type": "TRANSPORT", "cost_ticks": 30, "bidirectional": true, "requirements": [{"type": "quest", "identifier": "Cabin Fever"}], "metadata": {"travel_type": "ship"}},
+    {"from": "mos_leharmless", "to": "mos_leharmless_cave", "type": "WALK", "cost_ticks": 35, "bidirectional": true},
+    {"from": "mos_leharmless", "to": "trouble_brewing", "type": "WALK", "cost_ticks": 70, "bidirectional": true},
+    {"from": "mos_leharmless", "to": "harmony_island", "type": "TRANSPORT", "cost_ticks": 20, "bidirectional": true, "metadata": {"travel_type": "ship"}}
+  ]
+}

@@ -239,6 +239,7 @@ public class IronmanSelectionTask extends AbstractTask {
             case HARDCORE_IRONMAN -> CHILD_HARDCORE_IRONMAN_BUTTON;
             case GROUP_IRONMAN -> CHILD_GROUP_IRONMAN_BUTTON;
             case HARDCORE_GROUP_IRONMAN -> CHILD_HARDCORE_GROUP_IRONMAN_BUTTON;
+            case UNRANKED_GROUP_IRONMAN -> CHILD_GROUP_IRONMAN_BUTTON; // Same as regular GIM
         };
     }
 }

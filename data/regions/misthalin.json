@@ -1,0 +1,474 @@
+{
+  "_comment": "Misthalin region nodes - validated from RuneLite worldmap plugin sources",
+  "_sources": [
+    "TeleportLocationData.java",
+    "DungeonLocation.java", 
+    "AgilityCourseLocation.java",
+    "MinigameLocation.java",
+    "RunecraftingAltarLocation.java"
+  ],
+  "region": {
+    "id": "misthalin",
+    "name": "Misthalin",
+    "bounds": {
+      "min_x": 3000,
+      "min_y": 3100,
+      "max_x": 3400,
+      "max_y": 3600
+    }
+  },
+  "nodes": [
+    {
+      "id": "varrock_center",
+      "name": "Varrock Center",
+      "x": 3213,
+      "y": 3424,
+      "plane": 0,
+      "type": "TELEPORT",
+      "tags": ["f2p", "safe", "city", "teleport_standard"],
+      "metadata": {"teleport_name": "Varrock Teleport", "magic_level": "25"}
+    },
+    {
+      "id": "varrock_ge",
+      "name": "Grand Exchange",
+      "x": 3164,
+      "y": 3478,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["f2p", "safe", "trading", "teleport_row"],
+      "metadata": {"bank_type": "booth", "source": "TeleportLocationData.GRAND_EXCHANGE"}
+    },
+    {
+      "id": "varrock_west_bank",
+      "name": "Varrock West Bank",
+      "x": 3185,
+      "y": 3436,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["f2p", "safe"],
+      "metadata": {"bank_type": "booth"}
+    },
+    {
+      "id": "varrock_east_bank",
+      "name": "Varrock East Bank",
+      "x": 3253,
+      "y": 3420,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["f2p", "safe"],
+      "metadata": {"bank_type": "booth"}
+    },
+    {
+      "id": "varrock_agility",
+      "name": "Varrock Rooftop Course",
+      "x": 3219,
+      "y": 3414,
+      "plane": 0,
+      "type": "TRAINING",
+      "tags": ["f2p", "safe", "agility"],
+      "metadata": {"agility_level": "30", "source": "AgilityCourseLocation.VARROCK_ROOFTOP_COURSE"}
+    },
+    {
+      "id": "varrock_sewers",
+      "name": "Varrock Sewers",
+      "x": 3236,
+      "y": 3458,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "dangerous", "dungeon"],
+      "metadata": {"source": "DungeonLocation.VARROCK_SEWERS"}
+    },
+    {
+      "id": "lumbridge_spawn",
+      "name": "Lumbridge Castle",
+      "x": 3222,
+      "y": 3218,
+      "plane": 0,
+      "type": "TELEPORT",
+      "tags": ["f2p", "safe", "spawn_point", "teleport_standard"],
+      "metadata": {"teleport_name": "Lumbridge Teleport", "magic_level": "31"}
+    },
+    {
+      "id": "lumbridge_bank",
+      "name": "Lumbridge Bank",
+      "x": 3208,
+      "y": 3220,
+      "plane": 2,
+      "type": "BANK",
+      "tags": ["f2p", "safe"],
+      "metadata": {"bank_type": "booth"}
+    },
+    {
+      "id": "lumbridge_cellar",
+      "name": "Lumbridge Castle Cellar",
+      "x": 3208,
+      "y": 3218,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "safe", "dungeon"],
+      "metadata": {"source": "DungeonLocation.LUMBRIDGE_CASTLE"}
+    },
+    {
+      "id": "lumbridge_swamp_caves",
+      "name": "Lumbridge Swamp Caves",
+      "x": 3168,
+      "y": 3172,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "dangerous", "dungeon", "slayer"],
+      "metadata": {"source": "DungeonLocation.LUMBRIDGE_SWAMP"}
+    },
+    {
+      "id": "draynor_village",
+      "name": "Draynor Village",
+      "x": 3105,
+      "y": 3251,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["f2p", "safe", "teleport_glory"],
+      "metadata": {"bank_type": "booth", "source": "TeleportLocationData.DRAYNOR_VILLAGE"}
+    },
+    {
+      "id": "draynor_agility",
+      "name": "Draynor Village Rooftop Course",
+      "x": 3103,
+      "y": 3279,
+      "plane": 0,
+      "type": "TRAINING",
+      "tags": ["f2p", "safe", "agility"],
+      "metadata": {"agility_level": "10", "source": "AgilityCourseLocation.DRAYNOR_VILLAGE_ROOFTOP_COURSE"}
+    },
+    {
+      "id": "draynor_manor",
+      "name": "Draynor Manor",
+      "x": 3108,
+      "y": 3352,
+      "plane": 0,
+      "type": "TELEPORT",
+      "tags": ["f2p", "safe", "teleport_arceuus"],
+      "metadata": {"teleport_name": "Draynor Manor Teleport", "magic_level": "17", "source": "TeleportLocationData.DRAYNOR_MANOR"}
+    },
+    {
+      "id": "draynor_manor_basement",
+      "name": "Draynor Manor Basement",
+      "x": 3114,
+      "y": 3357,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "safe", "dungeon"],
+      "metadata": {"source": "DungeonLocation.DRAYNOR_MANOR_E"}
+    },
+    {
+      "id": "draynor_sewers",
+      "name": "Draynor Sewers",
+      "x": 3083,
+      "y": 3272,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "dangerous", "dungeon"],
+      "metadata": {"source": "DungeonLocation.DRAYNOR_SEWERS_NW"}
+    },
+    {
+      "id": "edgeville",
+      "name": "Edgeville Bank",
+      "x": 3087,
+      "y": 3496,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["f2p", "safe", "teleport_glory"],
+      "metadata": {"bank_type": "booth", "source": "TeleportLocationData.EDGEVILLE"}
+    },
+    {
+      "id": "edgeville_dungeon",
+      "name": "Edgeville Dungeon",
+      "x": 3096,
+      "y": 3469,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "dangerous", "dungeon", "wilderness_adjacent"],
+      "metadata": {"source": "DungeonLocation.EDGEVILLE"}
+    },
+    {
+      "id": "barbarian_village",
+      "name": "Barbarian Village",
+      "x": 3082,
+      "y": 3420,
+      "plane": 0,
+      "type": "TRAINING",
+      "tags": ["f2p", "safe", "fishing", "mining"],
+      "metadata": {}
+    },
+    {
+      "id": "stronghold_of_security",
+      "name": "Stronghold of Security",
+      "x": 3081,
+      "y": 3421,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "dangerous", "dungeon", "teleport_skull_sceptre"],
+      "metadata": {"source": "TeleportLocationData.STRONGHOLD_OF_SECURITY"}
+    },
+    {
+      "id": "champions_guild",
+      "name": "Champions' Guild",
+      "x": 3189,
+      "y": 3368,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "safe", "teleport_combat_bracelet", "teleport_chronicle"],
+      "metadata": {"source": "TeleportLocationData.CHAMPIONS_GUILD"}
+    },
+    {
+      "id": "cooking_guild",
+      "name": "Cooking Guild",
+      "x": 3145,
+      "y": 3438,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["members", "safe", "teleport_skills_necklace"],
+      "metadata": {"cooking_level": "32", "source": "TeleportLocationData.COOKING_GUILD"}
+    },
+    {
+      "id": "digsite",
+      "name": "Digsite",
+      "x": 3339,
+      "y": 3445,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "teleport_digsite_pendant"],
+      "metadata": {"source": "TeleportLocationData.DIGSITE"}
+    },
+    {
+      "id": "senntisten",
+      "name": "Senntisten (Digsite Dungeon)",
+      "x": 3319,
+      "y": 3336,
+      "plane": 0,
+      "type": "TELEPORT",
+      "tags": ["members", "safe", "teleport_ancient"],
+      "metadata": {"teleport_name": "Senntisten Teleport", "magic_level": "60", "source": "TeleportLocationData.SENNTISTEN"}
+    },
+    {
+      "id": "lumberyard",
+      "name": "Lumberyard",
+      "x": 3303,
+      "y": 3487,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "teleport_scroll"],
+      "metadata": {"source": "TeleportLocationData.LUMBERYARD_SCROLL"}
+    },
+    {
+      "id": "wizards_tower",
+      "name": "Wizards' Tower",
+      "x": 3114,
+      "y": 3181,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "safe", "teleport_necklace_passage", "fairy_ring"],
+      "metadata": {"fairy_ring_code": "DIS", "source": "TeleportLocationData.WIZARDS_TOWER"}
+    },
+    {
+      "id": "wizards_tower_basement",
+      "name": "Wizards' Tower Basement",
+      "x": 3103,
+      "y": 3162,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "safe", "dungeon"],
+      "metadata": {"source": "DungeonLocation.WIZARDS_TOWER"}
+    },
+    {
+      "id": "ham_hideout",
+      "name": "H.A.M. Hideout",
+      "x": 3164,
+      "y": 3252,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "safe", "dungeon", "thieving"],
+      "metadata": {"source": "DungeonLocation.HAM_HIDEOUT"}
+    },
+    {
+      "id": "water_altar",
+      "name": "Water Altar",
+      "x": 3185,
+      "y": 3165,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "safe", "runecrafting"],
+      "metadata": {"runecrafting_level": "5", "source": "RunecraftingAltarLocation.WATER_ALTAR"}
+    },
+    {
+      "id": "earth_altar",
+      "name": "Earth Altar",
+      "x": 3306,
+      "y": 3474,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "safe", "runecrafting", "teleport_ring_elements"],
+      "metadata": {"runecrafting_level": "9", "source": "RunecraftingAltarLocation.EARTH_ALTAR"}
+    },
+    {
+      "id": "fire_altar",
+      "name": "Fire Altar",
+      "x": 3313,
+      "y": 3255,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "safe", "runecrafting", "teleport_ring_elements"],
+      "metadata": {"runecrafting_level": "14", "source": "RunecraftingAltarLocation.FIRE_ALTAR"}
+    },
+    {
+      "id": "al_kharid",
+      "name": "Al Kharid",
+      "x": 3293,
+      "y": 3163,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["f2p", "safe", "teleport_glory"],
+      "metadata": {"bank_type": "booth", "source": "TeleportLocationData.AL_KHARID"}
+    },
+    {
+      "id": "al_kharid_agility",
+      "name": "Al Kharid Rooftop Course",
+      "x": 3272,
+      "y": 3195,
+      "plane": 0,
+      "type": "TRAINING",
+      "tags": ["f2p", "safe", "agility"],
+      "metadata": {"source": "AgilityCourseLocation.AL_KHARID_ROOFTOP_COURSE"}
+    },
+    {
+      "id": "emirs_arena",
+      "name": "Emir's Arena",
+      "x": 3315,
+      "y": 3235,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "safe", "teleport_rod", "minigame"],
+      "metadata": {"source": "TeleportLocationData.EMIRS_ARENA"}
+    },
+    {
+      "id": "sorceress_garden",
+      "name": "Sorceress's Garden",
+      "x": 3285,
+      "y": 3180,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "minigame", "thieving"],
+      "metadata": {"source": "MinigameLocation.SORCERESSS_GARDEN"}
+    },
+    {
+      "id": "mage_training_arena",
+      "name": "Mage Training Arena",
+      "x": 3362,
+      "y": 3318,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "minigame", "magic"],
+      "metadata": {"source": "MinigameLocation.MAGE_TRAINING_ARENA"}
+    },
+    {
+      "id": "tolnas_rift",
+      "name": "Tolna's Rift",
+      "x": 3308,
+      "y": 3450,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "dungeon"],
+      "metadata": {"source": "DungeonLocation.TOLNAS_RIFT"}
+    },
+    {
+      "id": "paterdomus",
+      "name": "Paterdomus",
+      "x": 3404,
+      "y": 3506,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "safe", "quest"],
+      "metadata": {"source": "DungeonLocation.PATERDOMUS"}
+    },
+    {
+      "id": "ferox_enclave",
+      "name": "Ferox Enclave",
+      "x": 3151,
+      "y": 3636,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["f2p", "safe", "wilderness_adjacent", "teleport_rod"],
+      "metadata": {"bank_type": "booth", "source": "TeleportLocationData.FEROX_ENCLAVE"}
+    },
+    {
+      "id": "clan_wars",
+      "name": "Clan Wars",
+      "x": 3133,
+      "y": 3621,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "safe", "minigame"],
+      "metadata": {"source": "MinigameLocation.CLAN_WARS"}
+    },
+    {
+      "id": "games_zone",
+      "name": "Games Zone",
+      "x": 3142,
+      "y": 3473,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "safe", "minigame"],
+      "metadata": {"source": "MinigameLocation.GAMES_ZONE"}
+    },
+    {
+      "id": "sourhog_cave",
+      "name": "Sourhog Cave",
+      "x": 3149,
+      "y": 3347,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "safe", "dungeon", "quest"],
+      "metadata": {"source": "DungeonLocation.SOURHOG_CAVE"}
+    }
+  ],
+  "edges": [
+    {"from": "varrock_center", "to": "varrock_ge", "type": "WALK", "cost_ticks": 45, "bidirectional": true},
+    {"from": "varrock_center", "to": "varrock_west_bank", "type": "WALK", "cost_ticks": 15, "bidirectional": true},
+    {"from": "varrock_center", "to": "varrock_east_bank", "type": "WALK", "cost_ticks": 25, "bidirectional": true},
+    {"from": "varrock_center", "to": "varrock_agility", "type": "WALK", "cost_ticks": 5, "bidirectional": true},
+    {"from": "varrock_center", "to": "champions_guild", "type": "WALK", "cost_ticks": 50, "bidirectional": true},
+    {"from": "varrock_center", "to": "digsite", "type": "WALK", "cost_ticks": 90, "bidirectional": true},
+    {"from": "varrock_center", "to": "varrock_sewers", "type": "WALK", "cost_ticks": 30, "bidirectional": true},
+    {"from": "varrock_center", "to": "cooking_guild", "type": "WALK", "cost_ticks": 30, "bidirectional": true},
+    {"from": "varrock_ge", "to": "edgeville", "type": "WALK", "cost_ticks": 40, "bidirectional": true},
+    {"from": "varrock_ge", "to": "games_zone", "type": "WALK", "cost_ticks": 20, "bidirectional": true},
+    {"from": "lumbridge_spawn", "to": "lumbridge_bank", "type": "STAIRS", "cost_ticks": 5, "bidirectional": true},
+    {"from": "lumbridge_spawn", "to": "lumbridge_cellar", "type": "STAIRS", "cost_ticks": 3, "bidirectional": true},
+    {"from": "lumbridge_spawn", "to": "draynor_village", "type": "WALK", "cost_ticks": 100, "bidirectional": true},
+    {"from": "lumbridge_spawn", "to": "barbarian_village", "type": "WALK", "cost_ticks": 150, "bidirectional": true},
+    {"from": "lumbridge_spawn", "to": "al_kharid", "type": "TOLL", "cost_ticks": 40, "bidirectional": true, "metadata": {"toll_cost": "10", "free_after_quest": "Prince Ali Rescue"}},
+    {"from": "lumbridge_spawn", "to": "ham_hideout", "type": "WALK", "cost_ticks": 40, "bidirectional": true},
+    {"from": "lumbridge_spawn", "to": "lumbridge_swamp_caves", "type": "WALK", "cost_ticks": 60, "bidirectional": true},
+    {"from": "draynor_village", "to": "draynor_manor", "type": "WALK", "cost_ticks": 60, "bidirectional": true},
+    {"from": "draynor_village", "to": "wizards_tower", "type": "WALK", "cost_ticks": 60, "bidirectional": true},
+    {"from": "draynor_village", "to": "draynor_agility", "type": "WALK", "cost_ticks": 20, "bidirectional": true},
+    {"from": "draynor_village", "to": "draynor_sewers", "type": "WALK", "cost_ticks": 15, "bidirectional": true},
+    {"from": "draynor_manor", "to": "draynor_manor_basement", "type": "STAIRS", "cost_ticks": 3, "bidirectional": true},
+    {"from": "edgeville", "to": "barbarian_village", "type": "WALK", "cost_ticks": 70, "bidirectional": true},
+    {"from": "edgeville", "to": "edgeville_dungeon", "type": "WALK", "cost_ticks": 20, "bidirectional": true},
+    {"from": "edgeville", "to": "ferox_enclave", "type": "WALK", "cost_ticks": 100, "bidirectional": true},
+    {"from": "barbarian_village", "to": "stronghold_of_security", "type": "WALK", "cost_ticks": 5, "bidirectional": true},
+    {"from": "al_kharid", "to": "al_kharid_agility", "type": "WALK", "cost_ticks": 30, "bidirectional": true},
+    {"from": "al_kharid", "to": "emirs_arena", "type": "WALK", "cost_ticks": 25, "bidirectional": true},
+    {"from": "al_kharid", "to": "fire_altar", "type": "WALK", "cost_ticks": 60, "bidirectional": true},
+    {"from": "al_kharid", "to": "mage_training_arena", "type": "WALK", "cost_ticks": 70, "bidirectional": true},
+    {"from": "emirs_arena", "to": "sorceress_garden", "type": "WALK", "cost_ticks": 40, "bidirectional": true},
+    {"from": "wizards_tower", "to": "water_altar", "type": "WALK", "cost_ticks": 20, "bidirectional": true},
+    {"from": "wizards_tower", "to": "wizards_tower_basement", "type": "STAIRS", "cost_ticks": 3, "bidirectional": true},
+    {"from": "digsite", "to": "senntisten", "type": "WALK", "cost_ticks": 80, "bidirectional": true},
+    {"from": "digsite", "to": "earth_altar", "type": "WALK", "cost_ticks": 30, "bidirectional": true},
+    {"from": "digsite", "to": "lumberyard", "type": "WALK", "cost_ticks": 40, "bidirectional": true},
+    {"from": "digsite", "to": "tolnas_rift", "type": "WALK", "cost_ticks": 20, "bidirectional": true},
+    {"from": "varrock_east_bank", "to": "paterdomus", "type": "WALK", "cost_ticks": 110, "bidirectional": true},
+    {"from": "ferox_enclave", "to": "clan_wars", "type": "WALK", "cost_ticks": 15, "bidirectional": true},
+    {"from": "champions_guild", "to": "sourhog_cave", "type": "WALK", "cost_ticks": 20, "bidirectional": true}
+  ]
+}

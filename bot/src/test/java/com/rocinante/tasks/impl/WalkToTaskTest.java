@@ -3,6 +3,7 @@ package com.rocinante.tasks.impl;
 import com.rocinante.navigation.NavigationEdge;
 import com.rocinante.navigation.NavigationPath;
 import com.rocinante.navigation.WebEdgeType;
+import com.rocinante.tasks.impl.TravelTask;
 import net.runelite.api.coords.WorldPoint;
 import org.junit.Test;
 
@@ -14,7 +15,7 @@ import static org.junit.Assert.*;
 
 /**
  * Tests for WalkToTask.
- * Tests constructors, builder methods, edge type handling, and TeleportTask creation.
+ * Tests constructors, builder methods, edge type handling, and TravelTask creation.
  */
 public class WalkToTaskTest {
 
@@ -190,67 +191,67 @@ public class WalkToTaskTest {
     }
 
     // ========================================================================
-    // TeleportTask Factory Method Tests
+    // TravelTask Factory Method Tests
     // ========================================================================
 
     @Test
-    public void testTeleportTask_FromSpellMetadata() {
+    public void testTravelTask_FromSpellMetadata() {
         Map<String, String> metadata = Map.of(
                 "teleport_type", "spell",
                 "spell_name", "Varrock Teleport"
         );
 
-        TeleportTask teleportTask = TeleportTask.fromNavigationMetadata(metadata);
+        TravelTask travelTask = TravelTask.fromNavigationMetadata(metadata);
 
-        assertNotNull(teleportTask);
-        assertEquals("Cast Varrock Teleport", teleportTask.getDescription());
-        assertEquals(TeleportTask.TeleportMethod.SPELL, teleportTask.getMethod());
-        assertEquals("Varrock Teleport", teleportTask.getSpellName());
+        assertNotNull(travelTask);
+        assertEquals("Cast Varrock Teleport", travelTask.getDescription());
+        assertEquals(TravelTask.TravelMethod.SPELL, travelTask.getMethod());
+        assertEquals("Varrock Teleport", travelTask.getSpellName());
     }
 
     @Test
-    public void testTeleportTask_HomeTeleport() {
+    public void testTravelTask_HomeTeleport() {
         Map<String, String> metadata = Map.of("teleport_type", "home_teleport");
 
-        TeleportTask teleportTask = TeleportTask.fromNavigationMetadata(metadata);
+        TravelTask travelTask = TravelTask.fromNavigationMetadata(metadata);
 
-        assertNotNull(teleportTask);
-        assertEquals("Home Teleport", teleportTask.getDescription());
-        assertEquals(TeleportTask.TeleportMethod.HOME_TELEPORT, teleportTask.getMethod());
+        assertNotNull(travelTask);
+        assertEquals("Home Teleport", travelTask.getDescription());
+        assertEquals(TravelTask.TravelMethod.HOME_TELEPORT, travelTask.getMethod());
     }
 
     @Test
-    public void testTeleportTask_TabletMetadata() {
+    public void testTravelTask_TabletMetadata() {
         Map<String, String> metadata = Map.of(
                 "teleport_type", "tablet",
                 "item_id", "8007"
         );
 
-        TeleportTask teleportTask = TeleportTask.fromNavigationMetadata(metadata);
+        TravelTask travelTask = TravelTask.fromNavigationMetadata(metadata);
 
-        assertNotNull(teleportTask);
-        assertEquals(TeleportTask.TeleportMethod.TABLET, teleportTask.getMethod());
-        assertEquals(8007, teleportTask.getItemId());
+        assertNotNull(travelTask);
+        assertEquals(TravelTask.TravelMethod.TABLET, travelTask.getMethod());
+        assertEquals(8007, travelTask.getItemId());
     }
 
     @Test
-    public void testTeleportTask_JewelryMetadata() {
+    public void testTravelTask_JewelryMetadata() {
         Map<String, String> metadata = Map.of(
                 "teleport_type", "jewelry",
                 "item_id", "11978",
                 "teleport_option", "Edgeville"
         );
 
-        TeleportTask teleportTask = TeleportTask.fromNavigationMetadata(metadata);
+        TravelTask travelTask = TravelTask.fromNavigationMetadata(metadata);
 
-        assertNotNull(teleportTask);
-        assertEquals(TeleportTask.TeleportMethod.JEWELRY_EQUIPPED, teleportTask.getMethod());
-        assertEquals(11978, teleportTask.getItemId());
-        assertEquals("Edgeville", teleportTask.getTeleportOption());
+        assertNotNull(travelTask);
+        assertEquals(TravelTask.TravelMethod.JEWELRY_EQUIPPED, travelTask.getMethod());
+        assertEquals(11978, travelTask.getItemId());
+        assertEquals("Edgeville", travelTask.getTeleportOption());
     }
 
     @Test
-    public void testTeleportTask_JewelryInventoryMetadata() {
+    public void testTravelTask_JewelryInventoryMetadata() {
         Map<String, String> metadata = Map.of(
                 "teleport_type", "jewelry",
                 "item_id", "11978",
@@ -258,121 +259,121 @@ public class WalkToTaskTest {
                 "location", "inventory"
         );
 
-        TeleportTask teleportTask = TeleportTask.fromNavigationMetadata(metadata);
+        TravelTask travelTask = TravelTask.fromNavigationMetadata(metadata);
 
-        assertNotNull(teleportTask);
-        assertEquals(TeleportTask.TeleportMethod.JEWELRY_INVENTORY, teleportTask.getMethod());
+        assertNotNull(travelTask);
+        assertEquals(TravelTask.TravelMethod.JEWELRY_INVENTORY, travelTask.getMethod());
     }
 
     @Test
-    public void testTeleportTask_InvalidMetadata_ReturnsNull() {
+    public void testTravelTask_InvalidMetadata_ReturnsNull() {
         Map<String, String> metadata = Map.of("invalid_key", "value");
 
-        TeleportTask teleportTask = TeleportTask.fromNavigationMetadata(metadata);
+        TravelTask travelTask = TravelTask.fromNavigationMetadata(metadata);
 
-        assertNull(teleportTask);
+        assertNull(travelTask);
     }
 
     @Test
-    public void testTeleportTask_NullMetadata_ReturnsNull() {
-        TeleportTask teleportTask = TeleportTask.fromNavigationMetadata(null);
+    public void testTravelTask_NullMetadata_ReturnsNull() {
+        TravelTask travelTask = TravelTask.fromNavigationMetadata(null);
 
-        assertNull(teleportTask);
+        assertNull(travelTask);
     }
 
     @Test
-    public void testTeleportTask_UnknownType_ReturnsNull() {
+    public void testTravelTask_UnknownType_ReturnsNull() {
         Map<String, String> metadata = Map.of("teleport_type", "unknown_type");
 
-        TeleportTask teleportTask = TeleportTask.fromNavigationMetadata(metadata);
+        TravelTask travelTask = TravelTask.fromNavigationMetadata(metadata);
 
-        assertNull(teleportTask);
+        assertNull(travelTask);
     }
 
     // ========================================================================
-    // TeleportTask Direct Factory Methods
+    // TravelTask Direct Factory Methods
     // ========================================================================
 
     @Test
-    public void testTeleportTask_SpellFactory() {
-        TeleportTask task = TeleportTask.spell("Varrock Teleport");
+    public void testTravelTask_SpellFactory() {
+        TravelTask task = TravelTask.spell("Varrock Teleport");
 
-        assertEquals(TeleportTask.TeleportMethod.SPELL, task.getMethod());
+        assertEquals(TravelTask.TravelMethod.SPELL, task.getMethod());
         assertEquals("Varrock Teleport", task.getSpellName());
         assertEquals("Cast Varrock Teleport", task.getDescription());
     }
 
     @Test
-    public void testTeleportTask_SpellWithDestination() {
-        TeleportTask task = TeleportTask.spell("Varrock Teleport", VARROCK);
+    public void testTravelTask_SpellWithDestination() {
+        TravelTask task = TravelTask.spell("Varrock Teleport", VARROCK);
 
-        assertEquals(TeleportTask.TeleportMethod.SPELL, task.getMethod());
+        assertEquals(TravelTask.TravelMethod.SPELL, task.getMethod());
         assertEquals(VARROCK, task.getExpectedDestination());
     }
 
     @Test
-    public void testTeleportTask_HomeTeleportFactory() {
-        TeleportTask task = TeleportTask.homeTeleport();
+    public void testTravelTask_HomeTeleportFactory() {
+        TravelTask task = TravelTask.homeTeleport();
 
-        assertEquals(TeleportTask.TeleportMethod.HOME_TELEPORT, task.getMethod());
+        assertEquals(TravelTask.TravelMethod.HOME_TELEPORT, task.getMethod());
         assertEquals("Home Teleport", task.getDescription());
     }
 
     @Test
-    public void testTeleportTask_TabletFactory() {
-        TeleportTask task = TeleportTask.tablet(8007);
+    public void testTravelTask_TabletFactory() {
+        TravelTask task = TravelTask.tablet(8007);
 
-        assertEquals(TeleportTask.TeleportMethod.TABLET, task.getMethod());
+        assertEquals(TravelTask.TravelMethod.TABLET, task.getMethod());
         assertEquals(8007, task.getItemId());
     }
 
     @Test
-    public void testTeleportTask_JewelryFactory() {
-        TeleportTask task = TeleportTask.jewelry(11978, "Edgeville");
+    public void testTravelTask_JewelryFactory() {
+        TravelTask task = TravelTask.jewelry(11978, "Edgeville");
 
-        assertEquals(TeleportTask.TeleportMethod.JEWELRY_EQUIPPED, task.getMethod());
+        assertEquals(TravelTask.TravelMethod.JEWELRY_EQUIPPED, task.getMethod());
         assertEquals(11978, task.getItemId());
         assertEquals("Edgeville", task.getTeleportOption());
     }
 
     @Test
-    public void testTeleportTask_JewelryFromInventoryFactory() {
-        TeleportTask task = TeleportTask.jewelryFromInventory(11978, "Edgeville");
+    public void testTravelTask_JewelryFromInventoryFactory() {
+        TravelTask task = TravelTask.jewelryFromInventory(11978, "Edgeville");
 
-        assertEquals(TeleportTask.TeleportMethod.JEWELRY_INVENTORY, task.getMethod());
+        assertEquals(TravelTask.TravelMethod.JEWELRY_INVENTORY, task.getMethod());
     }
 
     // ========================================================================
-    // TeleportTask Builder Methods
+    // TravelTask Builder Methods
     // ========================================================================
 
     @Test
-    public void testTeleportTask_WithDestination() {
-        TeleportTask task = TeleportTask.spell("Varrock Teleport")
+    public void testTravelTask_WithDestination() {
+        TravelTask task = TravelTask.spell("Varrock Teleport")
                 .withDestination(VARROCK);
 
         assertEquals(VARROCK, task.getExpectedDestination());
     }
 
     @Test
-    public void testTeleportTask_WithTolerance() {
-        TeleportTask task = TeleportTask.spell("Varrock Teleport")
+    public void testTravelTask_WithTolerance() {
+        TravelTask task = TravelTask.spell("Varrock Teleport")
                 .withTolerance(15);
 
         assertEquals(15, task.getDestinationTolerance());
     }
 
     @Test
-    public void testTeleportTask_WithVerifyArrival() {
-        TeleportTask task = TeleportTask.spell("Varrock Teleport")
+    public void testTravelTask_WithVerifyArrival() {
+        TravelTask task = TravelTask.spell("Varrock Teleport")
                 .withVerifyArrival(false);
 
         assertFalse(task.isVerifyArrival());
     }
 
     @Test
-    public void testTeleportTask_WithDescription() {
-        TeleportTask task = TeleportTask.spell("Varrock Teleport")
+    public void testTravelTask_WithDescription() {
+        TravelTask task = TravelTask.spell("Varrock Teleport")
                 .withDescription("Custom teleport");
 
         assertEquals("Custom teleport", task.getDescription());

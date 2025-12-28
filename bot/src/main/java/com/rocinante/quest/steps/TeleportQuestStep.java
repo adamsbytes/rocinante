@@ -2,7 +2,7 @@ package com.rocinante.quest.steps;
 
 import com.rocinante.tasks.Task;
 import com.rocinante.tasks.TaskContext;
-import com.rocinante.tasks.impl.TeleportTask;
+import com.rocinante.tasks.impl.TravelTask;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.experimental.Accessors;
@@ -14,7 +14,7 @@ import java.util.List;
 /**
  * Quest step for teleporting to a location.
  *
- * <p>This step generates a {@link TeleportTask} configured for the specified teleport method.
+ * <p>This step generates a {@link TravelTask} configured for the specified teleport method.
  * Supports various teleport types:
  * <ul>
  *   <li>Spellbook teleports (Varrock, Lumbridge, etc.)</li>
@@ -49,7 +49,7 @@ public class TeleportQuestStep extends QuestStep {
     /**
      * The teleport method to use.
      */
-    private TeleportTask.TeleportMethod method;
+    private TravelTask.TravelMethod method;
 
     /**
      * Spell name for spell teleports.
@@ -106,7 +106,7 @@ public class TeleportQuestStep extends QuestStep {
      * @param method teleport method
      * @param text   instruction text
      */
-    public TeleportQuestStep(TeleportTask.TeleportMethod method, String text) {
+    public TeleportQuestStep(TravelTask.TravelMethod method, String text) {
         super(text);
         this.method = method;
     }
@@ -120,65 +120,65 @@ public class TeleportQuestStep extends QuestStep {
     public List<Task> toTasks(TaskContext ctx) {
         List<Task> tasks = new ArrayList<>();
 
-        TeleportTask teleportTask = buildTeleportTask();
-        if (teleportTask != null) {
-            tasks.add(teleportTask);
+        TravelTask travelTask = buildTravelTask();
+        if (travelTask != null) {
+            tasks.add(travelTask);
         }
 
         return tasks;
     }
 
     /**
-     * Build the appropriate TeleportTask based on configuration.
+     * Build the appropriate TravelTask based on configuration.
      */
-    private TeleportTask buildTeleportTask() {
+    private TravelTask buildTravelTask() {
         if (method == null) {
             // Try to infer from available data
             if (spellName != null) {
-                method = TeleportTask.TeleportMethod.SPELL;
+                method = TravelTask.TravelMethod.SPELL;
             } else if (tabletItemId > 0) {
-                method = TeleportTask.TeleportMethod.TABLET;
+                method = TravelTask.TravelMethod.TABLET;
             } else if (fairyRingCode != null) {
-                method = TeleportTask.TeleportMethod.FAIRY_RING;
+                method = TravelTask.TravelMethod.FAIRY_RING;
             } else if (spiritTreeDestination != null) {
-                method = TeleportTask.TeleportMethod.SPIRIT_TREE;
+                method = TravelTask.TravelMethod.SPIRIT_TREE;
             } else if (jewelryItemId > 0) {
                 method = jewelryEquipped ? 
-                        TeleportTask.TeleportMethod.JEWELRY_EQUIPPED : 
-                        TeleportTask.TeleportMethod.JEWELRY_INVENTORY;
+                        TravelTask.TravelMethod.JEWELRY_EQUIPPED : 
+                        TravelTask.TravelMethod.JEWELRY_INVENTORY;
             } else {
                 // Default to home teleport
-                method = TeleportTask.TeleportMethod.HOME_TELEPORT;
+                method = TravelTask.TravelMethod.HOME_TELEPORT;
             }
         }
 
         switch (method) {
             case SPELL:
-                return TeleportTask.spell(spellName);
+                return TravelTask.spell(spellName);
 
             case HOME_TELEPORT:
-                return TeleportTask.homeTeleport();
+                return TravelTask.homeTeleport();
 
             case TABLET:
-                return TeleportTask.tablet(tabletItemId);
+                return TravelTask.tablet(tabletItemId);
 
             case JEWELRY_EQUIPPED:
-                return TeleportTask.jewelryEquipped(jewelryItemId, teleportOption);
+                return TravelTask.jewelry(jewelryItemId, teleportOption);
 
             case JEWELRY_INVENTORY:
-                return TeleportTask.jewelryInventory(jewelryItemId, teleportOption);
+                return TravelTask.jewelryFromInventory(jewelryItemId, teleportOption);
 
             case FAIRY_RING:
-                return TeleportTask.fairyRing(fairyRingCode);
+                return TravelTask.fairyRing(fairyRingCode);
 
             case SPIRIT_TREE:
-                return TeleportTask.spiritTree(spiritTreeDestination);
+                return TravelTask.spiritTree(spiritTreeDestination);
 
             case POH_PORTAL:
-                return TeleportTask.pohPortal(teleportOption);
+                return TravelTask.pohPortal(teleportOption);
 
             default:
-                return TeleportTask.homeTeleport();
+                return TravelTask.homeTeleport();
         }
     }
 
@@ -194,7 +194,7 @@ public class TeleportQuestStep extends QuestStep {
      * @return teleport step
      */
     public static TeleportQuestStep spell(String spellName, String text) {
-        TeleportQuestStep step = new TeleportQuestStep(TeleportTask.TeleportMethod.SPELL, text);
+        TeleportQuestStep step = new TeleportQuestStep(TravelTask.TravelMethod.SPELL, text);
         step.spellName = spellName;
         return step;
     }
@@ -206,7 +206,7 @@ public class TeleportQuestStep extends QuestStep {
      * @return teleport step
      */
     public static TeleportQuestStep homeTeleport(String text) {
-        return new TeleportQuestStep(TeleportTask.TeleportMethod.HOME_TELEPORT, text);
+        return new TeleportQuestStep(TravelTask.TravelMethod.HOME_TELEPORT, text);
     }
 
     /**
@@ -217,7 +217,7 @@ public class TeleportQuestStep extends QuestStep {
      * @return teleport step
      */
     public static TeleportQuestStep tablet(int tabletItemId, String text) {
-        TeleportQuestStep step = new TeleportQuestStep(TeleportTask.TeleportMethod.TABLET, text);
+        TeleportQuestStep step = new TeleportQuestStep(TravelTask.TravelMethod.TABLET, text);
         step.tabletItemId = tabletItemId;
         return step;
     }
@@ -230,7 +230,7 @@ public class TeleportQuestStep extends QuestStep {
      * @return teleport step
      */
     public static TeleportQuestStep fairyRing(String code, String text) {
-        TeleportQuestStep step = new TeleportQuestStep(TeleportTask.TeleportMethod.FAIRY_RING, text);
+        TeleportQuestStep step = new TeleportQuestStep(TravelTask.TravelMethod.FAIRY_RING, text);
         step.fairyRingCode = code;
         return step;
     }
@@ -243,7 +243,7 @@ public class TeleportQuestStep extends QuestStep {
      * @return teleport step
      */
     public static TeleportQuestStep spiritTree(String destination, String text) {
-        TeleportQuestStep step = new TeleportQuestStep(TeleportTask.TeleportMethod.SPIRIT_TREE, text);
+        TeleportQuestStep step = new TeleportQuestStep(TravelTask.TravelMethod.SPIRIT_TREE, text);
         step.spiritTreeDestination = destination;
         return step;
     }
@@ -257,7 +257,7 @@ public class TeleportQuestStep extends QuestStep {
      * @return teleport step
      */
     public static TeleportQuestStep jewelryEquipped(int jewelryItemId, String destination, String text) {
-        TeleportQuestStep step = new TeleportQuestStep(TeleportTask.TeleportMethod.JEWELRY_EQUIPPED, text);
+        TeleportQuestStep step = new TeleportQuestStep(TravelTask.TravelMethod.JEWELRY_EQUIPPED, text);
         step.jewelryItemId = jewelryItemId;
         step.teleportOption = destination;
         step.jewelryEquipped = true;
@@ -273,7 +273,7 @@ public class TeleportQuestStep extends QuestStep {
      * @return teleport step
      */
     public static TeleportQuestStep jewelryInventory(int jewelryItemId, String destination, String text) {
-        TeleportQuestStep step = new TeleportQuestStep(TeleportTask.TeleportMethod.JEWELRY_INVENTORY, text);
+        TeleportQuestStep step = new TeleportQuestStep(TravelTask.TravelMethod.JEWELRY_INVENTORY, text);
         step.jewelryItemId = jewelryItemId;
         step.teleportOption = destination;
         step.jewelryEquipped = false;
@@ -288,7 +288,7 @@ public class TeleportQuestStep extends QuestStep {
      * @return teleport step
      */
     public static TeleportQuestStep pohPortal(String destination, String text) {
-        TeleportQuestStep step = new TeleportQuestStep(TeleportTask.TeleportMethod.POH_PORTAL, text);
+        TeleportQuestStep step = new TeleportQuestStep(TravelTask.TravelMethod.POH_PORTAL, text);
         step.teleportOption = destination;
         return step;
     }

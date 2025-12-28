@@ -6,7 +6,7 @@ import com.rocinante.quest.steps.*;
 import com.rocinante.state.StateCondition;
 import com.rocinante.tasks.impl.DialogueOptionResolver;
 import com.rocinante.tasks.impl.EmoteTask;
-import com.rocinante.tasks.impl.TeleportTask;
+import com.rocinante.tasks.impl.TravelTask;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.coords.WorldPoint;

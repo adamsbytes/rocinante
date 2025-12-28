@@ -1,0 +1,214 @@
+{
+  "_comment": "Ship routes - validated from RuneLite source (TransportationPointLocation.java)",
+  "_source": "/tmp/runelite-src/runelite-client/src/main/java/net/runelite/client/plugins/worldmap/TransportationPointLocation.java",
+  "routes": [
+    {
+      "id": "ship_portsarim_karamja",
+      "name": "Port Sarim to Karamja",
+      "from": {"x": 3029, "y": 3218, "plane": 0},
+      "to": {"x": 2954, "y": 3145, "plane": 0},
+      "bidirectional": true,
+      "fare": 30,
+      "tags": ["asgarnia", "karamja", "f2p"]
+    },
+    {
+      "id": "ship_ardougne_brimhaven",
+      "name": "Ardougne to Brimhaven",
+      "from": {"x": 2675, "y": 3275, "plane": 0},
+      "to": {"x": 2772, "y": 3234, "plane": 0},
+      "bidirectional": true,
+      "fare": 30,
+      "tags": ["kandarin", "karamja"]
+    },
+    {
+      "id": "ship_portsarim_entrana",
+      "name": "Port Sarim to Entrana",
+      "from": {"x": 3046, "y": 3233, "plane": 0},
+      "to": {"x": 2833, "y": 3334, "plane": 0},
+      "bidirectional": true,
+      "fare": 0,
+      "tags": ["asgarnia"],
+      "_note": "No weapons/armour allowed on Entrana"
+    },
+    {
+      "id": "ship_portsarim_crandor",
+      "name": "Port Sarim to Crandor",
+      "from": {"x": 3045, "y": 3205, "plane": 0},
+      "to": {"x": 2839, "y": 3261, "plane": 0},
+      "bidirectional": true,
+      "requirements": {"quest": "Dragon Slayer I"},
+      "tags": ["asgarnia", "karamja"]
+    },
+    {
+      "id": "ship_portsarim_pestcontrol",
+      "name": "Port Sarim to Pest Control",
+      "from": {"x": 3039, "y": 3201, "plane": 0},
+      "to": {"x": 2659, "y": 2675, "plane": 0},
+      "bidirectional": true,
+      "fare": 0,
+      "tags": ["asgarnia"]
+    },
+    {
+      "id": "ship_portsarim_kourend",
+      "name": "Port Sarim to Great Kourend",
+      "from": {"x": 3054, "y": 3244, "plane": 0},
+      "to": {"x": 1823, "y": 3692, "plane": 0},
+      "bidirectional": true,
+      "fare": 0,
+      "tags": ["asgarnia", "kourend"]
+    },
+    {
+      "id": "ship_ardougne_fishingplatform",
+      "name": "Ardougne to Fishing Platform",
+      "from": {"x": 2722, "y": 3304, "plane": 0},
+      "to": {"x": 2779, "y": 3271, "plane": 0},
+      "bidirectional": true,
+      "requirements": {"quest": "Sea Slug"},
+      "tags": ["kandarin"]
+    },
+    {
+      "id": "ship_rellekka_miscellania",
+      "name": "Rellekka to Miscellania",
+      "from": {"x": 2627, "y": 3692, "plane": 0},
+      "to": {"x": 2579, "y": 3846, "plane": 0},
+      "bidirectional": true,
+      "requirements": {"quest": "The Fremennik Trials"},
+      "tags": ["fremennik"]
+    },
+    {
+      "id": "ship_rellekka_jatizso",
+      "name": "Rellekka to Jatizso/Neitiznot",
+      "from": {"x": 2639, "y": 3710, "plane": 0},
+      "to_jatizso": {"x": 2420, "y": 3780, "plane": 0},
+      "to_neitiznot": {"x": 2310, "y": 3779, "plane": 0},
+      "bidirectional": true,
+      "requirements": {"quest": "The Fremennik Isles"},
+      "tags": ["fremennik"]
+    },
+    {
+      "id": "ship_rellekka_waterbirth",
+      "name": "Rellekka to Waterbirth Island",
+      "from": {"x": 2618, "y": 3685, "plane": 0},
+      "to": {"x": 2549, "y": 3758, "plane": 0},
+      "bidirectional": true,
+      "tags": ["fremennik"]
+    },
+    {
+      "id": "ship_rellekka_pirates_cove",
+      "name": "Rellekka to Pirates' Cove",
+      "from": {"x": 2620, "y": 3695, "plane": 0},
+      "to": {"x": 2212, "y": 3794, "plane": 0},
+      "bidirectional": true,
+      "requirements": {"quest": "Lunar Diplomacy (started)"},
+      "tags": ["fremennik"]
+    },
+    {
+      "id": "ship_pirates_cove_lunar",
+      "name": "Pirates' Cove to Lunar Isle",
+      "from": {"x": 2223, "y": 3796, "plane": 0},
+      "to": {"x": 2137, "y": 3899, "plane": 0},
+      "bidirectional": true,
+      "requirements": {"quest": "Lunar Diplomacy (started)"},
+      "tags": ["fremennik", "lunar"]
+    },
+    {
+      "id": "ship_rellekka_ungael",
+      "name": "Rellekka to Ungael",
+      "from": {"x": 2638, "y": 3698, "plane": 0},
+      "to": {"x": 2276, "y": 4034, "plane": 0},
+      "bidirectional": true,
+      "requirements": {"quest": "Dragon Slayer II"},
+      "tags": ["fremennik"]
+    },
+    {
+      "id": "ship_rellekka_weiss",
+      "name": "Rellekka to Weiss/Iceberg",
+      "from": {"x": 2707, "y": 3735, "plane": 0},
+      "to_weiss": {"x": 2847, "y": 3967, "plane": 0},
+      "to_iceberg": {"x": 2657, "y": 3988, "plane": 0},
+      "bidirectional": true,
+      "requirements": {"quest": "Making Friends with My Arm"},
+      "tags": ["fremennik"]
+    },
+    {
+      "id": "ship_phasmatys_harmless",
+      "name": "Port Phasmatys to Mos Le'Harmless",
+      "from": {"x": 3709, "y": 3497, "plane": 0},
+      "to": {"x": 3682, "y": 2951, "plane": 0},
+      "bidirectional": true,
+      "requirements": {"quest": "Cabin Fever"},
+      "tags": ["morytania"]
+    },
+    {
+      "id": "ship_phasmatys_dragontooth",
+      "name": "Port Phasmatys to Dragontooth Island",
+      "from": {"x": 3703, "y": 3487, "plane": 0},
+      "to": {"x": 3791, "y": 3561, "plane": 0},
+      "bidirectional": true,
+      "requirements": {"quest": "Ghosts Ahoy"},
+      "tags": ["morytania"]
+    },
+    {
+      "id": "ship_digsite_fossil",
+      "name": "Digsite to Fossil Island",
+      "from": {"x": 3361, "y": 3448, "plane": 0},
+      "to": {"x": 3723, "y": 3807, "plane": 0},
+      "bidirectional": true,
+      "requirements": {"quest": "Bone Voyage"},
+      "tags": ["misthalin"]
+    },
+    {
+      "id": "ship_rimmington_corsair",
+      "name": "Rimmington to Corsair Cove",
+      "from": {"x": 2909, "y": 3227, "plane": 0},
+      "to": {"x": 2577, "y": 2839, "plane": 0},
+      "bidirectional": true,
+      "tags": ["asgarnia", "feldip"]
+    },
+    {
+      "id": "ship_karamja_apeatoll",
+      "name": "Karamja (Crash Island) to Ape Atoll",
+      "from": {"x": 2891, "y": 2726, "plane": 0},
+      "to": {"x": 2802, "y": 2706, "plane": 0},
+      "bidirectional": true,
+      "requirements": {"quest": "Monkey Madness I"},
+      "tags": ["karamja"]
+    },
+    {
+      "id": "ship_karamja_khazard",
+      "name": "Karamja to Port Khazard",
+      "from": {"x": 2763, "y": 2957, "plane": 0},
+      "to": {"x": 2653, "y": 3166, "plane": 0},
+      "bidirectional": true,
+      "tags": ["karamja", "kandarin"]
+    },
+    {
+      "id": "ship_catherby_keepLeFaye",
+      "name": "Catherby to Keep Le Faye",
+      "from": {"x": 2804, "y": 3421, "plane": 0},
+      "to": {"x": 2769, "y": 3402, "plane": 0},
+      "bidirectional": true,
+      "requirements": {"quest": "King's Ransom"},
+      "tags": ["kandarin"]
+    },
+    {
+      "id": "ship_aldarin_sunset",
+      "name": "Aldarin to Sunset Coast",
+      "from": {"x": 1443, "y": 2976, "plane": 0},
+      "to": {"x": 1492, "y": 2985, "plane": 0},
+      "bidirectional": true,
+      "tags": ["varlamore"]
+    }
+  ],
+  "ferries": [
+    {
+      "id": "ferry_alkharid_unkah",
+      "name": "Al Kharid to Ruins of Unkah",
+      "from": {"x": 3269, "y": 3142, "plane": 0},
+      "to": {"x": 3145, "y": 2843, "plane": 0},
+      "bidirectional": true,
+      "tags": ["kharidian"]
+    }
+  ]
+}
+

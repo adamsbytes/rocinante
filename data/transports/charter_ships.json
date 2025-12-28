@@ -1,0 +1,178 @@
+{
+  "_comment": "Charter Ship locations - validated from RuneLite source (TransportationPointLocation.java)",
+  "_source": "/tmp/runelite-src/runelite-client/src/main/java/net/runelite/client/plugins/worldmap/TransportationPointLocation.java",
+  "ports": [
+    {
+      "id": "charter_portsarim",
+      "name": "Port Sarim",
+      "x": 3037,
+      "y": 3191,
+      "plane": 0,
+      "tags": ["asgarnia", "f2p_adjacent"]
+    },
+    {
+      "id": "charter_karamja_north",
+      "name": "Musa Point (Karamja)",
+      "x": 2954,
+      "y": 3158,
+      "plane": 0,
+      "tags": ["karamja"]
+    },
+    {
+      "id": "charter_karamja_east",
+      "name": "Ship Yard (Karamja)",
+      "x": 2999,
+      "y": 3032,
+      "plane": 0,
+      "tags": ["karamja"]
+    },
+    {
+      "id": "charter_brimhaven",
+      "name": "Brimhaven",
+      "x": 2760,
+      "y": 3238,
+      "plane": 0,
+      "tags": ["karamja"]
+    },
+    {
+      "id": "charter_catherby",
+      "name": "Catherby",
+      "x": 2791,
+      "y": 3415,
+      "plane": 0,
+      "tags": ["kandarin"]
+    },
+    {
+      "id": "charter_khazard",
+      "name": "Port Khazard",
+      "x": 2673,
+      "y": 3143,
+      "plane": 0,
+      "tags": ["kandarin"]
+    },
+    {
+      "id": "charter_tyras",
+      "name": "Port Tyras",
+      "x": 2141,
+      "y": 3123,
+      "plane": 0,
+      "tags": ["tirannwn"],
+      "requirements": {
+        "quest": "Regicide"
+      }
+    },
+    {
+      "id": "charter_phasmatys",
+      "name": "Port Phasmatys",
+      "x": 3702,
+      "y": 3503,
+      "plane": 0,
+      "tags": ["morytania"]
+    },
+    {
+      "id": "charter_harmless",
+      "name": "Mos Le'Harmless",
+      "x": 3669,
+      "y": 2931,
+      "plane": 0,
+      "tags": ["morytania"],
+      "requirements": {
+        "quest": "Cabin Fever"
+      }
+    },
+    {
+      "id": "charter_corsair",
+      "name": "Corsair Cove",
+      "x": 2589,
+      "y": 2851,
+      "plane": 0,
+      "tags": ["feldip"],
+      "requirements": {
+        "quest": "The Corsair Curse"
+      }
+    },
+    {
+      "id": "charter_prifddinas",
+      "name": "Prifddinas",
+      "x": 2156,
+      "y": 3331,
+      "plane": 0,
+      "tags": ["tirannwn"],
+      "requirements": {
+        "quest": "Song of the Elves"
+      }
+    },
+    {
+      "id": "charter_prifddinas_instance",
+      "name": "Prifddinas (Instance)",
+      "x": 3180,
+      "y": 6083,
+      "plane": 0,
+      "tags": ["tirannwn"],
+      "requirements": {
+        "quest": "Song of the Elves"
+      },
+      "_note": "Instanced version"
+    },
+    {
+      "id": "charter_pandemonium",
+      "name": "The Pandemonium",
+      "x": 3061,
+      "y": 2999,
+      "plane": 0,
+      "tags": ["karamja"]
+    },
+    {
+      "id": "charter_aldarin",
+      "name": "Aldarin",
+      "x": 1455,
+      "y": 2968,
+      "plane": 0,
+      "tags": ["varlamore"]
+    },
+    {
+      "id": "charter_civitas",
+      "name": "Civitas illa Fortis",
+      "x": 1743,
+      "y": 3136,
+      "plane": 0,
+      "tags": ["varlamore"]
+    },
+    {
+      "id": "charter_sunset_coast",
+      "name": "Sunset Coast",
+      "x": 1513,
+      "y": 2970,
+      "plane": 0,
+      "tags": ["varlamore"]
+    },
+    {
+      "id": "charter_summer_shore",
+      "name": "Summer Shore",
+      "x": 3186,
+      "y": 2367,
+      "plane": 0,
+      "tags": ["kharidian"]
+    },
+    {
+      "id": "charter_deepfin",
+      "name": "Deepfin Point",
+      "x": 1943,
+      "y": 2753,
+      "plane": 0,
+      "tags": ["varlamore"]
+    }
+  ],
+  "fares": {
+    "_comment": "Base fares between ports (in gold). Ring of Charos (a) reduces by 50%.",
+    "_note": "Fares vary significantly based on distance",
+    "base_fare_range": {
+      "min": 480,
+      "max": 4100
+    },
+    "ring_of_charos_discount": 0.5
+  },
+  "_widget_group": 72,
+  "npc_name": "Trader Crewmember"
+}
+

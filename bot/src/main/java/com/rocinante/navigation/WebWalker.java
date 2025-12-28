@@ -88,6 +88,14 @@ public class WebWalker {
     private double maxAcceptableRisk = 0.10;
 
     /**
+     * Resource awareness for situational cost adjustments.
+     * Affects teleport and travel costs based on account type and resources.
+     */
+    @Setter
+    @Nullable
+    private ResourceAwareness resourceAwareness;
+
+    /**
      * Primary constructor for dependency injection.
      * Uses the full constructor with all optional dependencies.
      */
@@ -617,7 +625,15 @@ public class WebWalker {
     }
 
     /**
-     * Calculate adjusted cost for an edge based on player state.
+     * Calculate adjusted cost for an edge based on player state and resource awareness.
+     *
+     * <p>Cost adjustments consider:
+     * <ul>
+     *   <li>Agility shortcut failure risk</li>
+     *   <li>Toll gate gold costs (situational based on wealth)</li>
+     *   <li>Teleport law rune costs (situational based on account type and rune supply)</li>
+     *   <li>Free travel bonuses (fairy rings, spirit trees for resource-conscious accounts)</li>
+     * </ul>
      */
     private int calculateAdjustedCost(NavigationEdge edge, PlayerRequirements playerReqs) {
         int baseCost = edge.getCostTicks();
@@ -632,19 +648,65 @@ public class WebWalker {
             }
         }
 
-        // Toll gates: add small penalty to prefer free routes
+        // Toll gates: resource-aware penalty
         if (edge.isTollGate()) {
-            // Check if player has free passage
             String freeQuest = edge.getFreePassageQuest();
             if (freeQuest != null && playerReqs.isQuestCompleted(freeQuest)) {
-                // No penalty - free passage
+                // No penalty - free passage from quest completion
             } else if (edge.getTollCost() > 0) {
-                // Add penalty proportional to gold cost
-                baseCost += edge.getTollCost() / 10; // 10gp = 1 tick penalty
+                if (resourceAwareness != null) {
+                    baseCost = resourceAwareness.adjustGoldTravelCost(baseCost, edge.getTollCost());
+                } else {
+                    // Fallback: simple 10gp = 1 tick penalty
+                    baseCost += edge.getTollCost() / 10;
+                }
             }
         }
 
-        return baseCost;
+        // Teleport edges: resource-aware law rune penalty
+        if (edge.getType() == WebEdgeType.TELEPORT) {
+            Map<String, String> metadata = edge.getMetadata();
+            if (metadata != null && resourceAwareness != null) {
+                // Check for law rune cost in metadata
+                String lawCostStr = metadata.get("law_runes");
+                if (lawCostStr != null) {
+                    try {
+                        int lawRunes = Integer.parseInt(lawCostStr);
+                        baseCost = resourceAwareness.adjustTeleportCost(baseCost, lawRunes);
+                    } catch (NumberFormatException e) {
+                        // Ignore invalid law rune cost
+                    }
+                }
+            }
+        }
+
+        // Transport edges: resource-aware gold penalty and free transport bonuses
+        if (edge.getType() == WebEdgeType.TRANSPORT) {
+            Map<String, String> metadata = edge.getMetadata();
+            if (metadata != null && resourceAwareness != null) {
+                // Check transport type for bonuses
+                String travelType = metadata.get("travel_type");
+                if ("fairy_ring".equals(travelType)) {
+                    baseCost += resourceAwareness.getFairyRingBonus(); // Negative = bonus
+                } else if ("spirit_tree".equals(travelType)) {
+                    baseCost += resourceAwareness.getSpiritTreeBonus();
+                }
+
+                // Check for gold cost
+                String fareStr = metadata.get("fare");
+                if (fareStr != null) {
+                    try {
+                        int fare = Integer.parseInt(fareStr);
+                        baseCost = resourceAwareness.adjustGoldTravelCost(baseCost, fare);
+                    } catch (NumberFormatException e) {
+                        // Ignore invalid fare
+                    }
+                }
+            }
+        }
+
+        // Ensure cost never goes below 1
+        return Math.max(1, baseCost);
     }
 
     /**

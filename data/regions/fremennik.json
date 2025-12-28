@@ -1,0 +1,516 @@
+{
+  "_comment": "Fremennik region nodes - validated from RuneLite worldmap plugin sources",
+  "_sources": [
+    "TeleportLocationData.java",
+    "DungeonLocation.java",
+    "AgilityCourseLocation.java",
+    "MinigameLocation.java",
+    "RunecraftingAltarLocation.java",
+    "MooringLocation.java"
+  ],
+  "region": {
+    "id": "fremennik",
+    "name": "Fremennik Province",
+    "bounds": {
+      "min_x": 2300,
+      "min_y": 3550,
+      "max_x": 3000,
+      "max_y": 4100
+    }
+  },
+  "nodes": [
+    {
+      "id": "rellekka",
+      "name": "Rellekka",
+      "x": 2664,
+      "y": 3643,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["members", "safe", "teleport_lyre", "poh_location", "ships"],
+      "metadata": {"source": "TeleportLocationData.RELLEKKKA_LYRE"}
+    },
+    {
+      "id": "rellekka_agility",
+      "name": "Rellekka Rooftop Course",
+      "x": 2624,
+      "y": 3677,
+      "plane": 0,
+      "type": "TRAINING",
+      "tags": ["members", "safe", "agility"],
+      "metadata": {"agility_level": "80", "source": "AgilityCourseLocation.RELLEKKA_ROOFTOP_COURSE"}
+    },
+    {
+      "id": "rellekka_dock",
+      "name": "Rellekka Dock (Sailing)",
+      "x": 2630,
+      "y": 3705,
+      "plane": 0,
+      "type": "TRANSPORT",
+      "tags": ["members", "safe", "ships", "sailing"],
+      "metadata": {"source": "MooringLocation.RELLEKKA"}
+    },
+    {
+      "id": "fremennik_slayer_dungeon",
+      "name": "Fremennik Slayer Dungeon",
+      "x": 2800,
+      "y": 3615,
+      "plane": 0,
+      "type": "SLAYER",
+      "tags": ["members", "dangerous", "teleport_slayer_ring", "fairy_ring", "dungeon"],
+      "metadata": {"fairy_ring_code": "AJR", "source": "DungeonLocation.FREMENNIK_SLAYER"}
+    },
+    {
+      "id": "fremennik_slayer_dungeon_outside",
+      "name": "Fremennik Slayer Dungeon (Outside)",
+      "x": 2800,
+      "y": 3615,
+      "plane": 0,
+      "type": "SLAYER",
+      "tags": ["members", "safe", "teleport_slayer_ring"],
+      "metadata": {"source": "TeleportLocationData.FREMENNIK_SLAYER_DUNGEON_OUTSIDE"}
+    },
+    {
+      "id": "keldagrim",
+      "name": "Keldagrim",
+      "x": 2730,
+      "y": 3713,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["members", "safe", "minecart"],
+      "metadata": {"source": "DungeonLocation.KELDAGRIM"}
+    },
+    {
+      "id": "keldagrim_entrance_mountain",
+      "name": "Keldagrim Entrance (Mountain)",
+      "x": 2795,
+      "y": 3718,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "dungeon"],
+      "metadata": {"source": "DungeonLocation.KELDAGRIM_ENTRANCE_MOUNTAIN"}
+    },
+    {
+      "id": "rat_pits_keldagrim",
+      "name": "Keldagrim Rat Pits",
+      "x": 2913,
+      "y": 10188,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "minigame"],
+      "metadata": {"source": "MinigameLocation.RAT_PITS_KELDAGRIM"}
+    },
+    {
+      "id": "waterbirth_island",
+      "name": "Waterbirth Island",
+      "x": 2550,
+      "y": 3756,
+      "plane": 0,
+      "type": "TELEPORT",
+      "tags": ["members", "safe", "teleport_lunar", "teleport_lyre"],
+      "metadata": {"teleport_name": "Waterbirth Teleport", "magic_level": "72", "source": "TeleportLocationData.WATERBIRTH"}
+    },
+    {
+      "id": "waterbirth_dungeon",
+      "name": "Waterbirth Dungeon",
+      "x": 2520,
+      "y": 3740,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "dangerous", "dungeon"],
+      "metadata": {"source": "DungeonLocation.WATERBIRTH"}
+    },
+    {
+      "id": "waterbirth_dock",
+      "name": "Waterbirth Island Dock (Sailing)",
+      "x": 2543,
+      "y": 3765,
+      "plane": 0,
+      "type": "TRANSPORT",
+      "tags": ["members", "safe", "ships", "sailing"],
+      "metadata": {"source": "MooringLocation.WATERBIRTH_ISLAND"}
+    },
+    {
+      "id": "moonclan",
+      "name": "Lunar Isle (Moonclan)",
+      "x": 2113,
+      "y": 3915,
+      "plane": 0,
+      "type": "TELEPORT",
+      "tags": ["members", "safe", "teleport_lunar", "teleport_scroll"],
+      "metadata": {"teleport_name": "Moonclan Teleport", "magic_level": "69", "source": "TeleportLocationData.MOONCLAN"}
+    },
+    {
+      "id": "lunar_isle_bank",
+      "name": "Lunar Isle Bank",
+      "x": 2099,
+      "y": 3919,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["members", "safe"],
+      "metadata": {"bank_type": "booth"}
+    },
+    {
+      "id": "lunar_isle_mine",
+      "name": "Lunar Isle Mine",
+      "x": 2141,
+      "y": 3944,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "dungeon", "mining"],
+      "metadata": {"source": "DungeonLocation.LUNAR_ISLE"}
+    },
+    {
+      "id": "lunar_isle_dock",
+      "name": "Lunar Isle Dock (Sailing)",
+      "x": 2151,
+      "y": 3880,
+      "plane": 0,
+      "type": "TRANSPORT",
+      "tags": ["members", "safe", "ships", "sailing"],
+      "metadata": {"source": "MooringLocation.LUNAR_ISLE"}
+    },
+    {
+      "id": "astral_altar",
+      "name": "Astral Altar",
+      "x": 2158,
+      "y": 3864,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "runecrafting"],
+      "metadata": {"runecrafting_level": "40", "source": "RunecraftingAltarLocation.ASTRAL_ALTAR"}
+    },
+    {
+      "id": "barbarian_assault",
+      "name": "Barbarian Assault (Waterbirth)",
+      "x": 2543,
+      "y": 3568,
+      "plane": 0,
+      "type": "TELEPORT",
+      "tags": ["members", "safe", "teleport_lunar", "minigame"],
+      "metadata": {"teleport_name": "Barbarian Teleport", "magic_level": "75", "source": "TeleportLocationData.BARBARIAN"}
+    },
+    {
+      "id": "trollheim",
+      "name": "Trollheim",
+      "x": 2891,
+      "y": 3678,
+      "plane": 0,
+      "type": "TELEPORT",
+      "tags": ["members", "safe", "teleport_standard"],
+      "metadata": {"teleport_name": "Trollheim Teleport", "magic_level": "61", "source": "TeleportLocationData.TROLLHEIM"}
+    },
+    {
+      "id": "god_wars_dungeon",
+      "name": "God Wars Dungeon",
+      "x": 2917,
+      "y": 3747,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "dangerous", "dungeon", "teleport_ghommals"],
+      "metadata": {"source": "DungeonLocation.GOD_WARS"}
+    },
+    {
+      "id": "god_wars_ghommal",
+      "name": "God Wars (Ghommal's Hilt)",
+      "x": 2898,
+      "y": 3709,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "teleport_ghommals"],
+      "metadata": {"source": "TeleportLocationData.GHOMMALS_HILT_GWD"}
+    },
+    {
+      "id": "weiss",
+      "name": "Weiss",
+      "x": 2846,
+      "y": 3940,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["members", "safe", "teleport_icy_basalt", "farming"],
+      "metadata": {"source": "TeleportLocationData.WEISS_ICY_BASALT"}
+    },
+    {
+      "id": "weiss_dock",
+      "name": "Weiss Dock (Sailing)",
+      "x": 2860,
+      "y": 3972,
+      "plane": 0,
+      "type": "TRANSPORT",
+      "tags": ["members", "safe", "ships", "sailing"],
+      "metadata": {"source": "MooringLocation.WEISS"}
+    },
+    {
+      "id": "salt_mine",
+      "name": "Salt Mine",
+      "x": 2866,
+      "y": 3941,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "dangerous", "dungeon", "mining"],
+      "metadata": {"source": "DungeonLocation.SALT_MINE"}
+    },
+    {
+      "id": "troll_stronghold",
+      "name": "Troll Stronghold",
+      "x": 2838,
+      "y": 3693,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "teleport_stony_basalt", "dungeon"],
+      "metadata": {"source": "TeleportLocationData.TROLL_STRONGHOLD_STONY_BASALT"}
+    },
+    {
+      "id": "troll_stronghold_dungeon",
+      "name": "Troll Stronghold Dungeon",
+      "x": 2838,
+      "y": 3690,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "dangerous", "dungeon"],
+      "metadata": {"source": "DungeonLocation.TROLL_STRONGHOLD"}
+    },
+    {
+      "id": "jatizso",
+      "name": "Jatizso",
+      "x": 2409,
+      "y": 3809,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["members", "safe", "teleport_lyre"],
+      "metadata": {"source": "TeleportLocationData.JATIZSO_LYRE"}
+    },
+    {
+      "id": "jatizso_dock",
+      "name": "Jatizso Dock (Sailing)",
+      "x": 2412,
+      "y": 3780,
+      "plane": 0,
+      "type": "TRANSPORT",
+      "tags": ["members", "safe", "ships", "sailing"],
+      "metadata": {"source": "MooringLocation.JATIZSO"}
+    },
+    {
+      "id": "ice_troll_caves_e",
+      "name": "Ice Troll Caves (East)",
+      "x": 2400,
+      "y": 3889,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "dangerous", "dungeon"],
+      "metadata": {"source": "DungeonLocation.ICE_TROLL_E"}
+    },
+    {
+      "id": "neitiznot",
+      "name": "Neitiznot",
+      "x": 2336,
+      "y": 3801,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["members", "safe", "teleport_lyre"],
+      "metadata": {"source": "TeleportLocationData.NEITIZNOT_LYRE"}
+    },
+    {
+      "id": "neitiznot_dock",
+      "name": "Neitiznot Dock (Sailing)",
+      "x": 2308,
+      "y": 3783,
+      "plane": 0,
+      "type": "TRANSPORT",
+      "tags": ["members", "safe", "ships", "sailing"],
+      "metadata": {"source": "MooringLocation.NETIZNOT"}
+    },
+    {
+      "id": "ice_troll_caves_w",
+      "name": "Ice Troll Caves (West)",
+      "x": 2315,
+      "y": 3894,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "dangerous", "dungeon"],
+      "metadata": {"source": "DungeonLocation.ICE_TROLL_W"}
+    },
+    {
+      "id": "miscellania",
+      "name": "Miscellania",
+      "x": 2535,
+      "y": 3862,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["members", "safe", "teleport_row", "fairy_ring"],
+      "metadata": {"fairy_ring_code": "CIP", "source": "TeleportLocationData.MISCELLANIA"}
+    },
+    {
+      "id": "miscellania_dungeon",
+      "name": "Miscellania Dungeon",
+      "x": 2508,
+      "y": 3846,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "dungeon"],
+      "metadata": {"source": "DungeonLocation.MISCELLANIA"}
+    },
+    {
+      "id": "etceteria",
+      "name": "Etceteria",
+      "x": 2619,
+      "y": 3865,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe"],
+      "metadata": {}
+    },
+    {
+      "id": "etceteria_dungeon",
+      "name": "Etceteria Dungeon",
+      "x": 2619,
+      "y": 3865,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "dungeon"],
+      "metadata": {"source": "DungeonLocation.ETCETERIA"}
+    },
+    {
+      "id": "etceteria_dock",
+      "name": "Etceteria Dock (Sailing)",
+      "x": 2611,
+      "y": 3840,
+      "plane": 0,
+      "type": "TRANSPORT",
+      "tags": ["members", "safe", "ships", "sailing"],
+      "metadata": {"source": "MooringLocation.ETCETERIA"}
+    },
+    {
+      "id": "ice_plateau",
+      "name": "Ice Plateau",
+      "x": 2973,
+      "y": 3939,
+      "plane": 0,
+      "type": "TELEPORT",
+      "tags": ["members", "dangerous", "wilderness", "teleport_lunar"],
+      "metadata": {"teleport_name": "Ice Plateau Teleport", "magic_level": "89", "source": "TeleportLocationData.ICE_PLATEAU"}
+    },
+    {
+      "id": "polar_hunter",
+      "name": "Polar Hunter Area",
+      "x": 2743,
+      "y": 3721,
+      "plane": 0,
+      "type": "TRAINING",
+      "tags": ["members", "safe", "hunter", "fairy_ring"],
+      "metadata": {"fairy_ring_code": "DKS"}
+    },
+    {
+      "id": "lighthouse",
+      "name": "Lighthouse",
+      "x": 2508,
+      "y": 3644,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "fairy_ring"],
+      "metadata": {"fairy_ring_code": "ALP", "source": "DungeonLocation.LIGHTHOUSE"}
+    },
+    {
+      "id": "fremennik_sea_boots",
+      "name": "Fremennik Sea Boots Location",
+      "x": 2640,
+      "y": 3675,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "teleport_diary"],
+      "metadata": {"source": "TeleportLocationData.FREMENNIK_SEA_BOOTS"}
+    },
+    {
+      "id": "jormungands_prison",
+      "name": "Jormungand's Prison",
+      "x": 2464,
+      "y": 4012,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "dangerous", "dungeon", "boss"],
+      "metadata": {"source": "DungeonLocation.JORMUNGANDS_PRISON"}
+    },
+    {
+      "id": "music_cape",
+      "name": "Falo the Bard (Music Cape)",
+      "x": 2689,
+      "y": 3547,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "teleport_music_cape"],
+      "metadata": {"source": "TeleportLocationData.MUSIC_CAPE"}
+    },
+    {
+      "id": "thorodin",
+      "name": "Thorodin (Achievement Cape)",
+      "x": 2659,
+      "y": 3627,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "teleport_achievement_cape"],
+      "metadata": {"source": "TeleportLocationData.ACHIEVEMENT_CAPE_THORODIN"}
+    },
+    {
+      "id": "piscatoris",
+      "name": "Piscatoris",
+      "x": 2339,
+      "y": 3648,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "teleport_scroll", "fishing"],
+      "metadata": {"source": "TeleportLocationData.PISCATORIS_SCROLL"}
+    },
+    {
+      "id": "piscatoris_dock",
+      "name": "Piscatoris Dock (Sailing)",
+      "x": 2303,
+      "y": 3690,
+      "plane": 0,
+      "type": "TRANSPORT",
+      "tags": ["members", "safe", "ships", "sailing"],
+      "metadata": {"source": "MooringLocation.PISCATORIS"}
+    }
+  ],
+  "edges": [
+    {"from": "rellekka", "to": "rellekka_agility", "type": "WALK", "cost_ticks": 25, "bidirectional": true},
+    {"from": "rellekka", "to": "rellekka_dock", "type": "WALK", "cost_ticks": 40, "bidirectional": true},
+    {"from": "rellekka", "to": "fremennik_slayer_dungeon", "type": "WALK", "cost_ticks": 100, "bidirectional": true},
+    {"from": "rellekka", "to": "lighthouse", "type": "WALK", "cost_ticks": 90, "bidirectional": true},
+    {"from": "rellekka", "to": "fremennik_sea_boots", "type": "WALK", "cost_ticks": 20, "bidirectional": true},
+    {"from": "rellekka", "to": "keldagrim", "type": "WALK", "cost_ticks": 70, "bidirectional": true},
+    {"from": "rellekka", "to": "thorodin", "type": "WALK", "cost_ticks": 15, "bidirectional": true},
+    {"from": "rellekka", "to": "music_cape", "type": "WALK", "cost_ticks": 70, "bidirectional": true},
+    {"from": "rellekka", "to": "polar_hunter", "type": "WALK", "cost_ticks": 80, "bidirectional": true},
+    {"from": "rellekka", "to": "waterbirth_island", "type": "TRANSPORT", "cost_ticks": 20, "bidirectional": true, "metadata": {"travel_type": "ship"}},
+    {"from": "rellekka", "to": "miscellania", "type": "TRANSPORT", "cost_ticks": 20, "bidirectional": true, "requirements": [{"type": "quest", "identifier": "The Fremennik Trials"}], "metadata": {"travel_type": "ship"}},
+    {"from": "rellekka", "to": "jatizso", "type": "TRANSPORT", "cost_ticks": 20, "bidirectional": true, "requirements": [{"type": "quest", "identifier": "The Fremennik Isles"}], "metadata": {"travel_type": "ship"}},
+    {"from": "rellekka", "to": "neitiznot", "type": "TRANSPORT", "cost_ticks": 20, "bidirectional": true, "requirements": [{"type": "quest", "identifier": "The Fremennik Isles"}], "metadata": {"travel_type": "ship"}},
+    {"from": "keldagrim", "to": "keldagrim_entrance_mountain", "type": "WALK", "cost_ticks": 50, "bidirectional": true},
+    {"from": "keldagrim", "to": "rat_pits_keldagrim", "type": "WALK", "cost_ticks": 30, "bidirectional": true},
+    {"from": "fremennik_slayer_dungeon", "to": "fremennik_slayer_dungeon_outside", "type": "STAIRS", "cost_ticks": 3, "bidirectional": true},
+    {"from": "waterbirth_island", "to": "waterbirth_dungeon", "type": "STAIRS", "cost_ticks": 3, "bidirectional": true},
+    {"from": "waterbirth_island", "to": "waterbirth_dock", "type": "WALK", "cost_ticks": 10, "bidirectional": true},
+    {"from": "moonclan", "to": "lunar_isle_bank", "type": "WALK", "cost_ticks": 10, "bidirectional": true},
+    {"from": "moonclan", "to": "lunar_isle_mine", "type": "WALK", "cost_ticks": 25, "bidirectional": true},
+    {"from": "moonclan", "to": "lunar_isle_dock", "type": "WALK", "cost_ticks": 30, "bidirectional": true},
+    {"from": "moonclan", "to": "astral_altar", "type": "WALK", "cost_ticks": 40, "bidirectional": true},
+    {"from": "trollheim", "to": "god_wars_dungeon", "type": "WALK", "cost_ticks": 60, "bidirectional": true},
+    {"from": "trollheim", "to": "god_wars_ghommal", "type": "WALK", "cost_ticks": 25, "bidirectional": true},
+    {"from": "trollheim", "to": "troll_stronghold", "type": "WALK", "cost_ticks": 40, "bidirectional": true},
+    {"from": "troll_stronghold", "to": "troll_stronghold_dungeon", "type": "STAIRS", "cost_ticks": 3, "bidirectional": true},
+    {"from": "weiss", "to": "weiss_dock", "type": "WALK", "cost_ticks": 25, "bidirectional": true},
+    {"from": "weiss", "to": "salt_mine", "type": "WALK", "cost_ticks": 15, "bidirectional": true},
+    {"from": "jatizso", "to": "jatizso_dock", "type": "WALK", "cost_ticks": 25, "bidirectional": true},
+    {"from": "jatizso", "to": "ice_troll_caves_e", "type": "WALK", "cost_ticks": 60, "bidirectional": true},
+    {"from": "neitiznot", "to": "neitiznot_dock", "type": "WALK", "cost_ticks": 20, "bidirectional": true},
+    {"from": "neitiznot", "to": "ice_troll_caves_w", "type": "WALK", "cost_ticks": 70, "bidirectional": true},
+    {"from": "jatizso", "to": "neitiznot", "type": "TRANSPORT", "cost_ticks": 15, "bidirectional": true, "metadata": {"travel_type": "ship"}},
+    {"from": "miscellania", "to": "miscellania_dungeon", "type": "STAIRS", "cost_ticks": 3, "bidirectional": true},
+    {"from": "miscellania", "to": "etceteria", "type": "WALK", "cost_ticks": 60, "bidirectional": true},
+    {"from": "etceteria", "to": "etceteria_dungeon", "type": "STAIRS", "cost_ticks": 3, "bidirectional": true},
+    {"from": "etceteria", "to": "etceteria_dock", "type": "WALK", "cost_ticks": 20, "bidirectional": true},
+    {"from": "lighthouse", "to": "barbarian_assault", "type": "WALK", "cost_ticks": 60, "bidirectional": true},
+    {"from": "lighthouse", "to": "piscatoris", "type": "WALK", "cost_ticks": 100, "bidirectional": true},
+    {"from": "piscatoris", "to": "piscatoris_dock", "type": "WALK", "cost_ticks": 30, "bidirectional": true},
+    {"from": "neitiznot", "to": "jormungands_prison", "type": "WALK", "cost_ticks": 120, "bidirectional": true}
+  ]
+}

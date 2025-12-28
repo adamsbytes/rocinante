@@ -1,0 +1,118 @@
+{
+  "_comment": "Teleport jewelry and tablet destinations - validated from RuneLite source",
+  "_source": "/tmp/runelite-src/runelite-api/src/main/java/net/runelite/api/ItemID.java",
+  "jewelry": {
+    "ring_of_dueling": {
+      "item_ids": [2552, 2554, 2556, 2558, 2560, 2562, 2564, 2566],
+      "max_charges": 8,
+      "destinations": [
+        {"name": "Duel Arena", "x": 3315, "y": 3235, "plane": 0, "tags": ["kharidian"]},
+        {"name": "Castle Wars", "x": 2441, "y": 3089, "plane": 0, "tags": ["kandarin"]},
+        {"name": "Ferox Enclave", "x": 3149, "y": 3635, "plane": 0, "tags": ["wilderness"]}
+      ]
+    },
+    "games_necklace": {
+      "item_ids": [3853, 3855, 3857, 3859, 3861, 3863, 3865, 3867],
+      "max_charges": 8,
+      "destinations": [
+        {"name": "Burthorpe", "x": 2898, "y": 3553, "plane": 0, "tags": ["asgarnia"]},
+        {"name": "Barbarian Outpost", "x": 2520, "y": 3571, "plane": 0, "tags": ["kandarin"]},
+        {"name": "Corporeal Beast", "x": 2965, "y": 4382, "plane": 2, "tags": ["wilderness"]},
+        {"name": "Tears of Guthix", "x": 3251, "y": 9517, "plane": 2, "tags": ["lumbridge"]},
+        {"name": "Wintertodt Camp", "x": 1623, "y": 3937, "plane": 0, "tags": ["kourend"]}
+      ]
+    },
+    "amulet_of_glory": {
+      "item_ids": [1704, 1706, 1708, 1710, 1712, 10354, 10356, 10358, 10360, 10362, 11964, 11966],
+      "max_charges": 6,
+      "destinations": [
+        {"name": "Edgeville", "x": 3087, "y": 3496, "plane": 0, "tags": ["misthalin"]},
+        {"name": "Karamja", "x": 2918, "y": 3176, "plane": 0, "tags": ["karamja"]},
+        {"name": "Draynor Village", "x": 3105, "y": 3251, "plane": 0, "tags": ["misthalin"]},
+        {"name": "Al Kharid", "x": 3293, "y": 3163, "plane": 0, "tags": ["kharidian"]}
+      ]
+    },
+    "skills_necklace": {
+      "item_ids": [11105, 11107, 11109, 11111, 11113, 11968, 11970],
+      "max_charges": 6,
+      "destinations": [
+        {"name": "Fishing Guild", "x": 2611, "y": 3391, "plane": 0, "tags": ["kandarin"]},
+        {"name": "Mining Guild", "x": 3050, "y": 9764, "plane": 0, "tags": ["asgarnia"]},
+        {"name": "Crafting Guild", "x": 2933, "y": 3295, "plane": 0, "tags": ["asgarnia"]},
+        {"name": "Cooking Guild", "x": 3143, "y": 3442, "plane": 0, "tags": ["misthalin"]},
+        {"name": "Woodcutting Guild", "x": 1663, "y": 3505, "plane": 0, "tags": ["kourend"]},
+        {"name": "Farming Guild", "x": 1249, "y": 3718, "plane": 0, "tags": ["kourend"]}
+      ]
+    },
+    "combat_bracelet": {
+      "item_ids": [11118, 11120, 11122, 11124, 11126, 11972, 11974],
+      "max_charges": 6,
+      "destinations": [
+        {"name": "Warriors' Guild", "x": 2882, "y": 3548, "plane": 0, "tags": ["asgarnia"]},
+        {"name": "Champions' Guild", "x": 3190, "y": 3366, "plane": 0, "tags": ["misthalin"]},
+        {"name": "Monastery", "x": 3052, "y": 3486, "plane": 0, "tags": ["asgarnia"]},
+        {"name": "Ranging Guild", "x": 2657, "y": 3439, "plane": 0, "tags": ["kandarin"]}
+      ]
+    },
+    "digsite_pendant": {
+      "item_ids": [11190, 11191, 11192, 11193, 11194],
+      "max_charges": 5,
+      "destinations": [
+        {"name": "Digsite", "x": 3346, "y": 3445, "plane": 0, "tags": ["misthalin"]},
+        {"name": "Fossil Island", "x": 3764, "y": 3869, "plane": 1, "tags": ["fossil_island"], "requirements": {"quest": "Bone Voyage"}},
+        {"name": "Lithkren", "x": 3549, "y": 10456, "plane": 0, "tags": ["fossil_island"], "requirements": {"quest": "Dragon Slayer II"}}
+      ]
+    },
+    "burning_amulet": {
+      "item_ids": [21166, 21169, 21171, 21173, 21175],
+      "max_charges": 5,
+      "destinations": [
+        {"name": "Chaos Temple", "x": 3234, "y": 3636, "plane": 0, "tags": ["wilderness"]},
+        {"name": "Bandit Camp", "x": 3039, "y": 3652, "plane": 0, "tags": ["wilderness"]},
+        {"name": "Lava Maze", "x": 3029, "y": 3843, "plane": 0, "tags": ["wilderness"]}
+      ],
+      "_note": "Wilderness teleports - dangerous!"
+    },
+    "ring_of_wealth": {
+      "item_ids": [2572, 11988, 11990, 11992, 11994],
+      "max_charges": 5,
+      "destinations": [
+        {"name": "Miscellania", "x": 2535, "y": 3861, "plane": 0, "tags": ["fremennik"], "requirements": {"quest": "Throne of Miscellania"}},
+        {"name": "Grand Exchange", "x": 3163, "y": 3478, "plane": 0, "tags": ["misthalin"]},
+        {"name": "Falador Park", "x": 2996, "y": 3375, "plane": 0, "tags": ["asgarnia"]},
+        {"name": "Dondakan", "x": 2831, "y": 10165, "plane": 0, "tags": ["fremennik"], "requirements": {"quest": "Between a Rock..."}}
+      ]
+    },
+    "slayer_ring": {
+      "item_ids": [11866, 11867, 11868, 11869, 11870, 11871, 11872, 11873],
+      "max_charges": 8,
+      "destinations": [
+        {"name": "Slayer Tower", "x": 3422, "y": 3537, "plane": 0, "tags": ["morytania"]},
+        {"name": "Fremennik Slayer Dungeon", "x": 2792, "y": 3615, "plane": 0, "tags": ["fremennik"]},
+        {"name": "Tarn's Lair", "x": 3149, "y": 4666, "plane": 0, "tags": ["morytania"]},
+        {"name": "Stronghold Slayer Cave", "x": 2432, "y": 3423, "plane": 0, "tags": ["kandarin"]}
+      ],
+      "crafting_level": 75,
+      "_note": "Requires 75 Crafting and Slayer ring knowledge from Slayer Master"
+    }
+  },
+  "tablets": {
+    "_comment": "Teleport tablets made on lecterns",
+    "standard_spellbook": [
+      {"name": "Varrock teleport", "x": 3213, "y": 3424, "plane": 0, "tags": ["misthalin"]},
+      {"name": "Lumbridge teleport", "x": 3222, "y": 3218, "plane": 0, "tags": ["misthalin"]},
+      {"name": "Falador teleport", "x": 2965, "y": 3378, "plane": 0, "tags": ["asgarnia"]},
+      {"name": "Camelot teleport", "x": 2757, "y": 3477, "plane": 0, "tags": ["kandarin"]},
+      {"name": "Ardougne teleport", "x": 2661, "y": 3304, "plane": 0, "tags": ["kandarin"]},
+      {"name": "Watchtower teleport", "x": 2549, "y": 3114, "plane": 0, "tags": ["kandarin"]},
+      {"name": "House teleport", "x": 0, "y": 0, "plane": 0, "_note": "Teleports to POH location"}
+    ],
+    "redirect_tablets": {
+      "_comment": "Tablets redirected via Scroll of Redirection",
+      "varrock_ge": {"name": "Varrock (GE)", "x": 3163, "y": 3478, "plane": 0},
+      "camelot_seers": {"name": "Camelot (Seers')", "x": 2724, "y": 3485, "plane": 0},
+      "watchtower_yanille": {"name": "Watchtower (Yanille)", "x": 2590, "y": 3095, "plane": 0}
+    }
+  }
+}
+

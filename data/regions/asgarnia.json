@@ -1,0 +1,475 @@
+{
+  "_comment": "Asgarnia region nodes - validated from RuneLite worldmap plugin sources",
+  "_sources": [
+    "TeleportLocationData.java",
+    "DungeonLocation.java",
+    "AgilityCourseLocation.java",
+    "MinigameLocation.java",
+    "RunecraftingAltarLocation.java",
+    "TransportationPointLocation.java"
+  ],
+  "region": {
+    "id": "asgarnia",
+    "name": "Asgarnia",
+    "bounds": {
+      "min_x": 2850,
+      "min_y": 3100,
+      "max_x": 3100,
+      "max_y": 3600
+    }
+  },
+  "nodes": [
+    {
+      "id": "falador_center",
+      "name": "Falador Center",
+      "x": 2965,
+      "y": 3381,
+      "plane": 0,
+      "type": "TELEPORT",
+      "tags": ["f2p", "safe", "city", "teleport_standard"],
+      "metadata": {"teleport_name": "Falador Teleport", "magic_level": "37", "source": "TeleportLocationData.FALADOR"}
+    },
+    {
+      "id": "falador_park",
+      "name": "Falador Park",
+      "x": 2995,
+      "y": 3375,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "safe", "teleport_row"],
+      "metadata": {"source": "TeleportLocationData.FALADOR_PARK"}
+    },
+    {
+      "id": "falador_west_bank",
+      "name": "Falador West Bank",
+      "x": 2946,
+      "y": 3368,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["f2p", "safe"],
+      "metadata": {"bank_type": "booth"}
+    },
+    {
+      "id": "falador_east_bank",
+      "name": "Falador East Bank",
+      "x": 3012,
+      "y": 3355,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["f2p", "safe"],
+      "metadata": {"bank_type": "booth"}
+    },
+    {
+      "id": "falador_agility",
+      "name": "Falador Rooftop Course",
+      "x": 3035,
+      "y": 3342,
+      "plane": 0,
+      "type": "TRAINING",
+      "tags": ["f2p", "safe", "agility"],
+      "metadata": {"agility_level": "50", "source": "AgilityCourseLocation.FALADOR_ROOFTOP_COURSE"}
+    },
+    {
+      "id": "white_knights_crypt",
+      "name": "White Knights' Castle Crypt",
+      "x": 2964,
+      "y": 3331,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "safe", "dungeon"],
+      "metadata": {"source": "DungeonLocation.WHITE_KNIGHTS_CASTLE_CRYPT"}
+    },
+    {
+      "id": "falador_mole",
+      "name": "Giant Mole Lair",
+      "x": 2985,
+      "y": 3387,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "dangerous", "dungeon", "boss"],
+      "metadata": {"source": "DungeonLocation.FALADOR_MOLE_NW"}
+    },
+    {
+      "id": "mahogany_homes_falador",
+      "name": "Mahogany Homes (Falador)",
+      "x": 2989,
+      "y": 3363,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "minigame", "construction"],
+      "metadata": {"source": "MinigameLocation.MAHOGANY_HOMES_FALADOR"}
+    },
+    {
+      "id": "port_sarim",
+      "name": "Port Sarim",
+      "x": 3029,
+      "y": 3218,
+      "plane": 0,
+      "type": "TRANSPORT",
+      "tags": ["f2p", "safe", "ships"],
+      "metadata": {}
+    },
+    {
+      "id": "port_sarim_dock",
+      "name": "Port Sarim Dock",
+      "x": 3050,
+      "y": 3192,
+      "plane": 0,
+      "type": "TRANSPORT",
+      "tags": ["f2p", "safe", "ships", "sailing"],
+      "metadata": {"source": "MooringLocation.PORT_SARIM"}
+    },
+    {
+      "id": "port_sarim_jail",
+      "name": "Port Sarim Jail",
+      "x": 3012,
+      "y": 3181,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "safe"],
+      "metadata": {}
+    },
+    {
+      "id": "port_sarim_rat_pits",
+      "name": "Port Sarim Rat Pits",
+      "x": 3017,
+      "y": 3232,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "dungeon", "minigame"],
+      "metadata": {"source": "DungeonLocation.PORT_SARIM_RAT_PITS"}
+    },
+    {
+      "id": "rimmington",
+      "name": "Rimmington",
+      "x": 2954,
+      "y": 3224,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "safe", "poh_location"],
+      "metadata": {"source": "TeleportLocationData.CONSTRUCTION_CAPE_RIMMINGTON"}
+    },
+    {
+      "id": "mudskipper_point",
+      "name": "Mudskipper Point",
+      "x": 2993,
+      "y": 3110,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "safe", "fairy_ring"],
+      "metadata": {"fairy_ring_code": "AIQ"}
+    },
+    {
+      "id": "asgarnian_ice_dungeon",
+      "name": "Asgarnian Ice Dungeon",
+      "x": 3007,
+      "y": 3150,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "dangerous", "dungeon", "slayer"],
+      "metadata": {"source": "DungeonLocation.ASGARNIAN_ICE"}
+    },
+    {
+      "id": "crafting_guild",
+      "name": "Crafting Guild",
+      "x": 2934,
+      "y": 3294,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["f2p", "safe", "teleport_skills_necklace"],
+      "metadata": {"crafting_level": "40", "source": "TeleportLocationData.CRAFTING_GUILD"}
+    },
+    {
+      "id": "air_altar",
+      "name": "Air Altar",
+      "x": 2985,
+      "y": 3293,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "safe", "runecrafting", "teleport_ring_elements"],
+      "metadata": {"runecrafting_level": "1", "source": "RunecraftingAltarLocation.AIR_ALTAR"}
+    },
+    {
+      "id": "body_altar",
+      "name": "Body Altar",
+      "x": 3053,
+      "y": 3445,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "safe", "runecrafting"],
+      "metadata": {"runecrafting_level": "20", "source": "RunecraftingAltarLocation.BODY_ALTAR"}
+    },
+    {
+      "id": "dwarven_mine",
+      "name": "Dwarven Mine",
+      "x": 3017,
+      "y": 3450,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "safe", "dungeon", "mining"],
+      "metadata": {"source": "DungeonLocation.DWARVEN_MINE"}
+    },
+    {
+      "id": "dwarven_mine_stairs",
+      "name": "Dwarven Mine (Falador entrance)",
+      "x": 3058,
+      "y": 3377,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "safe", "dungeon", "mining"],
+      "metadata": {"source": "DungeonLocation.DWARVEN_MINE_STAIRS"}
+    },
+    {
+      "id": "mining_guild",
+      "name": "Mining Guild",
+      "x": 3049,
+      "y": 9762,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["f2p", "safe", "teleport_skills_necklace", "dungeon", "mining"],
+      "metadata": {"mining_level": "60", "source": "TeleportLocationData.MINING_GUILD"}
+    },
+    {
+      "id": "motherlode_mine",
+      "name": "Motherlode Mine",
+      "x": 3059,
+      "y": 9764,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["members", "safe", "dungeon", "mining"],
+      "metadata": {"mining_level": "30", "source": "DungeonLocation.MOTHERLODE_MINE"}
+    },
+    {
+      "id": "warriors_guild",
+      "name": "Warriors' Guild",
+      "x": 2883,
+      "y": 3549,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["members", "safe", "teleport_combat_bracelet"],
+      "metadata": {"combined_attack_strength": "130", "source": "TeleportLocationData.WARRIORS_GUILD"}
+    },
+    {
+      "id": "animation_room",
+      "name": "Animation Room",
+      "x": 2853,
+      "y": 3537,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "minigame"],
+      "metadata": {"source": "MinigameLocation.ANIMATION_ROOM"}
+    },
+    {
+      "id": "catapult_room",
+      "name": "Catapult Room",
+      "x": 2842,
+      "y": 3545,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "minigame"],
+      "metadata": {"source": "MinigameLocation.CATAPULT_ROOM"}
+    },
+    {
+      "id": "burthorpe",
+      "name": "Burthorpe",
+      "x": 2898,
+      "y": 3554,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["members", "safe", "teleport_games_necklace"],
+      "metadata": {"source": "TeleportLocationData.BURTHORPE_GAMES_ROOM"}
+    },
+    {
+      "id": "rogues_den",
+      "name": "Rogues' Den",
+      "x": 2905,
+      "y": 3537,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["members", "safe", "minigame", "thieving", "cooking"],
+      "metadata": {"source": "MinigameLocation.ROGUES_DEN"}
+    },
+    {
+      "id": "taverley",
+      "name": "Taverley",
+      "x": 2894,
+      "y": 3465,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["members", "safe", "poh_location"],
+      "metadata": {"source": "TeleportLocationData.CONSTRUCTION_CAPE_TAVERLEY"}
+    },
+    {
+      "id": "taverley_dungeon",
+      "name": "Taverley Dungeon",
+      "x": 2883,
+      "y": 3397,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "dangerous", "dungeon", "slayer"],
+      "metadata": {"source": "DungeonLocation.TAVERLEY"}
+    },
+    {
+      "id": "heroes_guild",
+      "name": "Heroes' Guild",
+      "x": 2891,
+      "y": 3507,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["members", "safe", "dungeon"],
+      "metadata": {"quest": "Heroes' Quest", "source": "DungeonLocation.HEROES_GUILD"}
+    },
+    {
+      "id": "edgeville_monastery",
+      "name": "Edgeville Monastery",
+      "x": 3053,
+      "y": 3487,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "safe", "teleport_combat_bracelet", "prayer"],
+      "metadata": {"source": "TeleportLocationData.EDGEVILLE_MONASTERY"}
+    },
+    {
+      "id": "mind_altar",
+      "name": "Mind Altar",
+      "x": 2982,
+      "y": 3514,
+      "plane": 0,
+      "type": "TELEPORT",
+      "tags": ["f2p", "safe", "teleport_arceuus", "runecrafting"],
+      "metadata": {"teleport_name": "Mind Altar Teleport", "magic_level": "28", "runecrafting_level": "2", "source": "RunecraftingAltarLocation.MIND_ALTAR"}
+    },
+    {
+      "id": "ice_mountain",
+      "name": "Ice Mountain",
+      "x": 2995,
+      "y": 3469,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "safe"],
+      "metadata": {}
+    },
+    {
+      "id": "ice_queen_lair",
+      "name": "Ice Queen's Lair",
+      "x": 2846,
+      "y": 3516,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "dangerous", "dungeon"],
+      "metadata": {"source": "DungeonLocation.ICE_QUEEN"}
+    },
+    {
+      "id": "ruins_of_camdozaal",
+      "name": "Ruins of Camdozaal",
+      "x": 2998,
+      "y": 3493,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "safe", "dungeon", "mining", "smithing"],
+      "metadata": {"source": "DungeonLocation.RUINS_OF_CAMDOZAAL"}
+    },
+    {
+      "id": "lassar",
+      "name": "Lassar (Ice Mountain)",
+      "x": 3002,
+      "y": 3472,
+      "plane": 0,
+      "type": "TELEPORT",
+      "tags": ["members", "safe", "teleport_ancient"],
+      "metadata": {"teleport_name": "Lassar Teleport", "magic_level": "72", "source": "TeleportLocationData.LASSAR"}
+    },
+    {
+      "id": "white_wolf_tunnel_e",
+      "name": "White Wolf Tunnel (East)",
+      "x": 2876,
+      "y": 3480,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "dungeon"],
+      "metadata": {"source": "DungeonLocation.WHITE_WOLF_TUNNEL_E"}
+    },
+    {
+      "id": "white_wolf_tunnel_w",
+      "name": "White Wolf Tunnel (West)",
+      "x": 2819,
+      "y": 3484,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["members", "safe", "dungeon"],
+      "metadata": {"source": "DungeonLocation.WHITE_WOLF_TUNNEL_W"}
+    },
+    {
+      "id": "explorers_ring",
+      "name": "Explorer's Ring Cabbage Patch",
+      "x": 3052,
+      "y": 3292,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["f2p", "safe", "teleport_diary"],
+      "metadata": {"source": "TeleportLocationData.EXPLORERS_RING"}
+    },
+    {
+      "id": "balloon_taverley",
+      "name": "Hot Air Balloon (Taverley)",
+      "x": 2936,
+      "y": 3422,
+      "plane": 0,
+      "type": "TRANSPORT",
+      "tags": ["members", "safe", "balloon"],
+      "metadata": {"source": "TransportationPointLocation.BALLOON_TAVERLEY"}
+    },
+    {
+      "id": "balloon_falador",
+      "name": "Hot Air Balloon (Crafting Guild)",
+      "x": 2921,
+      "y": 3301,
+      "plane": 0,
+      "type": "TRANSPORT",
+      "tags": ["members", "safe", "balloon"],
+      "metadata": {"source": "TransportationPointLocation.BALLOON_FALADOR"}
+    }
+  ],
+  "edges": [
+    {"from": "falador_center", "to": "falador_west_bank", "type": "WALK", "cost_ticks": 20, "bidirectional": true},
+    {"from": "falador_center", "to": "falador_east_bank", "type": "WALK", "cost_ticks": 30, "bidirectional": true},
+    {"from": "falador_center", "to": "falador_park", "type": "WALK", "cost_ticks": 15, "bidirectional": true},
+    {"from": "falador_center", "to": "white_knights_crypt", "type": "WALK", "cost_ticks": 35, "bidirectional": true},
+    {"from": "falador_center", "to": "mahogany_homes_falador", "type": "WALK", "cost_ticks": 15, "bidirectional": true},
+    {"from": "falador_park", "to": "falador_mole", "type": "WALK", "cost_ticks": 10, "bidirectional": true},
+    {"from": "falador_east_bank", "to": "falador_agility", "type": "WALK", "cost_ticks": 15, "bidirectional": true},
+    {"from": "falador_east_bank", "to": "dwarven_mine_stairs", "type": "WALK", "cost_ticks": 20, "bidirectional": true},
+    {"from": "falador_center", "to": "crafting_guild", "type": "WALK", "cost_ticks": 60, "bidirectional": true},
+    {"from": "falador_center", "to": "port_sarim", "type": "WALK", "cost_ticks": 100, "bidirectional": true},
+    {"from": "crafting_guild", "to": "air_altar", "type": "WALK", "cost_ticks": 30, "bidirectional": true},
+    {"from": "crafting_guild", "to": "balloon_falador", "type": "WALK", "cost_ticks": 10, "bidirectional": true},
+    {"from": "port_sarim", "to": "port_sarim_dock", "type": "WALK", "cost_ticks": 25, "bidirectional": true},
+    {"from": "port_sarim", "to": "port_sarim_jail", "type": "WALK", "cost_ticks": 30, "bidirectional": true},
+    {"from": "port_sarim", "to": "port_sarim_rat_pits", "type": "WALK", "cost_ticks": 10, "bidirectional": true},
+    {"from": "port_sarim", "to": "rimmington", "type": "WALK", "cost_ticks": 60, "bidirectional": true},
+    {"from": "port_sarim", "to": "mudskipper_point", "type": "WALK", "cost_ticks": 70, "bidirectional": true},
+    {"from": "mudskipper_point", "to": "asgarnian_ice_dungeon", "type": "WALK", "cost_ticks": 30, "bidirectional": true},
+    {"from": "taverley", "to": "burthorpe", "type": "WALK", "cost_ticks": 50, "bidirectional": true},
+    {"from": "taverley", "to": "taverley_dungeon", "type": "WALK", "cost_ticks": 50, "bidirectional": true},
+    {"from": "taverley", "to": "balloon_taverley", "type": "WALK", "cost_ticks": 30, "bidirectional": true},
+    {"from": "burthorpe", "to": "warriors_guild", "type": "WALK", "cost_ticks": 10, "bidirectional": true},
+    {"from": "burthorpe", "to": "rogues_den", "type": "WALK", "cost_ticks": 20, "bidirectional": true},
+    {"from": "warriors_guild", "to": "animation_room", "type": "WALK", "cost_ticks": 15, "bidirectional": true},
+    {"from": "warriors_guild", "to": "catapult_room", "type": "WALK", "cost_ticks": 20, "bidirectional": true},
+    {"from": "burthorpe", "to": "heroes_guild", "type": "WALK", "cost_ticks": 40, "bidirectional": true},
+    {"from": "falador_center", "to": "taverley", "type": "WALK", "cost_ticks": 80, "bidirectional": true},
+    {"from": "taverley", "to": "white_wolf_tunnel_e", "type": "WALK", "cost_ticks": 25, "bidirectional": true},
+    {"from": "white_wolf_tunnel_e", "to": "white_wolf_tunnel_w", "type": "WALK", "cost_ticks": 40, "bidirectional": true},
+    {"from": "falador_center", "to": "ice_mountain", "type": "WALK", "cost_ticks": 70, "bidirectional": true},
+    {"from": "ice_mountain", "to": "edgeville_monastery", "type": "WALK", "cost_ticks": 40, "bidirectional": true},
+    {"from": "ice_mountain", "to": "lassar", "type": "WALK", "cost_ticks": 10, "bidirectional": true},
+    {"from": "ice_mountain", "to": "dwarven_mine", "type": "WALK", "cost_ticks": 15, "bidirectional": true},
+    {"from": "ice_mountain", "to": "ice_queen_lair", "type": "WALK", "cost_ticks": 100, "bidirectional": true},
+    {"from": "ice_mountain", "to": "ruins_of_camdozaal", "type": "WALK", "cost_ticks": 20, "bidirectional": true},
+    {"from": "dwarven_mine", "to": "mining_guild", "type": "STAIRS", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "skill", "skill": "Mining", "level": 60}]},
+    {"from": "mining_guild", "to": "motherlode_mine", "type": "WALK", "cost_ticks": 10, "bidirectional": true},
+    {"from": "edgeville_monastery", "to": "body_altar", "type": "WALK", "cost_ticks": 30, "bidirectional": true},
+    {"from": "edgeville_monastery", "to": "mind_altar", "type": "WALK", "cost_ticks": 25, "bidirectional": true},
+    {"from": "air_altar", "to": "explorers_ring", "type": "WALK", "cost_ticks": 10, "bidirectional": true}
+  ]
+}

@@ -1,0 +1,99 @@
+{
+  "_comment": "Spirit Tree locations - validated from RuneLite source (TransportationPointLocation.java)",
+  "_source": "/tmp/runelite-src/runelite-client/src/main/java/net/runelite/client/plugins/worldmap/TransportationPointLocation.java",
+  "locations": [
+    {
+      "id": "spirittree_gnomestronghold",
+      "name": "Tree Gnome Stronghold",
+      "x": 2459,
+      "y": 3446,
+      "plane": 0,
+      "tags": ["kandarin", "gnome"],
+      "requirements": null,
+      "_note": "Always accessible once Spirit Tree network unlocked"
+    },
+    {
+      "id": "spirittree_gnomevillage",
+      "name": "Tree Gnome Village",
+      "x": 2538,
+      "y": 3166,
+      "plane": 0,
+      "tags": ["kandarin", "gnome"],
+      "requirements": {
+        "quest": "Tree Gnome Village"
+      }
+    },
+    {
+      "id": "spirittree_grandexchange",
+      "name": "Grand Exchange",
+      "x": 3184,
+      "y": 3510,
+      "plane": 0,
+      "tags": ["misthalin", "varrock"],
+      "requirements": null
+    },
+    {
+      "id": "spirittree_ardougne",
+      "name": "Battlefield of Khazard",
+      "x": 2554,
+      "y": 3259,
+      "plane": 0,
+      "tags": ["kandarin"],
+      "requirements": {
+        "quest": "Tree Gnome Village"
+      }
+    },
+    {
+      "id": "spirittree_corsair",
+      "name": "Corsair Cove",
+      "x": 2485,
+      "y": 2850,
+      "plane": 0,
+      "tags": ["feldip"],
+      "requirements": {
+        "quest": "The Corsair Curse"
+      }
+    },
+    {
+      "id": "spirittree_laguna_aurorae",
+      "name": "Laguna Aurorae",
+      "x": 1202,
+      "y": 2787,
+      "plane": 0,
+      "tags": ["varlamore"],
+      "requirements": {
+        "quest": "Children of the Sun"
+      }
+    },
+    {
+      "id": "spirittree_prifddinas",
+      "name": "Prifddinas",
+      "x": 3274,
+      "y": 6124,
+      "plane": 0,
+      "tags": ["tirannwn", "prifddinas"],
+      "requirements": {
+        "quest": "Song of the Elves"
+      }
+    }
+  ],
+  "poh_spirit_tree": {
+    "_comment": "Players can grow spirit trees in their POH garden",
+    "farming_level": 83,
+    "max_poh_trees": 1,
+    "_note": "With 91 Farming, can have 2 POH trees. At 99, can have infinite."
+  },
+  "planted_spirit_trees": {
+    "_comment": "Players can plant spirit trees at these farming patches",
+    "max_planted": 1,
+    "patches": [
+      {"name": "Etceteria", "x": 2613, "y": 3855, "plane": 0},
+      {"name": "Brimhaven", "x": 2800, "y": 3202, "plane": 0},
+      {"name": "Hosidius", "x": 1693, "y": 3540, "plane": 0},
+      {"name": "Port Sarim", "x": 3058, "y": 3257, "plane": 0},
+      {"name": "Farming Guild", "x": 1256, "y": 3750, "plane": 0}
+    ],
+    "_note": "With 91 Farming, can have 2 planted. At 99, can have infinite."
+  }
+}
+

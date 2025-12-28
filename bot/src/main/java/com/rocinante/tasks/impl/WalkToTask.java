@@ -336,9 +336,9 @@ public class WalkToTask extends AbstractTask {
     // ========================================================================
 
     /**
-     * Child task for executing teleport.
+     * Child task for executing teleport/travel.
      */
-    private TeleportTask teleportTask;
+    private TravelTask teleportTask;
 
     /**
      * Child task for executing transport (NPC/object interaction).
@@ -1004,16 +1004,16 @@ public class WalkToTask extends AbstractTask {
 
     /**
      * Execute a TELEPORT edge - cast spell or use item.
-     * Uses TeleportTask for the actual teleportation.
+     * Uses TravelTask for the actual teleportation.
      */
     private void executeTeleportEdge(TaskContext ctx, NavigationEdge edge) {
-        // Create TeleportTask from edge metadata if not already created
+        // Create TravelTask from edge metadata if not already created
         if (teleportTask == null) {
             Map<String, String> metadata = edge.getMetadata();
-            teleportTask = TeleportTask.fromNavigationMetadata(metadata);
+            teleportTask = TravelTask.fromNavigationMetadata(metadata);
             
             if (teleportTask == null) {
-                log.error("Failed to create TeleportTask from edge metadata: {}", metadata);
+                log.error("Failed to create TravelTask from edge metadata: {}", metadata);
                 // Skip this edge and try to continue
                 currentEdgeIndex++;
                 phase = WalkPhase.CALCULATE_PATH;
@@ -1025,7 +1025,7 @@ public class WalkToTask extends AbstractTask {
                 teleportTask.setExpectedDestination(edge.getToLocation());
             }
             
-            log.debug("Created TeleportTask: {}", teleportTask.getDescription());
+            log.debug("Created TravelTask: {}", teleportTask.getDescription());
         }
         
         // Transition to pending phase to execute the teleport task
@@ -1033,12 +1033,15 @@ public class WalkToTask extends AbstractTask {
     }
 
     /**
-     * Execute a TRANSPORT edge - use NPC transport or object interaction.
-     * Creates InteractObjectTask or InteractNpcTask based on edge metadata.
+     * Execute a TRANSPORT edge - use TravelTask for complex transports,
+     * or InteractObjectTask/InteractNpcTask for simple ones.
+     *
+     * <p>Complex transports (fairy rings, spirit trees, gnome gliders, etc.)
+     * are handled by TravelTask which encapsulates the full interaction flow.
      */
     private void executeTransportEdge(TaskContext ctx, NavigationEdge edge) {
         // Check if we already have a transport task
-        if (transportTask != null || transportNpcTask != null) {
+        if (transportTask != null || transportNpcTask != null || teleportTask != null) {
             phase = WalkPhase.TRANSPORT_PENDING;
             return;
         }
@@ -1050,7 +1053,33 @@ public class WalkToTask extends AbstractTask {
             return;
         }
 
-        // Check for object-based transport
+        // Check for complex transport types that should use TravelTask
+        String travelType = metadata.get("travel_type");
+        if (travelType != null) {
+            switch (travelType) {
+                case "fairy_ring":
+                case "spirit_tree":
+                case "gnome_glider":
+                case "charter_ship":
+                case "quetzal":
+                case "canoe":
+                    // Use TravelTask for complex transports
+                    teleportTask = TravelTask.fromNavigationMetadata(metadata);
+                    if (teleportTask != null) {
+                        log.debug("Created TravelTask for {}: {}", travelType, teleportTask.getDescription());
+                        phase = WalkPhase.TRANSPORT_PENDING;
+                        return;
+                    } else {
+                        log.warn("Failed to create TravelTask for {}, trying fallback", travelType);
+                    }
+                    break;
+                default:
+                    // Fall through to simple transport handling
+                    break;
+            }
+        }
+
+        // Check for object-based transport (simple interactions)
         int objectId = edge.getObjectId();
         if (objectId <= 0 && metadata.containsKey("object_id")) {
             try {
@@ -1074,7 +1103,7 @@ public class WalkToTask extends AbstractTask {
             return;
         }
 
-        // Check for NPC-based transport
+        // Check for NPC-based transport (simple interactions)
         String npcIdStr = metadata.get("npc_id");
         if (npcIdStr != null) {
             try {
@@ -1093,7 +1122,7 @@ public class WalkToTask extends AbstractTask {
         }
 
         // No valid transport configuration found
-        log.warn("Transport edge has no valid object_id or npc_id, skipping: {}", metadata);
+        log.warn("Transport edge has no valid transport config, skipping: {}", metadata);
         currentEdgeIndex++;
     }
 
@@ -1425,7 +1454,31 @@ public class WalkToTask extends AbstractTask {
      * Execute transport task (NPC/object interaction) and wait for completion.
      */
     private void executeTransportPending(TaskContext ctx) {
-        // Handle object transport
+        // Handle TravelTask for complex transports (fairy rings, spirit trees, etc.)
+        if (teleportTask != null) {
+            TaskState taskState = teleportTask.getState();
+            
+            if (taskState == TaskState.PENDING || taskState == TaskState.RUNNING) {
+                teleportTask.execute(ctx);
+                return;
+            }
+
+            if (taskState == TaskState.COMPLETED) {
+                log.debug("Transport (TravelTask) completed successfully: {}", 
+                        teleportTask.getDescription());
+                teleportTask = null;
+                currentEdgeIndex++;
+                phase = WalkPhase.CALCULATE_PATH;
+            } else {
+                log.warn("Transport (TravelTask) failed: {}", teleportTask.getDescription());
+                teleportTask = null;
+                currentEdgeIndex++;
+                phase = WalkPhase.CALCULATE_PATH;
+            }
+            return;
+        }
+
+        // Handle object transport (simple interactions)
         if (transportTask != null) {
             TaskState taskState = transportTask.getState();
             
@@ -1448,7 +1501,7 @@ public class WalkToTask extends AbstractTask {
             return;
         }
 
-        // Handle NPC transport
+        // Handle NPC transport (simple interactions)
         if (transportNpcTask != null) {
             TaskState taskState = transportNpcTask.getState();
             

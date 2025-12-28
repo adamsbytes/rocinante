@@ -1,35 +1,30 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://rocinante.com/schemas/web.json",
-  "title": "Navigation Web",
-  "description": "Navigation graph for OSRS pathfinding",
+  "$id": "https://rocinante.bot/schemas/web.schema.json",
+  "title": "Navigation Web Schema",
+  "description": "Schema for OSRS navigation web data (nodes, edges, regions)",
   "type": "object",
   "required": ["version", "nodes", "edges"],
   "properties": {
     "version": {
       "type": "string",
-      "description": "Schema version"
+      "pattern": "^\\d+\\.\\d+$",
+      "description": "Schema version (e.g., '1.0')"
     },
     "nodes": {
       "type": "array",
-      "description": "Navigation nodes (key locations)",
-      "items": {
-        "$ref": "#/definitions/node"
-      }
+      "description": "Navigation nodes (locations)",
+      "items": {"$ref": "#/definitions/node"}
     },
     "edges": {
       "type": "array",
-      "description": "Navigation edges (connections)",
-      "items": {
-        "$ref": "#/definitions/edge"
-      }
+      "description": "Navigation edges (connections between nodes)",
+      "items": {"$ref": "#/definitions/edge"}
     },
     "regions": {
       "type": "array",
-      "description": "Geographic regions grouping nodes",
-      "items": {
-        "$ref": "#/definitions/region"
-      }
+      "description": "Named regions for organization",
+      "items": {"$ref": "#/definitions/region"}
     }
   },
   "definitions": {
@@ -39,47 +34,46 @@
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique node identifier (lowercase_with_underscores)",
-          "pattern": "^[a-z][a-z0-9_]*$"
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Unique node identifier (snake_case)"
         },
         "name": {
           "type": "string",
-          "description": "Human-readable name"
+          "minLength": 1,
+          "description": "Human-readable node name"
         },
         "x": {
           "type": "integer",
-          "description": "World X coordinate",
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 16383,
+          "description": "World X coordinate"
         },
         "y": {
           "type": "integer",
-          "description": "World Y coordinate",
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 16383,
+          "description": "World Y coordinate"
         },
         "plane": {
           "type": "integer",
-          "description": "Plane (0-3)",
           "minimum": 0,
-          "maximum": 3
+          "maximum": 3,
+          "description": "Z-plane (0=ground, 1-3=upper floors)"
         },
         "type": {
           "type": "string",
-          "description": "Node type category",
-          "enum": ["BANK", "TELEPORT", "QUEST", "SLAYER", "GENERIC", "TRANSPORT", "SHOP", "TRAINING"]
+          "enum": ["BANK", "TELEPORT", "QUEST", "SLAYER", "GENERIC", "TRANSPORT", "SHOP", "TRAINING"],
+          "description": "Node type classification"
         },
         "tags": {
           "type": "array",
-          "description": "Tags for filtering",
-          "items": {
-            "type": "string"
-          }
+          "items": {"type": "string"},
+          "description": "Searchable tags (e.g., 'f2p', 'safe', 'members')"
         },
         "metadata": {
           "type": "object",
-          "description": "Additional type-specific data",
-          "additionalProperties": {
-            "type": "string"
-          }
+          "additionalProperties": {"type": "string"},
+          "description": "Additional key-value metadata"
         }
       }
     },
@@ -97,32 +91,28 @@
         },
         "type": {
           "type": "string",
-          "description": "Edge type",
-          "enum": ["WALK", "TELEPORT", "TRANSPORT", "AGILITY", "QUEST_LOCKED", "DOOR"]
+          "enum": ["WALK", "TELEPORT", "TRANSPORT", "AGILITY", "QUEST_LOCKED", "DOOR", "STAIRS", "TOLL"],
+          "description": "Edge type"
         },
         "cost_ticks": {
           "type": "integer",
-          "description": "Estimated travel cost in game ticks",
-          "minimum": 1
+          "minimum": 1,
+          "description": "Traversal cost in game ticks"
         },
         "bidirectional": {
           "type": "boolean",
-          "description": "Whether edge can be traversed both ways",
-          "default": false
+          "default": true,
+          "description": "Whether edge can be traversed both ways"
         },
         "requirements": {
           "type": "array",
-          "description": "Requirements to traverse",
-          "items": {
-            "$ref": "#/definitions/requirement"
-          }
+          "items": {"$ref": "#/definitions/requirement"},
+          "description": "Requirements to use this edge"
         },
         "metadata": {
           "type": "object",
-          "description": "Additional edge-specific data",
-          "additionalProperties": {
-            "type": "string"
-          }
+          "additionalProperties": {"type": "string"},
+          "description": "Edge-specific metadata (e.g., spell_name, travel_type)"
         }
       }
     },
@@ -132,79 +122,75 @@
       "properties": {
         "type": {
           "type": "string",
-          "description": "Requirement type",
-          "enum": ["MAGIC_LEVEL", "AGILITY_LEVEL", "QUEST", "ITEM", "RUNES", "SKILL", "COMBAT_LEVEL", "IRONMAN_RESTRICTION"]
+          "enum": ["magic_level", "agility_level", "quest", "item", "runes", "skill", "combat_level", "ironman_restriction", "favour"],
+          "description": "Requirement type"
         },
         "value": {
-          "type": "integer",
-          "description": "Numeric value (level, quantity)"
+          "description": "Requirement value (type depends on requirement type)"
         },
-        "identifier": {
+        "skill": {
           "type": "string",
-          "description": "String identifier (skill name, quest ID)"
+          "description": "Skill name for skill requirements"
+        },
+        "quest_name": {
+          "type": "string",
+          "description": "Quest name for quest requirements"
         },
         "item_id": {
           "type": "integer",
-          "description": "Item ID for ITEM requirements"
+          "description": "Item ID for item requirements"
         },
-        "consumed": {
-          "type": "boolean",
-          "description": "Whether item is consumed"
-        },
-        "rune_costs": {
+        "item_ids": {
           "type": "array",
-          "description": "Rune costs for RUNES requirement",
-          "items": {
-            "type": "object",
-            "required": ["item_id", "quantity"],
-            "properties": {
-              "item_id": {
-                "type": "integer"
-              },
-              "quantity": {
-                "type": "integer",
-                "minimum": 1
-              }
-            }
-          }
+          "items": {"type": "integer"},
+          "description": "Multiple item IDs (any one satisfies)"
         },
-        "quest_state": {
+        "runes": {
+            "type": "object",
+          "additionalProperties": {"type": "integer"},
+          "description": "Rune requirements (rune_name: count)"
+        },
+        "favour_house": {
           "type": "string",
-          "description": "Quest state required"
+          "description": "Kourend house for favour requirements"
+        },
+        "favour_percent": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Minimum favour percentage"
         }
       }
     },
     "region": {
       "type": "object",
-      "required": ["id", "name", "nodes"],
+      "required": ["id", "name", "node_ids"],
       "properties": {
         "id": {
           "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
           "description": "Unique region identifier"
         },
         "name": {
           "type": "string",
-          "description": "Human-readable name"
+          "description": "Human-readable region name"
         },
-        "nodes": {
+        "node_ids": {
           "type": "array",
-          "description": "Node IDs in this region",
-          "items": {
-            "type": "string"
-          }
+          "items": {"type": "string"},
+          "description": "Node IDs belonging to this region"
         },
-        "members_only": {
-          "type": "boolean",
-          "description": "Whether region is members-only",
-          "default": false
-        },
-        "wilderness": {
-          "type": "boolean",
-          "description": "Whether region contains wilderness",
-          "default": false
+        "bounds": {
+          "type": "object",
+          "properties": {
+            "min_x": {"type": "integer"},
+            "min_y": {"type": "integer"},
+            "max_x": {"type": "integer"},
+            "max_y": {"type": "integer"}
+          },
+          "description": "Optional bounding box"
         }
       }
     }
   }
 }
-

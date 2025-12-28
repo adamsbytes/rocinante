@@ -1,0 +1,83 @@
+{
+  "_comment": "Gnome Glider locations - validated from RuneLite source (TransportationPointLocation.java)",
+  "_source": "/tmp/runelite-src/runelite-client/src/main/java/net/runelite/client/plugins/worldmap/TransportationPointLocation.java",
+  "locations": [
+    {
+      "id": "glider_gnomestronghold",
+      "name": "Ta Quir Priw (Tree Gnome Stronghold)",
+      "x": 2460,
+      "y": 3502,
+      "plane": 0,
+      "npc_name": "Captain Errdo",
+      "tags": ["kandarin", "gnome"],
+      "requirements": {
+        "quest": "The Grand Tree"
+      }
+    },
+    {
+      "id": "glider_whitewolf",
+      "name": "Sindarpos (White Wolf Mountain)",
+      "x": 2845,
+      "y": 3501,
+      "plane": 0,
+      "npc_name": "Captain Dalbur",
+      "tags": ["asgarnia"],
+      "requirements": {
+        "quest": "The Grand Tree"
+      }
+    },
+    {
+      "id": "glider_kharid",
+      "name": "Kar-Hewo (Al Kharid)",
+      "x": 3278,
+      "y": 3213,
+      "plane": 0,
+      "npc_name": "Captain Klemfoodle",
+      "tags": ["kharidian"],
+      "requirements": {
+        "quest": "The Grand Tree"
+      }
+    },
+    {
+      "id": "glider_karamja",
+      "name": "Gandius (Karamja)",
+      "x": 2971,
+      "y": 2974,
+      "plane": 0,
+      "npc_name": "Captain Bleemadge",
+      "tags": ["karamja"],
+      "requirements": {
+        "quest": "The Grand Tree"
+      }
+    },
+    {
+      "id": "glider_feldip",
+      "name": "Lemanto Andra (Feldip Hills)",
+      "x": 2540,
+      "y": 2969,
+      "plane": 0,
+      "npc_name": "Captain Daerkin",
+      "tags": ["feldip"],
+      "requirements": {
+        "quest": "One Small Favour"
+      }
+    },
+    {
+      "id": "glider_apeatoll",
+      "name": "Ookookolly Undri (Ape Atoll)",
+      "x": 2712,
+      "y": 2804,
+      "plane": 0,
+      "npc_name": "G.L.O. Caranock",
+      "tags": ["karamja", "ape_atoll"],
+      "requirements": {
+        "quest": "Monkey Madness II"
+      },
+      "_note": "Crash site glider, requires MM2 completion"
+    }
+  ],
+  "travel_cost": 0,
+  "travel_time_ticks": 8,
+  "_widget_group": 138
+}
+

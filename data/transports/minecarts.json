@@ -1,0 +1,187 @@
+{
+  "_comment": "Minecart locations - validated from RuneLite source (TransportationPointLocation.java)",
+  "_source": "/tmp/runelite-src/runelite-client/src/main/java/net/runelite/client/plugins/worldmap/TransportationPointLocation.java",
+  "keldagrim_network": {
+    "_comment": "Keldagrim Minecart System - requires The Giant Dwarf quest started",
+    "stations": [
+      {
+        "id": "minecart_keldagrim",
+        "name": "Keldagrim",
+        "x": 2908,
+        "y": 10170,
+        "plane": 0,
+        "tags": ["fremennik", "dwarf"],
+        "_note": "Central hub"
+      },
+      {
+        "id": "minecart_grandexchange",
+        "name": "Grand Exchange",
+        "x": 3139,
+        "y": 3504,
+        "plane": 0,
+        "tags": ["misthalin"]
+      },
+      {
+        "id": "minecart_ice_mountain",
+        "name": "Ice Mountain",
+        "x": 2995,
+        "y": 9836,
+        "plane": 0,
+        "tags": ["asgarnia"]
+      },
+      {
+        "id": "minecart_white_wolf",
+        "name": "White Wolf Mountain",
+        "x": 2874,
+        "y": 9870,
+        "plane": 0,
+        "tags": ["asgarnia"]
+      }
+    ],
+    "train_station": {
+      "id": "train_keldagrim",
+      "name": "Keldagrim Railway",
+      "x": 2941,
+      "y": 10179,
+      "plane": 0,
+      "_note": "Connects to Dorgesh-Kaan after Another Slice of H.A.M."
+    },
+    "requirements": {
+      "quest": "The Giant Dwarf (started)"
+    }
+  },
+  "lovakengj_network": {
+    "_comment": "Lovakengj Minecart Network - requires 65% Lovakengj favour",
+    "stations": [
+      {
+        "id": "minecart_lovakengj",
+        "name": "Lovakengj",
+        "x": 1524,
+        "y": 3725,
+        "plane": 0,
+        "tags": ["kourend", "lovakengj"]
+      },
+      {
+        "id": "minecart_arceuus",
+        "name": "Arceuus",
+        "x": 1673,
+        "y": 3832,
+        "plane": 0,
+        "tags": ["kourend", "arceuus"]
+      },
+      {
+        "id": "minecart_farming_guild",
+        "name": "Farming Guild",
+        "x": 1219,
+        "y": 3738,
+        "plane": 0,
+        "tags": ["kourend"]
+      },
+      {
+        "id": "minecart_hosidius_south",
+        "name": "Hosidius South",
+        "x": 1805,
+        "y": 3480,
+        "plane": 0,
+        "tags": ["kourend", "hosidius"]
+      },
+      {
+        "id": "minecart_hosidius_west",
+        "name": "Hosidius West",
+        "x": 1656,
+        "y": 3542,
+        "plane": 0,
+        "tags": ["kourend", "hosidius"]
+      },
+      {
+        "id": "minecart_kingstown",
+        "name": "Kingstown",
+        "x": 1697,
+        "y": 3658,
+        "plane": 0,
+        "tags": ["kourend"]
+      },
+      {
+        "id": "minecart_kourend_woodland",
+        "name": "Kourend Woodland",
+        "x": 1570,
+        "y": 3464,
+        "plane": 0,
+        "tags": ["kourend"]
+      },
+      {
+        "id": "minecart_mount_quidamortem",
+        "name": "Mount Quidamortem",
+        "x": 1253,
+        "y": 3550,
+        "plane": 0,
+        "tags": ["kourend", "chambers_of_xeric"]
+      },
+      {
+        "id": "minecart_northern_tundras",
+        "name": "Northern Tundras",
+        "x": 1646,
+        "y": 3930,
+        "plane": 0,
+        "tags": ["kourend"]
+      },
+      {
+        "id": "minecart_port_piscarilius",
+        "name": "Port Piscarilius",
+        "x": 1760,
+        "y": 3708,
+        "plane": 0,
+        "tags": ["kourend", "piscarilius"]
+      },
+      {
+        "id": "minecart_shayzien_east",
+        "name": "Shayzien East",
+        "x": 1586,
+        "y": 3622,
+        "plane": 0,
+        "tags": ["kourend", "shayzien"]
+      },
+      {
+        "id": "minecart_shayzien_west",
+        "name": "Shayzien West",
+        "x": 1413,
+        "y": 3579,
+        "plane": 0,
+        "tags": ["kourend", "shayzien"]
+      }
+    ],
+    "requirements": {
+      "lovakengj_favour": 65
+    }
+  },
+  "shilo_cart": {
+    "_comment": "Shilo Village cart system",
+    "stations": [
+      {
+        "id": "cart_brimhaven",
+        "name": "Brimhaven",
+        "x": 2780,
+        "y": 3214,
+        "plane": 0,
+        "destination_x": 2833,
+        "destination_y": 2958,
+        "tags": ["karamja"]
+      },
+      {
+        "id": "cart_shilo",
+        "name": "Shilo Village",
+        "x": 2833,
+        "y": 2958,
+        "plane": 0,
+        "destination_x": 2780,
+        "destination_y": 3214,
+        "tags": ["karamja"]
+      }
+    ],
+    "fare": 200,
+    "requirements": {
+      "quest": "Shilo Village"
+    }
+  }
+}
+

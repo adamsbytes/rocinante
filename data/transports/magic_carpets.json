@@ -1,0 +1,115 @@
+{
+  "_comment": "Magic Carpet locations - validated from RuneLite source (TransportationPointLocation.java)",
+  "_source": "/tmp/runelite-src/runelite-client/src/main/java/net/runelite/client/plugins/worldmap/TransportationPointLocation.java",
+  "locations": [
+    {
+      "id": "carpet_shantay",
+      "name": "Shantay Pass (Al Kharid)",
+      "x": 3311,
+      "y": 3107,
+      "plane": 0,
+      "npc_name": "Rug Merchant",
+      "tags": ["kharidian"],
+      "hub": true,
+      "_note": "Main hub connecting to all desert locations"
+    },
+    {
+      "id": "carpet_bedabin",
+      "name": "Bedabin Camp",
+      "x": 3183,
+      "y": 3042,
+      "plane": 0,
+      "npc_name": "Rug Merchant",
+      "tags": ["kharidian"],
+      "destination_x": 3311,
+      "destination_y": 3107,
+      "_note": "Returns to Shantay Pass"
+    },
+    {
+      "id": "carpet_pollnivneach_north",
+      "name": "Pollnivneach (North)",
+      "x": 3351,
+      "y": 3001,
+      "plane": 0,
+      "npc_name": "Rug Merchant",
+      "tags": ["kharidian"],
+      "destination_x": 3311,
+      "destination_y": 3107,
+      "_note": "Returns to Shantay Pass"
+    },
+    {
+      "id": "carpet_pollnivneach_south",
+      "name": "Pollnivneach (South)",
+      "x": 3345,
+      "y": 2943,
+      "plane": 0,
+      "npc_name": "Rug Merchant",
+      "tags": ["kharidian"],
+      "hub": true,
+      "_note": "Hub connecting to Nardah/Sophanem/Menaphos"
+    },
+    {
+      "id": "carpet_nardah",
+      "name": "Nardah",
+      "x": 3399,
+      "y": 2916,
+      "plane": 0,
+      "npc_name": "Rug Merchant",
+      "tags": ["kharidian"],
+      "destination_x": 3345,
+      "destination_y": 2943,
+      "_note": "Returns to Pollnivneach South"
+    },
+    {
+      "id": "carpet_sophanem",
+      "name": "Sophanem",
+      "x": 3288,
+      "y": 2814,
+      "plane": 0,
+      "npc_name": "Rug Merchant",
+      "tags": ["kharidian"],
+      "destination_x": 3345,
+      "destination_y": 2943,
+      "requirements": {
+        "quest": "Icthlarin's Little Helper"
+      },
+      "_note": "Returns to Pollnivneach South"
+    },
+    {
+      "id": "carpet_menaphos",
+      "name": "Menaphos",
+      "x": 3244,
+      "y": 2812,
+      "plane": 0,
+      "npc_name": "Rug Merchant",
+      "tags": ["kharidian"],
+      "destination_x": 3345,
+      "destination_y": 2943,
+      "requirements": {
+        "quest": "Contact!"
+      },
+      "_note": "Returns to Pollnivneach South"
+    },
+    {
+      "id": "carpet_uzer",
+      "name": "Uzer",
+      "x": 3468,
+      "y": 3111,
+      "plane": 0,
+      "npc_name": "Rug Merchant",
+      "tags": ["kharidian"],
+      "destination_x": 3311,
+      "destination_y": 3107,
+      "requirements": {
+        "quest": "The Golem"
+      },
+      "_note": "Returns to Shantay Pass"
+    }
+  ],
+  "fares": {
+    "base": 200,
+    "ring_of_charos_discount": 0,
+    "_note": "Ardougne cloak reduces fare. Karamja gloves eliminate fare to Shantay."
+  }
+}
+

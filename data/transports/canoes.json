@@ -1,0 +1,86 @@
+{
+  "_comment": "Canoe stations - validated from RuneLite source (TransportationPointLocation.java)",
+  "_source": "/tmp/runelite-src/runelite-client/src/main/java/net/runelite/client/plugins/worldmap/TransportationPointLocation.java",
+  "stations": [
+    {
+      "id": "canoe_lumbridge",
+      "name": "Lumbridge",
+      "x": 3241,
+      "y": 3238,
+      "plane": 0,
+      "tags": ["misthalin"],
+      "station_index": 0
+    },
+    {
+      "id": "canoe_championsguild",
+      "name": "Champions' Guild",
+      "x": 3202,
+      "y": 3344,
+      "plane": 0,
+      "tags": ["misthalin"],
+      "station_index": 1
+    },
+    {
+      "id": "canoe_barbvillage",
+      "name": "Barbarian Village",
+      "x": 3111,
+      "y": 3409,
+      "plane": 0,
+      "tags": ["misthalin"],
+      "station_index": 2
+    },
+    {
+      "id": "canoe_edgeville",
+      "name": "Edgeville",
+      "x": 3130,
+      "y": 3509,
+      "plane": 0,
+      "tags": ["misthalin"],
+      "station_index": 3
+    },
+    {
+      "id": "canoe_feroxenclave",
+      "name": "Ferox Enclave (Wilderness Pond)",
+      "x": 3155,
+      "y": 3630,
+      "plane": 0,
+      "tags": ["wilderness"],
+      "station_index": 4,
+      "_note": "Wilderness location, one-way from other stations with Waka"
+    }
+  ],
+  "canoe_types": [
+    {
+      "type": "log",
+      "woodcutting_level": 12,
+      "max_stations": 1,
+      "_note": "Can only travel 1 station"
+    },
+    {
+      "type": "dugout",
+      "woodcutting_level": 27,
+      "max_stations": 2,
+      "_note": "Can travel up to 2 stations"
+    },
+    {
+      "type": "stable_dugout",
+      "woodcutting_level": 42,
+      "max_stations": 3,
+      "_note": "Can travel up to 3 stations"
+    },
+    {
+      "type": "waka",
+      "woodcutting_level": 57,
+      "max_stations": 4,
+      "_note": "Can travel to any station including Wilderness Pond"
+    }
+  ],
+  "requirements": {
+    "axe": "Any axe (equipped or in inventory)"
+  },
+  "_widget_groups": {
+    "shaping": 52,
+    "destination": 53
+  }
+}
+
