@@ -81,13 +81,15 @@ public class InefficiencyInjector {
     
     /**
      * Minimum backtrack distance in tiles.
+     * Per user specification: 2-10 tiles to simulate "not paying attention."
      */
-    private static final int MIN_BACKTRACK_TILES = 1;
+    private static final int MIN_BACKTRACK_TILES = 2;
     
     /**
      * Maximum backtrack distance in tiles.
+     * Per user specification: 2-10 tiles to simulate "not paying attention."
      */
-    private static final int MAX_BACKTRACK_TILES = 2;
+    private static final int MAX_BACKTRACK_TILES = 10;
     
     // === Dependencies ===
     

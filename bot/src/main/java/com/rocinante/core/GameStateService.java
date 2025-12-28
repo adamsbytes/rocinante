@@ -1481,9 +1481,10 @@ public class GameStateService {
                 116   // Level up
         );
 
-        // Scan all possible widget groups (0-765 covers known OSRS range)
+        // Scan all possible widget groups (0-999 covers known OSRS range with safety margin)
+        // OSRS has widgets up to ~900+, so we use 1000 for safer coverage
         // This helps discover unknown widgets like license agreement, name entry, etc.
-        for (int groupId = 0; groupId < 766; groupId++) {
+        for (int groupId = 0; groupId < 1000; groupId++) {
             net.runelite.api.widgets.Widget widget = client.getWidget(groupId, 0);
             if (widget != null) {
                 visibleIds.add(groupId);

@@ -192,45 +192,212 @@ public class UnifiedNavigationGraph {
      */
     private void addExplicitTransitions() {
         for (PlaneTransitionHandler.PlaneTransition transition : planeTransitionHandler.getAllTransitions()) {
-            // Skip bidirectional entries (they're handled by specific up/down variants)
-            if (transition.getDirection() == PlaneTransitionHandler.TransitionDirection.BIDIRECTIONAL) {
-                continue;
-            }
-
             // Check if this transition's destination is known
             if (transition.getDestination() == null) {
                 continue;
             }
 
-            // Create dynamic nodes if needed
-            WorldPoint sourcePoint = transition.getDestination();
-            int sourcePlane = sourcePoint.getPlane();
-            int destPlane = sourcePlane + transition.getPlaneChange();
+            // For BIDIRECTIONAL transitions, create both UP and DOWN edges
+            if (transition.getDirection() == PlaneTransitionHandler.TransitionDirection.BIDIRECTIONAL) {
+                createBidirectionalTransitionEdges(transition);
+                continue;
+            }
 
-            String sourceNodeId = getDynamicNodeId(sourcePoint);
-            String destNodeId = getDynamicNodeId(
-                    new WorldPoint(sourcePoint.getX(), sourcePoint.getY(), destPlane));
+            // Create single directional edge
+            createDirectionalTransitionEdge(transition);
+        }
+    }
 
-            // Ensure dynamic nodes exist
-            ensureDynamicNode(sourceNodeId, sourcePoint);
-            ensureDynamicNode(destNodeId, 
-                    new WorldPoint(sourcePoint.getX(), sourcePoint.getY(), destPlane));
-
-            NavigationEdge edge = NavigationEdge.builder()
-                    .fromNodeId(sourceNodeId)
-                    .toNodeId(destNodeId)
+    /**
+     * Create both UP and DOWN edges for a bidirectional plane transition.
+     */
+    private void createBidirectionalTransitionEdges(PlaneTransitionHandler.PlaneTransition transition) {
+        WorldPoint basePoint = transition.getDestination();
+        int basePlane = basePoint.getPlane();
+        
+        // For bidirectional ladders/stairs, they can typically go up or down
+        // We create edges for both directions from the base plane
+        
+        // Create UP edge (plane -> plane + 1)
+        int upperPlane = basePlane + 1;
+        if (upperPlane <= 3) { // OSRS max plane is 3
+            WorldPoint upperPoint = new WorldPoint(basePoint.getX(), basePoint.getY(), upperPlane);
+            
+            String lowerNodeId = getDynamicNodeId(basePoint);
+            String upperNodeId = getDynamicNodeId(upperPoint);
+            
+            ensureDynamicNode(lowerNodeId, basePoint);
+            ensureDynamicNode(upperNodeId, upperPoint);
+            
+            // Edge going UP
+            NavigationEdge upEdge = NavigationEdge.builder()
+                    .fromNodeId(lowerNodeId)
+                    .toNodeId(upperNodeId)
                     .type(WebEdgeType.STAIRS)
                     .costTicks(5)
                     .bidirectional(false)
-                    .fromPlane(sourcePlane)
-                    .toPlane(destPlane)
+                    .fromPlane(basePlane)
+                    .toPlane(upperPlane)
                     .objectId(transition.getObjectId())
-                    .action(transition.getAction())
-                    .fromLocation(sourcePoint)
-                    .toLocation(new WorldPoint(sourcePoint.getX(), sourcePoint.getY(), destPlane))
+                    .action(getUpAction(transition))
+                    .fromLocation(basePoint)
+                    .toLocation(upperPoint)
                     .build();
+            addEdge(upEdge);
+            
+            // Edge going DOWN
+            NavigationEdge downEdge = NavigationEdge.builder()
+                    .fromNodeId(upperNodeId)
+                    .toNodeId(lowerNodeId)
+                    .type(WebEdgeType.STAIRS)
+                    .costTicks(5)
+                    .bidirectional(false)
+                    .fromPlane(upperPlane)
+                    .toPlane(basePlane)
+                    .objectId(transition.getObjectId())
+                    .action(getDownAction(transition))
+                    .fromLocation(upperPoint)
+                    .toLocation(basePoint)
+                    .build();
+            addEdge(downEdge);
+        }
+        
+        // Also handle DOWN from base plane if possible
+        int lowerPlane = basePlane - 1;
+        if (lowerPlane >= 0) {
+            WorldPoint lowerPoint = new WorldPoint(basePoint.getX(), basePoint.getY(), lowerPlane);
+            
+            String baseNodeId = getDynamicNodeId(basePoint);
+            String lowerNodeId = getDynamicNodeId(lowerPoint);
+            
+            ensureDynamicNode(baseNodeId, basePoint);
+            ensureDynamicNode(lowerNodeId, lowerPoint);
+            
+            // Edge going DOWN from base
+            NavigationEdge downEdge = NavigationEdge.builder()
+                    .fromNodeId(baseNodeId)
+                    .toNodeId(lowerNodeId)
+                    .type(WebEdgeType.STAIRS)
+                    .costTicks(5)
+                    .bidirectional(false)
+                    .fromPlane(basePlane)
+                    .toPlane(lowerPlane)
+                    .objectId(transition.getObjectId())
+                    .action(getDownAction(transition))
+                    .fromLocation(basePoint)
+                    .toLocation(lowerPoint)
+                    .build();
+            addEdge(downEdge);
+            
+            // Edge going UP to base
+            NavigationEdge upEdge = NavigationEdge.builder()
+                    .fromNodeId(lowerNodeId)
+                    .toNodeId(baseNodeId)
+                    .type(WebEdgeType.STAIRS)
+                    .costTicks(5)
+                    .bidirectional(false)
+                    .fromPlane(lowerPlane)
+                    .toPlane(basePlane)
+                    .objectId(transition.getObjectId())
+                    .action(getUpAction(transition))
+                    .fromLocation(lowerPoint)
+                    .toLocation(basePoint)
+                    .build();
+            addEdge(upEdge);
+        }
+    }
 
-            addEdge(edge);
+    /**
+     * Create a single directional transition edge.
+     */
+    private void createDirectionalTransitionEdge(PlaneTransitionHandler.PlaneTransition transition) {
+        WorldPoint sourcePoint = transition.getDestination();
+        int sourcePlane = sourcePoint.getPlane();
+        int destPlane = sourcePlane + transition.getPlaneChange();
+
+        String sourceNodeId = getDynamicNodeId(sourcePoint);
+        String destNodeId = getDynamicNodeId(
+                new WorldPoint(sourcePoint.getX(), sourcePoint.getY(), destPlane));
+
+        // Ensure dynamic nodes exist
+        ensureDynamicNode(sourceNodeId, sourcePoint);
+        ensureDynamicNode(destNodeId, 
+                new WorldPoint(sourcePoint.getX(), sourcePoint.getY(), destPlane));
+
+        NavigationEdge edge = NavigationEdge.builder()
+                .fromNodeId(sourceNodeId)
+                .toNodeId(destNodeId)
+                .type(WebEdgeType.STAIRS)
+                .costTicks(5)
+                .bidirectional(false)
+                .fromPlane(sourcePlane)
+                .toPlane(destPlane)
+                .objectId(transition.getObjectId())
+                .action(transition.getAction())
+                .fromLocation(sourcePoint)
+                .toLocation(new WorldPoint(sourcePoint.getX(), sourcePoint.getY(), destPlane))
+                .build();
+
+        addEdge(edge);
+    }
+
+    /**
+     * Get the "up" action for a transition, based on transition type.
+     */
+    private String getUpAction(PlaneTransitionHandler.PlaneTransition transition) {
+        String action = transition.getAction();
+        if (action != null && !action.isEmpty()) {
+            // If action contains "down", replace with up variant
+            if (action.toLowerCase().contains("down")) {
+                return action.toLowerCase().replace("down", "up");
+            }
+            // If action is generic, determine by type
+            if (action.equalsIgnoreCase("climb") || action.equalsIgnoreCase("use")) {
+                return "Climb-up";
+            }
+            return action;
+        }
+        
+        // Default based on transition type
+        switch (transition.getTransitionType()) {
+            case LADDER:
+                return "Climb-up";
+            case STAIRS:
+                return "Climb-up";
+            case TRAPDOOR:
+                return "Climb-up";
+            default:
+                return "Climb-up";
+        }
+    }
+
+    /**
+     * Get the "down" action for a transition, based on transition type.
+     */
+    private String getDownAction(PlaneTransitionHandler.PlaneTransition transition) {
+        String action = transition.getAction();
+        if (action != null && !action.isEmpty()) {
+            // If action contains "up", replace with down variant
+            if (action.toLowerCase().contains("up")) {
+                return action.toLowerCase().replace("up", "down");
+            }
+            // If action is generic, determine by type
+            if (action.equalsIgnoreCase("climb") || action.equalsIgnoreCase("use")) {
+                return "Climb-down";
+            }
+            return action;
+        }
+        
+        // Default based on transition type
+        switch (transition.getTransitionType()) {
+            case LADDER:
+                return "Climb-down";
+            case STAIRS:
+                return "Climb-down";
+            case TRAPDOOR:
+                return "Climb-down";
+            default:
+                return "Climb-down";
         }
     }
 

@@ -26,6 +26,7 @@ import java.awt.Point;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
@@ -317,6 +318,25 @@ public class WalkToTask extends AbstractTask {
     private WorldPoint finalDestination;
 
     // ========================================================================
+    // Teleport/Transport State
+    // ========================================================================
+
+    /**
+     * Child task for executing teleport.
+     */
+    private TeleportTask teleportTask;
+
+    /**
+     * Child task for executing transport (NPC/object interaction).
+     */
+    private InteractObjectTask transportTask;
+
+    /**
+     * Child task for transport NPC interaction.
+     */
+    private InteractNpcTask transportNpcTask;
+
+    // ========================================================================
     // Constructors
     // ========================================================================
 
@@ -469,8 +489,17 @@ public class WalkToTask extends AbstractTask {
             case BACKTRACKING:
                 executeBacktracking(ctx);
                 break;
-            case BACKTRACK_WAIT:
-                executeBacktrackWait(ctx);
+            case BACKTRACK_WALK_TO_OVERSHOOT:
+                executeBacktrackWalkToOvershoot(ctx);
+                break;
+            case BACKTRACK_RETURN:
+                executeBacktrackReturn(ctx);
+                break;
+            case TELEPORT_PENDING:
+                executeTeleportPending(ctx);
+                break;
+            case TRANSPORT_PENDING:
+                executeTransportPending(ctx);
                 break;
             case ARRIVED:
                 complete();
@@ -960,21 +989,96 @@ public class WalkToTask extends AbstractTask {
 
     /**
      * Execute a TELEPORT edge - cast spell or use item.
+     * Uses TeleportTask for the actual teleportation.
      */
     private void executeTeleportEdge(TaskContext ctx, NavigationEdge edge) {
-        // TODO: Implement teleport handling
-        // This would involve checking for spell/item availability and using it
-        log.warn("Teleport edge execution not yet implemented");
-        currentEdgeIndex++;
+        // Create TeleportTask from edge metadata if not already created
+        if (teleportTask == null) {
+            Map<String, String> metadata = edge.getMetadata();
+            teleportTask = TeleportTask.fromNavigationMetadata(metadata);
+            
+            if (teleportTask == null) {
+                log.error("Failed to create TeleportTask from edge metadata: {}", metadata);
+                // Skip this edge and try to continue
+                currentEdgeIndex++;
+                phase = WalkPhase.CALCULATE_PATH;
+                return;
+            }
+            
+            // Set expected destination if available
+            if (edge.getToLocation() != null) {
+                teleportTask.setExpectedDestination(edge.getToLocation());
+            }
+            
+            log.debug("Created TeleportTask: {}", teleportTask.getDescription());
+        }
+        
+        // Transition to pending phase to execute the teleport task
+        phase = WalkPhase.TELEPORT_PENDING;
     }
 
     /**
-     * Execute a TRANSPORT edge - use NPC transport.
+     * Execute a TRANSPORT edge - use NPC transport or object interaction.
+     * Creates InteractObjectTask or InteractNpcTask based on edge metadata.
      */
     private void executeTransportEdge(TaskContext ctx, NavigationEdge edge) {
-        // TODO: Implement transport handling  
-        // This would involve finding and interacting with the transport NPC
-        log.warn("Transport edge execution not yet implemented");
+        // Check if we already have a transport task
+        if (transportTask != null || transportNpcTask != null) {
+            phase = WalkPhase.TRANSPORT_PENDING;
+            return;
+        }
+
+        Map<String, String> metadata = edge.getMetadata();
+        if (metadata == null) {
+            log.warn("Transport edge has no metadata, skipping");
+            currentEdgeIndex++;
+            return;
+        }
+
+        // Check for object-based transport
+        int objectId = edge.getObjectId();
+        if (objectId <= 0 && metadata.containsKey("object_id")) {
+            try {
+                objectId = Integer.parseInt(metadata.get("object_id"));
+            } catch (NumberFormatException e) {
+                log.warn("Invalid object_id in transport metadata");
+            }
+        }
+
+        if (objectId > 0) {
+            String action = edge.getAction();
+            if (action == null) {
+                action = metadata.getOrDefault("action", "Travel");
+            }
+            
+            transportTask = new InteractObjectTask(objectId, action);
+            transportTask.setDescription("Use transport: " + metadata.getOrDefault("name", "transport"));
+            
+            log.debug("Created transport object task: objectId={}, action={}", objectId, action);
+            phase = WalkPhase.TRANSPORT_PENDING;
+            return;
+        }
+
+        // Check for NPC-based transport
+        String npcIdStr = metadata.get("npc_id");
+        if (npcIdStr != null) {
+            try {
+                int npcId = Integer.parseInt(npcIdStr);
+                String action = metadata.getOrDefault("action", "Travel");
+                
+                transportNpcTask = new InteractNpcTask(npcId, action);
+                transportNpcTask.setDescription("Talk to transport NPC");
+                
+                log.debug("Created transport NPC task: npcId={}, action={}", npcId, action);
+                phase = WalkPhase.TRANSPORT_PENDING;
+                return;
+            } catch (NumberFormatException e) {
+                log.warn("Invalid npc_id in transport metadata: {}", npcIdStr);
+            }
+        }
+
+        // No valid transport configuration found
+        log.warn("Transport edge has no valid object_id or npc_id, skipping: {}", metadata);
         currentEdgeIndex++;
     }
 
@@ -1259,12 +1363,112 @@ public class WalkToTask extends AbstractTask {
     }
 
     // ========================================================================
+    // Phase: Teleport Pending
+    // ========================================================================
+
+    /**
+     * Execute the teleport task and wait for completion.
+     */
+    private void executeTeleportPending(TaskContext ctx) {
+        if (teleportTask == null) {
+            log.error("No teleport task in TELEPORT_PENDING phase");
+            phase = WalkPhase.CALCULATE_PATH;
+            return;
+        }
+
+        TaskState taskState = teleportTask.getState();
+        
+        // Execute if not started or still running
+        if (taskState == TaskState.PENDING || taskState == TaskState.RUNNING) {
+            teleportTask.execute(ctx);
+            return;
+        }
+
+        // Check result
+        if (taskState == TaskState.COMPLETED) {
+            log.debug("Teleport completed successfully");
+            teleportTask = null;
+            currentEdgeIndex++;
+            
+            // Continue with path after teleport
+            phase = WalkPhase.CALCULATE_PATH;
+        } else {
+            log.warn("Teleport task failed: {}", teleportTask.getDescription());
+            teleportTask = null;
+            
+            // Try to continue despite teleport failure
+            currentEdgeIndex++;
+            phase = WalkPhase.CALCULATE_PATH;
+        }
+    }
+
+    // ========================================================================
+    // Phase: Transport Pending
+    // ========================================================================
+
+    /**
+     * Execute transport task (NPC/object interaction) and wait for completion.
+     */
+    private void executeTransportPending(TaskContext ctx) {
+        // Handle object transport
+        if (transportTask != null) {
+            TaskState taskState = transportTask.getState();
+            
+            if (taskState == TaskState.PENDING || taskState == TaskState.RUNNING) {
+                transportTask.execute(ctx);
+                return;
+            }
+
+            if (taskState == TaskState.COMPLETED) {
+                log.debug("Transport (object) completed successfully");
+                transportTask = null;
+                currentEdgeIndex++;
+                phase = WalkPhase.CALCULATE_PATH;
+            } else {
+                log.warn("Transport (object) failed");
+                transportTask = null;
+                currentEdgeIndex++;
+                phase = WalkPhase.CALCULATE_PATH;
+            }
+            return;
+        }
+
+        // Handle NPC transport
+        if (transportNpcTask != null) {
+            TaskState taskState = transportNpcTask.getState();
+            
+            if (taskState == TaskState.PENDING || taskState == TaskState.RUNNING) {
+                transportNpcTask.execute(ctx);
+                return;
+            }
+
+            if (taskState == TaskState.COMPLETED) {
+                log.debug("Transport (NPC) completed successfully");
+                transportNpcTask = null;
+                currentEdgeIndex++;
+                phase = WalkPhase.CALCULATE_PATH;
+            } else {
+                log.warn("Transport (NPC) failed");
+                transportNpcTask = null;
+                currentEdgeIndex++;
+                phase = WalkPhase.CALCULATE_PATH;
+            }
+            return;
+        }
+
+        // No transport task set
+        log.error("No transport task in TRANSPORT_PENDING phase");
+        phase = WalkPhase.CALCULATE_PATH;
+    }
+
+    // ========================================================================
     // Phase: Backtracking
     // ========================================================================
 
     /**
-     * Execute backtracking behavior - walk 1-2 tiles past destination, then return.
-     * Per REQUIREMENTS.md 3.4.4: 2% of walks walk 1-2 tiles past destination, then return.
+     * Execute backtracking behavior - walk 2-10 tiles past destination, then return.
+     * This simulates "not paying attention" then noticing and returning.
+     * Per user spec: 2-10 tiles overshoot for realistic human behavior.
      */
     private void executeBacktracking(TaskContext ctx) {
         var inefficiency = ctx.getInefficiencyInjector();
@@ -1273,22 +1477,23 @@ public class WalkToTask extends AbstractTask {
             return;
         }
 
-        // Get backtrack distance (1-2 tiles)
+        // Get backtrack distance (2-10 tiles)
         int backtrackDistance = inefficiency.getBacktrackDistance();
         
-        // Save original destination
+        // Save original destination for return trip
         originalDestination = destination;
         
         // Calculate overshoot position (in the direction we were walking)
         PlayerState player = ctx.getPlayerState();
         WorldPoint playerPos = player.getWorldPosition();
         
-        // Get direction from last known position to destination
+        // Get direction from player to destination (or last position to destination)
         int dx = 0, dy = 0;
-        if (lastPosition != null && destination != null) {
-            dx = destination.getX() - lastPosition.getX();
-            dy = destination.getY() - lastPosition.getY();
-            // Normalize to unit direction
+        WorldPoint referencePos = lastPosition != null ? lastPosition : playerPos;
+        if (referencePos != null && destination != null) {
+            dx = destination.getX() - referencePos.getX();
+            dy = destination.getY() - referencePos.getY();
+            // Normalize to unit direction and scale by backtrack distance
             double mag = Math.sqrt(dx * dx + dy * dy);
             if (mag > 0) {
                 dx = (int) Math.round(dx / mag * backtrackDistance);
@@ -1304,33 +1509,101 @@ public class WalkToTask extends AbstractTask {
             dy = (int) Math.round(Math.sin(angle) * backtrackDistance);
         }
         
-        // Calculate overshoot destination
+        // Calculate overshoot destination (past the original destination)
         WorldPoint overshootDest = new WorldPoint(
             destination.getX() + dx,
             destination.getY() + dy,
             destination.getPlane()
         );
         
-        log.debug("Backtracking: pausing briefly to simulate hesitation");
+        log.debug("Backtracking: walking {} tiles past destination to {} (will return to {})", 
+                backtrackDistance, overshootDest, originalDestination);
         
-        // Simpler approach: just pause briefly and continue to ARRIVED
-        // This simulates the "walking past and realizing" without actual overshoot movement
-        ctx.getHumanTimer().sleep(ctx.getRandomization().uniformRandomLong(500, 1500))
-            .thenRun(() -> {
-                log.debug("Backtrack pause complete");
-                phase = WalkPhase.ARRIVED;
-            });
+        // Set flag to prevent recursive backtracking on the overshoot walk
+        isBacktrackWalk = true;
         
-        // Transition to wait phase to avoid executing other logic while waiting
-        phase = WalkPhase.BACKTRACK_WAIT;
+        // Set destination to overshoot point and recalculate path
+        destination = overshootDest;
+        currentPath.clear();
+        pathIndex = 0;
+        
+        // Go to path calculation phase to walk to overshoot
+        phase = WalkPhase.BACKTRACK_WALK_TO_OVERSHOOT;
     }
     
     /**
-     * Wait for backtrack pause to complete.
+     * Execute the walk to overshoot point during backtracking.
      */
-    private void executeBacktrackWait(TaskContext ctx) {
-        // Just wait for the async sleep to complete and set phase to ARRIVED
-        // No action needed here - phase will be updated by the sleep callback
+    private void executeBacktrackWalkToOvershoot(TaskContext ctx) {
+        PlayerState player = ctx.getPlayerState();
+        WorldPoint playerPos = player.getWorldPosition();
+        
+        // Check if we've arrived at the overshoot point
+        if (playerPos != null && destination != null) {
+            int distance = playerPos.distanceTo(destination);
+            if (distance <= ARRIVAL_DISTANCE) {
+                log.debug("Backtracking: arrived at overshoot point, now returning to original destination");
+                
+                // Now walk back to original destination
+                destination = originalDestination;
+                currentPath.clear();
+                pathIndex = 0;
+                
+                phase = WalkPhase.BACKTRACK_RETURN;
+                return;
+            }
+        }
+        
+        // Calculate path to overshoot if needed
+        if (currentPath.isEmpty() && pathFinder != null && playerPos != null && destination != null) {
+            currentPath = pathFinder.findPath(playerPos, destination);
+            pathIndex = 0;
+        }
+        
+        // Handle run energy
+        handleRunEnergy(ctx, player);
+        
+        // Click to continue walking to overshoot
+        if (!currentPath.isEmpty()) {
+            clickNextPathPoint(ctx, playerPos);
+        }
+    }
+    
+    /**
+     * Execute the return walk from overshoot to original destination.
+     */
+    private void executeBacktrackReturn(TaskContext ctx) {
+        PlayerState player = ctx.getPlayerState();
+        WorldPoint playerPos = player.getWorldPosition();
+        
+        // Check if we've arrived back at original destination
+        if (playerPos != null && destination != null) {
+            int distance = playerPos.distanceTo(destination);
+            if (distance <= ARRIVAL_DISTANCE) {
+                log.debug("Backtracking: returned to original destination");
+                
+                // Clear backtrack state
+                isBacktrackWalk = false;
+                originalDestination = null;
+                
+                phase = WalkPhase.ARRIVED;
+                return;
+            }
+        }
+        
+        // Calculate path to original destination if needed
+        if (currentPath.isEmpty() && pathFinder != null && playerPos != null && destination != null) {
+            currentPath = pathFinder.findPath(playerPos, destination);
+            pathIndex = 0;
+        }
+        
+        // Handle run energy
+        handleRunEnergy(ctx, player);
+        
+        // Click to continue walking back
+        if (!currentPath.isEmpty()) {
+            clickNextPathPoint(ctx, playerPos);
+        }
     }
 
     // ========================================================================
@@ -1624,7 +1897,10 @@ public class WalkToTask extends AbstractTask {
         HANDLE_OBSTACLE,
         HANDLE_PLANE_TRANSITION,
         BACKTRACKING,
-        BACKTRACK_WAIT,
+        BACKTRACK_WALK_TO_OVERSHOOT,
+        BACKTRACK_RETURN,
+        TELEPORT_PENDING,
+        TRANSPORT_PENDING,
         ARRIVED
     }
 }

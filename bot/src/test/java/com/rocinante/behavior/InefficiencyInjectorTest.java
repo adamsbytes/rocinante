@@ -73,10 +73,10 @@ public class InefficiencyInjectorTest {
     }
 
     @Test
-    public void testGetBacktrackDistance_ReturnsOneOrTwo() {
+    public void testGetBacktrackDistance_ReturnsTwoToTen() {
         for (int i = 0; i < 100; i++) {
             int distance = injector.getBacktrackDistance();
-            assertTrue("Backtrack distance should be 1 or 2", distance >= 1 && distance <= 2);
+            assertTrue("Backtrack distance should be 2 to 10", distance >= 2 && distance <= 10);
         }
     }
 

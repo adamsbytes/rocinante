@@ -116,7 +116,7 @@
 - [ ] `QuestOrderPlanner` - Optimal quest ordering
 - [ ] `GearProgressionPlanner` - Equipment upgrade paths
 - [X] `UnlockTracker` - Teleports, areas, features (integrated with WebWalker)
-- [ ] `TeleportTask` with behavioral profile preferences
+- [X] `TeleportTask` with behavioral profile preferences
 - [ ] `InventoryTask`
 - [X] `BankTask`, `DialogueTask`, `PuzzleTask`, `WidgetInteractTask`
 
