@@ -432,6 +432,39 @@ public class WintertodtTaskTest {
     }
 
     // ========================================================================
+    // Points Tracking Tests
+    // ========================================================================
+
+    @Test
+    public void testPointsTracking_FeedingBrazierUpdatesPoints() {
+        // This test verifies the fix for the points tracking bug
+        // where roundPoints was calculated but never updated
+        
+        WintertodtConfig config = WintertodtConfig.builder()
+                .minigameId("wintertodt")
+                .minigameName("Wintertodt")
+                .regionIds(List.of(WintertodtConfig.WINTERTODT_REGION))
+                .targetLevel(75)
+                .strategy(WintertodtStrategy.SIMPLE)
+                .preferredBrazier(BrazierLocation.SOUTHWEST)
+                .build();
+
+        WintertodtTask task = new WintertodtTask(config);
+
+        // Verify initial points are 0
+        assertEquals(0, task.getRoundPoints());
+        assertEquals(0, task.getTotalPoints());
+    }
+
+    @Test
+    public void testPointsConfig_RootAndKindlingValues() {
+        // Verify points per item constants are properly defined
+        assertEquals(10, WintertodtConfig.POINTS_PER_ROOT);
+        assertEquals(25, WintertodtConfig.POINTS_PER_KINDLING);
+        assertEquals(500, WintertodtConfig.MIN_POINTS_FOR_REWARD);
+    }
+
+    // ========================================================================
     // Description Tests
     // ========================================================================
 

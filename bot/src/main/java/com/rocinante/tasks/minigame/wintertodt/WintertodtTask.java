@@ -569,7 +569,11 @@ public class WintertodtTask extends MinigameTask {
                 WintertodtConfig.POINTS_PER_KINDLING : 
                 WintertodtConfig.POINTS_PER_ROOT;
 
-        log.trace("Starting to feed brazier ({} items, {} pts each)", itemsToFeed, pointsPerItem);
+        // Update round points with estimated points from feeding
+        roundPoints += itemsToFeed * pointsPerItem;
+
+        log.trace("Starting to feed brazier ({} items, {} pts each, total: {})", 
+                itemsToFeed, pointsPerItem, roundPoints);
     }
 
     private void startLightingBrazier(TaskContext ctx) {

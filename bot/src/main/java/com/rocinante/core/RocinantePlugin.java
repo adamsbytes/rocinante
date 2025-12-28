@@ -166,6 +166,10 @@ public class RocinantePlugin extends Plugin
     @Getter
     private com.rocinante.behavior.LogoutHandler logoutHandler;
 
+    @Inject
+    @Getter
+    private com.rocinante.behavior.tasks.TradeHandler tradeHandler;
+
     // === Status & Communication Components ===
 
     @Inject
@@ -230,6 +234,12 @@ public class RocinantePlugin extends Plugin
         
         // Register MouseCameraCoupler - idle camera behaviors
         eventBus.register(mouseCameraCoupler);
+        
+        // Register TradeHandler - handles incoming trade requests
+        eventBus.register(tradeHandler);
+        
+        // Wire up TradeHandler with TaskExecutor
+        tradeHandler.setTaskExecutor(taskExecutor);
         
         // Wire up BreakScheduler with its task factory
         breakScheduler.setBreakTaskFactory(breakTaskFactory);

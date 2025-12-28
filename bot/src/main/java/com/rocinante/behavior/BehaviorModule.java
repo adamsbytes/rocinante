@@ -6,6 +6,7 @@ import com.google.inject.Singleton;
 import com.rocinante.behavior.tasks.*;
 import com.rocinante.input.CameraController;
 import com.rocinante.input.MouseCameraCoupler;
+import com.rocinante.state.IronmanState;
 import com.rocinante.tasks.Task;
 import com.rocinante.timing.HumanTimer;
 import com.rocinante.util.PerlinNoise;
@@ -141,6 +142,15 @@ public class BehaviorModule extends AbstractModule {
     public LogoutHandler provideLogoutHandler(Client client, Randomization randomization, 
                                                HumanTimer humanTimer) {
         return new LogoutHandler(client, randomization, humanTimer);
+    }
+
+    /**
+     * Provides the TradeHandler for handling incoming trade requests.
+     */
+    @Provides
+    @Singleton
+    public TradeHandler provideTradeHandler(Client client, IronmanState ironmanState) {
+        return new TradeHandler(client, ironmanState);
     }
 }
 
