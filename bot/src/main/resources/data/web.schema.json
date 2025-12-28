@@ -98,7 +98,7 @@
         "type": {
           "type": "string",
           "description": "Edge type",
-          "enum": ["WALK", "TELEPORT", "TRANSPORT", "AGILITY", "QUEST_LOCKED", "DOOR"]
+          "enum": ["WALK", "TELEPORT", "TRANSPORT", "AGILITY", "QUEST_LOCKED", "DOOR", "STAIRS", "TOLL"]
         },
         "cost_ticks": {
           "type": "integer",
@@ -119,7 +119,41 @@
         },
         "metadata": {
           "type": "object",
-          "description": "Additional edge-specific data",
+          "description": "Additional edge-specific data. Common fields: object_id (interaction), action (menu action), from_plane/to_plane (plane transitions), failure_rate (shortcuts), toll_cost (toll gates), free_after_quest (toll gates), notes (comments)",
+          "properties": {
+            "object_id": {
+              "type": "string",
+              "description": "Object ID to interact with"
+            },
+            "action": {
+              "type": "string",
+              "description": "Menu action (e.g., 'Climb-up', 'Open', 'Cross')"
+            },
+            "from_plane": {
+              "type": "string",
+              "description": "Source plane for plane transitions"
+            },
+            "to_plane": {
+              "type": "string",
+              "description": "Destination plane for plane transitions"
+            },
+            "failure_rate": {
+              "type": "string",
+              "description": "Failure rate for agility shortcuts (0.0 to 1.0)"
+            },
+            "toll_cost": {
+              "type": "string",
+              "description": "Gold cost for toll gates"
+            },
+            "free_after_quest": {
+              "type": "string",
+              "description": "Quest enum name that grants free passage"
+            },
+            "notes": {
+              "type": "string",
+              "description": "Human-readable notes"
+            }
+          },
           "additionalProperties": {
             "type": "string"
           }

@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
+import net.runelite.api.Quest;
 import net.runelite.api.Skill;
 import net.runelite.api.coords.WorldPoint;
 
@@ -20,7 +21,10 @@ import java.util.*;
  *
  * <p>Features:
  * <ul>
- *   <li>Dijkstra's algorithm on navigation web</li>
+ *   <li>Dijkstra's algorithm on unified navigation graph</li>
+ *   <li>Multi-plane pathfinding (stairs, ladders, trapdoors)</li>
+ *   <li>Agility shortcut integration with risk assessment</li>
+ *   <li>Toll gate handling with quest-based free passage</li>
  *   <li>Requirement checking for edges (skills, items, quests)</li>
  *   <li>Ironman restriction filtering</li>
  *   <li>HCIM safety filtering (wilderness avoidance)</li>
@@ -42,10 +46,24 @@ public class WebWalker {
     private UnlockTracker unlockTracker;
 
     /**
-     * The navigation web graph.
+     * The raw navigation web data.
      */
     @Getter
     private NavigationWeb navigationWeb;
+
+    /**
+     * The unified navigation graph (includes plane transitions).
+     */
+    @Getter
+    @Nullable
+    private UnifiedNavigationGraph unifiedGraph;
+
+    /**
+     * Plane transition handler for vertical movement.
+     */
+    @Setter
+    @Nullable
+    private PlaneTransitionHandler planeTransitionHandler;
 
     /**
      * Whether the player is an ironman (affects edge filtering).
@@ -62,6 +80,13 @@ public class WebWalker {
      */
     private boolean avoidWilderness = true;
 
+    /**
+     * Maximum acceptable failure rate for agility shortcuts.
+     * Default: 10% - shortcuts with higher failure rates are avoided.
+     */
+    @Setter
+    private double maxAcceptableRisk = 0.10;
+
     @Inject
     public WebWalker(Client client, @Nullable UnlockTracker unlockTracker) {
         this.client = client;
@@ -72,6 +97,27 @@ public class WebWalker {
             log.info("WebWalker initialized with UnlockTracker integration");
         } else {
             log.info("WebWalker initialized without UnlockTracker (limited requirement checking)");
+        }
+    }
+
+    /**
+     * Constructor with PlaneTransitionHandler for unified graph support.
+     */
+    @Inject
+    public WebWalker(Client client, @Nullable UnlockTracker unlockTracker, 
+                     @Nullable PlaneTransitionHandler planeTransitionHandler) {
+        this.client = client;
+        this.unlockTracker = unlockTracker;
+        this.planeTransitionHandler = planeTransitionHandler;
+        loadNavigationWeb();
+        buildUnifiedGraph();
+        
+        if (unlockTracker != null) {
+            log.info("WebWalker initialized with UnlockTracker integration");
+        }
+        if (unifiedGraph != null) {
+            log.info("WebWalker using unified graph with {} nodes, {} edges",
+                    unifiedGraph.getNodeCount(), unifiedGraph.getEdgeCount());
         }
     }
 
@@ -95,10 +141,42 @@ public class WebWalker {
     }
 
     /**
-     * Reload the navigation web.
+     * Build the unified navigation graph.
+     */
+    private void buildUnifiedGraph() {
+        if (navigationWeb == null) {
+            log.warn("Cannot build unified graph: navigation web not loaded");
+            return;
+        }
+
+        try {
+            if (planeTransitionHandler != null) {
+                unifiedGraph = new UnifiedNavigationGraph(navigationWeb, planeTransitionHandler);
+            } else {
+                unifiedGraph = new UnifiedNavigationGraph(navigationWeb);
+            }
+            log.info("Built unified graph: {} nodes, {} edges",
+                    unifiedGraph.getNodeCount(), unifiedGraph.getEdgeCount());
+        } catch (Exception e) {
+            log.error("Failed to build unified navigation graph", e);
+            unifiedGraph = null;
+        }
+    }
+
+    /**
+     * Reload the navigation web and rebuild unified graph.
      */
     public void reloadNavigationWeb() {
         loadNavigationWeb();
+        buildUnifiedGraph();
+    }
+
+    /**
+     * Set the plane transition handler and rebuild graph.
+     */
+    public void setPlaneTransitionHandler(PlaneTransitionHandler handler) {
+        this.planeTransitionHandler = handler;
+        buildUnifiedGraph();
     }
 
     // ========================================================================
@@ -136,7 +214,7 @@ public class WebWalker {
     }
 
     // ========================================================================
-    // Path Finding
+    // Path Finding (Legacy - returns List<WebNode>)
     // ========================================================================
 
     /**
@@ -145,7 +223,9 @@ public class WebWalker {
      * @param start the starting world point
      * @param end   the destination world point
      * @return list of web nodes forming the path (empty if no path found)
+     * @deprecated Use {@link #findUnifiedPath(WorldPoint, WorldPoint)} for multi-plane support
      */
+    @Deprecated
     public List<WebNode> findPath(WorldPoint start, WorldPoint end) {
         if (navigationWeb == null) {
             log.warn("WebWalker: navigation web not loaded");
@@ -170,7 +250,9 @@ public class WebWalker {
      * @param startId the starting node ID
      * @param endId   the destination node ID
      * @return list of web nodes forming the path (empty if no path found)
+     * @deprecated Use {@link #findUnifiedPath(String, String)} for multi-plane support
      */
+    @Deprecated
     public List<WebNode> findPath(String startId, String endId) {
         if (navigationWeb == null) {
             log.warn("WebWalker: navigation web not loaded");
@@ -240,7 +322,216 @@ public class WebWalker {
     }
 
     // ========================================================================
-    // Dijkstra's Algorithm
+    // Unified Path Finding (returns NavigationPath with edges)
+    // ========================================================================
+
+    /**
+     * Find a unified path between two world points.
+     * 
+     * <p>This method supports:
+     * <ul>
+     *   <li>Multi-plane pathfinding (paths that go up/down stairs)</li>
+     *   <li>Agility shortcuts when player has sufficient level</li>
+     *   <li>Toll gates with cost consideration</li>
+     *   <li>All edge types in a single path</li>
+     * </ul>
+     *
+     * @param start the starting world point
+     * @param end   the destination world point
+     * @return NavigationPath with edges (empty path if no path found)
+     */
+    public NavigationPath findUnifiedPath(WorldPoint start, WorldPoint end) {
+        if (unifiedGraph == null) {
+            log.warn("WebWalker: unified graph not available, falling back to legacy path");
+            return convertLegacyPath(findPath(start, end), start, end);
+        }
+
+        // Find nearest nodes, allowing cross-plane search for destination
+        WebNode startNode = unifiedGraph.findNearestNodeSamePlane(start);
+        WebNode endNode = unifiedGraph.findNearestNodeAnyPlane(end);
+
+        if (startNode == null || endNode == null) {
+            log.debug("WebWalker: could not find nodes near start ({}) or end ({})", start, end);
+            return NavigationPath.empty();
+        }
+
+        return findUnifiedPath(startNode.getId(), endNode.getId(), start, end);
+    }
+
+    /**
+     * Find a unified path between two nodes by ID.
+     *
+     * @param startId the starting node ID
+     * @param endId   the destination node ID
+     * @return NavigationPath with edges (empty path if no path found)
+     */
+    public NavigationPath findUnifiedPath(String startId, String endId) {
+        if (unifiedGraph == null) {
+            log.warn("WebWalker: unified graph not available");
+            return NavigationPath.empty();
+        }
+
+        WebNode startNode = unifiedGraph.getNode(startId);
+        WebNode endNode = unifiedGraph.getNode(endId);
+
+        if (startNode == null || endNode == null) {
+            log.debug("WebWalker: invalid node IDs - start: {}, end: {}", startId, endId);
+            return NavigationPath.empty();
+        }
+
+        return findUnifiedPath(startId, endId, 
+                startNode.getWorldPoint(), endNode.getWorldPoint());
+    }
+
+    /**
+     * Find a unified path with explicit start/end points.
+     */
+    private NavigationPath findUnifiedPath(String startId, String endId,
+                                            WorldPoint startPoint, WorldPoint endPoint) {
+        // Create player requirements from current state
+        PlayerRequirements playerReqs = createPlayerRequirements();
+
+        // Run unified Dijkstra
+        List<NavigationEdge> edges = runUnifiedDijkstra(startId, endId, playerReqs);
+
+        if (edges.isEmpty()) {
+            log.debug("WebWalker: no unified path found from {} to {}", startId, endId);
+            return NavigationPath.empty();
+        }
+
+        // Calculate total cost
+        int totalCost = edges.stream()
+                .mapToInt(NavigationEdge::getCostTicks)
+                .sum();
+
+        // Build node ID list
+        List<String> nodeIds = new ArrayList<>();
+        nodeIds.add(startId);
+        for (NavigationEdge edge : edges) {
+            nodeIds.add(edge.getToNodeId());
+        }
+
+        return NavigationPath.builder()
+                .edges(edges)
+                .nodeIds(nodeIds)
+                .totalCostTicks(totalCost)
+                .startPoint(startPoint)
+                .endPoint(endPoint)
+                .build();
+    }
+
+    /**
+     * Find a unified path to the nearest node of a specific type.
+     *
+     * @param start the starting world point
+     * @param type  the target node type
+     * @return NavigationPath (empty if no path found)
+     */
+    public NavigationPath findUnifiedPathToNearestType(WorldPoint start, WebNodeType type) {
+        if (unifiedGraph == null) {
+            return convertLegacyPath(findPathToNearestType(start, type), start, null);
+        }
+
+        WebNode startNode = unifiedGraph.findNearestNodeSamePlane(start);
+        if (startNode == null) {
+            return NavigationPath.empty();
+        }
+
+        // Find all nodes of the target type
+        List<WebNode> targets = navigationWeb.getNodesByType(type);
+        if (targets.isEmpty()) {
+            return NavigationPath.empty();
+        }
+
+        // Find shortest path to any target
+        NavigationPath bestPath = NavigationPath.empty();
+        int bestCost = Integer.MAX_VALUE;
+
+        PlayerRequirements playerReqs = createPlayerRequirements();
+
+        for (WebNode target : targets) {
+            List<NavigationEdge> edges = runUnifiedDijkstra(startNode.getId(), target.getId(), playerReqs);
+            if (!edges.isEmpty()) {
+                int cost = edges.stream().mapToInt(NavigationEdge::getCostTicks).sum();
+                if (cost < bestCost) {
+                    List<String> nodeIds = new ArrayList<>();
+                    nodeIds.add(startNode.getId());
+                    for (NavigationEdge edge : edges) {
+                        nodeIds.add(edge.getToNodeId());
+                    }
+
+                    bestPath = NavigationPath.builder()
+                            .edges(edges)
+                            .nodeIds(nodeIds)
+                            .totalCostTicks(cost)
+                            .startPoint(start)
+                            .endPoint(target.getWorldPoint())
+                            .build();
+                    bestCost = cost;
+                }
+            }
+        }
+
+        return bestPath;
+    }
+
+    /**
+     * Find unified path to the nearest bank.
+     *
+     * @param start the starting world point
+     * @return NavigationPath
+     */
+    public NavigationPath findUnifiedPathToNearestBank(WorldPoint start) {
+        return findUnifiedPathToNearestType(start, WebNodeType.BANK);
+    }
+
+    /**
+     * Convert a legacy path (List<WebNode>) to NavigationPath.
+     */
+    private NavigationPath convertLegacyPath(List<WebNode> nodes, WorldPoint start, WorldPoint end) {
+        if (nodes == null || nodes.isEmpty()) {
+            return NavigationPath.empty();
+        }
+
+        List<NavigationEdge> edges = new ArrayList<>();
+        List<String> nodeIds = new ArrayList<>();
+        int totalCost = 0;
+
+        for (int i = 0; i < nodes.size(); i++) {
+            nodeIds.add(nodes.get(i).getId());
+
+            if (i < nodes.size() - 1) {
+                WebNode from = nodes.get(i);
+                WebNode to = nodes.get(i + 1);
+                
+                // Get edge from navigation web
+                WebEdge webEdge = navigationWeb.getEdge(from.getId(), to.getId());
+                if (webEdge != null) {
+                    NavigationEdge edge = NavigationEdge.fromWebEdge(
+                            webEdge, from.getWorldPoint(), to.getWorldPoint());
+                    edges.add(edge);
+                    totalCost += webEdge.getCostTicks();
+                } else {
+                    // Fallback: create walk edge
+                    int cost = from.distanceTo(to) * 2; // Rough tick estimate
+                    edges.add(NavigationEdge.walk(from.getId(), to.getId(), cost,
+                            from.getWorldPoint(), to.getWorldPoint()));
+                    totalCost += cost;
+                }
+            }
+        }
+
+        return NavigationPath.builder()
+                .edges(edges)
+                .nodeIds(nodeIds)
+                .totalCostTicks(totalCost)
+                .startPoint(start != null ? start : nodes.get(0).getWorldPoint())
+                .endPoint(end != null ? end : nodes.get(nodes.size() - 1).getWorldPoint())
+                .build();
+    }
+
+    // ========================================================================
+    // Dijkstra's Algorithm (Legacy - returns List<WebNode>)
     // ========================================================================
 
     /**
@@ -297,6 +588,228 @@ public class WebWalker {
         // No path found
         log.debug("WebWalker: no path found from {} to {}", start.getId(), end.getId());
         return Collections.emptyList();
+    }
+
+    // ========================================================================
+    // Unified Dijkstra's Algorithm (returns List<NavigationEdge>)
+    // ========================================================================
+
+    /**
+     * Run Dijkstra's algorithm on the unified graph.
+     * Returns a list of edges forming the path.
+     */
+    private List<NavigationEdge> runUnifiedDijkstra(String startId, String endId,
+                                                     PlayerRequirements playerReqs) {
+        if (unifiedGraph == null) {
+            return Collections.emptyList();
+        }
+
+        // Priority queue ordered by cost
+        PriorityQueue<UnifiedDijkstraNode> openSet = new PriorityQueue<>(
+                Comparator.comparingInt(n -> n.cost));
+
+        // Track visited nodes and best costs
+        Map<String, Integer> bestCost = new HashMap<>();
+        Map<String, NavigationEdge> cameFromEdge = new HashMap<>();
+
+        // Initialize
+        openSet.add(new UnifiedDijkstraNode(startId, 0, null));
+        bestCost.put(startId, 0);
+
+        while (!openSet.isEmpty()) {
+            UnifiedDijkstraNode current = openSet.poll();
+
+            // Check if we reached the goal
+            if (current.nodeId.equals(endId)) {
+                return reconstructEdgePath(cameFromEdge, startId, endId);
+            }
+
+            // Skip if we've found a better path to this node
+            Integer currentBest = bestCost.get(current.nodeId);
+            if (currentBest != null && current.cost > currentBest) {
+                continue;
+            }
+
+            // Explore neighbors using unified graph
+            List<NavigationEdge> edges = unifiedGraph.getTraversableEdges(current.nodeId, playerReqs);
+            for (NavigationEdge edge : edges) {
+                String neighborId = edge.getToNodeId();
+
+                // Skip wilderness edges if configured
+                if (avoidWilderness && navigationWeb.isInWilderness(neighborId)) {
+                    continue;
+                }
+
+                // Calculate edge cost with adjustments
+                int edgeCost = calculateAdjustedCost(edge, playerReqs);
+                int newCost = current.cost + edgeCost;
+                Integer neighborBest = bestCost.get(neighborId);
+
+                if (neighborBest == null || newCost < neighborBest) {
+                    bestCost.put(neighborId, newCost);
+                    cameFromEdge.put(neighborId, edge);
+                    openSet.add(new UnifiedDijkstraNode(neighborId, newCost, edge));
+                }
+            }
+        }
+
+        // No path found
+        return Collections.emptyList();
+    }
+
+    /**
+     * Calculate adjusted cost for an edge based on player state.
+     */
+    private int calculateAdjustedCost(NavigationEdge edge, PlayerRequirements playerReqs) {
+        int baseCost = edge.getCostTicks();
+
+        // Add risk penalty for agility shortcuts
+        if (edge.isAgilityShortcut()) {
+            double failureRate = edge.getFailureRate();
+            if (failureRate > 0) {
+                // Add penalty based on expected failure cost (time to retry)
+                int failurePenalty = (int) (failureRate * baseCost * 3); // 3x retry cost estimate
+                baseCost += failurePenalty;
+            }
+        }
+
+        // Toll gates: add small penalty to prefer free routes
+        if (edge.isTollGate()) {
+            // Check if player has free passage
+            String freeQuest = edge.getFreePassageQuest();
+            if (freeQuest != null && playerReqs.isQuestCompleted(freeQuest)) {
+                // No penalty - free passage
+            } else if (edge.getTollCost() > 0) {
+                // Add penalty proportional to gold cost
+                baseCost += edge.getTollCost() / 10; // 10gp = 1 tick penalty
+            }
+        }
+
+        return baseCost;
+    }
+
+    /**
+     * Reconstruct edge path from Dijkstra results.
+     */
+    private List<NavigationEdge> reconstructEdgePath(Map<String, NavigationEdge> cameFromEdge,
+                                                       String startId, String endId) {
+        List<NavigationEdge> path = new ArrayList<>();
+        String currentId = endId;
+
+        while (!currentId.equals(startId)) {
+            NavigationEdge edge = cameFromEdge.get(currentId);
+            if (edge == null) {
+                break; // Shouldn't happen if path exists
+            }
+            path.add(edge);
+            currentId = edge.getFromNodeId();
+        }
+
+        Collections.reverse(path);
+        return path;
+    }
+
+    /**
+     * Create PlayerRequirements from current player state.
+     */
+    private PlayerRequirements createPlayerRequirements() {
+        return new PlayerRequirements() {
+            @Override
+            public int getAgilityLevel() {
+                return WebWalker.this.getSkillLevel(Skill.AGILITY);
+            }
+
+            @Override
+            public int getMagicLevel() {
+                return WebWalker.this.getSkillLevel(Skill.MAGIC);
+            }
+
+            @Override
+            public int getCombatLevel() {
+                return WebWalker.this.getCombatLevel();
+            }
+
+            @Override
+            public int getSkillLevel(String skillName) {
+                Skill skill = getSkillByName(skillName);
+                return skill != null ? WebWalker.this.getSkillLevel(skill) : 1;
+            }
+
+            @Override
+            public int getTotalGold() {
+                // Try to get gold from inventory
+                // Note: Bank gold requires additional tracking
+                return getInventoryGold();
+            }
+
+            @Override
+            public int getInventoryGold() {
+                // Gold coins item ID is 995
+                // Without direct inventory access, return 0
+                // This would be populated by TaskContext or GameStateService
+                return 0;
+            }
+
+            @Override
+            public boolean hasItem(int itemId) {
+                return hasItem(itemId, 1);
+            }
+
+            @Override
+            public boolean hasItem(int itemId, int quantity) {
+                if (unlockTracker != null) {
+                    return unlockTracker.hasItem(itemId, quantity);
+                }
+                return false;
+            }
+
+            @Override
+            public boolean isQuestCompleted(Quest quest) {
+                if (unlockTracker != null) {
+                    return unlockTracker.isQuestCompleted(quest);
+                }
+                return false;
+            }
+
+            @Override
+            public boolean isQuestCompleted(String questName) {
+                if (unlockTracker != null) {
+                    try {
+                        Quest quest = Quest.valueOf(questName);
+                        return unlockTracker.isQuestCompleted(quest);
+                    } catch (IllegalArgumentException e) {
+                        return false;
+                    }
+                }
+                return false;
+            }
+
+            @Override
+            public boolean isIronman() {
+                return WebWalker.this.isIronman;
+            }
+
+            @Override
+            public boolean isHardcore() {
+                return WebWalker.this.isHardcoreIronman;
+            }
+
+            @Override
+            public boolean isUltimateIronman() {
+                // TODO: Add UIM detection if needed
+                return false;
+            }
+
+            @Override
+            public double getAcceptableRiskThreshold() {
+                return maxAcceptableRisk;
+            }
+
+            @Override
+            public boolean shouldAvoidWilderness() {
+                return avoidWilderness;
+            }
+        };
     }
 
     /**
@@ -521,7 +1034,7 @@ public class WebWalker {
     // ========================================================================
 
     /**
-     * Node for Dijkstra's algorithm.
+     * Node for legacy Dijkstra's algorithm.
      */
     private static class DijkstraNode {
         final String nodeId;
@@ -534,38 +1047,20 @@ public class WebWalker {
     }
 
     /**
-     * Result of a web walking path calculation.
+     * Node for unified Dijkstra's algorithm.
      */
-    @Getter
-    public static class WebPath {
-        private final List<WebNode> nodes;
-        private final int totalCostTicks;
-        private final boolean requiresTeleport;
-        private final boolean requiresItems;
+    private static class UnifiedDijkstraNode {
+        final String nodeId;
+        final int cost;
+        @Nullable
+        final NavigationEdge incomingEdge;
 
-        public WebPath(List<WebNode> nodes, int totalCostTicks,
-                       boolean requiresTeleport, boolean requiresItems) {
-            this.nodes = Collections.unmodifiableList(nodes);
-            this.totalCostTicks = totalCostTicks;
-            this.requiresTeleport = requiresTeleport;
-            this.requiresItems = requiresItems;
-        }
-
-        public boolean isEmpty() {
-            return nodes.isEmpty();
-        }
-
-        public int size() {
-            return nodes.size();
-        }
-
-        public WebNode getStart() {
-            return nodes.isEmpty() ? null : nodes.get(0);
-        }
-
-        public WebNode getEnd() {
-            return nodes.isEmpty() ? null : nodes.get(nodes.size() - 1);
+        UnifiedDijkstraNode(String nodeId, int cost, @Nullable NavigationEdge incomingEdge) {
+            this.nodeId = nodeId;
+            this.cost = cost;
+            this.incomingEdge = incomingEdge;
         }
     }
+
 }
 

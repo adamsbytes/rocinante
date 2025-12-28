@@ -1,0 +1,202 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://rocinante.com/schemas/training_methods.json",
+  "title": "Training Methods",
+  "description": "Skill training method definitions for the bot",
+  "type": "object",
+  "required": ["_meta", "methods"],
+  "properties": {
+    "_meta": {
+      "type": "object",
+      "description": "Metadata about this file",
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "format_version": {
+          "type": "integer"
+        }
+      }
+    },
+    "methods": {
+      "type": "array",
+      "description": "Array of training method definitions",
+      "items": {
+        "$ref": "#/definitions/method"
+      }
+    }
+  },
+  "definitions": {
+    "method": {
+      "type": "object",
+      "required": ["id", "name", "skill", "methodType", "minLevel", "xpPerAction", "actionsPerHour"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique method identifier (lowercase_with_underscores)",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable name"
+        },
+        "skill": {
+          "type": "string",
+          "description": "Skill trained by this method",
+          "enum": ["ATTACK", "DEFENCE", "STRENGTH", "HITPOINTS", "RANGED", "PRAYER", "MAGIC",
+                   "COOKING", "WOODCUTTING", "FLETCHING", "FISHING", "FIREMAKING", "CRAFTING",
+                   "SMITHING", "MINING", "HERBLORE", "AGILITY", "THIEVING", "SLAYER", "FARMING",
+                   "RUNECRAFT", "HUNTER", "CONSTRUCTION"]
+        },
+        "methodType": {
+          "type": "string",
+          "description": "Type of training method",
+          "enum": ["GATHER", "PROCESS", "COMBAT", "RUNECRAFT", "AGILITY", "THIEVING"]
+        },
+        "minLevel": {
+          "type": "integer",
+          "description": "Minimum skill level required",
+          "minimum": 1,
+          "maximum": 99
+        },
+        "maxLevel": {
+          "type": "integer",
+          "description": "Maximum level this method is efficient for (-1 for unlimited)",
+          "minimum": -1,
+          "maximum": 99
+        },
+        "xpPerAction": {
+          "type": "number",
+          "description": "XP gained per successful action",
+          "minimum": 0
+        },
+        "actionsPerHour": {
+          "type": "integer",
+          "description": "Theoretical maximum actions per hour",
+          "minimum": 1
+        },
+        "gpPerHour": {
+          "type": "integer",
+          "description": "Estimated GP profit/loss per hour (negative = cost)"
+        },
+        "locationId": {
+          "type": "string",
+          "description": "Reference to a node in web.json"
+        },
+        "exactPosition": {
+          "$ref": "#/definitions/worldPoint"
+        },
+        "bankLocationId": {
+          "type": "string",
+          "description": "Bank node ID for banking methods"
+        },
+        "targetObjectIds": {
+          "type": "array",
+          "description": "Object IDs to interact with",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "targetNpcIds": {
+          "type": "array",
+          "description": "NPC IDs for fishing spot-style interactions",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "menuAction": {
+          "type": "string",
+          "description": "Menu action to use (e.g., Mine, Chop down)"
+        },
+        "successAnimationId": {
+          "type": "integer",
+          "description": "Animation ID played during successful action"
+        },
+        "requiresInventorySpace": {
+          "type": "boolean",
+          "description": "Whether this method requires free inventory space"
+        },
+        "dropWhenFull": {
+          "type": "boolean",
+          "description": "If true, drop products when inventory is full (power training)"
+        },
+        "productItemIds": {
+          "type": "array",
+          "description": "Item IDs produced by this method",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "sourceItemId": {
+          "type": "integer",
+          "description": "Source item ID to use (e.g., knife, hammer)"
+        },
+        "targetItemId": {
+          "type": "integer",
+          "description": "Target item ID to use source on"
+        },
+        "processingObjectId": {
+          "type": "integer",
+          "description": "Object ID for processing (furnace, anvil, etc.)"
+        },
+        "outputItemId": {
+          "type": "integer",
+          "description": "Expected output item ID"
+        },
+        "outputPerAction": {
+          "type": "integer",
+          "description": "Number of outputs per action",
+          "minimum": 1
+        },
+        "makeAllWidgetId": {
+          "type": "integer",
+          "description": "Widget ID for make-all interface"
+        },
+        "makeAllChildId": {
+          "type": "integer",
+          "description": "Child widget ID for specific item selection"
+        },
+        "requiredItemIds": {
+          "type": "array",
+          "description": "Item IDs of required tools",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "ironmanViable": {
+          "type": "boolean",
+          "description": "Whether this method is viable for ironman accounts"
+        },
+        "questRequirements": {
+          "type": "array",
+          "description": "Quest IDs that must be completed",
+          "items": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "worldPoint": {
+      "type": "object",
+      "required": ["x", "y"],
+      "properties": {
+        "x": {
+          "type": "integer",
+          "description": "World X coordinate"
+        },
+        "y": {
+          "type": "integer",
+          "description": "World Y coordinate"
+        },
+        "plane": {
+          "type": "integer",
+          "description": "Plane (0-3)",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 3
+        }
+      }
+    }
+  }
+}
+

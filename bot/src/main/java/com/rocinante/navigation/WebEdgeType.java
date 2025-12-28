@@ -33,6 +33,16 @@ public enum WebEdgeType {
     /**
      * Requires opening door/gate.
      */
-    DOOR
+    DOOR,
+
+    /**
+     * Requires climbing stairs/ladder (plane transition).
+     */
+    STAIRS,
+
+    /**
+     * Requires toll payment or item (may be free after quest).
+     */
+    TOLL
 }
 

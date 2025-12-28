@@ -17,6 +17,7 @@ import com.rocinante.input.MouseCameraCoupler;
 import com.rocinante.input.RobotKeyboardController;
 import com.rocinante.input.RobotMouseController;
 import com.rocinante.input.WidgetClickHelper;
+import com.rocinante.agility.AgilityCourseRepository;
 import com.rocinante.progression.UnlockTracker;
 import com.rocinante.puzzle.PuzzleSolverRegistry;
 import com.rocinante.state.BankState;
@@ -113,6 +114,10 @@ public class TaskContext {
     @Getter
     @Nullable
     private final UnlockTracker unlockTracker;
+
+    @Getter
+    @Nullable
+    private final AgilityCourseRepository agilityCourseRepository;
 
     // ========================================================================
     // Navigation System
@@ -222,6 +227,7 @@ public class TaskContext {
             @Nullable WidgetClickHelper widgetClickHelper,
             @Nullable MenuHelper menuHelper,
             @Nullable UnlockTracker unlockTracker,
+            @Nullable AgilityCourseRepository agilityCourseRepository,
             @Nullable PlayerProfile playerProfile,
             @Nullable PuzzleSolverRegistry puzzleSolverRegistry,
             @Nullable CameraController cameraController,
@@ -248,6 +254,7 @@ public class TaskContext {
         this.widgetClickHelper = widgetClickHelper;
         this.menuHelper = menuHelper;
         this.unlockTracker = unlockTracker;
+        this.agilityCourseRepository = agilityCourseRepository;
         this.playerProfile = playerProfile;
         this.puzzleSolverRegistry = puzzleSolverRegistry;
         this.cameraController = cameraController;
@@ -278,7 +285,7 @@ public class TaskContext {
             @Nullable CombatManager combatManager) {
         this(client, gameStateService, mouseController, keyboardController, humanTimer, 
                 targetSelector, combatManager, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     /**
@@ -293,7 +300,7 @@ public class TaskContext {
             HumanTimer humanTimer) {
         this(client, gameStateService, mouseController, keyboardController, humanTimer, 
                 null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     // ========================================================================

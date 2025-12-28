@@ -218,14 +218,14 @@ public class WalkToTask extends AbstractTask {
     private int pathIndex = 0;
 
     /**
-     * Web nodes path (for long-distance walking).
+     * Unified navigation path with edges (supports multi-plane).
      */
-    private List<WebNode> webPath = new ArrayList<>();
+    private NavigationPath unifiedPath;
 
     /**
-     * Current index in web path.
+     * Current edge index in unified path.
      */
-    private int webPathIndex = 0;
+    private int currentEdgeIndex = 0;
 
     /**
      * Last known player position.
@@ -310,6 +310,11 @@ public class WalkToTask extends AbstractTask {
      * Target plane we're trying to reach.
      */
     private int targetPlane = -1;
+
+    /**
+     * Final destination (saved when temporarily walking to a transition).
+     */
+    private WorldPoint finalDestination;
 
     // ========================================================================
     // Constructors
@@ -593,7 +598,7 @@ public class WalkToTask extends AbstractTask {
             calculateDirectPath(playerPos);
         }
 
-        if (currentPath.isEmpty() && webPath.isEmpty()) {
+        if (currentPath.isEmpty() && (unifiedPath == null || unifiedPath.isEmpty())) {
             repathAttempts++;
             if (repathAttempts >= MAX_REPATH_ATTEMPTS) {
                 fail("Could not find path to destination after " + repathAttempts + " attempts");
@@ -608,20 +613,23 @@ public class WalkToTask extends AbstractTask {
     }
 
     private void calculateWebPath(WorldPoint playerPos) {
-        webPath = webWalker.findPath(playerPos, destination);
-
-        if (!webPath.isEmpty()) {
-            log.debug("WebWalker found path with {} nodes", webPath.size());
-            webPathIndex = 0;
-
-            // Calculate direct path to first web node
-            if (webPath.size() > 0) {
-                WorldPoint firstNode = webPath.get(0).getWorldPoint();
-                currentPath = pathFinder.findPath(playerPos, firstNode);
+        // Use unified pathfinding (supports multi-plane navigation)
+        unifiedPath = webWalker.findUnifiedPath(playerPos, destination);
+        
+        if (unifiedPath != null && !unifiedPath.isEmpty()) {
+            log.debug("Unified path found: {} edges, {} ticks, plane-change: {}, shortcuts: {}",
+                    unifiedPath.size(), unifiedPath.getTotalCostTicks(),
+                    unifiedPath.requiresPlaneChange(), unifiedPath.requiresShortcuts());
+            currentEdgeIndex = 0;
+            
+            // Calculate local path to first edge's start location
+            NavigationEdge firstEdge = unifiedPath.getEdge(0);
+            if (firstEdge != null && firstEdge.getFromLocation() != null) {
+                currentPath = pathFinder.findPath(playerPos, firstEdge.getFromLocation());
                 pathIndex = 0;
             }
         } else {
-            log.debug("WebWalker could not find path, trying direct pathfinding");
+            log.debug("Unified pathfinding failed, trying direct pathfinding");
             calculateDirectPath(playerPos);
         }
     }
@@ -688,6 +696,15 @@ public class WalkToTask extends AbstractTask {
         if (playerPos != null && destination != null &&
                 playerPos.distanceTo(destination) <= ARRIVAL_DISTANCE &&
                 playerPos.getPlane() == destination.getPlane()) {
+            
+            // If we have a pending plane transition, we've just arrived at the transition
+            // object location - go back to handle the transition
+            if (finalDestination != null && targetPlane != -1) {
+                log.debug("Arrived at plane transition location, now using transition");
+                phase = WalkPhase.HANDLE_PLANE_TRANSITION;
+                return;
+            }
+            
             log.info("Arrived at destination: {}", destination);
             
             // Check for backtracking (2% chance per REQUIREMENTS.md 3.4.4)
@@ -722,9 +739,10 @@ public class WalkToTask extends AbstractTask {
         // Update run energy
         handleRunEnergy(ctx, player);
 
-        // If we have a web path and finished current segment, move to next
-        if (!webPath.isEmpty() && currentPath.isEmpty() && webPathIndex < webPath.size()) {
-            advanceWebPath(playerPos);
+        // If using unified path and finished current segment, move to next edge
+        if (unifiedPath != null && !unifiedPath.isEmpty() && 
+                currentPath.isEmpty() && currentEdgeIndex < unifiedPath.size()) {
+            advanceUnifiedPath(ctx, playerPos);
             return;
         }
 
@@ -734,24 +752,230 @@ public class WalkToTask extends AbstractTask {
         }
     }
 
-    private void advanceWebPath(WorldPoint playerPos) {
-        WebNode currentTarget = webPath.get(webPathIndex);
+    /**
+     * Advance to the next edge in the unified path.
+     */
+    private void advanceUnifiedPath(TaskContext ctx, WorldPoint playerPos) {
+        NavigationEdge currentEdge = unifiedPath.getEdge(currentEdgeIndex);
+        if (currentEdge == null) {
+            // No more edges, go to destination
+            currentPath = pathFinder.findPath(playerPos, destination);
+            pathIndex = 0;
+            return;
+        }
 
-        // Check if reached current web node
-        if (playerPos.distanceTo(currentTarget.getWorldPoint()) <= ARRIVAL_DISTANCE) {
-            webPathIndex++;
+        // Check if we've reached the edge's starting point
+        WorldPoint edgeStart = currentEdge.getFromLocation();
+        boolean atEdgeStart = edgeStart == null || 
+                playerPos.distanceTo(edgeStart) <= ARRIVAL_DISTANCE;
 
-            if (webPathIndex >= webPath.size()) {
-                // Reached final web node, calculate path to actual destination
-                currentPath = pathFinder.findPath(playerPos, destination);
-                pathIndex = 0;
+        if (!atEdgeStart) {
+            // Need to walk to edge start first
+            currentPath = pathFinder.findPath(playerPos, edgeStart);
+            pathIndex = 0;
+            return;
+        }
+
+        // At edge start - execute the edge based on its type
+        executeEdge(ctx, currentEdge, playerPos);
+    }
+
+    /**
+     * Execute a navigation edge based on its type.
+     */
+    private void executeEdge(TaskContext ctx, NavigationEdge edge, WorldPoint playerPos) {
+        log.debug("Executing edge: {} ({})", edge.getFromNodeId() + " -> " + edge.getToNodeId(), edge.getType());
+
+        switch (edge.getType()) {
+            case WALK:
+                executeWalkEdge(edge, playerPos);
+                break;
+            case STAIRS:
+                executeStairsEdge(ctx, edge, playerPos);
+                break;
+            case AGILITY:
+                executeAgilityEdge(ctx, edge, playerPos);
+                break;
+            case TOLL:
+                executeTollEdge(ctx, edge, playerPos);
+                break;
+            case DOOR:
+                executeDoorEdge(ctx, edge, playerPos);
+                break;
+            case TELEPORT:
+                executeTeleportEdge(ctx, edge);
+                break;
+            case TRANSPORT:
+                executeTransportEdge(ctx, edge);
+                break;
+            default:
+                // Default to walking
+                executeWalkEdge(edge, playerPos);
+                break;
+        }
+    }
+
+    /**
+     * Execute a WALK edge - simple pathfinding to destination.
+     */
+    private void executeWalkEdge(NavigationEdge edge, WorldPoint playerPos) {
+        WorldPoint edgeDest = edge.getToLocation();
+        if (edgeDest == null) {
+            // Fall back to destination
+            edgeDest = destination;
+        }
+        
+        currentPath = pathFinder.findPath(playerPos, edgeDest);
+        pathIndex = 0;
+        currentEdgeIndex++; // Move to next edge
+        
+        log.debug("Walk edge: pathing to {} ({} tiles)", edgeDest, currentPath.size());
+    }
+
+    /**
+     * Execute a STAIRS edge - use PlaneTransitionHandler.
+     */
+    private void executeStairsEdge(TaskContext ctx, NavigationEdge edge, WorldPoint playerPos) {
+        // Set up plane transition
+        targetPlane = edge.getToPlane();
+        
+        // Find the transition object
+        if (planeTransitionHandler != null && edge.getObjectId() > 0) {
+            // Create transition task directly
+            boolean goUp = edge.getToPlane() > edge.getFromPlane();
+            String action = goUp ? "Climb-up" : "Climb-down";
+            if (edge.getAction() != null) {
+                action = edge.getAction();
+            }
+            
+            transitionTask = new InteractObjectTask(edge.getObjectId(), action)
+                    .withDescription(action + " to plane " + targetPlane)
+                    .withSearchRadius(5)
+                    .withWaitForIdle(true);
+            
+            // Save current destination
+            if (finalDestination == null) {
+                finalDestination = destination;
+            }
+            
+            currentEdgeIndex++; // Move to next edge after transition
+            phase = WalkPhase.HANDLE_PLANE_TRANSITION;
+        } else {
+            // Fall back to plane transition handler search
+            findPlaneTransition(ctx, playerPos, targetPlane);
+            if (currentTransition != null) {
+                currentEdgeIndex++;
+                phase = WalkPhase.HANDLE_PLANE_TRANSITION;
             } else {
-                // Calculate path to next web node
-                WorldPoint nextNode = webPath.get(webPathIndex).getWorldPoint();
-                currentPath = pathFinder.findPath(playerPos, nextNode);
-                pathIndex = 0;
+                log.warn("Could not find stairs transition for edge");
+                currentEdgeIndex++; // Skip this edge
             }
         }
+    }
+
+    /**
+     * Execute an AGILITY edge - use ObstacleHandler for shortcuts.
+     */
+    private void executeAgilityEdge(TaskContext ctx, NavigationEdge edge, WorldPoint playerPos) {
+        if (edge.getObjectId() > 0) {
+            String action = edge.getAction() != null ? edge.getAction() : "Cross";
+            
+            obstacleTask = new InteractObjectTask(edge.getObjectId(), action)
+                    .withDescription("Use shortcut: " + action)
+                    .withSearchRadius(10)
+                    .withWaitForIdle(true);
+            
+            obstacleAttempts = 0;
+            currentEdgeIndex++;
+            phase = WalkPhase.HANDLE_OBSTACLE;
+            
+            log.debug("Agility edge: using shortcut {} with action '{}'", edge.getObjectId(), action);
+        } else {
+            log.warn("Agility edge missing object ID");
+            currentEdgeIndex++;
+        }
+    }
+
+    /**
+     * Execute a TOLL edge - handle payment or item usage.
+     */
+    private void executeTollEdge(TaskContext ctx, NavigationEdge edge, WorldPoint playerPos) {
+        // Check for free passage via quest
+        String freeQuest = edge.getFreePassageQuest();
+        if (freeQuest != null) {
+            var unlockTracker = ctx.getUnlockTracker();
+            if (unlockTracker != null) {
+                try {
+                    net.runelite.api.Quest quest = net.runelite.api.Quest.valueOf(freeQuest);
+                    if (unlockTracker.isQuestCompleted(quest)) {
+                        log.debug("Free passage through toll gate via quest: {}", freeQuest);
+                        // Just walk through
+                        executeWalkEdge(edge, playerPos);
+                        return;
+                    }
+                } catch (IllegalArgumentException ignored) {}
+            }
+        }
+
+        // Need to pay toll - interact with gate
+        if (edge.getObjectId() > 0) {
+            String action = edge.getAction() != null ? edge.getAction() : "Pay-toll";
+            
+            obstacleTask = new InteractObjectTask(edge.getObjectId(), action)
+                    .withDescription("Pay toll: " + edge.getTollCost() + "gp")
+                    .withSearchRadius(5)
+                    .withWaitForIdle(true);
+            
+            obstacleAttempts = 0;
+            currentEdgeIndex++;
+            phase = WalkPhase.HANDLE_OBSTACLE;
+            
+            log.debug("Toll edge: paying {} gp at object {}", edge.getTollCost(), edge.getObjectId());
+        } else {
+            log.warn("Toll edge missing object ID");
+            currentEdgeIndex++;
+        }
+    }
+
+    /**
+     * Execute a DOOR edge - use ObstacleHandler.
+     */
+    private void executeDoorEdge(TaskContext ctx, NavigationEdge edge, WorldPoint playerPos) {
+        if (edge.getObjectId() > 0) {
+            String action = edge.getAction() != null ? edge.getAction() : "Open";
+            
+            obstacleTask = new InteractObjectTask(edge.getObjectId(), action)
+                    .withDescription("Open door/gate")
+                    .withSearchRadius(5)
+                    .withWaitForIdle(true);
+            
+            obstacleAttempts = 0;
+            currentEdgeIndex++;
+            phase = WalkPhase.HANDLE_OBSTACLE;
+        } else {
+            // No specific object, try walking through
+            executeWalkEdge(edge, playerPos);
+        }
+    }
+
+    /**
+     * Execute a TELEPORT edge - cast spell or use item.
+     */
+    private void executeTeleportEdge(TaskContext ctx, NavigationEdge edge) {
+        // TODO: Implement teleport handling
+        // This would involve checking for spell/item availability and using it
+        log.warn("Teleport edge execution not yet implemented");
+        currentEdgeIndex++;
+    }
+
+    /**
+     * Execute a TRANSPORT edge - use NPC transport.
+     */
+    private void executeTransportEdge(TaskContext ctx, NavigationEdge edge) {
+        // TODO: Implement transport handling  
+        // This would involve finding and interacting with the transport NPC
+        log.warn("Transport edge execution not yet implemented");
+        currentEdgeIndex++;
     }
 
     private void clickNextPathPoint(TaskContext ctx, WorldPoint playerPos) {
@@ -933,6 +1157,14 @@ public class WalkToTask extends AbstractTask {
             currentTransition = null;
             transitionTask = null;
             targetPlane = -1;
+            
+            // Restore final destination if we temporarily changed it
+            if (finalDestination != null) {
+                destination = finalDestination;
+                finalDestination = null;
+                log.debug("Restored final destination: {}", destination);
+            }
+            
             phase = WalkPhase.CALCULATE_PATH;
             return;
         }
@@ -966,11 +1198,15 @@ public class WalkToTask extends AbstractTask {
         if (distToTransition > 3) {
             // Need to walk to the transition first
             log.debug("Walking to plane transition at {}", currentTransition.getLocation());
-            // Temporarily set destination to transition location
-            WorldPoint savedDest = destination;
+            
+            // Save the final destination before temporarily changing it
+            if (finalDestination == null) {
+                finalDestination = destination;
+                log.debug("Saved final destination: {}", finalDestination);
+            }
+            
             destination = currentTransition.getLocation();
             phase = WalkPhase.CALCULATE_PATH;
-            // After walking there, we'll detect the plane difference and come back here
             return;
         }
 

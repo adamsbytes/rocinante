@@ -3,6 +3,7 @@ package com.rocinante.state;
 import com.rocinante.quest.conditions.VarbitCondition;
 import com.rocinante.quest.conditions.ZoneCondition;
 import com.rocinante.quest.conditions.ZoneCondition.Zone;
+import net.runelite.api.Skill;
 import net.runelite.api.coords.WorldPoint;
 
 /**
@@ -886,6 +887,97 @@ public final class Conditions {
      */
     public static StateCondition atExactTile(WorldPoint point) {
         return ZoneCondition.atPoint(point);
+    }
+
+    // ========================================================================
+    // Skill Level Conditions
+    // ========================================================================
+
+    /**
+     * Check if a skill has reached a target level.
+     *
+     * @param skill       the skill to check
+     * @param targetLevel the target level (1-99)
+     * @return condition checking if skill level is at or above target
+     */
+    public static StateCondition skillLevelReached(Skill skill, int targetLevel) {
+        return ctx -> ctx.getClient().getRealSkillLevel(skill) >= targetLevel;
+    }
+
+    /**
+     * Check if a skill level is exactly a specific value.
+     *
+     * @param skill the skill to check
+     * @param level the exact level to match
+     * @return condition checking exact skill level
+     */
+    public static StateCondition skillLevelEquals(Skill skill, int level) {
+        return ctx -> ctx.getClient().getRealSkillLevel(skill) == level;
+    }
+
+    /**
+     * Check if a skill level is below a threshold.
+     *
+     * @param skill the skill to check
+     * @param level the threshold level
+     * @return condition checking if skill level is below threshold
+     */
+    public static StateCondition skillLevelBelow(Skill skill, int level) {
+        return ctx -> ctx.getClient().getRealSkillLevel(skill) < level;
+    }
+
+    /**
+     * Check if skill XP has reached a target amount.
+     *
+     * @param skill    the skill to check
+     * @param targetXp the target XP amount
+     * @return condition checking if skill XP is at or above target
+     */
+    public static StateCondition skillXpReached(Skill skill, int targetXp) {
+        return ctx -> ctx.getClient().getSkillExperience(skill) >= targetXp;
+    }
+
+    /**
+     * Check if total level has reached a target.
+     *
+     * @param targetTotal the target total level
+     * @return condition checking total level
+     */
+    public static StateCondition totalLevelReached(int targetTotal) {
+        return ctx -> ctx.getClient().getTotalLevel() >= targetTotal;
+    }
+
+    /**
+     * Check if a skill is boosted above its base level.
+     * Useful for detecting active potions or prayers.
+     *
+     * @param skill the skill to check
+     * @return condition checking if skill is boosted
+     */
+    public static StateCondition skillIsBoosted(Skill skill) {
+        return ctx -> ctx.getClient().getBoostedSkillLevel(skill) > ctx.getClient().getRealSkillLevel(skill);
+    }
+
+    /**
+     * Check if a skill is drained below its base level.
+     *
+     * @param skill the skill to check
+     * @return condition checking if skill is drained
+     */
+    public static StateCondition skillIsDrained(Skill skill) {
+        return ctx -> ctx.getClient().getBoostedSkillLevel(skill) < ctx.getClient().getRealSkillLevel(skill);
+    }
+
+    /**
+     * Check if boosted skill level is at or above a threshold.
+     * Useful for checking if a boosted level meets a requirement.
+     *
+     * @param skill the skill to check
+     * @param level the required boosted level
+     * @return condition checking boosted skill level
+     */
+    public static StateCondition boostedLevelAtLeast(Skill skill, int level) {
+        return ctx -> ctx.getClient().getBoostedSkillLevel(skill) >= level;
     }
 }
 

@@ -1,0 +1,975 @@
+package com.rocinante.tasks.impl;
+
+import com.rocinante.agility.AgilityCourse;
+import com.rocinante.agility.AgilityCourseRepository;
+import com.rocinante.progression.GroundItemWatch;
+import com.rocinante.progression.MethodType;
+import com.rocinante.progression.TrainingMethod;
+import com.rocinante.state.GroundItemSnapshot;
+import com.rocinante.state.InventoryState;
+import com.rocinante.state.PlayerState;
+import com.rocinante.state.WorldState;
+import com.rocinante.tasks.AbstractTask;
+import com.rocinante.tasks.Task;
+import com.rocinante.tasks.TaskContext;
+import com.rocinante.tasks.TaskState;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.Client;
+import net.runelite.api.Skill;
+import net.runelite.api.coords.WorldPoint;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Optional;
+
+/**
+ * High-level orchestrator task for skill training sessions.
+ *
+ * <p>Implements skill training following the pattern established by {@link CombatTask}:
+ * <ul>
+ *   <li>Phase-based execution with state machine</li>
+ *   <li>Sub-task delegation for movement, banking, etc.</li>
+ *   <li>Configurable via {@link SkillTaskConfig}</li>
+ *   <li>Supports gathering (mining, woodcutting, fishing) and processing (fletching, crafting)</li>
+ * </ul>
+ *
+ * <p>Training Flow:
+ * <pre>
+ * PREPARE -> TRAIN -> {BANK | DROP | PROCESS} -> TRAIN -> ... -> COMPLETE
+ * </pre>
+ *
+ * <p>Example usage:
+ * <pre>{@code
+ * // Train mining to level 50 via iron power mining
+ * TrainingMethod method = methodRepo.getMethodById("iron_ore_powermine").get();
+ * SkillTaskConfig config = SkillTaskConfig.forLevel(Skill.MINING, 50, method);
+ * SkillTask task = new SkillTask(config);
+ *
+ * // Train woodcutting for 2 hours with banking
+ * SkillTaskConfig wcConfig = SkillTaskConfig.builder()
+ *     .skill(Skill.WOODCUTTING)
+ *     .targetLevel(99)
+ *     .method(methodRepo.getMethodById("willow_trees_banking").get())
+ *     .maxDuration(Duration.ofHours(2))
+ *     .build();
+ * SkillTask wcTask = new SkillTask(wcConfig);
+ * }</pre>
+ */
+@Slf4j
+public class SkillTask extends AbstractTask {
+
+    // ========================================================================
+    // Configuration
+    // ========================================================================
+
+    /**
+     * Skill training configuration.
+     */
+    @Getter
+    private final SkillTaskConfig config;
+
+    // ========================================================================
+    // Execution State
+    // ========================================================================
+
+    /**
+     * Current execution phase.
+     */
+    private SkillPhase phase = SkillPhase.PREPARE;
+
+    /**
+     * Active sub-task for delegation.
+     */
+    private Task activeSubTask;
+
+    /**
+     * Task start time.
+     */
+    private Instant startTime;
+
+    /**
+     * Starting XP when task began.
+     */
+    private int startXp = -1;
+
+    /**
+     * Number of successful actions completed.
+     */
+    @Getter
+    private int actionsCompleted = 0;
+
+    /**
+     * Number of bank trips completed.
+     */
+    @Getter
+    private int bankTripsCompleted = 0;
+
+    /**
+     * Player's position when training started.
+     */
+    private WorldPoint trainingPosition;
+
+    /**
+     * Ticks idle (for detecting when action completes).
+     */
+    private int idleTicks = 0;
+
+    /**
+     * Ticks waiting in current phase.
+     */
+    private int phaseWaitTicks = 0;
+
+    /**
+     * Maximum ticks to wait before timeout in certain phases.
+     */
+    private static final int MAX_WAIT_TICKS = 30;
+
+    /**
+     * Ticks to wait after player stops animating to confirm idle.
+     */
+    private static final int IDLE_CONFIRMATION_TICKS = 3;
+
+    /**
+     * Whether we've interacted with training object this cycle.
+     */
+    private boolean interactionStarted = false;
+
+    /**
+     * Ground item we're currently trying to pick up.
+     */
+    private GroundItemSnapshot pendingGroundItem;
+
+    /**
+     * The watch configuration for the pending ground item.
+     */
+    private GroundItemWatch pendingItemWatch;
+
+    /**
+     * Phase to return to after picking up ground item.
+     */
+    private SkillPhase returnPhaseAfterPickup;
+
+    /**
+     * Number of ground items picked up.
+     */
+    @Getter
+    private int groundItemsPickedUp = 0;
+
+    /**
+     * Custom task description.
+     */
+    @Setter
+    private String description;
+
+    // ========================================================================
+    // Constructor
+    // ========================================================================
+
+    /**
+     * Create a skill training task.
+     *
+     * @param config the training configuration
+     */
+    public SkillTask(SkillTaskConfig config) {
+        this.config = config;
+
+        // Validate configuration
+        config.validate();
+
+        // Set timeout based on config
+        if (config.hasTimeLimit()) {
+            this.timeout = config.getMaxDuration().plusMinutes(5);
+        } else {
+            this.timeout = Duration.ofHours(8); // Default long timeout
+        }
+    }
+
+    // ========================================================================
+    // Builder Methods
+    // ========================================================================
+
+    /**
+     * Set custom description (builder-style).
+     *
+     * @param description the description
+     * @return this task for chaining
+     */
+    public SkillTask withDescription(String description) {
+        this.description = description;
+        return this;
+    }
+
+    // ========================================================================
+    // Task Implementation
+    // ========================================================================
+
+    @Override
+    public boolean canExecute(TaskContext ctx) {
+        if (!ctx.isLoggedIn()) {
+            return false;
+        }
+
+        // Check if we've already reached target
+        if (isTargetReached(ctx)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    @Override
+    protected void executeImpl(TaskContext ctx) {
+        if (startTime == null) {
+            initializeTask(ctx);
+        }
+
+        // Check completion conditions
+        if (isCompleted(ctx)) {
+            completeTask(ctx);
+            return;
+        }
+
+        // Execute active sub-task if present
+        if (activeSubTask != null) {
+            activeSubTask.execute(ctx);
+            if (activeSubTask.getState().isTerminal()) {
+                handleSubTaskComplete(ctx);
+            }
+            return; // Sub-task still running
+        }
+
+        // Execute current phase
+        switch (phase) {
+            case PREPARE:
+                executePrepare(ctx);
+                break;
+            case TRAIN:
+                executeTrain(ctx);
+                break;
+            case BANK:
+                executeBank(ctx);
+                break;
+            case DROP:
+                executeDrop(ctx);
+                break;
+            case PROCESS:
+                executeProcess(ctx);
+                break;
+            case PICKUP_ITEM:
+                executePickupItem(ctx);
+                break;
+        }
+    }
+
+    // ========================================================================
+    // Initialization
+    // ========================================================================
+
+    private void initializeTask(TaskContext ctx) {
+        startTime = Instant.now();
+        startXp = ctx.getClient().getSkillExperience(config.getSkill());
+        log.info("SkillTask started: {}", config.getSummary());
+        log.debug("Starting XP: {}", startXp);
+    }
+
+    // ========================================================================
+    // Phase: Prepare
+    // ========================================================================
+
+    private void executePrepare(TaskContext ctx) {
+        TrainingMethod method = config.getMethod();
+
+        // Check if we need to travel to training location
+        PlayerState player = ctx.getPlayerState();
+        WorldPoint playerPos = player.getWorldPosition();
+
+        // If method has an exact position, check if we're there
+        if (method.getExactPosition() != null) {
+            WorldPoint targetPos = method.getExactPosition();
+            if (playerPos.distanceTo(targetPos) > 5) {
+                log.debug("Traveling to training location: {}", targetPos);
+                activeSubTask = new WalkToTask(targetPos)
+                        .withDescription("Walk to " + method.getName() + " training spot");
+                return;
+            }
+        }
+
+        // Store training position for return after banking
+        trainingPosition = playerPos;
+
+        // Verify we have required tools
+        if (!hasRequiredTools(ctx)) {
+            log.warn("Missing required tools for {}", method.getName());
+            fail("Missing required tools");
+            return;
+        }
+
+        log.debug("Preparation complete, beginning training");
+        phase = SkillPhase.TRAIN;
+        phaseWaitTicks = 0;
+    }
+
+    /**
+     * Check if player has required tools for the training method.
+     */
+    private boolean hasRequiredTools(TaskContext ctx) {
+        TrainingMethod method = config.getMethod();
+        List<Integer> requiredItems = method.getRequiredItemIds();
+
+        if (requiredItems == null || requiredItems.isEmpty()) {
+            return true;
+        }
+
+        InventoryState inventory = ctx.getInventoryState();
+
+        // For tools, we just need any one of the required items (different tiers)
+        // This is a simplification - real implementation might check equipped items too
+        for (int itemId : requiredItems) {
+            if (inventory.hasItem(itemId)) {
+                return true;
+            }
+        }
+
+        // Check if any required item is equipped
+        // TODO: Check equipment state when that feature is available
+
+        return false;
+    }
+
+    // ========================================================================
+    // Phase: Train
+    // ========================================================================
+
+    private void executeTrain(TaskContext ctx) {
+        TrainingMethod method = config.getMethod();
+        PlayerState player = ctx.getPlayerState();
+        InventoryState inventory = ctx.getInventoryState();
+
+        // Check if inventory is full
+        if (inventory.isFull() && method.isRequiresInventorySpace()) {
+            if (config.shouldDrop()) {
+                log.debug("Inventory full, switching to drop phase");
+                phase = SkillPhase.DROP;
+                return;
+            } else if (config.shouldBank()) {
+                log.debug("Inventory full, switching to bank phase");
+                phase = SkillPhase.BANK;
+                return;
+            }
+        }
+
+        // Check if player is idle (not animating)
+        if (!player.isAnimating()) {
+            idleTicks++;
+
+            // If we've been idle for a while and have started an interaction, action is complete
+            if (interactionStarted && idleTicks >= IDLE_CONFIRMATION_TICKS) {
+                actionsCompleted++;
+                interactionStarted = false;
+                idleTicks = 0;
+                log.trace("Action complete, total actions: {}", actionsCompleted);
+
+                // Check for watched ground items after completing an action
+                if (checkForWatchedGroundItems(ctx, false)) {
+                    return; // Switched to PICKUP_ITEM phase
+                }
+            }
+
+            // Need to interact with training object/NPC
+            if (!interactionStarted) {
+                // Before starting new interaction, check for high-priority ground items
+                if (checkForWatchedGroundItems(ctx, true)) {
+                    return; // Switched to PICKUP_ITEM phase
+                }
+
+                startTrainingInteraction(ctx);
+            }
+        } else {
+            // Player is animating - training in progress
+            idleTicks = 0;
+            interactionStarted = true;
+
+            // Check for ground items that should interrupt current action
+            if (checkForWatchedGroundItems(ctx, true)) {
+                // Note: This will interrupt the current action
+                return;
+            }
+        }
+
+        // Check phase timeout (stuck detection)
+        phaseWaitTicks++;
+        if (phaseWaitTicks > MAX_WAIT_TICKS && !player.isAnimating()) {
+            log.warn("Training phase timeout, retrying interaction");
+            interactionStarted = false;
+            phaseWaitTicks = 0;
+        }
+    }
+
+    /**
+     * Start interaction with the training object or NPC.
+     */
+    private void startTrainingInteraction(TaskContext ctx) {
+        TrainingMethod method = config.getMethod();
+
+        if (method.getMethodType() == MethodType.GATHER) {
+            // Gathering skill - interact with object or NPC
+            if (method.hasTargetObjects()) {
+                // Mining, woodcutting - interact with objects
+                List<Integer> objectIds = method.getTargetObjectIds();
+                String menuAction = method.getMenuAction();
+
+                InteractObjectTask interactTask = new InteractObjectTask(
+                        objectIds.get(0), // Primary object ID
+                        menuAction != null ? menuAction : "Mine"
+                );
+
+                // Add alternate object IDs
+                if (objectIds.size() > 1) {
+                    interactTask.withAlternateIds(objectIds.subList(1, objectIds.size()));
+                }
+
+                // Configure success detection
+                if (method.getSuccessAnimationId() > 0) {
+                    interactTask.withSuccessAnimation(method.getSuccessAnimationId());
+                }
+
+                activeSubTask = interactTask;
+                log.debug("Starting interaction with object(s): {}", objectIds);
+
+            } else if (method.hasTargetNpcs()) {
+                // Fishing - interact with NPCs (fishing spots)
+                List<Integer> npcIds = method.getTargetNpcIds();
+                String menuAction = method.getMenuAction();
+
+                InteractNpcTask interactTask = new InteractNpcTask(
+                        npcIds.get(0),
+                        menuAction != null ? menuAction : "Net"
+                );
+
+                // Add alternate NPC IDs
+                if (npcIds.size() > 1) {
+                    interactTask.withAlternateIds(npcIds.subList(1, npcIds.size()));
+                }
+
+                activeSubTask = interactTask;
+                log.debug("Starting interaction with NPC(s): {}", npcIds);
+            }
+
+        } else if (method.getMethodType() == MethodType.PROCESS) {
+            // Processing skill - handled in PROCESS phase
+            log.debug("Processing method, switching to process phase");
+            phase = SkillPhase.PROCESS;
+
+        } else if (method.getMethodType() == MethodType.AGILITY) {
+            // Agility training - delegate to AgilityCourseTask
+            if (!method.isAgilityCourse()) {
+                log.warn("AGILITY method {} doesn't have courseId configured", method.getId());
+                fail("Invalid agility method configuration");
+                return;
+            }
+
+            // Get course from repository (via TaskContext if available, otherwise log error)
+            AgilityCourseRepository courseRepo = ctx.getAgilityCourseRepository();
+            if (courseRepo == null) {
+                log.warn("AgilityCourseRepository not available in TaskContext, cannot run agility course");
+                fail("AgilityCourseRepository not available");
+                return;
+            }
+
+            AgilityCourse course = courseRepo.getCourseById(method.getCourseId()).orElse(null);
+            if (course == null) {
+                log.warn("Agility course '{}' not found", method.getCourseId());
+                fail("Agility course not found: " + method.getCourseId());
+                return;
+            }
+
+            // Create AgilityCourseConfig from SkillTaskConfig
+            AgilityCourseConfig courseConfig = AgilityCourseConfig.builder()
+                    .course(course)
+                    .targetLevel(config.getTargetLevel())
+                    .targetXp(config.getTargetXp())
+                    .maxDuration(config.getMaxDuration())
+                    .pickupMarksOfGrace(method.hasWatchedGroundItems()) // If marks are in watchedItems
+                    .build();
+
+            // Delegate to AgilityCourseTask
+            activeSubTask = new AgilityCourseTask(courseConfig)
+                    .withDescription("Train Agility at " + course.getName());
+            log.info("Starting agility training at {}", course.getName());
+        }
+
+        phaseWaitTicks = 0;
+    }
+
+    // ========================================================================
+    // Ground Item Watching
+    // ========================================================================
+
+    /**
+     * Check for watched ground items and switch to pickup phase if found.
+     *
+     * @param ctx the task context
+     * @param requireInterrupt if true, only pick up items with interruptAction=true
+     * @return true if switching to PICKUP_ITEM phase
+     */
+    private boolean checkForWatchedGroundItems(TaskContext ctx, boolean requireInterrupt) {
+        TrainingMethod method = config.getMethod();
+
+        if (!method.hasWatchedGroundItems()) {
+            return false;
+        }
+
+        List<GroundItemWatch> watchedItems = method.getWatchedGroundItems();
+        WorldState worldState = ctx.getWorldState();
+        PlayerState player = ctx.getPlayerState();
+        WorldPoint playerPos = player.getWorldPosition();
+
+        // Find the highest priority matching ground item
+        Optional<GroundItemMatchResult> match = watchedItems.stream()
+                .filter(watch -> !requireInterrupt || watch.isInterruptAction())
+                .flatMap(watch -> worldState.getGroundItems().stream()
+                        .filter(item -> watch.matches(item.getId()))
+                        .filter(item -> playerPos.distanceTo(item.getWorldPosition()) <= watch.getMaxPickupDistance())
+                        .map(item -> new GroundItemMatchResult(watch, item)))
+                .max(Comparator.comparingInt(result -> result.watch.getPriority()));
+
+        if (match.isPresent()) {
+            GroundItemMatchResult result = match.get();
+            log.info("Found watched ground item: {} at {} (priority: {}, distance: {})",
+                    result.watch.getItemName(),
+                    result.item.getWorldPosition(),
+                    result.watch.getPriority(),
+                    playerPos.distanceTo(result.item.getWorldPosition()));
+
+            // Store state for pickup
+            pendingGroundItem = result.item;
+            pendingItemWatch = result.watch;
+            returnPhaseAfterPickup = phase;
+
+            // Switch to pickup phase
+            phase = SkillPhase.PICKUP_ITEM;
+            phaseWaitTicks = 0;
+            interactionStarted = false;
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Internal class to pair a watch config with a matching ground item.
+     */
+    private static class GroundItemMatchResult {
+        final GroundItemWatch watch;
+        final GroundItemSnapshot item;
+
+        GroundItemMatchResult(GroundItemWatch watch, GroundItemSnapshot item) {
+            this.watch = watch;
+            this.item = item;
+        }
+    }
+
+    // ========================================================================
+    // Phase: Pickup Item
+    // ========================================================================
+
+    private void executePickupItem(TaskContext ctx) {
+        if (activeSubTask == null) {
+            if (pendingGroundItem == null) {
+                log.warn("No pending ground item to pick up");
+                phase = returnPhaseAfterPickup != null ? returnPhaseAfterPickup : SkillPhase.TRAIN;
+                return;
+            }
+
+            // Create pickup task
+            PickupItemTask pickupTask = new PickupItemTask(
+                    pendingGroundItem.getId(),
+                    pendingItemWatch.getItemName()
+            );
+            pickupTask.withLocation(pendingGroundItem.getWorldPosition());
+            pickupTask.withDescription("Pick up " + pendingItemWatch.getItemName());
+
+            activeSubTask = pickupTask;
+            log.debug("Starting pickup for {} at {}",
+                    pendingItemWatch.getItemName(), pendingGroundItem.getWorldPosition());
+        }
+    }
+
+    // ========================================================================
+    // Phase: Bank
+    // ========================================================================
+
+    private void executeBank(TaskContext ctx) {
+        // Create banking sub-task sequence
+        if (activeSubTask == null) {
+            TrainingMethod method = config.getMethod();
+
+            // First, walk to bank if needed
+            String bankLocation = method.getBankLocationId();
+            if (bankLocation != null) {
+                // TODO: Look up bank location from web.json
+                // For now, use BankTask which handles finding nearest bank
+                log.debug("Walking to bank: {}", bankLocation);
+            }
+
+            // Open bank, deposit products, close, return
+            activeSubTask = createBankingSequence(ctx);
+        }
+    }
+
+    /**
+     * Create the banking sub-task sequence.
+     */
+    private Task createBankingSequence(TaskContext ctx) {
+        TrainingMethod method = config.getMethod();
+        List<Integer> productIds = method.getProductItemIds();
+
+        // For now, use simple deposit all approach
+        // A more sophisticated implementation would:
+        // 1. Walk to bank
+        // 2. Open bank
+        // 3. Deposit specific items
+        // 4. Close bank
+        // 5. Return to training spot
+
+        BankTask bankTask = BankTask.depositAll()
+                .withDescription("Bank " + method.getName() + " products");
+
+        // After banking completes, we'll return to training
+        // This is handled in handleSubTaskComplete
+
+        return bankTask;
+    }
+
+    // ========================================================================
+    // Phase: Drop
+    // ========================================================================
+
+    private void executeDrop(TaskContext ctx) {
+        if (activeSubTask == null) {
+            TrainingMethod method = config.getMethod();
+            List<Integer> productIds = method.getProductItemIds();
+
+            if (productIds == null || productIds.isEmpty()) {
+                log.warn("No product IDs configured for dropping");
+                phase = SkillPhase.TRAIN;
+                return;
+            }
+
+            // Create drop task for products
+            DropInventoryTask dropTask = DropInventoryTask.forItemIds(productIds)
+                    .withDescription("Drop " + method.getName() + " products")
+                    .withPattern(DropInventoryTask.DropPattern.COLUMN);
+
+            activeSubTask = dropTask;
+            log.debug("Starting drop task for items: {}", productIds);
+        }
+    }
+
+    // ========================================================================
+    // Phase: Process
+    // ========================================================================
+
+    private void executeProcess(TaskContext ctx) {
+        if (activeSubTask == null) {
+            TrainingMethod method = config.getMethod();
+
+            if (!method.usesItemOnItem()) {
+                log.warn("Processing method doesn't have source/target items configured");
+                fail("Invalid processing method configuration");
+                return;
+            }
+
+            // Create process task
+            ProcessItemTask processTask = new ProcessItemTask(
+                    method.getSourceItemId(),
+                    method.getTargetItemId()
+            );
+
+            if (method.getOutputItemId() > 0) {
+                processTask.withOutputItemId(method.getOutputItemId());
+            }
+            if (method.getOutputPerAction() > 1) {
+                processTask.withOutputPerAction(method.getOutputPerAction());
+            }
+
+            processTask.withDescription("Process " + method.getName());
+
+            activeSubTask = processTask;
+            log.debug("Starting process task: {} on {}", 
+                    method.getSourceItemId(), method.getTargetItemId());
+        }
+    }
+
+    // ========================================================================
+    // Sub-task Handling
+    // ========================================================================
+
+    private void handleSubTaskComplete(TaskContext ctx) {
+        TaskState subTaskState = activeSubTask.getState();
+        String subTaskDesc = activeSubTask.getDescription();
+
+        if (subTaskState == TaskState.FAILED) {
+            log.warn("Sub-task failed: {}", subTaskDesc);
+            // Don't fail the whole task, just retry
+        }
+
+        // Clear sub-task reference
+        activeSubTask = null;
+
+        // Determine next phase based on current phase
+        switch (phase) {
+            case PREPARE:
+                // Preparation travel complete
+                phase = SkillPhase.TRAIN;
+                break;
+
+            case TRAIN:
+                // Training interaction complete
+                interactionStarted = true;
+                phaseWaitTicks = 0;
+                break;
+
+            case BANK:
+                // Banking complete, return to training spot
+                bankTripsCompleted++;
+                log.info("Bank trip {} complete", bankTripsCompleted);
+
+                if (config.isReturnToExactSpot() && trainingPosition != null) {
+                    activeSubTask = new WalkToTask(trainingPosition)
+                            .withDescription("Return to training spot");
+                } else {
+                    phase = SkillPhase.TRAIN;
+                }
+                break;
+
+            case DROP:
+                // Dropping complete, resume training
+                log.debug("Drop complete, resuming training");
+                phase = SkillPhase.TRAIN;
+                break;
+
+            case PROCESS:
+                // Processing complete, check if more materials or bank
+                InventoryState inventory = ctx.getInventoryState();
+                TrainingMethod method = config.getMethod();
+
+                if (!inventory.hasItem(method.getTargetItemId())) {
+                    if (config.shouldBank()) {
+                        log.debug("Out of materials, banking");
+                        phase = SkillPhase.BANK;
+                    } else {
+                        log.info("Out of materials");
+                        completeTask(ctx);
+                    }
+                } else {
+                    // More materials available, continue processing
+                    log.debug("More materials available, continuing");
+                }
+                break;
+
+            case PICKUP_ITEM:
+                // Ground item pickup complete
+                if (subTaskState == TaskState.COMPLETED) {
+                    groundItemsPickedUp++;
+                    log.info("Picked up ground item: {} (total: {})",
+                            pendingItemWatch != null ? pendingItemWatch.getItemName() : "unknown",
+                            groundItemsPickedUp);
+                }
+
+                // Clear pending item state
+                pendingGroundItem = null;
+                pendingItemWatch = null;
+
+                // Return to previous phase
+                phase = returnPhaseAfterPickup != null ? returnPhaseAfterPickup : SkillPhase.TRAIN;
+                returnPhaseAfterPickup = null;
+                break;
+        }
+
+        phaseWaitTicks = 0;
+    }
+
+    // ========================================================================
+    // Completion Checking
+    // ========================================================================
+
+    private boolean isCompleted(TaskContext ctx) {
+        // Check target level/XP
+        if (isTargetReached(ctx)) {
+            log.info("Target reached!");
+            return true;
+        }
+
+        // Check time limit
+        if (config.hasTimeLimit() && startTime != null) {
+            Duration elapsed = Duration.between(startTime, Instant.now());
+            if (elapsed.compareTo(config.getMaxDuration()) >= 0) {
+                log.info("Time limit reached: {}", elapsed);
+                return true;
+            }
+        }
+
+        // Check action limit
+        if (config.hasActionLimit() && actionsCompleted >= config.getMaxActions()) {
+            log.info("Action limit reached: {}", actionsCompleted);
+            return true;
+        }
+
+        return false;
+    }
+
+    private boolean isTargetReached(TaskContext ctx) {
+        Client client = ctx.getClient();
+        Skill skill = config.getSkill();
+
+        if (config.getTargetLevel() > 0) {
+            int currentLevel = client.getRealSkillLevel(skill);
+            return currentLevel >= config.getTargetLevel();
+        }
+
+        if (config.getTargetXp() > 0) {
+            int currentXp = client.getSkillExperience(skill);
+            return currentXp >= config.getTargetXp();
+        }
+
+        return false;
+    }
+
+    private void completeTask(TaskContext ctx) {
+        Client client = ctx.getClient();
+        int currentXp = client.getSkillExperience(config.getSkill());
+        int xpGained = currentXp - startXp;
+        Duration elapsed = startTime != null ? Duration.between(startTime, Instant.now()) : Duration.ZERO;
+
+        log.info("SkillTask completed: {} - {} XP gained, {} actions, {} bank trips in {}",
+                config.getSkill().getName(),
+                String.format("%,d", xpGained),
+                actionsCompleted,
+                bankTripsCompleted,
+                formatDuration(elapsed));
+
+        complete();
+    }
+
+    // ========================================================================
+    // Utility Methods
+    // ========================================================================
+
+    private String formatDuration(Duration duration) {
+        long hours = duration.toHours();
+        long minutes = duration.toMinutesPart();
+        long seconds = duration.toSecondsPart();
+
+        if (hours > 0) {
+            return String.format("%dh %dm %ds", hours, minutes, seconds);
+        } else if (minutes > 0) {
+            return String.format("%dm %ds", minutes, seconds);
+        } else {
+            return String.format("%ds", seconds);
+        }
+    }
+
+    /**
+     * Get XP gained since task started.
+     *
+     * @param ctx the task context
+     * @return XP gained
+     */
+    public int getXpGained(TaskContext ctx) {
+        if (startXp < 0) {
+            return 0;
+        }
+        int currentXp = ctx.getClient().getSkillExperience(config.getSkill());
+        return currentXp - startXp;
+    }
+
+    /**
+     * Get estimated XP per hour based on current progress.
+     *
+     * @param ctx the task context
+     * @return XP per hour
+     */
+    public double getXpPerHour(TaskContext ctx) {
+        if (startTime == null) {
+            return 0;
+        }
+
+        Duration elapsed = Duration.between(startTime, Instant.now());
+        if (elapsed.isZero()) {
+            return 0;
+        }
+
+        int xpGained = getXpGained(ctx);
+        double hours = elapsed.toMillis() / (1000.0 * 60 * 60);
+        return xpGained / hours;
+    }
+
+    // ========================================================================
+    // Lifecycle
+    // ========================================================================
+
+    @Override
+    public void onComplete(TaskContext ctx) {
+        super.onComplete(ctx);
+    }
+
+    @Override
+    public void onFail(TaskContext ctx, Exception e) {
+        super.onFail(ctx, e);
+        log.warn("SkillTask failed after {} actions", actionsCompleted);
+    }
+
+    @Override
+    public String getDescription() {
+        if (description != null) {
+            return description;
+        }
+        return String.format("SkillTask[%s]", config.getSummary());
+    }
+
+    // ========================================================================
+    // Phase Enum
+    // ========================================================================
+
+    /**
+     * Phases of skill training execution.
+     */
+    private enum SkillPhase {
+        /**
+         * Initial preparation: travel to location, verify equipment.
+         */
+        PREPARE,
+
+        /**
+         * Main training loop: interact with objects/NPCs.
+         */
+        TRAIN,
+
+        /**
+         * Banking: deposit products, optionally withdraw supplies.
+         */
+        BANK,
+
+        /**
+         * Dropping: power training drop loop.
+         */
+        DROP,
+
+        /**
+         * Processing: item-on-item production.
+         */
+        PROCESS,
+
+        /**
+         * Picking up watched ground items (marks of grace, bird's nests).
+         */
+        PICKUP_ITEM
+    }
+}
+
