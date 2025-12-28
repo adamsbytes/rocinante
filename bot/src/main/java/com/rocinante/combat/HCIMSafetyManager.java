@@ -6,6 +6,7 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.ItemID;
+import net.runelite.api.WorldType;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -153,10 +154,26 @@ public class HCIMSafetyManager {
     /**
      * Check if in a PvP or Deadman world.
      * Per Section 10.6.6: Block all PvP worlds for HCIM.
+     *
+     * @return true if in a PvP, Deadman, or High-Risk world
      */
     public boolean isInPvPWorld() {
-        // Would check client.getWorldType() for PVP or DEADMAN
-        // Placeholder - actual implementation needs WorldType enum
+        var worldTypes = client.getWorldType();
+        if (worldTypes == null || worldTypes.isEmpty()) {
+            return false;
+        }
+        
+        // Check for PvP-related world types
+        // WorldType.isPvpWorld checks for PVP and DEADMAN
+        if (WorldType.isPvpWorld(worldTypes)) {
+            return true;
+        }
+        
+        // Also check for HIGH_RISK worlds which are dangerous for HCIM
+        if (worldTypes.contains(WorldType.HIGH_RISK)) {
+            return true;
+        }
+        
         return false;
     }
 

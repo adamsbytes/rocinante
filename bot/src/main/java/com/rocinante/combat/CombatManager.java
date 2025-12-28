@@ -7,6 +7,7 @@ import com.rocinante.input.RobotMouseController;
 import com.rocinante.input.MenuHelper;
 import com.rocinante.input.RobotKeyboardController;
 import com.rocinante.input.WidgetClickHelper;
+import com.rocinante.tasks.impl.PrayerTask;
 
 import java.awt.event.KeyEvent;
 
@@ -643,66 +644,50 @@ public class CombatManager {
 
     /**
      * Map a Prayer enum to its widget child ID.
+     * Delegates to PrayerTask for centralized prayer widget ID mapping.
+     *
+     * @see PrayerTask#getPrayerWidgetChild(Prayer)
      */
     private int getPrayerWidgetChild(Prayer prayer) {
-        if (prayer == null) return PRAYER_PROTECT_MELEE_CHILD;
-        
-        switch (prayer) {
-            case PROTECT_FROM_MAGIC:
-                return PRAYER_PROTECT_MAGIC_CHILD;
-            case PROTECT_FROM_MISSILES:
-                return PRAYER_PROTECT_MISSILES_CHILD;
-            case PROTECT_FROM_MELEE:
-                return PRAYER_PROTECT_MELEE_CHILD;
-            default:
-                // For other prayers, calculate based on prayer ordinal
-                // Prayers are ordered: 0=Thick Skin, ..., 17=Protect Magic, 18=Protect Missiles, 19=Protect Melee
-                // Widget children start at 4 for first prayer
-                return 4 + prayer.ordinal();
-        }
+        return PrayerTask.getPrayerWidgetChild(prayer);
     }
 
     private void executePrayerSwitch(CombatAction action) {
         AttackStyle style = action.getAttackStyle();
         
-        // Determine which prayer widget child to click based on attack style
+        // Determine which prayer to activate based on attack style
         // Per Section 10.2 and 10.6.2: Protection prayers for melee/ranged/magic
+        // Use PrayerTask utilities for centralized prayer handling
         int prayerChildId;
         String prayerName;
         
-        switch (style) {
-            case MAGIC:
-                prayerChildId = PRAYER_PROTECT_MAGIC_CHILD;
-                prayerName = "Protect from Magic";
-                break;
-            case RANGED:
-                prayerChildId = PRAYER_PROTECT_MISSILES_CHILD;
-                prayerName = "Protect from Missiles";
-                break;
-            case MELEE:
-                prayerChildId = PRAYER_PROTECT_MELEE_CHILD;
-                prayerName = "Protect from Melee";
-                break;
-            case UNKNOWN:
-            default:
-                // Deactivate - click currently active protection prayer to toggle off
-                Prayer activePrayer = prayerFlicker.getActiveProtectionPrayer();
-                if (activePrayer == null) {
-                    log.debug("No active protection prayer to deactivate");
-                    return;
-                }
-                // Map active prayer to widget child ID
-                prayerChildId = getPrayerWidgetChild(activePrayer);
-                prayerName = "Deactivate " + activePrayer.name();
-                log.debug("Deactivating active prayer: {}", activePrayer.name());
-                break;
+        if (style == AttackStyle.UNKNOWN || style == null) {
+            // Deactivate - click currently active protection prayer to toggle off
+            Prayer activePrayer = prayerFlicker.getActiveProtectionPrayer();
+            if (activePrayer == null) {
+                log.debug("No active protection prayer to deactivate");
+                return;
+            }
+            // Map active prayer to widget child ID
+            prayerChildId = PrayerTask.getPrayerWidgetChild(activePrayer);
+            prayerName = "Deactivate " + activePrayer.name();
+            log.debug("Deactivating active prayer: {}", activePrayer.name());
+        } else {
+            // Get protection prayer for the attack style
+            Prayer targetPrayer = PrayerTask.getProtectionPrayer(style);
+            if (targetPrayer == null) {
+                log.warn("No protection prayer for style: {}", style);
+                return;
+            }
+            prayerChildId = PrayerTask.getPrayerWidgetChild(targetPrayer);
+            prayerName = targetPrayer.name().replace("_", " ");
         }
         
         log.debug("Switching protection prayer: {} (widget {}:{})", 
-                prayerName, PRAYERBOOK_GROUP_ID, prayerChildId);
+                prayerName, PrayerTask.PRAYERBOOK_GROUP_ID, prayerChildId);
         
         // Check if prayer tab is open
-        Widget prayerWidget = client.getWidget(PRAYERBOOK_GROUP_ID, prayerChildId);
+        Widget prayerWidget = client.getWidget(PrayerTask.PRAYERBOOK_GROUP_ID, prayerChildId);
         
         if (prayerWidget == null || prayerWidget.isHidden()) {
             // Prayer tab not open - press F5 to open it first
@@ -718,7 +703,7 @@ public class CombatManager {
                 long tabOpenDelay = 50 + random.nextInt(50);
                 return humanTimer.sleep(tabOpenDelay);
             }).thenRun(() -> {
-                widgetClickHelper.clickWidget(PRAYERBOOK_GROUP_ID, finalPrayerChildId, finalPrayerName)
+                widgetClickHelper.clickWidget(PrayerTask.PRAYERBOOK_GROUP_ID, finalPrayerChildId, finalPrayerName)
                         .thenAccept(success -> {
                             if (success) {
                                 log.debug("Prayer switch to {} completed (after tab open)", finalPrayerName);
@@ -730,7 +715,7 @@ public class CombatManager {
             return;
         }
         
-        widgetClickHelper.clickWidget(PRAYERBOOK_GROUP_ID, prayerChildId, prayerName)
+        widgetClickHelper.clickWidget(PrayerTask.PRAYERBOOK_GROUP_ID, prayerChildId, prayerName)
                 .thenAccept(success -> {
                     if (success) {
                         log.debug("Prayer switch to {} completed", prayerName);

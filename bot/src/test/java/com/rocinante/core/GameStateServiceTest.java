@@ -4,6 +4,9 @@ import com.rocinante.behavior.AttentionModel;
 import com.rocinante.behavior.BreakScheduler;
 import com.rocinante.behavior.FatigueModel;
 import com.rocinante.behavior.PlayerProfile;
+import com.rocinante.combat.WeaponDataService;
+import com.rocinante.data.NpcCombatDataLoader;
+import com.rocinante.data.ProjectileDataLoader;
 import com.rocinante.state.BankStateManager;
 import com.rocinante.state.EquipmentState;
 import com.rocinante.state.InventoryState;
@@ -64,6 +67,15 @@ public class GameStateServiceTest {
     @Mock
     private AttentionModel attentionModel;
 
+    @Mock
+    private WeaponDataService weaponDataService;
+
+    @Mock
+    private NpcCombatDataLoader npcCombatDataLoader;
+
+    @Mock
+    private ProjectileDataLoader projectileDataLoader;
+
     private GameStateService gameStateService;
 
     @Before
@@ -71,7 +83,8 @@ public class GameStateServiceTest {
         MockitoAnnotations.openMocks(this);
         gameStateService = new GameStateService(client, itemManager, bankStateManager, 
                 null,  // ironmanState
-                playerProfile, fatigueModel, breakScheduler, attentionModel);
+                playerProfile, fatigueModel, breakScheduler, attentionModel,
+                weaponDataService, npcCombatDataLoader, projectileDataLoader);
     }
 
     // ========================================================================

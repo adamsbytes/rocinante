@@ -205,6 +205,13 @@ public class CombatTaskConfig {
     boolean useAutocast = true;
 
     /**
+     * Whether to use defensive autocast mode.
+     * When true, XP goes to Defence+Magic instead of just Magic.
+     */
+    @Builder.Default
+    boolean defensiveAutocast = false;
+
+    /**
      * Spell cycle modes for when multiple spells are configured.
      */
     public enum SpellCycleMode {
@@ -299,6 +306,60 @@ public class CombatTaskConfig {
      */
     @Builder.Default
     double lowResourcesHpThreshold = 0.30;
+
+    // ========================================================================
+    // Resupply Configuration
+    // ========================================================================
+
+    /**
+     * Whether to enable resupply via banking when out of supplies.
+     * If true, will bank and resupply before ending task.
+     * If false, task ends when supplies are depleted.
+     */
+    @Builder.Default
+    boolean enableResupply = false;
+
+    /**
+     * Bank location for resupply.
+     * If null, will use nearest bank.
+     */
+    WorldPoint resupplyBankLocation;
+
+    /**
+     * Items to withdraw from bank during resupply.
+     * Maps item ID to quantity desired.
+     * Example: {LOBSTER_ID -> 20, PRAYER_POTION_4 -> 4}
+     */
+    @Singular("resupplyItem")
+    java.util.Map<Integer, Integer> resupplyItems;
+
+    /**
+     * Minimum food count before triggering resupply.
+     * Resupply when food count drops to this value or below.
+     */
+    @Builder.Default
+    int minFoodToResupply = 3;
+
+    /**
+     * Minimum prayer potions before triggering resupply.
+     * Only applies if prayer potions are in resupply items.
+     */
+    @Builder.Default
+    int minPrayerPotionsToResupply = 1;
+
+    /**
+     * Whether to return to the same position after resupply.
+     * If true, stores position before banking and returns after.
+     */
+    @Builder.Default
+    boolean returnToSameSpot = true;
+
+    /**
+     * Maximum number of resupply trips before ending task.
+     * -1 means unlimited resupply trips.
+     */
+    @Builder.Default
+    int maxResupplyTrips = -1;
 
     // ========================================================================
     // Humanization
@@ -441,6 +502,41 @@ public class CombatTaskConfig {
             return true;
         }
         return geValue >= lootMinValue;
+    }
+
+    /**
+     * Check if resupply is properly configured.
+     *
+     * @return true if resupply is enabled with items specified
+     */
+    public boolean isResupplyConfigured() {
+        return enableResupply && resupplyItems != null && !resupplyItems.isEmpty();
+    }
+
+    /**
+     * Check if we should trigger resupply based on current food count.
+     *
+     * @param currentFoodCount current food in inventory
+     * @return true if resupply should be triggered
+     */
+    public boolean shouldResupply(int currentFoodCount) {
+        if (!enableResupply) {
+            return false;
+        }
+        return currentFoodCount <= minFoodToResupply;
+    }
+
+    /**
+     * Check if max resupply trips has been reached.
+     *
+     * @param tripCount current number of trips completed
+     * @return true if max trips reached
+     */
+    public boolean hasReachedMaxResupplyTrips(int tripCount) {
+        if (maxResupplyTrips < 0) {
+            return false;  // Unlimited
+        }
+        return tripCount >= maxResupplyTrips;
     }
 
     /**

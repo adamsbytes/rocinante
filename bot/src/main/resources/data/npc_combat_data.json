@@ -16,7 +16,19 @@
       "attackStyle": "MELEE",
       "attackAnimations": [422]
     },
-    "100": {
+    "101": {
+      "name": "Goblin",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "attackAnimations": [6184]
+    },
+    "102": {
+      "name": "Goblin",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "attackAnimations": [6184]
+    },
+    "103": {
       "name": "Goblin",
       "attackSpeed": 4,
       "attackStyle": "MELEE",
@@ -28,29 +40,136 @@
       "attackStyle": "MELEE",
       "attackAnimations": [390]
     },
+    "3009": {
+      "name": "Guard (Varrock)",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "attackAnimations": [390]
+    },
+    "3010": {
+      "name": "Guard (Falador)",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "attackAnimations": [390]
+    },
     "2266": {
       "name": "Moss giant",
       "attackSpeed": 4,
       "attackStyle": "MELEE",
+      "maxHit": 10,
       "attackAnimations": [4658]
     },
     "2267": {
       "name": "Ice giant",
       "attackSpeed": 4,
       "attackStyle": "MELEE",
+      "maxHit": 10,
       "attackAnimations": [4652]
     },
     "2268": {
       "name": "Fire giant",
       "attackSpeed": 4,
       "attackStyle": "MELEE",
+      "maxHit": 11,
       "attackAnimations": [4652]
     },
     "2269": {
       "name": "Hill giant",
       "attackSpeed": 4,
       "attackStyle": "MELEE",
+      "maxHit": 7,
       "attackAnimations": [4652]
+    },
+    "2270": {
+      "name": "Hill giant",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 7,
+      "attackAnimations": [4652]
+    },
+    "2098": {
+      "name": "Cow",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 1,
+      "attackAnimations": [5849]
+    },
+    "2099": {
+      "name": "Cow",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 1,
+      "attackAnimations": [5849]
+    },
+    "397": {
+      "name": "Chicken",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 1,
+      "attackAnimations": [5387]
+    },
+    "1017": {
+      "name": "Rat",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 1,
+      "attackAnimations": [4675]
+    },
+    "2693": {
+      "name": "Rock crab",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 1,
+      "attackAnimations": [1312]
+    },
+    "100": {
+      "name": "Rock crab",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 1,
+      "attackAnimations": [1312]
+    },
+    "7206": {
+      "name": "Sand Crab",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 1,
+      "attackAnimations": [1312]
+    },
+    "7207": {
+      "name": "Sandy rocks (Sand Crab)",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 1,
+      "attackAnimations": [1312]
+    },
+    "7799": {
+      "name": "Ammonite Crab",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 1,
+      "attackAnimations": [1312]
+    },
+    "7800": {
+      "name": "Ammonite Crab",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 1,
+      "attackAnimations": [1312]
+    },
+    "1684": {
+      "name": "Experiment",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 4,
+      "attackAnimations": [4320]
+    },
+    "1685": {
+      "name": "Experiment",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 4,
+      "attackAnimations": [4320]
     },
     "239": {
       "name": "Black dragon",
@@ -68,6 +187,72 @@
       "attackSpeed": 4,
       "attackStyle": "MELEE",
       "maxHit": 9,
+      "attackAnimations": [91],
+      "rangedAttack": {
+        "projectileId": 393,
+        "attackStyle": "MAGIC"
+      }
+    },
+    "260": {
+      "name": "Red dragon",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 14,
+      "attackAnimations": [91],
+      "rangedAttack": {
+        "projectileId": 393,
+        "attackStyle": "MAGIC"
+      }
+    },
+    "264": {
+      "name": "Bronze dragon",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 12,
+      "attackAnimations": [91],
+      "rangedAttack": {
+        "projectileId": 393,
+        "attackStyle": "MAGIC"
+      }
+    },
+    "272": {
+      "name": "Green dragon",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 9,
+      "attackAnimations": [91],
+      "rangedAttack": {
+        "projectileId": 393,
+        "attackStyle": "MAGIC"
+      }
+    },
+    "273": {
+      "name": "Green dragon",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 9,
+      "attackAnimations": [91],
+      "rangedAttack": {
+        "projectileId": 393,
+        "attackStyle": "MAGIC"
+      }
+    },
+    "274": {
+      "name": "Green dragon",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 9,
+      "attackAnimations": [91],
+      "rangedAttack": {
+        "projectileId": 393,
+        "attackStyle": "MAGIC"
+      }
+    },
+    "742": {
+      "name": "Baby green dragon",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 3,
       "attackAnimations": [91],
       "rangedAttack": {
         "projectileId": 393,
@@ -166,6 +351,259 @@
       "maxHit": 10,
       "attackAnimations": [64]
     },
+    "411": {
+      "name": "Bloodveld",
+      "attackSpeed": 4,
+      "attackStyle": "MAGIC",
+      "maxHit": 5,
+      "attackAnimations": [1539]
+    },
+    "412": {
+      "name": "Bloodveld",
+      "attackSpeed": 4,
+      "attackStyle": "MAGIC",
+      "maxHit": 5,
+      "attackAnimations": [1539]
+    },
+    "413": {
+      "name": "Mutated Bloodveld",
+      "attackSpeed": 4,
+      "attackStyle": "MAGIC",
+      "maxHit": 7,
+      "attackAnimations": [1539]
+    },
+    "7276": {
+      "name": "Insatiable Bloodveld",
+      "attackSpeed": 4,
+      "attackStyle": "MAGIC",
+      "maxHit": 8,
+      "attackAnimations": [1539]
+    },
+    "404": {
+      "name": "Aberrant spectre",
+      "attackSpeed": 4,
+      "attackStyle": "MAGIC",
+      "maxHit": 14,
+      "attackAnimations": [1507]
+    },
+    "7402": {
+      "name": "Deviant spectre",
+      "attackSpeed": 4,
+      "attackStyle": "MAGIC",
+      "maxHit": 17,
+      "attackAnimations": [1507]
+    },
+    "417": {
+      "name": "Gargoyle",
+      "attackSpeed": 5,
+      "attackStyle": "MELEE",
+      "maxHit": 11,
+      "attackAnimations": [1519]
+    },
+    "415": {
+      "name": "Nechryael",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 13,
+      "attackAnimations": [1528]
+    },
+    "416": {
+      "name": "Nechryael",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 13,
+      "attackAnimations": [1528]
+    },
+    "7278": {
+      "name": "Greater Nechryael",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 17,
+      "attackAnimations": [1528]
+    },
+    "484": {
+      "name": "Dust devil",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 8,
+      "attackAnimations": [1557]
+    },
+    "7249": {
+      "name": "Choke devil",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 12,
+      "attackAnimations": [1557]
+    },
+    "6600": {
+      "name": "Dagannoth Rex",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 26,
+      "attackAnimations": [2853]
+    },
+    "6601": {
+      "name": "Dagannoth Prime",
+      "attackSpeed": 4,
+      "attackStyle": "MAGIC",
+      "maxHit": 50,
+      "attackAnimations": [2854]
+    },
+    "6602": {
+      "name": "Dagannoth Supreme",
+      "attackSpeed": 4,
+      "attackStyle": "RANGED",
+      "maxHit": 31,
+      "attackAnimations": [2855]
+    },
+    "1183": {
+      "name": "Giant spider",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 3,
+      "attackAnimations": [5328]
+    },
+    "63": {
+      "name": "Giant spider",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 5,
+      "attackAnimations": [5328]
+    },
+    "2477": {
+      "name": "Hobgoblin",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 3,
+      "attackAnimations": [164]
+    },
+    "2478": {
+      "name": "Hobgoblin",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 5,
+      "attackAnimations": [164]
+    },
+    "1152": {
+      "name": "Black knight",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 6,
+      "attackAnimations": [390]
+    },
+    "1153": {
+      "name": "Black knight",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 6,
+      "attackAnimations": [390]
+    },
+    "3108": {
+      "name": "Bandit (level 22)",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 3,
+      "attackAnimations": [422]
+    },
+    "690": {
+      "name": "Bandit (level 130)",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 12,
+      "attackAnimations": [422]
+    },
+    "5535": {
+      "name": "Delrith",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 6,
+      "attackAnimations": [4320]
+    },
+    "742": {
+      "name": "Elvarg",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 8,
+      "attackAnimations": [91],
+      "rangedAttack": {
+        "projectileId": 393,
+        "attackStyle": "MAGIC"
+      }
+    },
+    "1470": {
+      "name": "Jungle demon",
+      "attackSpeed": 4,
+      "attackStyle": "MAGIC",
+      "maxHit": 32,
+      "attackAnimations": [64],
+      "meleeAttack": {
+        "attackStyle": "MELEE",
+        "maxHit": 32
+      }
+    },
+    "2882": {
+      "name": "Dagannoth mother (Throne of Miscellania)",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 8,
+      "attackAnimations": [2853]
+    },
+    "6342": {
+      "name": "Count Draynor",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 5,
+      "attackAnimations": [6539]
+    },
+    "3141": {
+      "name": "Tree spirit (Lost City)",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 6,
+      "attackAnimations": [94]
+    },
+    "3291": {
+      "name": "Witch's experiment (form 1)",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 2,
+      "attackAnimations": [3317]
+    },
+    "3292": {
+      "name": "Witch's experiment (form 2)",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 4,
+      "attackAnimations": [4320]
+    },
+    "3293": {
+      "name": "Witch's experiment (form 3)",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 6,
+      "attackAnimations": [5328]
+    },
+    "3294": {
+      "name": "Witch's experiment (form 4)",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 7,
+      "attackAnimations": [5378]
+    },
+    "1619": {
+      "name": "King Roald (What Lies Below)",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 7,
+      "attackAnimations": [390]
+    },
+    "6609": {
+      "name": "Bouncer (Fight Arena)",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 10,
+      "attackAnimations": [422]
+    },
     "7397": {
       "name": "Vorkath",
       "attackSpeed": 5,
@@ -188,6 +626,493 @@
       "attackStyle": "MAGIC",
       "maxHit": 28,
       "attackAnimations": [7135]
+    },
+    "3130": {
+      "name": "Cerberus",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 23,
+      "attackAnimations": [4489, 4492],
+      "magicAttack": {
+        "projectileId": 1242,
+        "attackStyle": "MAGIC",
+        "maxHit": 23
+      },
+      "rangedAttack": {
+        "projectileId": 1245,
+        "attackStyle": "RANGED",
+        "maxHit": 23
+      }
+    },
+    "2631": {
+      "name": "Abyssal Sire",
+      "attackSpeed": 4,
+      "attackStyle": "MAGIC",
+      "maxHit": 44,
+      "attackAnimations": [5369]
+    },
+    "5886": {
+      "name": "Abyssal demon",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 8,
+      "attackAnimations": [1537]
+    },
+    "5887": {
+      "name": "Abyssal demon",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 8,
+      "attackAnimations": [1537]
+    },
+    "7241": {
+      "name": "Greater abyssal demon",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 12,
+      "attackAnimations": [1537]
+    },
+    "499": {
+      "name": "Thermonuclear smoke devil",
+      "attackSpeed": 4,
+      "attackStyle": "MAGIC",
+      "maxHit": 28,
+      "attackAnimations": [3847]
+    },
+    "498": {
+      "name": "Smoke devil",
+      "attackSpeed": 4,
+      "attackStyle": "MAGIC",
+      "maxHit": 8,
+      "attackAnimations": [3847]
+    },
+    "963": {
+      "name": "Kalphite Queen (form 1)",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 31,
+      "attackAnimations": [6234],
+      "rangedAttack": {
+        "attackStyle": "RANGED",
+        "maxHit": 31
+      }
+    },
+    "965": {
+      "name": "Kalphite Queen (form 2)",
+      "attackSpeed": 4,
+      "attackStyle": "MAGIC",
+      "maxHit": 31,
+      "attackAnimations": [6235],
+      "meleeAttack": {
+        "attackStyle": "MELEE",
+        "maxHit": 31
+      }
+    },
+    "963": {
+      "name": "Kalphite Worker",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 3,
+      "attackAnimations": [6231]
+    },
+    "964": {
+      "name": "Kalphite Soldier",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 6,
+      "attackAnimations": [6231]
+    },
+    "955": {
+      "name": "Kalphite Guardian",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 10,
+      "attackAnimations": [6231]
+    },
+    "2097": {
+      "name": "Giant mole",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 21,
+      "attackAnimations": [3312]
+    },
+    "9021": {
+      "name": "Phosani's Nightmare",
+      "attackSpeed": 6,
+      "attackStyle": "MELEE",
+      "maxHit": 60,
+      "attackAnimations": [8594],
+      "magicAttack": {
+        "attackStyle": "MAGIC",
+        "maxHit": 60
+      }
+    },
+    "9425": {
+      "name": "The Nightmare",
+      "attackSpeed": 6,
+      "attackStyle": "MELEE",
+      "maxHit": 50,
+      "attackAnimations": [8594],
+      "magicAttack": {
+        "attackStyle": "MAGIC",
+        "maxHit": 50
+      }
+    },
+    "5862": {
+      "name": "Skotizo",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 38,
+      "attackAnimations": [4680],
+      "magicAttack": {
+        "attackStyle": "MAGIC",
+        "maxHit": 31
+      }
+    },
+    "415": {
+      "name": "Black demon",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 16,
+      "attackAnimations": [64]
+    },
+    "7144": {
+      "name": "Demonic gorilla",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 32,
+      "attackAnimations": [7225, 7226],
+      "rangedAttack": {
+        "projectileId": 1302,
+        "attackStyle": "RANGED",
+        "maxHit": 32
+      },
+      "magicAttack": {
+        "projectileId": 1304,
+        "attackStyle": "MAGIC",
+        "maxHit": 32
+      }
+    },
+    "7145": {
+      "name": "Demonic gorilla",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 32,
+      "attackAnimations": [7225, 7226],
+      "rangedAttack": {
+        "projectileId": 1302,
+        "attackStyle": "RANGED",
+        "maxHit": 32
+      },
+      "magicAttack": {
+        "projectileId": 1304,
+        "attackStyle": "MAGIC",
+        "maxHit": 32
+      }
+    },
+    "7146": {
+      "name": "Demonic gorilla",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 32,
+      "attackAnimations": [7225, 7226],
+      "rangedAttack": {
+        "projectileId": 1302,
+        "attackStyle": "RANGED",
+        "maxHit": 32
+      },
+      "magicAttack": {
+        "projectileId": 1304,
+        "attackStyle": "MAGIC",
+        "maxHit": 32
+      }
+    },
+    "2030": {
+      "name": "Cave horror",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 7,
+      "attackAnimations": [4234]
+    },
+    "7401": {
+      "name": "Spiked Cave horror",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 10,
+      "attackAnimations": [4234]
+    },
+    "419": {
+      "name": "Basilisk",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 9,
+      "attackAnimations": [1546]
+    },
+    "9283": {
+      "name": "Basilisk Knight",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 15,
+      "attackAnimations": [1546],
+      "rangedAttack": {
+        "attackStyle": "RANGED",
+        "maxHit": 20
+      }
+    },
+    "420": {
+      "name": "Cockatrice",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 4,
+      "attackAnimations": [1562]
+    },
+    "423": {
+      "name": "Pyrefiend",
+      "attackSpeed": 4,
+      "attackStyle": "MAGIC",
+      "maxHit": 5,
+      "attackAnimations": [1582]
+    },
+    "2028": {
+      "name": "Cave crawler",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 2,
+      "attackAnimations": [227]
+    },
+    "2029": {
+      "name": "Cave crawler",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 2,
+      "attackAnimations": [227]
+    },
+    "406": {
+      "name": "Cave slime",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 1,
+      "attackAnimations": [1789]
+    },
+    "407": {
+      "name": "Rockslug",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 2,
+      "attackAnimations": [1567]
+    },
+    "435": {
+      "name": "Turoth",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 9,
+      "attackAnimations": [1597]
+    },
+    "438": {
+      "name": "Kurask",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 17,
+      "attackAnimations": [1513]
+    },
+    "6593": {
+      "name": "Jelly",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 7,
+      "attackAnimations": [1586]
+    },
+    "7277": {
+      "name": "Vitreous Jelly",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 9,
+      "attackAnimations": [1586]
+    },
+    "6641": {
+      "name": "Infernal Mage",
+      "attackSpeed": 5,
+      "attackStyle": "MAGIC",
+      "maxHit": 11,
+      "attackAnimations": [811]
+    },
+    "2841": {
+      "name": "Dark beast",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 22,
+      "attackAnimations": [2731]
+    },
+    "7279": {
+      "name": "Night beast",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 28,
+      "attackAnimations": [2731]
+    },
+    "442": {
+      "name": "Bronze dragon",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 12,
+      "attackAnimations": [91],
+      "rangedAttack": {
+        "projectileId": 393,
+        "attackStyle": "MAGIC"
+      }
+    },
+    "443": {
+      "name": "Iron dragon",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 14,
+      "attackAnimations": [91],
+      "rangedAttack": {
+        "projectileId": 393,
+        "attackStyle": "MAGIC"
+      }
+    },
+    "444": {
+      "name": "Steel dragon",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 17,
+      "attackAnimations": [91],
+      "rangedAttack": {
+        "projectileId": 393,
+        "attackStyle": "MAGIC"
+      }
+    },
+    "5194": {
+      "name": "Brutal green dragon",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 17,
+      "attackAnimations": [91],
+      "rangedAttack": {
+        "projectileId": 393,
+        "attackStyle": "MAGIC"
+      }
+    },
+    "6593": {
+      "name": "Brutal black dragon",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 21,
+      "attackAnimations": [91],
+      "rangedAttack": {
+        "projectileId": 393,
+        "attackStyle": "MAGIC"
+      }
+    },
+    "8610": {
+      "name": "Wyrm",
+      "attackSpeed": 4,
+      "attackStyle": "MAGIC",
+      "maxHit": 14,
+      "attackAnimations": [8267]
+    },
+    "8611": {
+      "name": "Drake",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 16,
+      "attackAnimations": [8276],
+      "rangedAttack": {
+        "attackStyle": "RANGED",
+        "maxHit": 6
+      }
+    },
+    "8612": {
+      "name": "Hydra",
+      "attackSpeed": 5,
+      "attackStyle": "MAGIC",
+      "maxHit": 17,
+      "attackAnimations": [8237]
+    },
+    "8615": {
+      "name": "Alchemical Hydra",
+      "attackSpeed": 5,
+      "attackStyle": "RANGED",
+      "maxHit": 26,
+      "attackAnimations": [8234, 8235],
+      "magicAttack": {
+        "projectileId": 1663,
+        "attackStyle": "MAGIC",
+        "maxHit": 26
+      }
+    },
+    "402": {
+      "name": "Banshee",
+      "attackSpeed": 4,
+      "attackStyle": "MAGIC",
+      "maxHit": 3,
+      "attackAnimations": [1523]
+    },
+    "7272": {
+      "name": "Twisted Banshee",
+      "attackSpeed": 4,
+      "attackStyle": "MAGIC",
+      "maxHit": 7,
+      "attackAnimations": [1523]
+    },
+    "421": {
+      "name": "Harpie Bug Swarm",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 3,
+      "attackAnimations": [1572]
+    },
+    "439": {
+      "name": "Crawling Hand",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 1,
+      "attackAnimations": [1591]
+    },
+    "1618": {
+      "name": "Skeletal Wyvern",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 11,
+      "attackAnimations": [2985],
+      "rangedAttack": {
+        "projectileId": 499,
+        "attackStyle": "RANGED",
+        "maxHit": 20
+      }
+    },
+    "7794": {
+      "name": "Fossil Island Wyvern (Spitting)",
+      "attackSpeed": 4,
+      "attackStyle": "RANGED",
+      "maxHit": 11,
+      "attackAnimations": [7653]
+    },
+    "7795": {
+      "name": "Fossil Island Wyvern (Taloned)",
+      "attackSpeed": 4,
+      "attackStyle": "MELEE",
+      "maxHit": 11,
+      "attackAnimations": [7650]
+    },
+    "7796": {
+      "name": "Fossil Island Wyvern (Long-tailed)",
+      "attackSpeed": 4,
+      "attackStyle": "RANGED",
+      "maxHit": 11,
+      "attackAnimations": [7654]
+    },
+    "7797": {
+      "name": "Ancient Wyvern",
+      "attackSpeed": 4,
+      "attackStyle": "RANGED",
+      "maxHit": 14,
+      "attackAnimations": [7654],
+      "rangedAttack": {
+        "attackStyle": "RANGED",
+        "maxHit": 14
+      }
     }
   }
 }
