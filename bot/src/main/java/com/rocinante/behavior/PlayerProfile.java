@@ -1,7 +1,7 @@
 package com.rocinante.behavior;
 
 import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
+import com.rocinante.data.GsonFactory;
 import com.rocinante.input.ScreenRegion;
 import com.rocinante.util.Randomization;
 import lombok.Getter;
@@ -99,9 +99,7 @@ public class PlayerProfile {
     @Inject
     public PlayerProfile(Randomization randomization) {
         this.randomization = randomization;
-        this.gson = new GsonBuilder()
-                .setPrettyPrinting()
-                .create();
+        this.gson = GsonFactory.createPrettyPrinting();
         this.profileData = new ProfileData();
         this.saveExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "PlayerProfile-AutoSave");
@@ -116,7 +114,7 @@ public class PlayerProfile {
      */
     public PlayerProfile(Randomization randomization, ScheduledExecutorService executor) {
         this.randomization = randomization;
-        this.gson = new GsonBuilder().setPrettyPrinting().create();
+        this.gson = GsonFactory.createPrettyPrinting();
         this.profileData = new ProfileData();
         this.saveExecutor = executor;
     }
