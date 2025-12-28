@@ -500,6 +500,33 @@ public class DialogueTask extends AbstractTask {
             return;
         }
 
+        // STABILITY CHECK: Verify options haven't changed before pressing key
+        // This prevents race condition where dialogue changes during processing
+        Widget verifyWidget = client.getWidget(WIDGET_DIALOGUE_OPTIONS, 1);
+        if (verifyWidget == null) {
+            log.debug("Options widget disappeared before selection - retrying detection");
+            phase = DialoguePhase.DETECT_DIALOGUE;
+            return;
+        }
+        Widget[] verifyChildren = verifyWidget.getDynamicChildren();
+        if (verifyChildren == null || verifyChildren.length != children.length) {
+            log.debug("Options count changed ({} -> {}) - retrying detection", 
+                    children.length, verifyChildren != null ? verifyChildren.length : 0);
+            phase = DialoguePhase.DETECT_DIALOGUE;
+            return;
+        }
+        // Verify first option text matches (quick sanity check)
+        if (verifyChildren.length > 0 && children.length > 0) {
+            String originalFirst = children[0] != null ? children[0].getText() : null;
+            String currentFirst = verifyChildren[0] != null ? verifyChildren[0].getText() : null;
+            if (originalFirst != null && !originalFirst.equals(currentFirst)) {
+                log.debug("Options text changed ('{}' -> '{}') - retrying detection",
+                        originalFirst, currentFirst);
+                phase = DialoguePhase.DETECT_DIALOGUE;
+                return;
+            }
+        }
+
         // Press the corresponding number key (1-5)
         int keyCode = KeyEvent.VK_1 + (selectedIndex - 1);
         log.debug("Pressing key '{}' to select option {}", selectedIndex, selectedIndex);

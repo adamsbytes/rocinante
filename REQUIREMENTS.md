@@ -283,7 +283,7 @@ Perfect efficiency is inhuman. Inject 5-10% suboptimal actions:
 
 **Inefficiency Types**:
 - **Misclicks** (already in 3.1.2): 1-3% miss target, correct after delay.
-- **Backtracking**: 2% of walks, walk 1-2 tiles past destination, then return.
+- **Backtracking**: 2% of walks, walk 2-10 tiles past destination, then return.
 - **Redundant actions**: 3% of bank trips, open/close bank twice before actual transaction.
 - **Hesitation**: 5% of actions, hover over target for 500-1500ms before clicking (simulating decision-making).
 - **Action cancellation**: 1% of queued actions, cancel and re-queue after 1-3 second pause.
@@ -598,7 +598,7 @@ interface Task {
 #### 5.4.3 WalkToTask
 - Accept destination as: tile coordinate, object ID (walk to nearest), NPC ID, or named location.
 - Use `WebWalker` for distances > 30 tiles, direct pathfinding otherwise.
-- Incorporate humanized path deviations: occasional 1-2 tile detours (10% of walks).
+- Incorporate humanized path deviations: occasional 2-10 tile detours (10% of walks).
 - Click ahead on minimap for long walks; click in viewport for short walks.
 - Handle run energy: enable run above 40% energy, disable below 15%.
 

@@ -1,7 +1,6 @@
 package com.rocinante.behavior;
 
 import com.rocinante.util.Randomization;
-import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.events.GameTick;
 import net.runelite.client.eventbus.Subscribe;
@@ -10,6 +9,8 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Models player fatigue accumulation and its effects on gameplay.
@@ -89,34 +90,33 @@ public class FatigueModel {
     private final BotActivityTracker activityTracker;
     private final PlayerProfile playerProfile;
     
-    // === State ===
+    // === State (using Atomic types for thread safety) ===
     
     /**
      * Current fatigue level (0.0 = fresh, 1.0 = exhausted).
+     * Stored as bits in AtomicLong for thread-safe double operations.
      */
-    @Getter
-    private volatile double fatigueLevel = 0.0;
+    private final AtomicLong fatigueLevelBits = new AtomicLong(Double.doubleToLongBits(0.0));
     
     /**
      * Timestamp of last fatigue update (for time-based accumulation).
      */
-    private Instant lastUpdateTime = Instant.now();
+    private volatile Instant lastUpdateTime = Instant.now();
     
     /**
      * Whether currently on break (affects time accumulation).
      */
-    private volatile boolean onBreak = false;
+    private final AtomicBoolean onBreak = new AtomicBoolean(false);
     
     /**
      * Break start time for recovery calculation.
      */
-    private Instant breakStartTime = null;
+    private volatile Instant breakStartTime = null;
     
     /**
      * Total actions this session (for debugging/stats).
      */
-    @Getter
-    private long sessionActionCount = 0;
+    private final AtomicLong sessionActionCount = new AtomicLong(0);
 
     @Inject
     public FatigueModel(BotActivityTracker activityTracker, PlayerProfile playerProfile) {
@@ -132,7 +132,36 @@ public class FatigueModel {
                         double initialFatigue) {
         this.activityTracker = activityTracker;
         this.playerProfile = playerProfile;
-        this.fatigueLevel = clampFatigue(initialFatigue);
+        setFatigueLevelInternal(clampFatigue(initialFatigue));
+    }
+    
+    // ========================================================================
+    // Thread-Safe Double Accessors
+    // ========================================================================
+    
+    /**
+     * Get current fatigue level (thread-safe).
+     * 
+     * @return fatigue level (0.0 - 1.0)
+     */
+    public double getFatigueLevel() {
+        return Double.longBitsToDouble(fatigueLevelBits.get());
+    }
+    
+    /**
+     * Set fatigue level (thread-safe, internal use).
+     */
+    private void setFatigueLevelInternal(double value) {
+        fatigueLevelBits.set(Double.doubleToLongBits(value));
+    }
+    
+    /**
+     * Get session action count (thread-safe).
+     * 
+     * @return total actions this session
+     */
+    public long getSessionActionCount() {
+        return sessionActionCount.get();
     }
 
     // ========================================================================
@@ -144,17 +173,17 @@ public class FatigueModel {
      */
     public void onSessionStart() {
         // Apply session start recovery
-        double oldFatigue = fatigueLevel;
-        fatigueLevel = clampFatigue(fatigueLevel - SESSION_START_RECOVERY);
+        double oldFatigue = getFatigueLevel();
+        setFatigueLevelInternal(clampFatigue(oldFatigue - SESSION_START_RECOVERY));
         
         lastUpdateTime = Instant.now();
-        sessionActionCount = 0;
-        onBreak = false;
+        sessionActionCount.set(0);
+        onBreak.set(false);
         breakStartTime = null;
         
         log.info("Session started: fatigue {} -> {} (recovered {})",
                 String.format("%.3f", oldFatigue),
-                String.format("%.3f", fatigueLevel),
+                String.format("%.3f", getFatigueLevel()),
                 String.format("%.3f", SESSION_START_RECOVERY));
     }
 
@@ -163,7 +192,7 @@ public class FatigueModel {
      */
     public void onSessionEnd() {
         log.info("Session ended: final fatigue={}, actions={}",
-                String.format("%.3f", fatigueLevel), sessionActionCount);
+                String.format("%.3f", getFatigueLevel()), getSessionActionCount());
     }
 
     // ========================================================================
@@ -175,7 +204,7 @@ public class FatigueModel {
      */
     @Subscribe
     public void onGameTick(GameTick event) {
-        if (!onBreak) {
+        if (!onBreak.get()) {
             accumulateTimeFatigue();
         }
     }
@@ -184,7 +213,7 @@ public class FatigueModel {
      * Manual tick for when not using event subscription.
      */
     public void tick() {
-        if (!onBreak) {
+        if (!onBreak.get()) {
             accumulateTimeFatigue();
         }
     }
@@ -193,18 +222,18 @@ public class FatigueModel {
      * Record an action being performed. Increases fatigue.
      */
     public void recordAction() {
-        if (onBreak) {
+        if (onBreak.get()) {
             return;
         }
         
         double intensityMultiplier = getIntensityMultiplier();
         double fatigueIncrease = FATIGUE_PER_ACTION * intensityMultiplier;
         
-        fatigueLevel = clampFatigue(fatigueLevel + fatigueIncrease);
-        sessionActionCount++;
+        setFatigueLevelInternal(clampFatigue(getFatigueLevel() + fatigueIncrease));
+        sessionActionCount.incrementAndGet();
         
         log.trace("Action recorded: fatigue now {} (+{} with {}x intensity)",
-                String.format("%.4f", fatigueLevel),
+                String.format("%.4f", getFatigueLevel()),
                 String.format("%.5f", fatigueIncrease),
                 String.format("%.1f", intensityMultiplier));
     }
@@ -218,13 +247,13 @@ public class FatigueModel {
         double minutes = breakDuration.toMillis() / 60000.0;
         double recovery = RECOVERY_PER_MINUTE * minutes;
         
-        double oldFatigue = fatigueLevel;
-        fatigueLevel = clampFatigue(fatigueLevel - recovery);
+        double oldFatigue = getFatigueLevel();
+        setFatigueLevelInternal(clampFatigue(oldFatigue - recovery));
         
         log.debug("Break recovery: {} minutes -> fatigue {} -> {} (-{})",
                 String.format("%.1f", minutes),
                 String.format("%.3f", oldFatigue),
-                String.format("%.3f", fatigueLevel),
+                String.format("%.3f", getFatigueLevel()),
                 String.format("%.3f", recovery));
     }
 
@@ -243,7 +272,7 @@ public class FatigueModel {
         double intensityMultiplier = getIntensityMultiplier();
         double fatigueIncrease = FATIGUE_PER_SECOND * secondsElapsed * intensityMultiplier;
         
-        fatigueLevel = clampFatigue(fatigueLevel + fatigueIncrease);
+        setFatigueLevelInternal(clampFatigue(getFatigueLevel() + fatigueIncrease));
     }
 
     /**
@@ -264,10 +293,9 @@ public class FatigueModel {
      * Signal that a break is starting. Pauses fatigue accumulation.
      */
     public void startBreak() {
-        if (!onBreak) {
-            onBreak = true;
+        if (onBreak.compareAndSet(false, true)) {
             breakStartTime = Instant.now();
-            log.debug("Break started at fatigue {}", String.format("%.3f", fatigueLevel));
+            log.debug("Break started at fatigue {}", String.format("%.3f", getFatigueLevel()));
         }
     }
 
@@ -275,16 +303,16 @@ public class FatigueModel {
      * Signal that a break is ending. Applies recovery and resumes accumulation.
      */
     public void endBreak() {
-        if (onBreak && breakStartTime != null) {
+        if (onBreak.get() && breakStartTime != null) {
             Duration breakDuration = Duration.between(breakStartTime, Instant.now());
             recordBreakTime(breakDuration);
         }
         
-        onBreak = false;
+        onBreak.set(false);
         breakStartTime = null;
         lastUpdateTime = Instant.now();
         
-        log.debug("Break ended at fatigue {}", String.format("%.3f", fatigueLevel));
+        log.debug("Break ended at fatigue {}", String.format("%.3f", getFatigueLevel()));
     }
 
     /**
@@ -293,7 +321,7 @@ public class FatigueModel {
      * @return true if on break
      */
     public boolean isOnBreak() {
-        return onBreak;
+        return onBreak.get();
     }
 
     // ========================================================================
@@ -309,7 +337,7 @@ public class FatigueModel {
      * @return delay multiplier (1.0 - 1.5)
      */
     public double getDelayMultiplier() {
-        return 1.0 + (fatigueLevel * DELAY_FACTOR);
+        return 1.0 + (getFatigueLevel() * DELAY_FACTOR);
     }
 
     /**
@@ -321,7 +349,7 @@ public class FatigueModel {
      * @return click variance multiplier (1.0 - 1.4)
      */
     public double getClickVarianceMultiplier() {
-        return 1.0 + (fatigueLevel * CLICK_VARIANCE_FACTOR);
+        return 1.0 + (getFatigueLevel() * CLICK_VARIANCE_FACTOR);
     }
 
     /**
@@ -333,7 +361,7 @@ public class FatigueModel {
      * @return misclick multiplier (1.0 - 3.0)
      */
     public double getMisclickMultiplier() {
-        return 1.0 + (fatigueLevel * MISCLICK_FACTOR);
+        return 1.0 + (getFatigueLevel() * MISCLICK_FACTOR);
     }
 
     /**
@@ -359,8 +387,9 @@ public class FatigueModel {
      * @return true if a break should be taken
      */
     public boolean shouldTakeBreak() {
+        double currentFatigue = getFatigueLevel();
         if (playerProfile == null) {
-            return fatigueLevel >= 0.80;
+            return currentFatigue >= 0.80;
         }
         
         double threshold = playerProfile.getBreakFatigueThreshold();
@@ -370,7 +399,7 @@ public class FatigueModel {
             threshold *= activityTracker.getAccountType().getBreakThresholdModifier();
         }
         
-        return fatigueLevel >= threshold;
+        return currentFatigue >= threshold;
     }
 
     /**
@@ -402,16 +431,16 @@ public class FatigueModel {
      * @param level new fatigue level (0.0 - 1.0)
      */
     public void setFatigueLevel(double level) {
-        this.fatigueLevel = clampFatigue(level);
-        log.debug("Fatigue manually set to {}", String.format("%.3f", fatigueLevel));
+        setFatigueLevelInternal(clampFatigue(level));
+        log.debug("Fatigue manually set to {}", String.format("%.3f", getFatigueLevel()));
     }
 
     /**
      * Reset fatigue to zero. Called on long breaks or testing.
      */
     public void reset() {
-        fatigueLevel = MIN_FATIGUE;
-        sessionActionCount = 0;
+        setFatigueLevelInternal(MIN_FATIGUE);
+        sessionActionCount.set(0);
         lastUpdateTime = Instant.now();
         log.info("Fatigue reset to 0");
     }
@@ -432,12 +461,12 @@ public class FatigueModel {
     public String getSummary() {
         return String.format(
                 "Fatigue[level=%.1f%%, delayMult=%.2f, varianceMult=%.2f, misclickMult=%.2f, actions=%d, onBreak=%s]",
-                fatigueLevel * 100,
+                getFatigueLevel() * 100,
                 getDelayMultiplier(),
                 getClickVarianceMultiplier(),
                 getMisclickMultiplier(),
-                sessionActionCount,
-                onBreak
+                getSessionActionCount(),
+                isOnBreak()
         );
     }
 

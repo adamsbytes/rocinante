@@ -6,6 +6,7 @@ import com.rocinante.quest.steps.*;
 import com.rocinante.state.StateCondition;
 import com.rocinante.tasks.impl.DialogueOptionResolver;
 import com.rocinante.tasks.impl.EmoteTask;
+import com.rocinante.tasks.impl.TeleportTask;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.coords.WorldPoint;
@@ -691,6 +692,13 @@ public class QuestHelperBridge {
         String text = getStepText(qhStep);
         WorldPoint location = getWorldPoint(qhStep);
 
+        // Check if this is a teleport-related step
+        TeleportQuestStep teleportStep = detectTeleportStep(text, location);
+        if (teleportStep != null) {
+            log.debug("Translated DetailedQuestStep as teleport: {}", text);
+            return teleportStep;
+        }
+
         // Detailed steps are often just instructions, may need WalkQuestStep
         if (location != null) {
             return new WalkQuestStep(location, text);
@@ -707,7 +715,219 @@ public class QuestHelperBridge {
      */
     private QuestStep translateGenericStep(Object qhStep) throws Exception {
         String text = getStepText(qhStep);
+        WorldPoint location = getWorldPoint(qhStep);
+        
+        // Check if this is a teleport-related step
+        TeleportQuestStep teleportStep = detectTeleportStep(text, location);
+        if (teleportStep != null) {
+            log.debug("Translated generic step as teleport: {}", text);
+            return teleportStep;
+        }
+        
         log.debug("Generic step translation (unsupported type): {}", text);
+        return null;
+    }
+    
+    // ========================================================================
+    // Teleport Detection for Fallback Steps
+    // ========================================================================
+    
+    /**
+     * Detect if a step is teleport-related and create appropriate TeleportQuestStep.
+     * This provides fallback handling when Quest Helper steps mention teleportation
+     * but aren't explicitly typed as such.
+     *
+     * @param text     the step text
+     * @param location optional expected destination
+     * @return TeleportQuestStep if teleport detected, null otherwise
+     */
+    private TeleportQuestStep detectTeleportStep(String text, WorldPoint location) {
+        if (text == null || text.isEmpty()) {
+            return null;
+        }
+        
+        String lowerText = text.toLowerCase();
+        
+        // Detect home teleport
+        if (lowerText.contains("home teleport") || lowerText.contains("teleport home")) {
+            TeleportQuestStep step = TeleportQuestStep.homeTeleport(text);
+            if (location != null) {
+                step.withExpectedDestination(location);
+            }
+            return step;
+        }
+        
+        // Detect fairy ring usage
+        if (lowerText.contains("fairy ring")) {
+            // Try to extract fairy ring code from text (e.g., "AIQ", "CKR")
+            String code = extractFairyRingCode(text);
+            if (code != null) {
+                TeleportQuestStep step = TeleportQuestStep.fairyRing(code, text);
+                if (location != null) {
+                    step.withExpectedDestination(location);
+                }
+                return step;
+            }
+        }
+        
+        // Detect spirit tree usage
+        if (lowerText.contains("spirit tree")) {
+            String destination = extractSpiritTreeDestination(text);
+            TeleportQuestStep step = TeleportQuestStep.spiritTree(destination, text);
+            if (location != null) {
+                step.withExpectedDestination(location);
+            }
+            return step;
+        }
+        
+        // Detect specific spell teleports
+        String spellName = detectSpellTeleport(lowerText);
+        if (spellName != null) {
+            TeleportQuestStep step = TeleportQuestStep.spell(spellName, text);
+            if (location != null) {
+                step.withExpectedDestination(location);
+            }
+            return step;
+        }
+        
+        // Detect jewelry teleports
+        if (lowerText.contains("ring of wealth") || lowerText.contains("glory") ||
+            lowerText.contains("games necklace") || lowerText.contains("ring of dueling") ||
+            lowerText.contains("combat bracelet") || lowerText.contains("skills necklace")) {
+            // Generic jewelry teleport - caller should configure with specific item ID
+            log.debug("Detected jewelry teleport mention, needs specific item ID: {}", text);
+            // Return null to let caller handle with more context
+            return null;
+        }
+        
+        // Detect tablet teleports
+        if (lowerText.contains("teleport tablet") || lowerText.contains("teletab")) {
+            log.debug("Detected teleport tablet mention, needs specific item ID: {}", text);
+            return null;
+        }
+        
+        // Generic teleport mentions without specifics - try to infer destination
+        if (lowerText.contains("teleport to") || lowerText.contains("teleport back")) {
+            // Try to detect destination from text
+            if (lowerText.contains("varrock")) {
+                return TeleportQuestStep.spell("Varrock Teleport", text);
+            } else if (lowerText.contains("lumbridge")) {
+                return TeleportQuestStep.spell("Lumbridge Teleport", text);
+            } else if (lowerText.contains("falador")) {
+                return TeleportQuestStep.spell("Falador Teleport", text);
+            } else if (lowerText.contains("camelot")) {
+                return TeleportQuestStep.spell("Camelot Teleport", text);
+            } else if (lowerText.contains("ardougne")) {
+                return TeleportQuestStep.spell("Ardougne Teleport", text);
+            } else if (lowerText.contains("watchtower")) {
+                return TeleportQuestStep.spell("Watchtower Teleport", text);
+            } else if (lowerText.contains("trollheim")) {
+                return TeleportQuestStep.spell("Trollheim Teleport", text);
+            } else if (lowerText.contains("kourend")) {
+                return TeleportQuestStep.spell("Teleport to Kourend", text);
+            } else if (lowerText.contains("house") || lowerText.contains("poh")) {
+                return TeleportQuestStep.spell("Teleport to House", text);
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Extract fairy ring code from text (e.g., "Use fairy ring AIQ").
+     */
+    private String extractFairyRingCode(String text) {
+        // Fairy ring codes are 3 uppercase letters
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("\\b([A-Z]{3})\\b")
+                .matcher(text);
+        if (matcher.find()) {
+            String code = matcher.group(1);
+            // Validate it looks like a fairy ring code (A/B/C/D for each dial)
+            if (isFairyRingCode(code)) {
+                return code;
+            }
+        }
+        // Try lowercase
+        matcher = java.util.regex.Pattern
+                .compile("\\b([a-z]{3})\\b")
+                .matcher(text.toLowerCase());
+        while (matcher.find()) {
+            String code = matcher.group(1).toUpperCase();
+            if (isFairyRingCode(code)) {
+                return code;
+            }
+        }
+        return null;
+    }
+    
+    /**
+     * Check if a string is a valid fairy ring code.
+     * Fairy rings use letters A, B, C, D, I, J, K, L, P, Q, R, S.
+     */
+    private boolean isFairyRingCode(String code) {
+        if (code == null || code.length() != 3) {
+            return false;
+        }
+        String validChars = "ABCDIJKLPQRS";
+        for (char c : code.toCharArray()) {
+            if (validChars.indexOf(c) < 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+    
+    /**
+     * Extract spirit tree destination from text.
+     */
+    private String extractSpiritTreeDestination(String text) {
+        String lowerText = text.toLowerCase();
+        if (lowerText.contains("tree gnome village")) {
+            return "Tree Gnome Village";
+        } else if (lowerText.contains("tree gnome stronghold") || lowerText.contains("gnome stronghold")) {
+            return "Tree Gnome Stronghold";
+        } else if (lowerText.contains("grand exchange")) {
+            return "Grand Exchange";
+        } else if (lowerText.contains("battlefield of khazard") || lowerText.contains("khazard")) {
+            return "Battlefield of Khazard";
+        } else if (lowerText.contains("port sarim")) {
+            return "Port Sarim";
+        } else if (lowerText.contains("brimhaven")) {
+            return "Brimhaven";
+        } else if (lowerText.contains("hosidius")) {
+            return "Hosidius";
+        } else if (lowerText.contains("farming guild")) {
+            return "Farming Guild";
+        }
+        return "Tree Gnome Stronghold"; // Default
+    }
+    
+    /**
+     * Detect specific spell teleport from text.
+     */
+    private String detectSpellTeleport(String lowerText) {
+        // Check for explicit spell mentions
+        if (lowerText.contains("cast varrock teleport") || 
+            lowerText.contains("varrock teleport spell")) {
+            return "Varrock Teleport";
+        }
+        if (lowerText.contains("cast lumbridge teleport") || 
+            lowerText.contains("lumbridge teleport spell")) {
+            return "Lumbridge Teleport";
+        }
+        if (lowerText.contains("cast falador teleport") || 
+            lowerText.contains("falador teleport spell")) {
+            return "Falador Teleport";
+        }
+        if (lowerText.contains("cast camelot teleport") || 
+            lowerText.contains("camelot teleport spell")) {
+            return "Camelot Teleport";
+        }
+        if (lowerText.contains("cast ardougne teleport") || 
+            lowerText.contains("ardougne teleport spell")) {
+            return "Ardougne Teleport";
+        }
         return null;
     }
 

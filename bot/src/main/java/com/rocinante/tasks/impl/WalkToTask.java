@@ -21,8 +21,10 @@ import net.runelite.api.Skill;
 import net.runelite.api.Tile;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
+import net.runelite.api.widgets.Widget;
 
 import java.awt.Point;
+import java.awt.Rectangle;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -101,11 +103,23 @@ public class WalkToTask extends AbstractTask {
     private static final int MINIMAP_CLICK_DISTANCE = 15;
 
     /**
-     * Minimap dimensions (approximate for fixed mode).
+     * Minimap widget group IDs for different interface modes.
+     * These are the actual minimap drawing area widgets.
      */
-    private static final int MINIMAP_CENTER_X = 643;
-    private static final int MINIMAP_CENTER_Y = 83;
-    private static final int MINIMAP_RADIUS = 73;
+    private static final int MINIMAP_FIXED_GROUP = 548;
+    private static final int MINIMAP_FIXED_CHILD = 23;
+    private static final int MINIMAP_RESIZABLE_CLASSIC_GROUP = 161;
+    private static final int MINIMAP_RESIZABLE_CLASSIC_CHILD = 28;
+    private static final int MINIMAP_RESIZABLE_MODERN_GROUP = 164;
+    private static final int MINIMAP_RESIZABLE_MODERN_CHILD = 19;
+    
+    /**
+     * Fallback minimap dimensions (fixed mode defaults).
+     * Only used if widget bounds cannot be determined.
+     */
+    private static final int FALLBACK_MINIMAP_CENTER_X = 643;
+    private static final int FALLBACK_MINIMAP_CENTER_Y = 83;
+    private static final int FALLBACK_MINIMAP_RADIUS = 73;
 
     /**
      * Maximum ticks to wait for movement to start.
@@ -1694,8 +1708,15 @@ public class WalkToTask extends AbstractTask {
             return null;
         }
 
-        // Get camera yaw for rotation
-        int cameraYaw = client.getCameraYawTarget();
+        // Dynamically get minimap center and radius from widget bounds
+        MinimapInfo minimap = getMinimapInfo(client);
+        int minimapCenterX = minimap.centerX;
+        int minimapCenterY = minimap.centerY;
+        int minimapRadius = minimap.radius;
+
+        // Get CURRENT camera yaw for rotation (not target - that causes incorrect 
+        // positions during camera rotation)
+        int cameraYaw = client.getCameraYaw();
         double angle = Math.toRadians(cameraYaw * 360.0 / 2048.0);
 
         // Rotate point based on camera angle
@@ -1703,15 +1724,15 @@ public class WalkToTask extends AbstractTask {
         double rotatedY = dy * Math.cos(angle) - dx * Math.sin(angle);
 
         // Scale to minimap (4 pixels per tile approximately)
-        int minimapX = MINIMAP_CENTER_X + (int) (rotatedX * 4);
-        int minimapY = MINIMAP_CENTER_Y - (int) (rotatedY * 4);
+        int minimapX = minimapCenterX + (int) (rotatedX * 4);
+        int minimapY = minimapCenterY - (int) (rotatedY * 4);
 
         // Verify within minimap bounds
         int distFromCenter = (int) Math.sqrt(
-                Math.pow(minimapX - MINIMAP_CENTER_X, 2) +
-                Math.pow(minimapY - MINIMAP_CENTER_Y, 2));
+                Math.pow(minimapX - minimapCenterX, 2) +
+                Math.pow(minimapY - minimapCenterY, 2));
 
-        if (distFromCenter > MINIMAP_RADIUS - 5) {
+        if (distFromCenter > minimapRadius - 5) {
             return null;
         }
 
@@ -1720,6 +1741,55 @@ public class WalkToTask extends AbstractTask {
         minimapY += Randomization.gaussianInt(0, 2);
 
         return new Point(minimapX, minimapY);
+    }
+    
+    /**
+     * Get minimap center and radius from widget bounds.
+     * Supports fixed mode, resizable classic, and resizable modern interface modes.
+     * 
+     * @param client the RuneLite client
+     * @return minimap information (center coordinates and radius)
+     */
+    private MinimapInfo getMinimapInfo(Client client) {
+        // Try each interface mode's minimap widget
+        Widget minimap = client.getWidget(MINIMAP_FIXED_GROUP, MINIMAP_FIXED_CHILD);
+        
+        if (minimap == null || minimap.isHidden()) {
+            minimap = client.getWidget(MINIMAP_RESIZABLE_CLASSIC_GROUP, MINIMAP_RESIZABLE_CLASSIC_CHILD);
+        }
+        
+        if (minimap == null || minimap.isHidden()) {
+            minimap = client.getWidget(MINIMAP_RESIZABLE_MODERN_GROUP, MINIMAP_RESIZABLE_MODERN_CHILD);
+        }
+        
+        if (minimap != null && !minimap.isHidden()) {
+            Rectangle bounds = minimap.getBounds();
+            if (bounds != null && bounds.width > 0 && bounds.height > 0) {
+                int centerX = bounds.x + bounds.width / 2;
+                int centerY = bounds.y + bounds.height / 2;
+                // Minimap is roughly circular, use smaller dimension / 2 as radius
+                int radius = Math.min(bounds.width, bounds.height) / 2;
+                return new MinimapInfo(centerX, centerY, radius);
+            }
+        }
+        
+        // Fallback to fixed mode defaults
+        return new MinimapInfo(FALLBACK_MINIMAP_CENTER_X, FALLBACK_MINIMAP_CENTER_Y, FALLBACK_MINIMAP_RADIUS);
+    }
+    
+    /**
+     * Holds minimap center and radius information.
+     */
+    private static class MinimapInfo {
+        final int centerX;
+        final int centerY;
+        final int radius;
+        
+        MinimapInfo(int centerX, int centerY, int radius) {
+            this.centerX = centerX;
+            this.centerY = centerY;
+            this.radius = radius;
+        }
     }
 
     private Point calculateViewportPoint(TaskContext ctx, WorldPoint target) {

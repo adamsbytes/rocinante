@@ -56,18 +56,18 @@ import java.util.concurrent.CompletableFuture;
 public class TeleportTask extends AbstractTask {
 
     // ========================================================================
-    // Constants - Spellbook Widget IDs
+    // Constants - Spellbook Widget IDs (public for reuse by CombatManager, etc.)
     // ========================================================================
 
     /**
      * Standard spellbook widget group.
      */
-    private static final int SPELLBOOK_GROUP = 218;
+    public static final int SPELLBOOK_GROUP = 218;
 
     /**
      * Home teleport widget child (standard spellbook).
      */
-    private static final int HOME_TELEPORT_CHILD = 7;
+    public static final int HOME_TELEPORT_CHILD = 7;
 
     /**
      * Spell name to widget child ID mapping (standard spellbook).
@@ -1423,6 +1423,128 @@ public class TeleportTask extends AbstractTask {
             }
         }
         return -1;
+    }
+
+    // ========================================================================
+    // Static Utility Methods (for use by CombatManager, etc.)
+    // ========================================================================
+
+    /**
+     * Information about an available teleport spell for emergency escape.
+     */
+    public static class AvailableSpell {
+        private final String name;
+        private final int widgetChildId;
+        
+        public AvailableSpell(String name, int widgetChildId) {
+            this.name = name;
+            this.widgetChildId = widgetChildId;
+        }
+        
+        public String getName() { return name; }
+        public int getWidgetChildId() { return widgetChildId; }
+        public int getWidgetGroupId() { return SPELLBOOK_GROUP; }
+    }
+
+    /**
+     * Find the best available teleport spell based on magic level and runes.
+     * Returns spells in order of preference (fastest teleports first).
+     * 
+     * <p>This method is designed for emergency escape scenarios where we need
+     * to quickly determine what teleport options are available.
+     * 
+     * @param client the RuneLite client
+     * @param inventory the player's inventory state
+     * @param equipment the player's equipment state
+     * @return the best available spell, or null if none available (use home teleport)
+     */
+    public static AvailableSpell findBestAvailableSpell(
+            Client client, 
+            InventoryState inventory, 
+            EquipmentState equipment) {
+        
+        int magicLevel = client.getRealSkillLevel(Skill.MAGIC);
+        java.util.Set<Integer> providedRunes = getProvidedRunesStatic(equipment);
+        
+        // Check spells in order of preference (fastest/safest first)
+        String[] spellOrder = {
+            "Varrock Teleport",    // Level 25, fast
+            "Lumbridge Teleport",  // Level 31, safe spawn
+            "Falador Teleport",    // Level 37
+            "Teleport to House",   // Level 40, if POH is set up
+            "Camelot Teleport",    // Level 45
+        };
+        
+        for (String spellName : spellOrder) {
+            Integer childId = SPELL_WIDGET_IDS.get(spellName);
+            SpellRequirements reqs = SPELL_REQUIREMENTS.get(spellName);
+            
+            if (childId == null || reqs == null) {
+                continue;
+            }
+            
+            // Check magic level
+            if (magicLevel < reqs.magicLevel) {
+                continue;
+            }
+            
+            // Check runes
+            boolean hasRunes = true;
+            for (Map.Entry<Integer, Integer> runeCost : reqs.runeCosts.entrySet()) {
+                int runeId = runeCost.getKey();
+                int requiredCount = runeCost.getValue();
+                
+                // Skip if provided by staff
+                if (providedRunes.contains(runeId)) {
+                    continue;
+                }
+                
+                if (inventory.countItem(runeId) < requiredCount) {
+                    hasRunes = false;
+                    break;
+                }
+            }
+            
+            if (hasRunes) {
+                return new AvailableSpell(spellName, childId);
+            }
+        }
+        
+        return null; // No standard teleport available, caller should use home teleport
+    }
+
+    /**
+     * Static version of getProvidedRunes for use without TaskContext.
+     */
+    private static java.util.Set<Integer> getProvidedRunesStatic(EquipmentState equipment) {
+        java.util.Set<Integer> provided = new java.util.HashSet<>();
+        
+        int weaponId = equipment.getItemInSlot(EquipmentState.SLOT_WEAPON);
+        if (weaponId > 0 && STAFF_RUNE_PROVIDERS.containsKey(weaponId)) {
+            for (int runeId : STAFF_RUNE_PROVIDERS.get(weaponId)) {
+                provided.add(runeId);
+            }
+        }
+        
+        int shieldId = equipment.getItemInSlot(EquipmentState.SLOT_SHIELD);
+        if (shieldId > 0 && STAFF_RUNE_PROVIDERS.containsKey(shieldId)) {
+            for (int runeId : STAFF_RUNE_PROVIDERS.get(shieldId)) {
+                provided.add(runeId);
+            }
+        }
+        
+        return provided;
+    }
+
+    /**
+     * Get the widget child ID for a named spell.
+     * 
+     * @param spellName the spell name (e.g., "Varrock Teleport")
+     * @return the widget child ID, or -1 if unknown
+     */
+    public static int getSpellWidgetChildId(String spellName) {
+        Integer childId = SPELL_WIDGET_IDS.get(spellName);
+        return childId != null ? childId : -1;
     }
 
     // ========================================================================

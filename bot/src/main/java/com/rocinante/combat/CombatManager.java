@@ -8,6 +8,7 @@ import com.rocinante.input.MenuHelper;
 import com.rocinante.input.RobotKeyboardController;
 import com.rocinante.input.WidgetClickHelper;
 import com.rocinante.tasks.impl.PrayerTask;
+import com.rocinante.tasks.impl.TeleportTask;
 
 import java.awt.event.KeyEvent;
 
@@ -1053,34 +1054,68 @@ public class CombatManager {
     /**
      * Execute teleport via spellbook.
      * Per Section 12A.3.3: Secondary escape method.
+     * 
+     * <p>Uses TeleportTask utility methods to find the best available teleport
+     * based on magic level and runes. Falls back to home teleport if no
+     * standard teleports are available.
      */
     private void executeSpellTeleport() {
         log.warn("FLEE: Attempting spell teleport");
         
-        // Home teleport is always available (though slow)
-        // Standard spellbook teleports require runes
-        // For HCIM safety, we prefer the fastest available option
+        InventoryState inventory = gameStateService.getInventoryState();
+        EquipmentState equipment = gameStateService.getEquipmentState();
         
-        // Spellbook widget group: 218 (standard spellbook)
-        // Home teleport is typically at a known position
-        // Varrock teleport = child 19, Lumbridge = child 23, etc.
+        // Find the best available teleport spell using TeleportTask utility
+        TeleportTask.AvailableSpell spell = TeleportTask.findBestAvailableSpell(
+                client, inventory, equipment);
         
-        // For now, attempt Home Teleport as it's always available
-        // Widget group 218, child 5 for Home Teleport (standard spellbook)
-        int spellbookGroup = 218;
-        int homeTeleportChild = 5;
+        if (spell != null) {
+            // Use available standard teleport (faster than home teleport)
+            log.warn("FLEE: Using {} (widget {}:{})", 
+                    spell.getName(), spell.getWidgetGroupId(), spell.getWidgetChildId());
+            
+            widgetClickHelper.clickWidget(spell.getWidgetGroupId(), spell.getWidgetChildId(), 
+                    "EMERGENCY " + spell.getName().toUpperCase())
+                    .thenAccept(success -> {
+                        if (success) {
+                            log.warn("FLEE: {} clicked - waiting for cast", spell.getName());
+                            fleeing = false;
+                        } else {
+                            log.error("FLEE: Failed to click {} - trying home teleport", spell.getName());
+                            executeHomeTeleport();
+                        }
+                    })
+                    .exceptionally(e -> {
+                        log.error("FLEE: {} error - trying home teleport: {}", spell.getName(), e.getMessage());
+                        executeHomeTeleport();
+                        return null;
+                    });
+        } else {
+            // No standard teleport available, use home teleport (always available)
+            executeHomeTeleport();
+        }
+    }
+    
+    /**
+     * Execute home teleport as last spell-based escape option.
+     * Home teleport is always available but takes ~10 seconds.
+     */
+    private void executeHomeTeleport() {
+        log.warn("FLEE: Using Home Teleport (no standard teleports available)");
         
-        widgetClickHelper.clickWidget(spellbookGroup, homeTeleportChild, "EMERGENCY HOME TELEPORT")
+        widgetClickHelper.clickWidget(TeleportTask.SPELLBOOK_GROUP, TeleportTask.HOME_TELEPORT_CHILD, 
+                "EMERGENCY HOME TELEPORT")
                 .thenAccept(success -> {
                     if (success) {
-                        log.warn("FLEE: Home teleport clicked - waiting for cast");
+                        log.warn("FLEE: Home teleport clicked - waiting for cast (~10 seconds)");
+                        fleeing = false;
                     } else {
                         log.error("FLEE: Failed to click home teleport - trying run and logout");
                         executeRunAndLogout();
                     }
                 })
                 .exceptionally(e -> {
-                    log.error("FLEE: Spell teleport error - trying run and logout: {}", e.getMessage());
+                    log.error("FLEE: Home teleport error - trying run and logout: {}", e.getMessage());
                     executeRunAndLogout();
                     return null;
                 });

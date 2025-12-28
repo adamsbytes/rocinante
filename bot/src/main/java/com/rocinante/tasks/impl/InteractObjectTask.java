@@ -87,6 +87,12 @@ public class InteractObjectTask extends AbstractTask {
      * Maximum camera rotation retries to get object in viewport.
      */
     private static final int MAX_CAMERA_RETRIES = 3;
+    
+    /**
+     * Maximum re-search attempts when object despawns during interaction.
+     * Prevents infinite loops when object is contested or deleted.
+     */
+    private static final int MAX_DESPAWN_RETRIES = 3;
 
     // ========================================================================
     // Configuration
@@ -167,6 +173,12 @@ public class InteractObjectTask extends AbstractTask {
      * Camera rotation retry count for viewport issues.
      */
     protected int cameraRetryCount = 0;
+    
+    /**
+     * Object despawn/re-search retry count.
+     * Tracks how many times we've had to re-find the object due to despawn.
+     */
+    protected int despawnRetryCount = 0;
 
     /**
      * The object we found and are interacting with.
@@ -374,6 +386,9 @@ public class InteractObjectTask extends AbstractTask {
         // Store object position
         targetPosition = getObjectWorldPoint(targetObject);
         log.debug("Found object {} at {}", objectId, targetPosition);
+        
+        // Reset despawn retry counter on successful find
+        despawnRetryCount = 0;
 
         // Store starting state for success detection
         startPosition = playerPos;
@@ -553,7 +568,17 @@ public class InteractObjectTask extends AbstractTask {
 
         // Re-validate object still exists
         if (targetObject == null || targetObject.getClickbox() == null) {
-            log.warn("Target object despawned before click, re-finding");
+            despawnRetryCount++;
+            if (despawnRetryCount > MAX_DESPAWN_RETRIES) {
+                log.error("Object {} despawned {} times - giving up", objectId, despawnRetryCount);
+                fail("Object despawned repeatedly - may be contested or unavailable");
+                return;
+            }
+            log.warn("Target object despawned before click (attempt {}/{}), re-searching",
+                    despawnRetryCount, MAX_DESPAWN_RETRIES);
+            targetObject = null;
+            targetPosition = null;
+            cachedClickbox = null;
             phase = InteractionPhase.FIND_OBJECT;
             return;
         }
@@ -599,7 +624,17 @@ public class InteractObjectTask extends AbstractTask {
             if (clickable != null) {
                 cachedClickbox = clickable.getBounds();
             } else {
-                log.warn("Target object despawned before menu selection, re-finding");
+                despawnRetryCount++;
+                if (despawnRetryCount > MAX_DESPAWN_RETRIES) {
+                    log.error("Object {} despawned {} times - giving up", objectId, despawnRetryCount);
+                    fail("Object despawned repeatedly - may be contested or unavailable");
+                    return;
+                }
+                log.warn("Target object despawned before menu selection (attempt {}/{}), re-searching",
+                        despawnRetryCount, MAX_DESPAWN_RETRIES);
+                targetObject = null;
+                targetPosition = null;
+                cachedClickbox = null;
                 phase = InteractionPhase.FIND_OBJECT;
                 return;
             }
