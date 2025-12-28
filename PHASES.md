@@ -117,6 +117,7 @@
 - [ ] `GearProgressionPlanner` - Equipment upgrade paths
 - [X] `UnlockTracker` - Teleports, areas, features (integrated with WebWalker)
 - [X] `TeleportTask` with behavioral profile preferences
+- [X] Full Grand Exchange handling (incl. `GrandExchangeTask`)
 - [ ] `InventoryTask`
 - [X] `BankTask`, `DialogueTask`, `PuzzleTask`, `SettingsTask`, `TradeTask`, `WidgetInteractTask`
 
@@ -237,14 +238,14 @@
 **Goal**: Full ironman support with HCIM death prevention.
 
 - [X] `IronmanState` - Account type detection
-- [ ] `IronmanRestrictions` - GE/trade blocking
+- [~] `IronmanRestrictions` - GE/trade blocking
 - [ ] `SelfSufficiencyPlanner` - Item acquisition without GE
 - [ ] `ResourceGatheringPlanner` - Supply chain planning
 - [ ] `DropTableAnalyzer` - Monster farming optimization
 - [ ] `ShopRunPlanner` - NPC shop management
-- [ ] `HCIMSafetyManager` - Pre-activity checks, runtime monitoring
+- [~] `HCIMSafetyManager` - Pre-activity checks, runtime monitoring
 - [ ] Ring of Life enforcement
-- [ ] Emergency escape protocols
+- [~] Emergency escape protocols
 - [ ] Death probability scoring
 - [ ] Multi-combat detection
 - [ ] World type restrictions (no PvP/Deadman)

@@ -8,6 +8,7 @@ import com.rocinante.combat.WeaponDataService;
 import com.rocinante.data.NpcCombatDataLoader;
 import com.rocinante.data.ProjectileDataLoader;
 import com.rocinante.state.BankStateManager;
+import com.rocinante.state.GrandExchangeStateManager;
 import com.rocinante.state.EquipmentState;
 import com.rocinante.state.InventoryState;
 import com.rocinante.state.PlayerState;
@@ -56,6 +57,9 @@ public class GameStateServiceTest {
     private BankStateManager bankStateManager;
     
     @Mock
+    private GrandExchangeStateManager grandExchangeStateManager;
+    
+    @Mock
     private PlayerProfile playerProfile;
     
     @Mock
@@ -82,6 +86,7 @@ public class GameStateServiceTest {
     public void setUp() {
         MockitoAnnotations.openMocks(this);
         gameStateService = new GameStateService(client, itemManager, bankStateManager, 
+                grandExchangeStateManager,
                 null,  // ironmanState
                 playerProfile, fatigueModel, breakScheduler, attentionModel,
                 null,  // xpTracker

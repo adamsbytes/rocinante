@@ -24,6 +24,7 @@ import com.rocinante.puzzle.PuzzleSolverRegistry;
 import com.rocinante.state.BankState;
 import com.rocinante.state.CombatState;
 import com.rocinante.state.EquipmentState;
+import com.rocinante.state.GrandExchangeState;
 import com.rocinante.state.InventoryState;
 import com.rocinante.state.PlayerState;
 import com.rocinante.state.WorldState;
@@ -374,6 +375,17 @@ public class TaskContext {
      */
     public BankState getBankState() {
         return gameStateService.getBankState();
+    }
+
+    /**
+     * Get the current Grand Exchange state snapshot.
+     * GE state includes offer slots, buy limit tracking, and membership status.
+     * Returns UNKNOWN state if the GE has never been observed.
+     *
+     * @return immutable GrandExchangeState
+     */
+    public GrandExchangeState getGrandExchangeState() {
+        return gameStateService.getGrandExchangeState();
     }
 
     /**

@@ -13,6 +13,7 @@ import javax.inject.Provider;
 import com.rocinante.data.NpcCombatDataLoader;
 import com.rocinante.data.ProjectileDataLoader;
 import com.rocinante.state.*;
+import com.rocinante.state.GrandExchangeStateManager;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Actor;
@@ -92,6 +93,7 @@ public class GameStateService {
     private final Client client;
     private final ItemManager itemManager;
     private final BankStateManager bankStateManager;
+    private final GrandExchangeStateManager grandExchangeStateManager;
 
     // ========================================================================
     // State Components
@@ -288,6 +290,7 @@ public class GameStateService {
     public GameStateService(Client client, 
                            ItemManager itemManager, 
                            BankStateManager bankStateManager,
+                           GrandExchangeStateManager grandExchangeStateManager,
                            @Nullable com.rocinante.state.IronmanState ironmanState,
                            @Nullable PlayerProfile playerProfile,
                            @Nullable FatigueModel fatigueModel,
@@ -301,6 +304,7 @@ public class GameStateService {
         this.client = client;
         this.itemManager = itemManager;
         this.bankStateManager = bankStateManager;
+        this.grandExchangeStateManager = grandExchangeStateManager;
         this.ironmanState = ironmanState;
         this.playerProfile = playerProfile;
         this.fatigueModel = fatigueModel;
@@ -357,8 +361,9 @@ public class GameStateService {
         // varp 281: Tutorial progress (0 = non-tutorial, 7+ = past settings step, 1000 = complete)
         ensureFixedModeIfUnlocked();
 
-        // Update tick on BankStateManager for freshness tracking
+        // Update tick on state managers for freshness tracking
         bankStateManager.setCurrentTick(currentTick);
+        grandExchangeStateManager.setCurrentTick(currentTick);
 
         // Always refresh tick-cached state
         refreshPlayerState();
@@ -778,6 +783,30 @@ public class GameStateService {
      */
     public BankStateManager getBankStateManager() {
         return bankStateManager;
+    }
+
+    /**
+     * Get the current Grand Exchange state snapshot.
+     * GE state includes offer slots, buy limit tracking, and membership status.
+     * Returns UNKNOWN state if the GE has never been observed.
+     *
+     * @return immutable GrandExchangeState snapshot
+     */
+    public GrandExchangeState getGrandExchangeState() {
+        if (!loggedIn) {
+            return GrandExchangeState.UNKNOWN;
+        }
+
+        return grandExchangeStateManager.getGeState();
+    }
+
+    /**
+     * Get the GrandExchangeStateManager for direct access to GE operations.
+     *
+     * @return the GrandExchangeStateManager instance
+     */
+    public GrandExchangeStateManager getGrandExchangeStateManager() {
+        return grandExchangeStateManager;
     }
 
     // ========================================================================
