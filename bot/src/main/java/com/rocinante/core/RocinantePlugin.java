@@ -559,13 +559,19 @@ public class RocinantePlugin extends Plugin
         // Clean up status file
         statusPublisher.deleteStatusFile();
         
-        // Save player profile before shutdown
+        // Save player profile and shutdown its executor
         try {
-            playerProfile.saveProfile();
-            log.info("Player profile saved");
+            playerProfile.shutdown();
+            log.info("Player profile saved and executor shut down");
         } catch (Exception e) {
-            log.warn("Failed to save player profile: {}", e.getMessage());
+            log.warn("Failed to shutdown player profile: {}", e.getMessage());
         }
+        
+        // === Shutdown Input Controller Executors ===
+        // These have background thread pools that must be cleaned up
+        mouseController.shutdown();
+        keyboardController.shutdown();
+        log.info("Input controller executors shut down");
 
         // === Unregister Behavioral Components ===
         eventBus.unregister(mouseCameraCoupler);

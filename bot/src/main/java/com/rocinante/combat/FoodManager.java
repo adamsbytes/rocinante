@@ -134,7 +134,12 @@ public class FoodManager {
         // Check food availability
         if (!inventoryState.hasFood() && !hasSaradominBrew(inventoryState)) {
             if (healthPercent < panicThreshold) {
-                log.warn("Low health ({}%) with no food - should flee!", healthPercent * 100);
+                log.warn("Low health ({}%) with no food - triggering emergency FLEE!", String.format("%.1f", healthPercent * 100));
+                return CombatAction.builder()
+                        .type(CombatAction.Type.FLEE)
+                        .priority(CombatAction.Priority.URGENT)
+                        .fleeMethod("emergency_teleport")
+                        .build();
             }
             return null;
         }

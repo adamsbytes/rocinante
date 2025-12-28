@@ -154,9 +154,11 @@ public class RobotMouseController {
     private long movementSeed = System.nanoTime();
     
     // Cached canvas offset (updated periodically)
+    // Since we enforce fixed mode, window position changes are rare.
+    // 30 second interval is safe and reduces unnecessary AWT calls.
     private volatile Point canvasOffset = new Point(0, 0);
     private volatile long lastCanvasOffsetUpdate = 0;
-    private static final long CANVAS_OFFSET_UPDATE_INTERVAL_MS = 1000;
+    private static final long CANVAS_OFFSET_UPDATE_INTERVAL_MS = 30_000;
 
     @Inject
     public RobotMouseController(Client client, Randomization randomization, PerlinNoise perlinNoise, PlayerProfile playerProfile) throws AWTException {

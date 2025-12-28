@@ -95,6 +95,57 @@ public class TeleportTask extends AbstractTask {
     private static final int RUNE_FIRE = 554;
     private static final int RUNE_LAW = 563;
     private static final int RUNE_SOUL = 566;
+    
+    // ========================================================================
+    // Elemental Staves (provide infinite runes of their element)
+    // ========================================================================
+    
+    /**
+     * Maps staff item IDs to the rune types they provide.
+     * Includes basic staves, battlestaves, mystic staves, and combination staves.
+     */
+    private static final Map<Integer, int[]> STAFF_RUNE_PROVIDERS = new HashMap<>();
+    static {
+        // Basic staves (single element)
+        STAFF_RUNE_PROVIDERS.put(1381, new int[]{RUNE_AIR});   // Staff of air
+        STAFF_RUNE_PROVIDERS.put(1383, new int[]{RUNE_WATER}); // Staff of water
+        STAFF_RUNE_PROVIDERS.put(1385, new int[]{RUNE_EARTH}); // Staff of earth
+        STAFF_RUNE_PROVIDERS.put(1387, new int[]{RUNE_FIRE});  // Staff of fire
+        
+        // Battlestaves (single element)
+        STAFF_RUNE_PROVIDERS.put(1397, new int[]{RUNE_AIR});   // Air battlestaff
+        STAFF_RUNE_PROVIDERS.put(1395, new int[]{RUNE_WATER}); // Water battlestaff
+        STAFF_RUNE_PROVIDERS.put(1399, new int[]{RUNE_EARTH}); // Earth battlestaff
+        STAFF_RUNE_PROVIDERS.put(1393, new int[]{RUNE_FIRE});  // Fire battlestaff
+        
+        // Mystic staves (single element)
+        STAFF_RUNE_PROVIDERS.put(1405, new int[]{RUNE_AIR});   // Mystic air staff
+        STAFF_RUNE_PROVIDERS.put(1403, new int[]{RUNE_WATER}); // Mystic water staff
+        STAFF_RUNE_PROVIDERS.put(1407, new int[]{RUNE_EARTH}); // Mystic earth staff
+        STAFF_RUNE_PROVIDERS.put(1401, new int[]{RUNE_FIRE});  // Mystic fire staff
+        
+        // Combination battlestaves (two elements)
+        STAFF_RUNE_PROVIDERS.put(11998, new int[]{RUNE_AIR, RUNE_FIRE});   // Smoke battlestaff
+        STAFF_RUNE_PROVIDERS.put(12000, new int[]{RUNE_AIR, RUNE_FIRE});   // Mystic smoke staff
+        STAFF_RUNE_PROVIDERS.put(11787, new int[]{RUNE_WATER, RUNE_FIRE}); // Steam battlestaff
+        STAFF_RUNE_PROVIDERS.put(11789, new int[]{RUNE_WATER, RUNE_FIRE}); // Mystic steam staff
+        STAFF_RUNE_PROVIDERS.put(6562, new int[]{RUNE_WATER, RUNE_EARTH}); // Mud battlestaff
+        STAFF_RUNE_PROVIDERS.put(6563, new int[]{RUNE_WATER, RUNE_EARTH}); // Mystic mud staff
+        STAFF_RUNE_PROVIDERS.put(3053, new int[]{RUNE_EARTH, RUNE_FIRE});  // Lava battlestaff
+        STAFF_RUNE_PROVIDERS.put(3054, new int[]{RUNE_EARTH, RUNE_FIRE});  // Mystic lava staff
+        STAFF_RUNE_PROVIDERS.put(20730, new int[]{RUNE_AIR, RUNE_WATER});  // Mist battlestaff
+        STAFF_RUNE_PROVIDERS.put(20733, new int[]{RUNE_AIR, RUNE_WATER});  // Mystic mist staff
+        STAFF_RUNE_PROVIDERS.put(20736, new int[]{RUNE_AIR, RUNE_EARTH});  // Dust battlestaff
+        STAFF_RUNE_PROVIDERS.put(20739, new int[]{RUNE_AIR, RUNE_EARTH});  // Mystic dust staff
+        
+        // Tome of fire (provides fire runes when equipped in shield slot)
+        STAFF_RUNE_PROVIDERS.put(20714, new int[]{RUNE_FIRE}); // Tome of fire
+        STAFF_RUNE_PROVIDERS.put(20716, new int[]{RUNE_FIRE}); // Tome of fire (empty) - still works
+        
+        // Tome of water
+        STAFF_RUNE_PROVIDERS.put(25576, new int[]{RUNE_WATER}); // Tome of water
+        STAFF_RUNE_PROVIDERS.put(25578, new int[]{RUNE_WATER}); // Tome of water (empty)
+    }
 
     /**
      * Spell requirements: magic level and rune costs.
@@ -1295,13 +1346,22 @@ public class TeleportTask extends AbstractTask {
 
         // Check rune requirements
         InventoryState inventory = ctx.getInventoryState();
+        EquipmentState equipment = ctx.getGameStateService().getEquipmentState();
+        
+        // Determine which runes are provided by equipped items (staves, tomes)
+        java.util.Set<Integer> providedRunes = getProvidedRunes(equipment);
+        
         for (Map.Entry<Integer, Integer> runeCost : reqs.runeCosts.entrySet()) {
             int runeId = runeCost.getKey();
             int requiredCount = runeCost.getValue();
-            int haveCount = inventory.countItem(runeId);
             
-            // TODO: Check for rune-saving staves (fire staff, air staff, etc.)
-            // For now, require actual runes in inventory
+            // Check if this rune type is provided by equipped staff/tome
+            if (providedRunes.contains(runeId)) {
+                log.trace("Rune {} provided by equipped staff/tome", runeId);
+                continue; // Don't need runes in inventory
+            }
+            
+            int haveCount = inventory.countItem(runeId);
             if (haveCount < requiredCount) {
                 log.debug("Insufficient runes for {}: rune {} have {}, need {}", 
                         spellName, runeId, haveCount, requiredCount);
@@ -1310,6 +1370,34 @@ public class TeleportTask extends AbstractTask {
         }
 
         return true;
+    }
+    
+    /**
+     * Get the set of rune types provided by equipped items (staves, tomes).
+     * 
+     * @param equipment the player's equipment state
+     * @return set of rune IDs that don't need to be in inventory
+     */
+    private java.util.Set<Integer> getProvidedRunes(EquipmentState equipment) {
+        java.util.Set<Integer> provided = new java.util.HashSet<>();
+        
+        // Check weapon slot for elemental staves
+        int weaponId = equipment.getItemInSlot(EquipmentState.SLOT_WEAPON);
+        if (weaponId > 0 && STAFF_RUNE_PROVIDERS.containsKey(weaponId)) {
+            for (int runeId : STAFF_RUNE_PROVIDERS.get(weaponId)) {
+                provided.add(runeId);
+            }
+        }
+        
+        // Check shield slot for tomes
+        int shieldId = equipment.getItemInSlot(EquipmentState.SLOT_SHIELD);
+        if (shieldId > 0 && STAFF_RUNE_PROVIDERS.containsKey(shieldId)) {
+            for (int runeId : STAFF_RUNE_PROVIDERS.get(shieldId)) {
+                provided.add(runeId);
+            }
+        }
+        
+        return provided;
     }
 
     private boolean hasItemInInventory(TaskContext ctx, int itemId) {

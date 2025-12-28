@@ -134,7 +134,7 @@ public class WorldState {
             return Collections.emptyList();
         }
         return nearbyNpcs.stream()
-                .filter(npc -> name.equalsIgnoreCase(npc.getName()))
+                .filter(npc -> npc.getName() != null && name.equalsIgnoreCase(npc.getName()))
                 .collect(Collectors.toList());
     }
 
@@ -358,7 +358,7 @@ public class WorldState {
             return Optional.empty();
         }
         return nearbyPlayers.stream()
-                .filter(p -> name.equalsIgnoreCase(p.getName()))
+                .filter(p -> p.getName() != null && name.equalsIgnoreCase(p.getName()))
                 .findFirst();
     }
 

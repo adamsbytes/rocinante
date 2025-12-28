@@ -9,9 +9,6 @@ import lombok.extern.slf4j.Slf4j;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -44,25 +41,13 @@ public class NpcCombatDataLoader {
 
     /**
      * Load NPC combat data from JSON resource.
+     * Uses JsonResourceLoader for retry logic and error handling.
      */
     private void loadData() {
-        try (InputStream is = getClass().getResourceAsStream(DATA_FILE)) {
-            if (is == null) {
-                log.warn("NPC combat data file not found: {}", DATA_FILE);
-                return;
-            }
-
-            JsonObject root = gson.fromJson(
-                    new InputStreamReader(is, StandardCharsets.UTF_8),
-                    JsonObject.class
-            );
-
-            JsonObject npcs = root.getAsJsonObject("npcs");
-            if (npcs == null) {
-                log.warn("No 'npcs' object in combat data file");
-                return;
-            }
-
+        try {
+            JsonObject root = JsonResourceLoader.load(gson, DATA_FILE);
+            JsonObject npcs = JsonResourceLoader.getRequiredObject(root, "npcs");
+            
             for (Map.Entry<String, JsonElement> entry : npcs.entrySet()) {
                 try {
                     int npcId = Integer.parseInt(entry.getKey());
@@ -74,11 +59,11 @@ public class NpcCombatDataLoader {
                     log.debug("Skipping non-numeric NPC ID: {}", entry.getKey());
                 }
             }
-
+            
             loaded = true;
             log.info("Loaded combat data for {} NPCs", npcData.size());
-        } catch (Exception e) {
-            log.error("Failed to load NPC combat data", e);
+        } catch (JsonResourceLoader.JsonLoadException e) {
+            log.error("Failed to load NPC combat data: {}", e.getMessage());
         }
     }
 

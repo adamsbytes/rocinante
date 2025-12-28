@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 /**
@@ -80,8 +81,9 @@ public class TaskExecutor {
 
     /**
      * Sequence counter for FIFO ordering within same priority.
+     * Uses AtomicLong for thread-safe increments during concurrent task queuing.
      */
-    private long sequenceCounter = 0;
+    private final AtomicLong sequenceCounter = new AtomicLong(0);
 
     /**
      * The currently executing task.
@@ -196,7 +198,7 @@ public class TaskExecutor {
             ((AbstractTask) task).setPriority(priority);
         }
 
-        QueuedTask queuedTask = new QueuedTask(task, sequenceCounter++);
+        QueuedTask queuedTask = new QueuedTask(task, sequenceCounter.getAndIncrement());
         taskQueue.offer(queuedTask);
 
         // Track urgent tasks for interrupt handling

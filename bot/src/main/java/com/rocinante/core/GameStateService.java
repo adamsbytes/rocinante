@@ -176,10 +176,15 @@ public class GameStateService {
 
     // Combat state tracking
     private volatile int lastPlayerAttackTick = -1;
-    private volatile Map<Integer, Integer> npcLastAttackTicks = new HashMap<>();
+    private final Map<Integer, Integer> npcLastAttackTicks = new java.util.concurrent.ConcurrentHashMap<>();
     
     // Widget discovery tracking (prevents log spam)
     private final Set<Integer> discoveredWidgetGroups = new HashSet<>();
+    
+    // Widget caching - avoids scanning 0-1000 every call
+    // This set contains all widget groups we've found visible during this session
+    private final Set<Integer> cachedWidgetGroups = new HashSet<>();
+    private volatile boolean widgetCacheInitialized = false;
     
     /**
      * Interface mode enum - determines which widget IDs to use for tabs, etc.
@@ -1775,12 +1780,15 @@ public class GameStateService {
 
     /**
      * Build set of currently visible widget group IDs.
+     * Uses caching to avoid scanning 0-1000 every call.
+     * On first call (or after logout), scans all widgets and caches them.
+     * On subsequent calls, only checks cached widget IDs for visibility.
      * Also logs any unknown widget groups for discovery purposes.
      */
     private Set<Integer> buildVisibleWidgetIds() {
         Set<Integer> visibleIds = new HashSet<>();
         
-        // Known common widget groups
+        // Known common widget groups (for logging purposes and late-appearing widgets)
         Set<Integer> knownWidgets = Set.of(
                 149,  // Inventory
                 161,  // Prayer tab
@@ -1803,17 +1811,44 @@ public class GameStateService {
                 116   // Level up
         );
 
-        // Scan all possible widget groups (0-999 covers known OSRS range with safety margin)
-        // OSRS has widgets up to ~900+, so we use 1000 for safer coverage
-        // This helps discover unknown widgets like license agreement, name entry, etc.
-        for (int groupId = 0; groupId < 1000; groupId++) {
+        // First call after login/reset: do full scan to populate cache
+        if (!widgetCacheInitialized) {
+            log.debug("Initializing widget cache with full scan (0-999)");
+            for (int groupId = 0; groupId < 1000; groupId++) {
+                net.runelite.api.widgets.Widget widget = client.getWidget(groupId, 0);
+                if (widget != null) {
+                    visibleIds.add(groupId);
+                    cachedWidgetGroups.add(groupId);
+                    
+                    // Log unknown widgets for discovery
+                    if (!knownWidgets.contains(groupId)) {
+                        logUnknownWidget(groupId, widget);
+                    }
+                }
+            }
+            widgetCacheInitialized = true;
+            log.debug("Widget cache initialized with {} groups", cachedWidgetGroups.size());
+            return visibleIds;
+        }
+        
+        // Subsequent calls: only check cached widget groups for visibility
+        for (int groupId : cachedWidgetGroups) {
             net.runelite.api.widgets.Widget widget = client.getWidget(groupId, 0);
             if (widget != null) {
                 visibleIds.add(groupId);
-                
-                // Log unknown widgets for discovery
-                if (!knownWidgets.contains(groupId)) {
-                    logUnknownWidget(groupId, widget);
+            }
+        }
+        
+        // Also check known widgets that might not have been visible during initial scan
+        // This catches widgets like dialogue boxes that appear later
+        for (int groupId : knownWidgets) {
+            if (!cachedWidgetGroups.contains(groupId)) {
+                net.runelite.api.widgets.Widget widget = client.getWidget(groupId, 0);
+                if (widget != null) {
+                    visibleIds.add(groupId);
+                    // Add to cache for future checks
+                    cachedWidgetGroups.add(groupId);
+                    log.debug("Added widget {} to cache (appeared after init)", groupId);
                 }
             }
         }
@@ -1888,6 +1923,8 @@ public class GameStateService {
         lastPlayerAttackTick = -1;
         npcLastAttackTicks.clear();
         discoveredWidgetGroups.clear(); // Reset so widgets are logged on next login
+        cachedWidgetGroups.clear(); // Reset widget cache
+        widgetCacheInitialized = false; // Force full scan on next login
     }
 
     /**

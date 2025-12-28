@@ -130,11 +130,15 @@ public class WebWalker {
 
     /**
      * Build the unified navigation graph.
+     * This must succeed or the entire navigation system is broken.
+     * 
+     * @throws IllegalStateException if the graph cannot be built
      */
     private void buildUnifiedGraph() {
         if (navigationWeb == null) {
-            log.warn("Cannot build unified graph: navigation web not loaded");
-            return;
+            throw new IllegalStateException(
+                "Cannot build unified graph: navigation web not loaded. " +
+                "Ensure /data/navigation_web.json exists and is valid.");
         }
 
         try {
@@ -143,11 +147,19 @@ public class WebWalker {
             } else {
                 unifiedGraph = new UnifiedNavigationGraph(navigationWeb);
             }
+            
+            if (unifiedGraph == null || unifiedGraph.getNodeCount() == 0) {
+                throw new IllegalStateException("Unified graph was built but is empty");
+            }
+            
             log.info("Built unified graph: {} nodes, {} edges",
                     unifiedGraph.getNodeCount(), unifiedGraph.getEdgeCount());
+        } catch (IllegalStateException e) {
+            throw e; // Re-throw our own exceptions
         } catch (Exception e) {
             log.error("Failed to build unified navigation graph", e);
-            unifiedGraph = null;
+            throw new IllegalStateException(
+                "Failed to build unified navigation graph: " + e.getMessage(), e);
         }
     }
 
@@ -330,8 +342,9 @@ public class WebWalker {
      */
     public NavigationPath findUnifiedPath(WorldPoint start, WorldPoint end) {
         if (unifiedGraph == null) {
-            log.warn("WebWalker: unified graph not available, falling back to legacy path");
-            return convertLegacyPath(findPath(start, end), start, end);
+            throw new IllegalStateException(
+                "WebWalker: unified graph not available. " +
+                "Navigation is broken - ensure buildUnifiedGraph() succeeded during initialization.");
         }
 
         // Find nearest nodes, allowing cross-plane search for destination
@@ -355,8 +368,9 @@ public class WebWalker {
      */
     public NavigationPath findUnifiedPath(String startId, String endId) {
         if (unifiedGraph == null) {
-            log.warn("WebWalker: unified graph not available");
-            return NavigationPath.empty();
+            throw new IllegalStateException(
+                "WebWalker: unified graph not available. " +
+                "Navigation is broken - ensure buildUnifiedGraph() succeeded during initialization.");
         }
 
         WebNode startNode = unifiedGraph.getNode(startId);
@@ -417,7 +431,9 @@ public class WebWalker {
      */
     public NavigationPath findUnifiedPathToNearestType(WorldPoint start, WebNodeType type) {
         if (unifiedGraph == null) {
-            return convertLegacyPath(findPathToNearestType(start, type), start, null);
+            throw new IllegalStateException(
+                "WebWalker: unified graph not available. " +
+                "Navigation is broken - ensure buildUnifiedGraph() succeeded during initialization.");
         }
 
         WebNode startNode = unifiedGraph.findNearestNodeSamePlane(start);
@@ -471,51 +487,6 @@ public class WebWalker {
      */
     public NavigationPath findUnifiedPathToNearestBank(WorldPoint start) {
         return findUnifiedPathToNearestType(start, WebNodeType.BANK);
-    }
-
-    /**
-     * Convert a legacy path (List<WebNode>) to NavigationPath.
-     */
-    private NavigationPath convertLegacyPath(List<WebNode> nodes, WorldPoint start, WorldPoint end) {
-        if (nodes == null || nodes.isEmpty()) {
-            return NavigationPath.empty();
-        }
-
-        List<NavigationEdge> edges = new ArrayList<>();
-        List<String> nodeIds = new ArrayList<>();
-        int totalCost = 0;
-
-        for (int i = 0; i < nodes.size(); i++) {
-            nodeIds.add(nodes.get(i).getId());
-
-            if (i < nodes.size() - 1) {
-                WebNode from = nodes.get(i);
-                WebNode to = nodes.get(i + 1);
-                
-                // Get edge from navigation web
-                WebEdge webEdge = navigationWeb.getEdge(from.getId(), to.getId());
-                if (webEdge != null) {
-                    NavigationEdge edge = NavigationEdge.fromWebEdge(
-                            webEdge, from.getWorldPoint(), to.getWorldPoint());
-                    edges.add(edge);
-                    totalCost += webEdge.getCostTicks();
-                } else {
-                    // Fallback: create walk edge
-                    int cost = from.distanceTo(to) * 2; // Rough tick estimate
-                    edges.add(NavigationEdge.walk(from.getId(), to.getId(), cost,
-                            from.getWorldPoint(), to.getWorldPoint()));
-                    totalCost += cost;
-                }
-            }
-        }
-
-        return NavigationPath.builder()
-                .edges(edges)
-                .nodeIds(nodeIds)
-                .totalCostTicks(totalCost)
-                .startPoint(start != null ? start : nodes.get(0).getWorldPoint())
-                .endPoint(end != null ? end : nodes.get(nodes.size() - 1).getWorldPoint())
-                .build();
     }
 
     // ========================================================================

@@ -63,8 +63,14 @@ public class SettingsTask extends AbstractTask {
     /** Settings content area where options appear (child 19) */
     private static final int SETTINGS_CONTENT = 19;
     
+    /** Settings content scrollbar (child 20) */
+    private static final int SETTINGS_SCROLLBAR = 20;
+    
     /** Close button for settings (child 4) */
     private static final int SETTINGS_CLOSE = 4;
+    
+    /** RuneLite script ID for updating scrollbar position */
+    private static final int UPDATE_SCROLLBAR_SCRIPT = 72;
 
     // ========================================================================
     // Settings Categories
@@ -124,6 +130,7 @@ public class SettingsTask extends AbstractTask {
         SELECT_CATEGORY,
         WAIT_FOR_CATEGORY,
         FIND_AND_CLICK_SETTING,
+        SCROLL_TO_SETTING,
         VERIFY_CHANGE,
         CLOSE_SETTINGS,
         DONE
@@ -154,6 +161,15 @@ public class SettingsTask extends AbstractTask {
     
     /** Found setting widget for clicking */
     private Widget targetSettingWidget;
+    
+    /** Wait ticks for scroll operations */
+    private int scrollWaitTicks = 0;
+    
+    /** Number of scroll attempts made */
+    private int scrollAttempts = 0;
+    
+    /** Maximum scroll attempts before giving up */
+    private static final int MAX_SCROLL_ATTEMPTS = 10;
 
     // ========================================================================
     // Constructors
@@ -308,6 +324,9 @@ public class SettingsTask extends AbstractTask {
             case FIND_AND_CLICK_SETTING:
                 executeFindAndClickSetting(ctx);
                 break;
+            case SCROLL_TO_SETTING:
+                executeScrollToSetting(ctx);
+                break;
             case VERIFY_CHANGE:
                 executeVerifyChange(ctx);
                 break;
@@ -458,12 +477,99 @@ public class SettingsTask extends AbstractTask {
         }
         
         if (settingWidget != null) {
-            log.debug("Found setting widget: {}", settingText);
-            currentSubTask = createWidgetClickTask(settingWidget, "Setting: " + settingText);
-            advancePhase(Phase.VERIFY_CHANGE);
+            targetSettingWidget = settingWidget;
+            
+            // Check if the setting is visible in the scroll area
+            if (isSettingVisible(client, settingWidget)) {
+                log.debug("Found visible setting widget: {}", settingText);
+                currentSubTask = createWidgetClickTask(settingWidget, "Setting: " + settingText);
+                advancePhase(Phase.VERIFY_CHANGE);
+            } else {
+                log.debug("Setting found but not visible, scrolling...");
+                advancePhase(Phase.SCROLL_TO_SETTING);
+            }
         } else {
-            log.debug("Setting not found yet: {} (may need scrolling)", settingText);
-            // TODO: Implement scrolling if needed
+            // Setting not found - try scrolling to search more of the list
+            if (scrollAttempts < MAX_SCROLL_ATTEMPTS) {
+                log.debug("Setting not found: {} (attempt {}/{}), scrolling to search", 
+                        settingText, scrollAttempts + 1, MAX_SCROLL_ATTEMPTS);
+                advancePhase(Phase.SCROLL_TO_SETTING);
+            } else {
+                log.warn("Setting not found after {} scroll attempts: {}", 
+                        MAX_SCROLL_ATTEMPTS, settingText);
+                fail("Setting not found: " + settingText);
+            }
+        }
+    }
+    
+    /**
+     * Check if the setting widget is visible in the scroll area.
+     */
+    private boolean isSettingVisible(Client client, Widget settingWidget) {
+        Widget contentWindow = client.getWidget(SETTINGS_GROUP, SETTINGS_CONTENT);
+        if (contentWindow == null) {
+            return true; // Assume visible if can't check
+        }
+        
+        java.awt.Rectangle windowBounds = contentWindow.getBounds();
+        java.awt.Rectangle settingBounds = settingWidget.getBounds();
+        
+        if (windowBounds == null || settingBounds == null) {
+            return true;
+        }
+        
+        // Check if setting is within visible scroll area
+        return settingBounds.y >= windowBounds.y &&
+               settingBounds.y + settingBounds.height <= windowBounds.y + windowBounds.height;
+    }
+    
+    /**
+     * Scroll the settings content to find/reveal the target setting.
+     */
+    private void executeScrollToSetting(TaskContext ctx) {
+        Client client = ctx.getClient();
+        
+        Widget contentContainer = client.getWidget(SETTINGS_GROUP, SETTINGS_CONTENT);
+        if (contentContainer == null) {
+            advancePhase(Phase.FIND_AND_CLICK_SETTING);
+            return;
+        }
+        
+        // Calculate scroll amount
+        int targetScroll;
+        if (targetSettingWidget != null) {
+            // Scroll to make target visible
+            int targetY = targetSettingWidget.getRelativeY();
+            int containerHeight = contentContainer.getHeight();
+            targetScroll = Math.max(0, targetY - containerHeight / 2 + targetSettingWidget.getHeight() / 2);
+            log.debug("Scrolling to setting at Y={}, scroll={}", targetY, targetScroll);
+        } else {
+            // Setting not found yet - scroll down incrementally to search
+            int currentScroll = contentContainer.getScrollY();
+            int scrollIncrement = contentContainer.getHeight() / 2; // Half page at a time
+            targetScroll = currentScroll + scrollIncrement;
+            log.debug("Scrolling down to search: {} -> {}", currentScroll, targetScroll);
+        }
+        
+        try {
+            // Use client script to update scrollbar
+            client.runScript(
+                    UPDATE_SCROLLBAR_SCRIPT,
+                    SETTINGS_GROUP << 16 | SETTINGS_SCROLLBAR,
+                    SETTINGS_GROUP << 16 | SETTINGS_CONTENT,
+                    targetScroll
+            );
+        } catch (Exception e) {
+            log.debug("Could not use scroll script: {}", e.getMessage());
+        }
+        
+        scrollAttempts++;
+        
+        // Wait for scroll to apply, then go back to finding
+        scrollWaitTicks++;
+        if (scrollWaitTicks >= 2) {
+            scrollWaitTicks = 0;
+            advancePhase(Phase.FIND_AND_CLICK_SETTING);
         }
     }
     

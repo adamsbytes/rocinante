@@ -244,13 +244,44 @@ public class UnlockTracker {
     }
 
     /**
+     * Tutorial Island progress varp ID.
+     * Value of 570+ indicates prayer tab is unlocked.
+     */
+    private static final int TUTORIAL_ISLAND_PROGRESS_VARP = 281;
+    
+    /**
+     * Minimum varp value for prayer availability.
+     * At 570, the prayer tab becomes accessible.
+     */
+    private static final int PRAYER_UNLOCK_PROGRESS = 570;
+    
+    /**
      * Check if the player has Prayer unlocked at all (level 1+).
-     * This is always true for accounts that have completed Tutorial Island.
+     * Also verifies Tutorial Island progress has reached the point
+     * where the prayer tab is available (varp 281 >= 570).
      *
-     * @return true if Prayer skill is available
+     * @return true if Prayer skill is available and prayer tab is unlocked
      */
     public boolean hasPrayerSkill() {
-        return getSkillLevel(Skill.PRAYER) >= 1;
+        // Must have prayer level 1+
+        if (getSkillLevel(Skill.PRAYER) < 1) {
+            return false;
+        }
+        
+        // Must have completed Tutorial Island prayer section
+        // Varp 281 tracks Tutorial Island progress; >= 570 means prayer tab is unlocked
+        try {
+            int tutorialProgress = client.getVarpValue(TUTORIAL_ISLAND_PROGRESS_VARP);
+            if (tutorialProgress > 0 && tutorialProgress < PRAYER_UNLOCK_PROGRESS) {
+                log.trace("Prayer skill exists but tab not unlocked (tutorial progress: {})", tutorialProgress);
+                return false;
+            }
+        } catch (Exception e) {
+            log.trace("Error checking tutorial progress varp: {}", e.getMessage());
+            // If we can't check, assume it's unlocked (safer for main accounts)
+        }
+        
+        return true;
     }
 
     /**

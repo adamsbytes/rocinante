@@ -9,9 +9,6 @@ import lombok.extern.slf4j.Slf4j;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -41,25 +38,13 @@ public class ProjectileDataLoader {
 
     /**
      * Load projectile data from JSON resource.
+     * Uses JsonResourceLoader for retry logic and error handling.
      */
     private void loadData() {
-        try (InputStream is = getClass().getResourceAsStream(DATA_FILE)) {
-            if (is == null) {
-                log.warn("Projectile data file not found: {}", DATA_FILE);
-                return;
-            }
-
-            JsonObject root = gson.fromJson(
-                    new InputStreamReader(is, StandardCharsets.UTF_8),
-                    JsonObject.class
-            );
-
-            JsonObject projectiles = root.getAsJsonObject("projectiles");
-            if (projectiles == null) {
-                log.warn("No 'projectiles' object in data file");
-                return;
-            }
-
+        try {
+            JsonObject root = JsonResourceLoader.load(gson, DATA_FILE);
+            JsonObject projectiles = JsonResourceLoader.getRequiredObject(root, "projectiles");
+            
             for (Map.Entry<String, JsonElement> entry : projectiles.entrySet()) {
                 try {
                     int projectileId = Integer.parseInt(entry.getKey());
@@ -71,11 +56,11 @@ public class ProjectileDataLoader {
                     log.debug("Skipping non-numeric projectile ID: {}", entry.getKey());
                 }
             }
-
+            
             loaded = true;
             log.info("Loaded data for {} projectiles", projectileData.size());
-        } catch (Exception e) {
-            log.error("Failed to load projectile data", e);
+        } catch (JsonResourceLoader.JsonLoadException e) {
+            log.error("Failed to load projectile data: {}", e.getMessage());
         }
     }
 

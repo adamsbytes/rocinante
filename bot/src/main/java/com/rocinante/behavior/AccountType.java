@@ -45,7 +45,12 @@ public enum AccountType {
     /**
      * Hardcore Group Ironman - group with shared lives.
      */
-    HARDCORE_GROUP_IRONMAN(true, true, false, "Hardcore Group Ironman");
+    HARDCORE_GROUP_IRONMAN(true, true, false, "Hardcore Group Ironman"),
+    
+    /**
+     * Unranked Group Ironman - group without highscores.
+     */
+    UNRANKED_GROUP_IRONMAN(true, false, false, "Unranked Group Ironman");
     
     /**
      * Whether this account type has ironman restrictions (no GE/trading).
@@ -111,7 +116,7 @@ public enum AccountType {
      * @return true if group ironman
      */
     public boolean isGroup() {
-        return this == GROUP_IRONMAN || this == HARDCORE_GROUP_IRONMAN;
+        return this == GROUP_IRONMAN || this == HARDCORE_GROUP_IRONMAN || this == UNRANKED_GROUP_IRONMAN;
     }
     
     /**
@@ -123,6 +128,7 @@ public enum AccountType {
      * 3 = Hardcore Ironman
      * 4 = Group Ironman
      * 5 = Hardcore Group Ironman
+     * 6 = Unranked Group Ironman
      * 
      * @param varbitValue the value of varbit 1777
      * @return the corresponding AccountType
@@ -135,7 +141,8 @@ public enum AccountType {
             case 3 -> HARDCORE_IRONMAN;
             case 4 -> GROUP_IRONMAN;
             case 5 -> HARDCORE_GROUP_IRONMAN;
-            default -> NORMAL; // Unknown, assume normal
+            case 6 -> UNRANKED_GROUP_IRONMAN;
+            default -> IRONMAN; // Unknown future types, treat as ironman to be safe
         };
     }
     
