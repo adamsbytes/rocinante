@@ -1,0 +1,273 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "agility_courses.schema.json",
+  "title": "Agility Courses",
+  "description": "Schema for agility course definitions",
+  "type": "object",
+  "required": ["version", "courses"],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string",
+      "description": "Schema version"
+    },
+    "courses": {
+      "type": "array",
+      "description": "List of agility courses",
+      "items": {
+        "$ref": "#/definitions/course"
+      }
+    }
+  },
+  "definitions": {
+    "worldPoint": {
+      "type": "object",
+      "required": ["x", "y"],
+      "properties": {
+        "x": {
+          "type": "integer",
+          "description": "X coordinate"
+        },
+        "y": {
+          "type": "integer",
+          "description": "Y coordinate"
+        },
+        "plane": {
+          "type": "integer",
+          "description": "Plane/height level (0-3)",
+          "minimum": 0,
+          "maximum": 3,
+          "default": 0
+        }
+      }
+    },
+    "worldArea": {
+      "type": "object",
+      "required": ["x", "y", "width", "height"],
+      "properties": {
+        "x": {
+          "type": "integer",
+          "description": "X coordinate (southwest corner)"
+        },
+        "y": {
+          "type": "integer",
+          "description": "Y coordinate (southwest corner)"
+        },
+        "width": {
+          "type": "integer",
+          "description": "Width in tiles",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "description": "Height in tiles",
+          "minimum": 1
+        },
+        "plane": {
+          "type": "integer",
+          "description": "Plane/height level (0-3)",
+          "minimum": 0,
+          "maximum": 3,
+          "default": 0
+        }
+      }
+    },
+    "markSpawnTile": {
+      "type": "object",
+      "description": "Mark of grace spawn location with obstacle association for reachability",
+      "required": ["x", "y", "afterObstacle"],
+      "properties": {
+        "x": {
+          "type": "integer",
+          "description": "X coordinate"
+        },
+        "y": {
+          "type": "integer",
+          "description": "Y coordinate"
+        },
+        "plane": {
+          "type": "integer",
+          "description": "Plane/height level (0-3)",
+          "minimum": 0,
+          "maximum": 3,
+          "default": 0
+        },
+        "afterObstacle": {
+          "type": "integer",
+          "description": "Index of obstacle after which this tile becomes reachable. A mark at this tile can only be picked up after completing obstacle N where N >= afterObstacle.",
+          "minimum": 0
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description for documentation"
+        }
+      }
+    },
+    "obstacle": {
+      "type": "object",
+      "required": ["index", "name", "objectId", "action"],
+      "properties": {
+        "index": {
+          "type": "integer",
+          "description": "Position in course sequence (0-based)",
+          "minimum": 0
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable obstacle name"
+        },
+        "objectId": {
+          "type": "integer",
+          "description": "Primary game object ID"
+        },
+        "alternateIds": {
+          "type": "array",
+          "description": "Alternate object IDs for this obstacle",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "action": {
+          "type": "string",
+          "description": "Menu action to perform",
+          "enum": ["Climb", "Cross", "Balance", "Jump", "Jump-up", "Jump-off", "Leap", "Hurdle", "Climb-down", "Swing", "Swing-across", "Walk-on", "Walk-across"]
+        },
+        "interactArea": {
+          "$ref": "#/definitions/worldArea",
+          "description": "Area from which this obstacle can be interacted with"
+        },
+        "expectedLanding": {
+          "$ref": "#/definitions/worldPoint",
+          "description": "Position where player lands on success"
+        },
+        "landingTolerance": {
+          "type": "integer",
+          "description": "Tolerance radius for landing verification",
+          "minimum": 0,
+          "default": 1
+        },
+        "canFail": {
+          "type": "boolean",
+          "description": "Whether this obstacle can fail",
+          "default": false
+        },
+        "failureLanding": {
+          "$ref": "#/definitions/worldPoint",
+          "description": "Position where player lands on failure"
+        },
+        "failureDamage": {
+          "type": "integer",
+          "description": "Typical damage on failure",
+          "minimum": 0,
+          "default": 0
+        },
+        "expectedTicks": {
+          "type": "integer",
+          "description": "Expected ticks to complete obstacle",
+          "minimum": 1
+        },
+        "animationId": {
+          "type": "integer",
+          "description": "Animation ID during traversal"
+        }
+      }
+    },
+    "course": {
+      "type": "object",
+      "required": ["id", "name", "requiredLevel", "xpPerLap", "regionId", "obstacles"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique course identifier",
+          "pattern": "^[a-z_]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable course name"
+        },
+        "requiredLevel": {
+          "type": "integer",
+          "description": "Minimum Agility level required",
+          "minimum": 1,
+          "maximum": 99
+        },
+        "maxLevel": {
+          "type": "integer",
+          "description": "Maximum level this course is efficient for (-1 for no max)",
+          "default": -1
+        },
+        "xpPerLap": {
+          "type": "number",
+          "description": "XP gained per lap",
+          "minimum": 0
+        },
+        "marksPerHour": {
+          "type": "number",
+          "description": "Average marks of grace per hour",
+          "minimum": 0
+        },
+        "lapsPerHour": {
+          "type": "integer",
+          "description": "Estimated laps per hour",
+          "minimum": 0
+        },
+        "regionId": {
+          "type": "integer",
+          "description": "Game region ID for course detection"
+        },
+        "startArea": {
+          "$ref": "#/definitions/worldPoint",
+          "description": "Starting point/area for the course"
+        },
+        "startAreaRadius": {
+          "type": "integer",
+          "description": "Radius around startArea considered 'at start'",
+          "minimum": 1,
+          "default": 5
+        },
+        "courseEndPoint": {
+          "$ref": "#/definitions/worldPoint",
+          "description": "Position where lap completes"
+        },
+        "obstacles": {
+          "type": "array",
+          "description": "Ordered list of obstacles in the course",
+          "items": {
+            "$ref": "#/definitions/obstacle"
+          },
+          "minItems": 1
+        },
+        "markSpawnTiles": {
+          "type": "array",
+          "description": "Possible mark of grace spawn locations with obstacle association for reachability determination",
+          "items": {
+            "$ref": "#/definitions/markSpawnTile"
+          }
+        },
+        "hasShortcut": {
+          "type": "boolean",
+          "description": "Whether course has a shortcut",
+          "default": false
+        },
+        "shortcutLevelRequired": {
+          "type": "integer",
+          "description": "Level required for shortcut",
+          "minimum": 0,
+          "default": 0
+        },
+        "requiresDiary": {
+          "type": "boolean",
+          "description": "Whether diary completion is required for bonuses",
+          "default": false
+        },
+        "diaryName": {
+          "type": "string",
+          "description": "Name of required diary"
+        }
+      }
+    }
+  }
+}
+

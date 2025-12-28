@@ -157,7 +157,73 @@
 
 ---
 
-## Phase 9: Ironman & HCIM Support
+## Phase 9: Specialized Skill Tasks
+**Goal**: Full support for skills with unique mechanics beyond basic gather/process patterns.
+
+**9A: Runecraft System**
+- [ ] `RunecraftTask` - Altar running with essence management
+- [ ] `PouchManager` - Fill/empty rune pouches, track degradation
+- [ ] `EssenceCraftTask` - Click altar, handle instant rune creation
+- [ ] `RunecraftingRoute` - Data model for bank-altar routes (Abyss, ZMI, standard)
+- [ ] Abyss navigation with random obstacle handling
+- [ ] `data/runecraft_routes.json` - Route definitions
+
+**9B: Hunter System**
+- [ ] `HunterTask` - Multi-trap management orchestration
+- [ ] `TrapPlacementStrategy` - Optimal tile selection for spawns
+- [ ] `TrapStateTracker` - Monitor trap status (success/fallen/empty)
+- [ ] `TrapType` enum - Bird snares, box traps, deadfalls, net traps
+- [ ] Trap rotation and loot collection logic
+- [ ] Trap limit enforcement by level (1-6 traps)
+- [ ] `BirdhouseTask` - Passive birdhouse run support
+- [ ] `data/hunter_areas.json` - Trap locations and spawn tiles
+
+**9C: Farming System**
+- [ ] `FarmRunTask` - Visit patches in optimal routing order
+- [ ] `PatchState` detection - Empty, planted, growing, diseased, harvestable
+- [ ] `FarmingAction` - Rake, plant, compost, harvest
+- [ ] Tool/seed inventory management
+- [ ] Disease handling (cure or clear)
+- [ ] Payment protection NPC interaction
+- [ ] `GrowthTimer` - Track crop growth across sessions
+- [ ] `data/farm_patches.json` - Patch locations by type
+
+**9D: Construction System**
+- [ ] `ConstructionTask` - POH training automation
+- [ ] House entry/exit with loading screen handling
+- [ ] Build mode toggling
+- [ ] `HotspotInteraction` - Build menu navigation
+- [ ] `ButlerManager` - Call butler, give planks, send to bank
+- [ ] Furniture build/remove loop (oak larders, mahogany tables)
+- [ ] `data/construction_furniture.json` - Buildable furniture definitions
+
+**9E: Thieving System**
+- [ ] `ThievingTask` - Pickpocket/stall-based training
+- [ ] `StunHandler` - Detect stun state, wait for recovery
+- [ ] HP monitoring with food consumption during thieving
+- [ ] `DodgyNecklaceTracker` - Track charges, auto-equip replacements
+- [ ] `PickpocketTarget` - NPC selection and cycling
+- [ ] `StallThievingTask` - Different mechanics than pickpocketing
+- [ ] Ardy knight splashing setup support
+
+**9F: Firemaking System**
+- [ ] `FiremakingTask` - Line-based log burning
+- [ ] Starting position selection with obstacle awareness
+- [ ] Line completion detection and repositioning
+- [ ] `WintertodtTask` - Minigame-based training (separate orchestrator)
+
+**9G: Spell-Based Training**
+- [ ] `MagicTrainingTask` - Spell casting for XP
+- [ ] `AlchTask` - High/low alchemy automation
+- [ ] `EnchantTask` - Jewelry/bolt enchanting
+- [ ] `SplashingTask` - Auto-combat with -65 magic bonus setup
+- [ ] `BuryBoneTask`, `AltarOfferTask` - Prayer training methods
+
+**Test**: Complete a farm run across all patch types. Train Hunter to 63 via red chins. Complete 50 Runecraft laps via ZMI.
+
+---
+
+## Phase 10: Ironman & HCIM Support
 **Goal**: Full ironman support with HCIM death prevention.
 
 - [X] `IronmanState` - Account type detection
@@ -175,10 +241,12 @@
 
 **Test**: 100 hours HCIM operation with zero preventable deaths.
 
-## Phase 10: Advanced Features
+## Phase 11: Advanced Features
 **Goal**: Make it awesome.
 
 - [ ] "Full Self Recovery" - awareness and retries such that it's VERY hard to get stuck, even when things go wrong
+- [ ] `Sailing` skill support
+- [ ] Charter ships, etc.
 - [ ] `ClaudeAPIClient` - Anthropic API integration
 - [ ] `AIDirector` - Decision layer for ambiguous situations
 

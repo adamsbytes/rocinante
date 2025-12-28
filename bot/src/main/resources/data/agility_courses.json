@@ -1,0 +1,175 @@
+{
+  "$schema": "./agility_courses.schema.json",
+  "version": "1.0.0",
+  "courses": [
+    {
+      "id": "draynor_rooftop",
+      "name": "Draynor Village Rooftop",
+      "requiredLevel": 10,
+      "maxLevel": 30,
+      "xpPerLap": 120.0,
+      "marksPerHour": 12.0,
+      "lapsPerHour": 50,
+      "regionId": 12338,
+      "startArea": {
+        "x": 3103,
+        "y": 3277,
+        "plane": 0
+      },
+      "startAreaRadius": 5,
+      "courseEndPoint": {
+        "x": 3103,
+        "y": 3261,
+        "plane": 0
+      },
+      "obstacles": [
+        {
+          "index": 0,
+          "name": "Rough wall",
+          "objectId": 11404,
+          "action": "Climb",
+          "interactArea": {
+            "x": 3102,
+            "y": 3276,
+            "width": 3,
+            "height": 3,
+            "plane": 0
+          },
+          "expectedLanding": {
+            "x": 3102,
+            "y": 3279,
+            "plane": 3
+          },
+          "expectedTicks": 3
+        },
+        {
+          "index": 1,
+          "name": "Tightrope",
+          "objectId": 11405,
+          "action": "Cross",
+          "interactArea": {
+            "x": 3098,
+            "y": 3277,
+            "width": 5,
+            "height": 4,
+            "plane": 3
+          },
+          "expectedLanding": {
+            "x": 3090,
+            "y": 3276,
+            "plane": 3
+          },
+          "expectedTicks": 5
+        },
+        {
+          "index": 2,
+          "name": "Tightrope",
+          "objectId": 11406,
+          "action": "Cross",
+          "interactArea": {
+            "x": 3088,
+            "y": 3273,
+            "width": 4,
+            "height": 4,
+            "plane": 3
+          },
+          "expectedLanding": {
+            "x": 3092,
+            "y": 3266,
+            "plane": 3
+          },
+          "expectedTicks": 4
+        },
+        {
+          "index": 3,
+          "name": "Narrow wall",
+          "objectId": 11430,
+          "action": "Balance",
+          "interactArea": {
+            "x": 3089,
+            "y": 3264,
+            "width": 4,
+            "height": 4,
+            "plane": 3
+          },
+          "expectedLanding": {
+            "x": 3088,
+            "y": 3261,
+            "plane": 3
+          },
+          "expectedTicks": 3
+        },
+        {
+          "index": 4,
+          "name": "Wall",
+          "objectId": 11630,
+          "action": "Jump-up",
+          "interactArea": {
+            "x": 3087,
+            "y": 3258,
+            "width": 3,
+            "height": 4,
+            "plane": 3
+          },
+          "expectedLanding": {
+            "x": 3088,
+            "y": 3255,
+            "plane": 3
+          },
+          "expectedTicks": 2
+        },
+        {
+          "index": 5,
+          "name": "Gap",
+          "objectId": 11631,
+          "action": "Jump",
+          "interactArea": {
+            "x": 3087,
+            "y": 3253,
+            "width": 3,
+            "height": 3,
+            "plane": 3
+          },
+          "expectedLanding": {
+            "x": 3094,
+            "y": 3255,
+            "plane": 3
+          },
+          "expectedTicks": 2
+        },
+        {
+          "index": 6,
+          "name": "Crate",
+          "objectId": 11632,
+          "action": "Climb-down",
+          "interactArea": {
+            "x": 3093,
+            "y": 3254,
+            "width": 3,
+            "height": 3,
+            "plane": 3
+          },
+          "expectedLanding": {
+            "x": 3103,
+            "y": 3261,
+            "plane": 0
+          },
+          "landingTolerance": 2,
+          "expectedTicks": 3
+        }
+      ],
+      "markSpawnTiles": [
+        {"x": 3100, "y": 3279, "plane": 3, "afterObstacle": 0, "description": "First rooftop after rough wall"},
+        {"x": 3091, "y": 3276, "plane": 3, "afterObstacle": 1, "description": "Second rooftop after first tightrope"},
+        {"x": 3092, "y": 3267, "plane": 3, "afterObstacle": 2, "description": "Third rooftop after second tightrope"},
+        {"x": 3089, "y": 3263, "plane": 3, "afterObstacle": 3, "description": "Fourth section after narrow wall"},
+        {"x": 3088, "y": 3257, "plane": 3, "afterObstacle": 4, "description": "Fifth section after wall jump-up"},
+        {"x": 3094, "y": 3256, "plane": 3, "afterObstacle": 5, "description": "Sixth section after gap jump"},
+        {"x": 3101, "y": 3261, "plane": 0, "afterObstacle": 6, "description": "Ground level after crate climb-down"}
+      ],
+      "hasShortcut": false,
+      "requiresDiary": false
+    }
+  ]
+}
+
