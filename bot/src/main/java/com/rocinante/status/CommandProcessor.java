@@ -6,6 +6,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.rocinante.tasks.Task;
 import com.rocinante.tasks.TaskExecutor;
 import com.rocinante.tasks.TaskPriority;
 import lombok.Setter;
@@ -17,6 +18,7 @@ import net.runelite.client.eventbus.Subscribe;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import java.util.Optional;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -70,6 +72,10 @@ public class CommandProcessor {
     @Setter
     @Nullable
     private TaskExecutor taskExecutor;
+
+    @Setter
+    @Nullable
+    private TaskFactory taskFactory;
 
     @Setter
     @Nullable
@@ -335,10 +341,45 @@ public class CommandProcessor {
     }
 
     private boolean handleQueueTask(JsonObject cmdObj) {
-        // Task queuing from external JSON would require task deserialization
-        // This is a placeholder for future implementation
-        log.info("Queue task command received (not yet implemented)");
-        return false;
+        if (taskExecutor == null) {
+            log.warn("Cannot queue task: TaskExecutor not set");
+            return false;
+        }
+        
+        if (taskFactory == null) {
+            log.warn("Cannot queue task: TaskFactory not set");
+            return false;
+        }
+
+        // Extract task spec from command
+        if (!cmdObj.has("task")) {
+            log.warn("Queue task command missing 'task' field");
+            return false;
+        }
+
+        JsonObject taskSpec = cmdObj.getAsJsonObject("task");
+        
+        // Parse priority if provided
+        TaskPriority priority = TaskPriority.NORMAL;
+        if (cmdObj.has("priority")) {
+            try {
+                priority = TaskPriority.valueOf(cmdObj.get("priority").getAsString().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                log.warn("Invalid task priority, using NORMAL");
+            }
+        }
+
+        // Create task using factory
+        Optional<Task> taskOpt = taskFactory.createTask(taskSpec);
+        if (taskOpt.isEmpty()) {
+            log.warn("Failed to create task from spec: {}", taskSpec);
+            return false;
+        }
+
+        Task task = taskOpt.get();
+        taskExecutor.queueTask(task, priority);
+        log.info("Queued task: {} (priority: {})", task.getDescription(), priority);
+        return true;
     }
 
     /**

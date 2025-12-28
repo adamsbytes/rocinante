@@ -134,11 +134,11 @@
 - [ ] "Goalsets" can be saved/etc so other bots can use a similar foundational set of goals
 
 **Manual Task UI:**
-- [ ] Skill training task input
-- [ ] Combat task input
-- [ ] Navigation task input
-- [ ] Quest task input
-- [ ] Force interrupt current task option
+- [X] Skill training task input
+- [X] Combat task input
+- [X] Navigation task input
+- [X] Quest task input
+- [X] Force interrupt current task option
 
 **Session Control UI:**
 - [ ] Start/stop in-game session

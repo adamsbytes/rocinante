@@ -179,7 +179,8 @@ export interface QueueInfo {
 export interface BotCommand {
   type: 'START' | 'STOP' | 'CLEAR_QUEUE' | 'FORCE_BREAK' | 'ABORT_TASK' | 'QUEUE_TASK';
   timestamp: number;
-  task?: Record<string, unknown>;
+  task?: TaskSpec;
+  priority?: 'URGENT' | 'NORMAL' | 'LOW' | 'BEHAVIORAL';
 }
 
 /**
@@ -187,6 +188,155 @@ export interface BotCommand {
  */
 export interface CommandsFile {
   commands: BotCommand[];
+}
+
+// ============================================================================
+// Task Specification Types (for QUEUE_TASK commands)
+// ============================================================================
+
+/**
+ * Union type for all task specifications.
+ */
+export type TaskSpec = SkillTaskSpec | CombatTaskSpec | NavigationTaskSpec | QuestTaskSpec;
+
+/**
+ * Skill task specification.
+ */
+export interface SkillTaskSpec {
+  taskType: 'SKILL';
+  /** Training method ID from training_methods.json */
+  methodId: string;
+  /** Target type: LEVEL, XP, or DURATION */
+  targetType: 'LEVEL' | 'XP' | 'DURATION';
+  /** Target value (level number, XP amount, or duration in minutes) */
+  targetValue: number;
+  /** Override banking behavior (optional) */
+  bankInsteadOfDrop?: boolean;
+  /** Enable world hopping when crowded (optional) */
+  useWorldHopping?: boolean;
+  /** Player count to trigger world hop (optional) */
+  worldHopThreshold?: number;
+}
+
+/**
+ * Combat task specification.
+ */
+export interface CombatTaskSpec {
+  taskType: 'COMBAT';
+  /** NPC names to target (optional, use this or targetNpcIds) */
+  targetNpcs?: string[];
+  /** NPC IDs to target (optional, use this or targetNpcs) */
+  targetNpcIds?: number[];
+  /** Completion type: KILL_COUNT or DURATION */
+  completionType: 'KILL_COUNT' | 'DURATION';
+  /** Completion value (kill count or duration in minutes) */
+  completionValue: number;
+  /** Enable looting (optional, default true) */
+  lootEnabled?: boolean;
+  /** Minimum loot value (optional, default 1000) */
+  lootMinValue?: number;
+  /** Weapon style: SLASH, STAB, CRUSH, RANGED, MAGIC, ANY (optional) */
+  weaponStyle?: 'SLASH' | 'STAB' | 'CRUSH' | 'RANGED' | 'MAGIC' | 'ANY';
+  /** XP goal: ATTACK, STRENGTH, DEFENCE, etc. (optional) */
+  xpGoal?: 'ATTACK' | 'STRENGTH' | 'DEFENCE' | 'HITPOINTS' | 'RANGED' | 'MAGIC' | 'ANY';
+  /** Enable safe-spotting (optional) */
+  useSafeSpot?: boolean;
+  /** Safe spot X coordinate (optional) */
+  safeSpotX?: number;
+  /** Safe spot Y coordinate (optional) */
+  safeSpotY?: number;
+  /** Safe spot plane (optional, default 0) */
+  safeSpotPlane?: number;
+  /** Stop when out of food (optional) */
+  stopWhenOutOfFood?: boolean;
+  /** Enable resupply runs (optional) */
+  enableResupply?: boolean;
+}
+
+/**
+ * Navigation task specification.
+ */
+export interface NavigationTaskSpec {
+  taskType: 'NAVIGATION';
+  /** Named location ID from web.json (optional, use this or x,y) */
+  locationId?: string;
+  /** X coordinate (optional, use this or locationId) */
+  x?: number;
+  /** Y coordinate (optional, use this or locationId) */
+  y?: number;
+  /** Plane (optional, default 0) */
+  plane?: number;
+  /** Random offset radius (optional) */
+  randomRadius?: number;
+  /** Task description (optional) */
+  description?: string;
+}
+
+/**
+ * Quest task specification.
+ */
+export interface QuestTaskSpec {
+  taskType: 'QUEST';
+  /** Quest identifier */
+  questId: string;
+}
+
+// ============================================================================
+// Data API Types (for training methods, locations, quests)
+// ============================================================================
+
+/**
+ * Training method information for the UI.
+ */
+export interface TrainingMethodInfo {
+  id: string;
+  name: string;
+  skill: SkillName;
+  methodType: 'GATHER' | 'PROCESS' | 'AGILITY' | 'FIREMAKING' | 'MINIGAME';
+  minLevel: number;
+  maxLevel: number;
+  xpPerAction: number;
+  /** Multiplier for level-based XP (0 if static) */
+  xpMultiplier: number;
+  actionsPerHour: number;
+  gpPerHour: number;
+  ironmanViable: boolean;
+  locationId?: string;
+}
+
+/**
+ * Calculate XP/hr for a training method at a given level.
+ * Handles both static and level-based (xpMultiplier) methods.
+ */
+export function calculateXpPerHour(method: TrainingMethodInfo, level: number): number {
+  if (method.xpMultiplier > 0) {
+    return level * method.xpMultiplier * method.actionsPerHour;
+  }
+  return method.xpPerAction * method.actionsPerHour;
+}
+
+/**
+ * Navigation location information.
+ */
+export interface LocationInfo {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  plane: number;
+  type: 'GENERIC' | 'BANK' | 'SHOP' | 'TRAINING' | 'QUEST' | 'TRANSPORT';
+  tags: string[];
+}
+
+/**
+ * Quest information for the UI.
+ */
+export interface QuestInfo {
+  id: string;
+  name: string;
+  questPoints: number;
+  difficulty: 'NOVICE' | 'INTERMEDIATE' | 'EXPERIENCED' | 'MASTER' | 'GRANDMASTER';
+  members: boolean;
 }
 
 // ============================================================================

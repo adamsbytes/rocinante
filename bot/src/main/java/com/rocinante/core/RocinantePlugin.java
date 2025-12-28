@@ -180,6 +180,18 @@ public class RocinantePlugin extends Plugin
     @Getter
     private CommandProcessor commandProcessor;
 
+    @Inject
+    @Getter
+    private com.rocinante.status.TaskFactory taskFactory;
+
+    @Inject
+    @Getter
+    private com.rocinante.combat.TargetSelector targetSelector;
+
+    @Inject
+    @Getter
+    private com.rocinante.combat.CombatManager combatManager;
+
     @Override
     protected void startUp() throws Exception
     {
@@ -283,8 +295,14 @@ public class RocinantePlugin extends Plugin
         statusPublisher.setFatigueModel(fatigueModel);
         statusPublisher.setBreakScheduler(breakScheduler);
         
-        // Wire CommandProcessor with TaskExecutor
+        // Wire CommandProcessor with TaskExecutor and TaskFactory
         commandProcessor.setTaskExecutor(taskExecutor);
+        commandProcessor.setTaskFactory(taskFactory);
+        
+        // Wire TaskFactory with dependencies (for manual task creation)
+        taskFactory.setQuestExecutor(questExecutor);
+        taskFactory.setTargetSelector(targetSelector);
+        taskFactory.setCombatManager(combatManager);
         
         // Start status publishing and command processing
         statusPublisher.start();

@@ -9,6 +9,7 @@ import { CurrentTask } from '../components/CurrentTask';
 import { SessionStatsPanel, InlineSessionStats } from '../components/SessionStatsPanel';
 import { AccountStatsGrid } from '../components/AccountStatsGrid';
 import { AccountStatsHiscores } from '../components/AccountStatsHiscores';
+import { ManualTaskPanel } from '../components/ManualTaskPanel';
 
 type StatsView = 'grid' | 'table';
 
@@ -211,6 +212,14 @@ export const BotDetail: Component = () => {
 
                   {/* Session Stats */}
                   <SessionStatsPanel session={runtimeStatus()?.session || null} />
+
+                  {/* Manual Task Panel */}
+                  <Show when={statusStore()}>
+                    <ManualTaskPanel 
+                      statusStore={statusStore()!}
+                      playerSkills={runtimeStatus()?.player?.skills}
+                    />
+                  </Show>
 
                   {/* Account Stats with view toggle */}
                   <div>

@@ -26,7 +26,15 @@ import {
   cleanup as cleanupStatus,
   watchBotStatus,
 } from './status';
-import type { ApiResponse, BotConfig, BotWithStatus, BotRuntimeStatus } from '../shared/types';
+import {
+  getTrainingMethods,
+  getTrainingMethodsBySkill,
+  getLocations,
+  getLocationsByType,
+  getQuests,
+  getQuestsFiltered,
+} from './data';
+import type { ApiResponse, BotConfig, BotWithStatus, BotRuntimeStatus, LocationInfo } from '../shared/types';
 
 const PORT = parseInt(process.env.PORT || '3000');
 
@@ -309,6 +317,54 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
       });
     } catch (err) {
       return error(err instanceof Error ? err.message : 'Failed to get logs');
+    }
+  }
+
+  // ============================================================================
+  // Data API endpoints (for Manual Task UI)
+  // ============================================================================
+
+  // Training methods
+  if (path === '/api/data/training-methods' && method === 'GET') {
+    try {
+      const grouped = url.searchParams.get('grouped') === 'true';
+      if (grouped) {
+        const data = await getTrainingMethodsBySkill();
+        return success(data);
+      } else {
+        const data = await getTrainingMethods();
+        return success(data);
+      }
+    } catch (err) {
+      return error(err instanceof Error ? err.message : 'Failed to load training methods');
+    }
+  }
+
+  // Navigation locations
+  if (path === '/api/data/locations' && method === 'GET') {
+    try {
+      const type = url.searchParams.get('type') as LocationInfo['type'] | null;
+      if (type) {
+        const data = await getLocationsByType(type);
+        return success(data);
+      } else {
+        const data = await getLocations();
+        return success(data);
+      }
+    } catch (err) {
+      return error(err instanceof Error ? err.message : 'Failed to load locations');
+    }
+  }
+
+  // Quests
+  if (path === '/api/data/quests' && method === 'GET') {
+    try {
+      const membersParam = url.searchParams.get('members');
+      const members = membersParam === 'true' ? true : membersParam === 'false' ? false : undefined;
+      const data = getQuestsFiltered(members);
+      return success(data);
+    } catch (err) {
+      return error(err instanceof Error ? err.message : 'Failed to load quests');
     }
   }
 
