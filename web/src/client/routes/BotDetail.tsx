@@ -1,9 +1,16 @@
-import { type Component, Show, Suspense, createSignal } from 'solid-js';
+import { type Component, Show, Suspense, createSignal, createEffect, onCleanup, createMemo } from 'solid-js';
 import { Link, useParams } from '@tanstack/solid-router';
 import { useBotQuery, useStartBotMutation, useStopBotMutation, useRestartBotMutation, useDeleteBotMutation } from '../lib/api';
 import { StatusBadge } from '../components/StatusBadge';
 import { VncViewer, type VncStatus } from '../components/VncViewer';
 import { LogsViewer } from '../components/LogsViewer';
+import { createBotStatusStore, type ConnectionState } from '../lib/statusStore';
+import { CurrentTask } from '../components/CurrentTask';
+import { SessionStatsPanel, InlineSessionStats } from '../components/SessionStatsPanel';
+import { AccountStatsGrid } from '../components/AccountStatsGrid';
+import { AccountStatsHiscores } from '../components/AccountStatsHiscores';
+
+type StatsView = 'grid' | 'table';
 
 export const BotDetail: Component = () => {
   const params = useParams({ from: '/bots/$id' });
@@ -16,6 +23,7 @@ export const BotDetail: Component = () => {
   const [showLogs, setShowLogs] = createSignal(false);
   const [vncStatus, setVncStatus] = createSignal<VncStatus>('connecting');
   const [vncError, setVncError] = createSignal<string | null>(null);
+  const [statsView, setStatsView] = createSignal<StatsView>('grid');
 
   const handleVncStatusChange = (status: VncStatus, error?: string | null) => {
     setVncStatus(status);
@@ -27,6 +35,23 @@ export const BotDetail: Component = () => {
   const isStopping = () => botQuery.data?.status.state === 'stopping' || stopMutation.isPending;
   const isError = () => botQuery.data?.status.state === 'error';
   const isRestarting = () => restartMutation.isPending;
+
+  // Status store - only create when bot is running
+  const statusStore = createMemo(() => {
+    if (isRunning()) {
+      return createBotStatusStore({ botId: params().id });
+    }
+    return null;
+  });
+
+  // Cleanup status store on unmount
+  onCleanup(() => {
+    statusStore()?.disconnect();
+  });
+
+  // Derived status data
+  const runtimeStatus = () => statusStore()?.status() || null;
+  const statusConnectionState = () => statusStore()?.connectionState() || 'disconnected';
 
   const handleDelete = async () => {
     try {
@@ -56,8 +81,18 @@ export const BotDetail: Component = () => {
                   <div class="flex items-center gap-3 mb-2">
                     <h2 class="text-2xl font-bold">{bot().name}</h2>
                     <StatusBadge state={bot().status.state} />
+                    {/* Status connection indicator */}
+                    <Show when={isRunning()}>
+                      <StatusConnectionBadge state={statusConnectionState()} />
+                    </Show>
                   </div>
-                  <p class="text-[var(--text-secondary)]">{bot().username}</p>
+                  <div class="flex items-center gap-4">
+                    <p class="text-[var(--text-secondary)]">{bot().username}</p>
+                    {/* Inline session stats when running */}
+                    <Show when={isRunning() && runtimeStatus()?.session}>
+                      <InlineSessionStats session={runtimeStatus()!.session} />
+                    </Show>
+                  </div>
                 </div>
                 <div class="flex gap-2">
                   {isRunning() ? (
@@ -165,6 +200,67 @@ export const BotDetail: Component = () => {
                 </div>
               </Show>
 
+              {/* Real-time Status Section */}
+              <Show when={isRunning()}>
+                <div class="mb-6 space-y-4">
+                  {/* Current Task */}
+                  <CurrentTask 
+                    task={runtimeStatus()?.task || null}
+                    queue={runtimeStatus()?.queue || null}
+                  />
+
+                  {/* Session Stats */}
+                  <SessionStatsPanel session={runtimeStatus()?.session || null} />
+
+                  {/* Account Stats with view toggle */}
+                  <div>
+                    <div class="flex items-center justify-between mb-3">
+                      <h3 class="text-lg font-semibold flex items-center gap-2">
+                        <span>Account Stats</span>
+                        <Show when={runtimeStatus()?.gameState}>
+                          <span class="text-xs px-2 py-0.5 rounded bg-gray-700 text-gray-300">
+                            {runtimeStatus()!.gameState}
+                          </span>
+                        </Show>
+                      </h3>
+                      <div class="flex gap-1 bg-gray-800 rounded-lg p-1">
+                        <button
+                          onClick={() => setStatsView('grid')}
+                          class={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                            statsView() === 'grid'
+                              ? 'bg-amber-600 text-white'
+                              : 'text-gray-400 hover:text-white'
+                          }`}
+                        >
+                          Grid
+                        </button>
+                        <button
+                          onClick={() => setStatsView('table')}
+                          class={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                            statsView() === 'table'
+                              ? 'bg-amber-600 text-white'
+                              : 'text-gray-400 hover:text-white'
+                          }`}
+                        >
+                          Table
+                        </button>
+                      </div>
+                    </div>
+                    <Show
+                      when={statsView() === 'grid'}
+                      fallback={
+                        <AccountStatsHiscores 
+                          player={runtimeStatus()?.player || null}
+                          session={runtimeStatus()?.session || null}
+                        />
+                      }
+                    >
+                      <AccountStatsGrid player={runtimeStatus()?.player || null} />
+                    </Show>
+                  </div>
+                </div>
+              </Show>
+
               {/* Bot Details */}
               <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Configuration */}
@@ -264,6 +360,31 @@ export const BotDetail: Component = () => {
   );
 };
 
+/**
+ * Status connection badge showing WebSocket connection state.
+ */
+const StatusConnectionBadge: Component<{ state: ConnectionState }> = (props) => {
+  const config = () => {
+    switch (props.state) {
+      case 'connected':
+        return { color: 'bg-cyan-500', text: 'text-cyan-400', label: 'Live' };
+      case 'connecting':
+        return { color: 'bg-amber-500 animate-pulse', text: 'text-amber-400', label: 'Connecting' };
+      case 'error':
+        return { color: 'bg-red-500', text: 'text-red-400', label: 'Error' };
+      default:
+        return { color: 'bg-gray-500', text: 'text-gray-400', label: 'Offline' };
+    }
+  };
+
+  return (
+    <span class="flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full bg-gray-800">
+      <span class={`w-1.5 h-1.5 rounded-full ${config().color}`} />
+      <span class={config().text}>{config().label}</span>
+    </span>
+  );
+};
+
 const LoadingSkeleton: Component = () => (
   <div class="animate-pulse">
     <div class="flex justify-between mb-6">
@@ -283,4 +404,3 @@ const LoadingSkeleton: Component = () => (
     </div>
   </div>
 );
-

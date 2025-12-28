@@ -51,3 +51,263 @@ export interface ApiResponse<T> {
   error?: string;
 }
 
+// ============================================================================
+// Runtime Status Types (from bot status.json)
+// ============================================================================
+
+/**
+ * Full runtime status snapshot from the bot.
+ * Published every second via WebSocket when bot is running.
+ */
+export interface BotRuntimeStatus {
+  /** Unix timestamp when this snapshot was created */
+  timestamp: number;
+  /** Current game state (LOGGED_IN, LOGIN_SCREEN, etc.) */
+  gameState: string;
+  /** Current task information */
+  task: TaskInfo | null;
+  /** Session statistics */
+  session: SessionInfo | null;
+  /** Player information */
+  player: PlayerInfo | null;
+  /** Task queue status */
+  queue: QueueInfo | null;
+}
+
+/**
+ * Information about the current task.
+ */
+export interface TaskInfo {
+  /** Human-readable task description */
+  description: string;
+  /** Current task state (PENDING, RUNNING, COMPLETED, FAILED, etc.) */
+  state: string;
+  /** Progress percentage (0.0 to 1.0), or -1 if not applicable */
+  progress: number;
+  /** Subtask descriptions for composite tasks */
+  subtasks: string[];
+  /** Time elapsed on current task in milliseconds */
+  elapsedMs: number;
+}
+
+/**
+ * Session statistics.
+ */
+export interface SessionInfo {
+  /** Session start timestamp */
+  startTime: number | null;
+  /** Total runtime in milliseconds */
+  runtimeMs: number;
+  /** Break statistics */
+  breaks: BreakInfo;
+  /** Total actions performed */
+  actions: number;
+  /** Current fatigue level (0.0 to 1.0) */
+  fatigue: number;
+  /** XP gained per skill (skill name -> xp) */
+  xpGained: Record<string, number>;
+  /** Total XP gained across all skills */
+  totalXp: number;
+  /** XP per hour rate */
+  xpPerHour: number;
+}
+
+/**
+ * Break statistics.
+ */
+export interface BreakInfo {
+  count: number;
+  totalDuration: number;
+}
+
+/**
+ * Player information.
+ */
+export interface PlayerInfo {
+  /** Player's display name */
+  name: string;
+  /** Combat level */
+  combatLevel: number;
+  /** Total level across all skills */
+  totalLevel: number;
+  /** Quest points */
+  questPoints: number;
+  /** Current hitpoints */
+  currentHp: number;
+  /** Maximum hitpoints */
+  maxHp: number;
+  /** Current prayer points */
+  currentPrayer: number;
+  /** Maximum prayer points */
+  maxPrayer: number;
+  /** Run energy (0-100) */
+  runEnergy: number;
+  /** Whether player is poisoned */
+  poisoned: boolean;
+  /** Whether player is venomed */
+  venomed: boolean;
+  /** Skills data (skill name -> data) */
+  skills: Record<string, SkillData>;
+}
+
+/**
+ * Individual skill data.
+ */
+export interface SkillData {
+  level: number;
+  xp: number;
+  boosted: number;
+}
+
+/**
+ * Task queue information.
+ */
+export interface QueueInfo {
+  /** Number of pending tasks */
+  pending: number;
+  /** Descriptions of next few tasks */
+  descriptions: string[];
+}
+
+// ============================================================================
+// Command Types (for sending commands to bot)
+// ============================================================================
+
+/**
+ * Command to send to the bot.
+ */
+export interface BotCommand {
+  type: 'START' | 'STOP' | 'CLEAR_QUEUE' | 'FORCE_BREAK' | 'ABORT_TASK' | 'QUEUE_TASK';
+  timestamp: number;
+  task?: Record<string, unknown>;
+}
+
+/**
+ * Commands file structure.
+ */
+export interface CommandsFile {
+  commands: BotCommand[];
+}
+
+// ============================================================================
+// Skill Constants
+// ============================================================================
+
+/**
+ * All OSRS skills in display order.
+ */
+export const SKILLS = [
+  'Attack',
+  'Hitpoints',
+  'Mining',
+  'Strength',
+  'Agility',
+  'Smithing',
+  'Defence',
+  'Herblore',
+  'Fishing',
+  'Ranged',
+  'Thieving',
+  'Cooking',
+  'Prayer',
+  'Crafting',
+  'Firemaking',
+  'Magic',
+  'Fletching',
+  'Woodcutting',
+  'Runecraft',
+  'Slayer',
+  'Farming',
+  'Construction',
+  'Hunter',
+] as const;
+
+export type SkillName = typeof SKILLS[number];
+
+/**
+ * Combat skills.
+ */
+export const COMBAT_SKILLS = ['Attack', 'Strength', 'Defence', 'Ranged', 'Magic', 'Hitpoints', 'Prayer'] as const;
+
+/**
+ * XP table for levels 1-99.
+ * XP_TABLE[level] = minimum XP for that level
+ */
+export const XP_TABLE: number[] = [
+  0, 0, 83, 174, 276, 388, 512, 650, 801, 969, 1154, 1358, 1584, 1833, 2107,
+  2411, 2746, 3115, 3523, 3973, 4470, 5018, 5624, 6291, 7028, 7842, 8740, 9730,
+  10824, 12031, 13363, 14833, 16456, 18247, 20224, 22406, 24815, 27473, 30408,
+  33648, 37224, 41171, 45529, 50339, 55649, 61512, 67983, 75127, 83014, 91721,
+  101333, 111945, 123660, 136594, 150872, 166636, 184040, 203254, 224466, 247886,
+  273742, 302288, 333804, 368599, 407015, 449428, 496254, 547953, 605032, 668051,
+  737627, 814445, 899257, 992895, 1096278, 1210421, 1336443, 1475581, 1629200,
+  1798808, 1986068, 2192818, 2421087, 2673114, 2951373, 3258594, 3597792, 3972294,
+  4385776, 4842295, 5346332, 5902831, 6517253, 7195629, 7944614, 8771558, 9684577,
+  10692629, 11805606, 13034431,
+];
+
+/**
+ * Maximum XP (200M).
+ */
+export const MAX_XP = 200_000_000;
+
+/**
+ * Get the level for a given XP amount.
+ */
+export function getLevel(xp: number): number {
+  for (let level = 98; level >= 1; level--) {
+    if (xp >= XP_TABLE[level]) {
+      return level;
+    }
+  }
+  return 1;
+}
+
+/**
+ * Get virtual level for a given XP amount (up to 126).
+ */
+export function getVirtualLevel(xp: number): number {
+  if (xp < XP_TABLE[99]) return getLevel(xp);
+  
+  // Calculate virtual levels beyond 99
+  for (let level = 126; level > 99; level--) {
+    const xpRequired = Math.floor(XP_TABLE[99] * Math.pow(1.1, level - 99));
+    if (xp >= xpRequired) return level;
+  }
+  return 99;
+}
+
+/**
+ * Format XP number with commas.
+ */
+export function formatXp(xp: number): string {
+  return xp.toLocaleString();
+}
+
+/**
+ * Format XP with K/M suffix.
+ */
+export function formatXpShort(xp: number): string {
+  if (xp >= 1_000_000) {
+    return `${(xp / 1_000_000).toFixed(1)}M`;
+  } else if (xp >= 1_000) {
+    return `${(xp / 1_000).toFixed(1)}K`;
+  }
+  return xp.toString();
+}
+
+/**
+ * Format duration in HH:MM:SS.
+ */
+export function formatDuration(ms: number): string {
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  
+  return [
+    hours.toString().padStart(2, '0'),
+    (minutes % 60).toString().padStart(2, '0'),
+    (seconds % 60).toString().padStart(2, '0'),
+  ].join(':');
+}
+

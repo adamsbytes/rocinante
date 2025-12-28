@@ -145,13 +145,13 @@
 - [ ] Force break (exit to lobby)
 
 **Real-time Status Display:**
-- [ ] Current task with collapsible detail
-- [ ] Session stats (runtime, breaks, XP gained)
-- [ ] Account stats (levels, quest points) formatted in "runescape style"
+- [X] Current task with collapsible detail
+- [X] Session stats (runtime, breaks, XP gained)
+- [X] Account stats (levels, quest points) formatted in "runescape style"
 
 **Communication Layer:**
-- [ ] File-based command dispatch (goals/tasks → bot)
-- [ ] WebSocket status stream (bot → web → UI)
+- [X] File-based command dispatch (goals/tasks → bot)
+- [X] WebSocket status stream (bot → web → UI)
 
 **Test**: User creates "50 Mining" goal via UI, bot uses existing `SkillPlanner` to determine method, executes, UI shows real-time step detail.
 

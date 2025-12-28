@@ -19,16 +19,32 @@ import {
   checkBotImage,
   buildBotImage,
 } from './docker';
-import type { ApiResponse, BotConfig, BotWithStatus } from '../shared/types';
+import {
+  handleStatusWebSocket,
+  readBotStatus,
+  sendBotCommand,
+  cleanup as cleanupStatus,
+  watchBotStatus,
+} from './status';
+import type { ApiResponse, BotConfig, BotWithStatus, BotRuntimeStatus } from '../shared/types';
 
 const PORT = parseInt(process.env.PORT || '3000');
 
-// Store VNC TCP connections per WebSocket
+// WebSocket connection types
 type VncWebSocketData = {
+  type: 'vnc';
   botId: string;
   vncPort: number;
   tcpSocket: Socket<{ ws: ServerWebSocket<VncWebSocketData> }> | null;
 };
+
+type StatusWebSocketData = {
+  type: 'status';
+  botId: string;
+  cleanup: (() => void) | null;
+};
+
+type WebSocketData = VncWebSocketData | StatusWebSocketData;
 
 function json<T>(data: T, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -69,6 +85,7 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
     // Upgrade to WebSocket
     const upgraded = server.upgrade(req, {
       data: {
+        type: 'vnc',
         botId,
         vncPort: bot.vncPort,
         tcpSocket: null,
@@ -79,6 +96,64 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
       return undefined; // Bun handles the 101 response
     }
     return error('WebSocket upgrade failed', 500);
+  }
+
+  // Status WebSocket upgrade
+  const statusMatch = path.match(/^\/api\/status\/([^/]+)$/);
+  if (statusMatch && req.headers.get('upgrade') === 'websocket') {
+    const botId = statusMatch[1];
+    const bot = await getBot(botId);
+    
+    if (!bot) {
+      return error('Bot not found', 404);
+    }
+
+    // Upgrade to WebSocket
+    const upgraded = server.upgrade(req, {
+      data: {
+        type: 'status',
+        botId,
+        cleanup: null,
+      } as StatusWebSocketData,
+    });
+
+    if (upgraded) {
+      return undefined; // Bun handles the 101 response
+    }
+    return error('WebSocket upgrade failed', 500);
+  }
+
+  // REST API for bot runtime status
+  const statusApiMatch = path.match(/^\/api\/bots\/([^/]+)\/status$/);
+  if (statusApiMatch && method === 'GET') {
+    const botId = statusApiMatch[1];
+    const bot = await getBot(botId);
+    
+    if (!bot) {
+      return error('Bot not found', 404);
+    }
+
+    const runtimeStatus = readBotStatus(botId);
+    return success(runtimeStatus);
+  }
+
+  // REST API to send commands to bot
+  const commandMatch = path.match(/^\/api\/bots\/([^/]+)\/command$/);
+  if (commandMatch && method === 'POST') {
+    const botId = commandMatch[1];
+    const bot = await getBot(botId);
+    
+    if (!bot) {
+      return error('Bot not found', 404);
+    }
+
+    try {
+      const body = await req.json();
+      sendBotCommand(botId, body);
+      return success({ sent: true });
+    } catch (err) {
+      return error(err instanceof Error ? err.message : 'Failed to send command');
+    }
   }
 
   // Health check
@@ -295,87 +370,156 @@ async function checkPrerequisites(): Promise<void> {
 console.log('Starting Rocinante Management Server...');
 await checkPrerequisites();
 
-Bun.serve({
+const bunServer = Bun.serve({
   port: PORT,
   fetch: handleRequest,
   websocket: {
     // Called when WebSocket connection opens
-    async open(ws: ServerWebSocket<VncWebSocketData>) {
-      const { vncPort } = ws.data;
-      console.log(`VNC WebSocket opened for port ${vncPort}`);
+    async open(ws: ServerWebSocket<WebSocketData>) {
+      if (ws.data.type === 'vnc') {
+        const vncData = ws.data as VncWebSocketData;
+        const { vncPort } = vncData;
+        console.log(`VNC WebSocket opened for port ${vncPort}`);
 
-      try {
-        // Connect to VNC server via TCP
-        const tcpSocket = await Bun.connect({
-          hostname: 'localhost',
-          port: vncPort,
-          socket: {
-            data(socket, data) {
-              // Forward VNC server data to WebSocket client
-              const wsConn = socket.data.ws;
-              if (wsConn.readyState === 1) { // OPEN
-                wsConn.send(data);
-              }
+        try {
+          // Connect to VNC server via TCP
+          const tcpSocket = await Bun.connect({
+            hostname: 'localhost',
+            port: vncPort,
+            socket: {
+              data(socket, data) {
+                // Forward VNC server data to WebSocket client
+                const wsConn = socket.data.ws;
+                if (wsConn.readyState === 1) { // OPEN
+                  wsConn.send(data);
+                }
+              },
+              open(socket) {
+                console.log(`TCP connection to VNC port ${vncPort} established`);
+              },
+              close(socket) {
+                console.log(`TCP connection to VNC port ${vncPort} closed`);
+                const wsConn = socket.data.ws;
+                if (wsConn.readyState === 1) {
+                  wsConn.close(1000, 'VNC server disconnected');
+                }
+              },
+              error(socket, err) {
+                console.error(`TCP error for VNC port ${vncPort}:`, err);
+                const wsConn = socket.data.ws;
+                if (wsConn.readyState === 1) {
+                  wsConn.close(1011, 'VNC connection error');
+                }
+              },
             },
-            open(socket) {
-              console.log(`TCP connection to VNC port ${vncPort} established`);
-            },
-            close(socket) {
-              console.log(`TCP connection to VNC port ${vncPort} closed`);
-              const wsConn = socket.data.ws;
-              if (wsConn.readyState === 1) {
-                wsConn.close(1000, 'VNC server disconnected');
-              }
-            },
-            error(socket, err) {
-              console.error(`TCP error for VNC port ${vncPort}:`, err);
-              const wsConn = socket.data.ws;
-              if (wsConn.readyState === 1) {
-                wsConn.close(1011, 'VNC connection error');
-              }
-            },
-          },
-          data: { ws },
+            data: { ws: ws as ServerWebSocket<VncWebSocketData> },
+          });
+
+          vncData.tcpSocket = tcpSocket;
+        } catch (err) {
+          console.error(`Failed to connect to VNC port ${vncPort}:`, err);
+          ws.close(1011, 'Failed to connect to VNC server');
+        }
+      } else if (ws.data.type === 'status') {
+        const statusData = ws.data as StatusWebSocketData;
+        const { botId } = statusData;
+        console.log(`Status WebSocket opened for bot ${botId}`);
+
+        // Start watching status file and forward updates to WebSocket
+        statusData.cleanup = watchBotStatus(botId, (status) => {
+          if (ws.readyState === 1) { // OPEN
+            try {
+              ws.send(JSON.stringify(status));
+            } catch (error) {
+              console.error(`Error sending status to WebSocket:`, error);
+            }
+          }
         });
 
-        ws.data.tcpSocket = tcpSocket;
-      } catch (err) {
-        console.error(`Failed to connect to VNC port ${vncPort}:`, err);
-        ws.close(1011, 'Failed to connect to VNC server');
+        // Send initial status if available
+        const initialStatus = readBotStatus(botId);
+        if (initialStatus && ws.readyState === 1) {
+          ws.send(JSON.stringify(initialStatus));
+        }
       }
     },
 
     // Called when WebSocket receives a message from client
-    message(ws: ServerWebSocket<VncWebSocketData>, message) {
-      // Forward client data to VNC server
-      const { tcpSocket } = ws.data;
-      if (tcpSocket) {
-        if (typeof message === 'string') {
-          tcpSocket.write(Buffer.from(message));
-        } else {
-          tcpSocket.write(message);
+    message(ws: ServerWebSocket<WebSocketData>, message) {
+      if (ws.data.type === 'vnc') {
+        // Forward client data to VNC server
+        const vncData = ws.data as VncWebSocketData;
+        const { tcpSocket } = vncData;
+        if (tcpSocket) {
+          if (typeof message === 'string') {
+            tcpSocket.write(Buffer.from(message));
+          } else {
+            tcpSocket.write(message);
+          }
+        }
+      } else if (ws.data.type === 'status') {
+        // Handle commands from client
+        const statusData = ws.data as StatusWebSocketData;
+        try {
+          const data = typeof message === 'string' ? message : message.toString();
+          const parsed = JSON.parse(data);
+          
+          if (parsed.type === 'command' && parsed.command) {
+            sendBotCommand(statusData.botId, parsed.command);
+          }
+        } catch (error) {
+          console.error(`Error handling status WebSocket message:`, error);
         }
       }
     },
 
     // Called when WebSocket connection closes
-    close(ws: ServerWebSocket<VncWebSocketData>, code, reason) {
-      console.log(`VNC WebSocket closed: ${code} ${reason}`);
-      const { tcpSocket } = ws.data;
-      if (tcpSocket) {
-        tcpSocket.end();
+    close(ws: ServerWebSocket<WebSocketData>, code, reason) {
+      if (ws.data.type === 'vnc') {
+        console.log(`VNC WebSocket closed: ${code} ${reason}`);
+        const vncData = ws.data as VncWebSocketData;
+        if (vncData.tcpSocket) {
+          vncData.tcpSocket.end();
+        }
+      } else if (ws.data.type === 'status') {
+        const statusData = ws.data as StatusWebSocketData;
+        console.log(`Status WebSocket closed for bot ${statusData.botId}: ${code} ${reason}`);
+        if (statusData.cleanup) {
+          statusData.cleanup();
+        }
       }
     },
 
     // Called on WebSocket error
-    error(ws: ServerWebSocket<VncWebSocketData>, error) {
-      console.error('VNC WebSocket error:', error);
-      const { tcpSocket } = ws.data;
-      if (tcpSocket) {
-        tcpSocket.end();
+    error(ws: ServerWebSocket<WebSocketData>, error) {
+      if (ws.data.type === 'vnc') {
+        console.error('VNC WebSocket error:', error);
+        const vncData = ws.data as VncWebSocketData;
+        if (vncData.tcpSocket) {
+          vncData.tcpSocket.end();
+        }
+      } else if (ws.data.type === 'status') {
+        const statusData = ws.data as StatusWebSocketData;
+        console.error(`Status WebSocket error for bot ${statusData.botId}:`, error);
+        if (statusData.cleanup) {
+          statusData.cleanup();
+        }
       }
     },
   },
+});
+
+// Handle graceful shutdown
+process.on('SIGINT', () => {
+  console.log('Shutting down...');
+  cleanupStatus();
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  console.log('Shutting down...');
+  cleanupStatus();
+  process.exit(0);
 });
 
 console.log(`Server running on http://localhost:${PORT}`);

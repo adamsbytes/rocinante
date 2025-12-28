@@ -1,5 +1,8 @@
 import Docker from 'dockerode';
+import { join } from 'path';
+import { mkdirSync, existsSync } from 'fs';
 import type { BotConfig, BotStatus } from '../shared/types';
+import { getStatusDir, ensureStatusDir } from './status';
 
 const docker = new Docker({ socketPath: '/var/run/docker.sock' });
 
@@ -164,6 +167,10 @@ export async function startBot(bot: BotConfig): Promise<void> {
   // Add separator for new run
   appendBotLogs(bot.id, ['\n--- New container starting ---\n']);
 
+  // Ensure status directory exists for bind mount
+  ensureStatusDir(bot.id);
+  const statusDir = getStatusDir(bot.id);
+
   // Build environment variables for Jagex Launcher authentication
   const env: string[] = [
     'DISPLAY=:99',
@@ -232,6 +239,8 @@ export async function startBot(bot: BotConfig): Promise<void> {
         `rocinante_settings_${bot.id}:/home/runelite/.runelite/settings`,
         // Bolt launcher stores login session here
         `rocinante_bolt_${bot.id}:/home/runelite/.local/share/bolt-launcher`,
+        // Status directory for bot-to-web communication (bind mount for file watching)
+        `${statusDir}:/home/runelite/.runelite/rocinante`,
       ],
       // Auto-restart on crash, but respect explicit stop commands
       RestartPolicy: {

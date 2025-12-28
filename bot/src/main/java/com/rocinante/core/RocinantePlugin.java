@@ -25,6 +25,9 @@ import com.rocinante.config.RocinanteConfig;
 import com.rocinante.input.RobotKeyboardController;
 import com.rocinante.input.RobotMouseController;
 import com.rocinante.state.InventoryState;
+import com.rocinante.status.CommandProcessor;
+import com.rocinante.status.StatusPublisher;
+import com.rocinante.status.XpTracker;
 import com.rocinante.tasks.AbstractTask;
 import com.rocinante.tasks.Task;
 import com.rocinante.tasks.TaskContext;
@@ -158,6 +161,20 @@ public class RocinantePlugin extends Plugin
     @Getter
     private com.rocinante.behavior.LogoutHandler logoutHandler;
 
+    // === Status & Communication Components ===
+
+    @Inject
+    @Getter
+    private XpTracker xpTracker;
+
+    @Inject
+    @Getter
+    private StatusPublisher statusPublisher;
+
+    @Inject
+    @Getter
+    private CommandProcessor commandProcessor;
+
     @Override
     protected void startUp() throws Exception
     {
@@ -244,6 +261,30 @@ public class RocinantePlugin extends Plugin
         // Configure TaskExecutor
         taskExecutor.setOnTaskStuckCallback(this::onTaskStuck);
 
+        // === Register Status & Communication Components ===
+        
+        // Register XpTracker - tracks XP gains per skill
+        eventBus.register(xpTracker);
+        
+        // Register StatusPublisher - writes status JSON for web UI
+        eventBus.register(statusPublisher);
+        
+        // Register CommandProcessor - processes commands from web UI
+        eventBus.register(commandProcessor);
+        
+        // Wire StatusPublisher with dependencies
+        statusPublisher.setTaskExecutor(taskExecutor);
+        statusPublisher.setXpTracker(xpTracker);
+        statusPublisher.setFatigueModel(fatigueModel);
+        statusPublisher.setBreakScheduler(breakScheduler);
+        
+        // Wire CommandProcessor with TaskExecutor
+        commandProcessor.setTaskExecutor(taskExecutor);
+        
+        // Start status publishing and command processing
+        statusPublisher.start();
+        commandProcessor.start();
+
         log.info("Rocinante plugin started - Services registered");
         log.info("  GameStateService: registered");
         log.info("  LoginFlowHandler: registered (auto-active)");
@@ -254,6 +295,8 @@ public class RocinantePlugin extends Plugin
         log.info("  Anti-Detection: registered (camera={}, coupler={}, sequencer={}, inefficiency={}, logout={})",
                 cameraController != null, mouseCameraCoupler != null, actionSequencer != null,
                 inefficiencyInjector != null, logoutHandler != null);
+        log.info("  StatusSystem: registered (xpTracker={}, publisher={}, commands={})",
+                xpTracker != null, statusPublisher != null, commandProcessor != null);
     }
     
     /**
@@ -392,6 +435,19 @@ public class RocinantePlugin extends Plugin
         // Stop task execution first
         taskExecutor.stop();
         
+        // === Stop Status & Communication Components ===
+        statusPublisher.stop();
+        commandProcessor.stop();
+        xpTracker.endSession();
+        
+        // Unregister status components
+        eventBus.unregister(commandProcessor);
+        eventBus.unregister(statusPublisher);
+        eventBus.unregister(xpTracker);
+        
+        // Clean up status file
+        statusPublisher.deleteStatusFile();
+        
         // Save player profile before shutdown
         try {
             playerProfile.saveProfile();
@@ -457,6 +513,10 @@ public class RocinantePlugin extends Plugin
     public void startAutomation()
     {
         log.info("Starting automation...");
+        
+        // Start XP tracking session
+        xpTracker.startSession();
+        
         taskExecutor.start();
     }
 
@@ -468,6 +528,9 @@ public class RocinantePlugin extends Plugin
     {
         log.info("Stopping automation...");
         taskExecutor.stop();
+        
+        // End XP tracking session (preserves data)
+        xpTracker.endSession();
     }
 
     /**
