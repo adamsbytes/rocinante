@@ -27,6 +27,7 @@ import java.awt.Point;
 import java.awt.Rectangle;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -679,17 +680,10 @@ public class WalkToTask extends AbstractTask {
         int distance = playerPos.distanceTo(destination);
         log.debug("Distance to destination: {} tiles", distance);
 
-        // Choose pathfinding strategy based on distance
-        Randomization rand = ctx.getRandomization();
-        if (distance > WEBWALKER_DISTANCE_THRESHOLD) {
-            // Use WebWalker for long distances
-            calculateWebPath(playerPos, rand);
-        } else {
-            // Use direct PathFinder for short distances
-            calculateDirectPath(playerPos, rand);
-        }
+        // Try pathfinding strategies in order (no recursion!)
+        boolean pathFound = tryFindPath(ctx, playerPos, distance);
 
-        if (currentPath.isEmpty() && (unifiedPath == null || unifiedPath.isEmpty())) {
+        if (!pathFound) {
             repathAttempts++;
             if (repathAttempts >= MAX_REPATH_ATTEMPTS) {
                 fail("Could not find path to destination after " + repathAttempts + " attempts");
@@ -703,40 +697,256 @@ public class WalkToTask extends AbstractTask {
         phase = WalkPhase.WALKING;
     }
 
-    private void calculateWebPath(WorldPoint playerPos, Randomization rand) {
-        // Use unified pathfinding (supports multi-plane navigation)
-        unifiedPath = webWalker.findUnifiedPath(playerPos, destination);
+    /**
+     * Try pathfinding using comprehensive navigation analysis.
+     * 
+     * <p>Handles all scenarios including:
+     * <ul>
+     *   <li>Direct A* for short distances</li>
+     *   <li>Graph navigation for long distances</li>
+     *   <li>First-mile gaps (player far from graph)</li>
+     *   <li>Last-mile gaps (destination far from graph)</li>
+     *   <li>Complete isolation with appropriate failure</li>
+     * </ul>
+     * 
+     * @param ctx the task context
+     * @param playerPos current player position
+     * @param distance distance to destination
+     * @return true if any navigation strategy is viable
+     */
+    private boolean tryFindPath(TaskContext ctx, WorldPoint playerPos, int distance) {
+        Randomization rand = ctx.getRandomization();
         
-        if (unifiedPath != null && !unifiedPath.isEmpty()) {
-            log.debug("Unified path found: {} edges, {} ticks, plane-change: {}, shortcuts: {}",
-                    unifiedPath.size(), unifiedPath.getTotalCostTicks(),
-                    unifiedPath.requiresPlaneChange(), unifiedPath.requiresShortcuts());
-            currentEdgeIndex = 0;
+        // Strategy 1: Direct A* pathfinding (works within loaded scene)
+        // This is fastest and works for short distances or when already near destination
+        if (distance <= WEBWALKER_DISTANCE_THRESHOLD) {
+            currentPath = pathFinder.findPath(playerPos, destination);
+            if (!currentPath.isEmpty()) {
+                log.debug("Direct A*: found path with {} tiles", currentPath.size());
+                pathIndex = 0;
+                if (rand.chance(PATH_DEVIATION_CHANCE) && currentPath.size() > 3) {
+                    applyPathDeviation(rand);
+                }
+                return true;
+            }
+            log.debug("Direct A*: failed - may need graph navigation");
+        }
+        
+        // Strategy 2: Comprehensive navigation analysis
+        NavigationResult navResult = webWalker.findBestEffortPath(playerPos, destination);
+        lastNavigationResult = navResult; // Store for debugging/status
+        
+        switch (navResult.getStatus()) {
+            case FULL_PATH_AVAILABLE:
+                return setupGraphPath(navResult, playerPos, rand);
+                
+            case FIRST_MILE_MANUAL:
+                log.debug("First-mile gap: {} tiles to nearest node", navResult.getFirstMileDistance());
+                return setupFirstMileNavigation(navResult, playerPos, rand);
+                
+            case LAST_MILE_MANUAL:
+                log.debug("Last-mile gap: {} tiles from last node to destination", navResult.getLastMileDistance());
+                return setupGraphPath(navResult, playerPos, rand);
+                
+            case BOTH_ENDS_MANUAL:
+                log.debug("Both ends manual: first={} tiles, last={} tiles", 
+                        navResult.getFirstMileDistance(), navResult.getLastMileDistance());
+                return setupFirstMileNavigation(navResult, playerPos, rand);
+                
+            case NO_PATH_BETWEEN_NODES:
+                log.warn("No path between nodes - may need unlock or teleport: {}", 
+                        navResult.getFailureReason());
+                // Fall through to simple walk
+                break;
+                
+            case PLAYER_ISOLATED:
+                log.warn("Player isolated from navigation graph: {}", navResult.getFailureReason());
+                if (navResult.hasSuggestion(NavigationResult.Suggestion.WALK_TO_NEAREST_NODE)) {
+                    return setupWalkToNearestNode(navResult, playerPos);
+                }
+                // Suggest teleport in failure message
+                break;
+                
+            case DESTINATION_ISOLATED:
+                log.warn("Destination isolated from navigation graph: {}", navResult.getFailureReason());
+                // Still try to get as close as possible
+                if (navResult.hasGraphPath()) {
+                    return setupGraphPath(navResult, playerPos, rand);
+                }
+                break;
+                
+            case COMPLETELY_ISOLATED:
+                log.error("Complete navigation isolation: {}", navResult.getFailureReason());
+                // Last resort: simple walk if close enough
+                if (distance <= 100) {
+                    break; // Fall through to simple walk
+                }
+                fail("Navigation impossible: " + navResult.getFailureReason() + 
+                     ". Suggestions: " + navResult.getSuggestions());
+                return false;
+                
+            case SYSTEM_NOT_AVAILABLE:
+                log.error("Navigation system not available");
+                // Fall through to simple walk
+                break;
+        }
+        
+        // Strategy 3: Simple walk toward destination (last resort)
+        currentPath = calculateSimpleWalkToward(playerPos, distance);
+        if (!currentPath.isEmpty()) {
+            log.debug("Simple walk: {} tiles toward destination", currentPath.size());
+            pathIndex = 0;
+            return true;
+        }
+        
+        log.warn("All pathfinding strategies failed for {} -> {}", playerPos, destination);
+        return false;
+    }
+    
+    /**
+     * Set up navigation using the graph path from analysis.
+     */
+    private boolean setupGraphPath(NavigationResult navResult, WorldPoint playerPos, Randomization rand) {
+        unifiedPath = navResult.getGraphPath();
+        if (unifiedPath == null || unifiedPath.isEmpty()) {
+            return false;
+        }
+        
+        log.debug("Graph path: {} edges, ~{} ticks", unifiedPath.size(), navResult.getEstimatedGraphTicks());
+        currentEdgeIndex = 0;
+        
+        // Get local path to first edge
+        NavigationEdge firstEdge = unifiedPath.getEdge(0);
+        if (firstEdge != null && firstEdge.getFromLocation() != null) {
+            currentPath = pathFinder.findPath(playerPos, firstEdge.getFromLocation());
+            pathIndex = 0;
             
-            // Calculate local path to first edge's start location
-            NavigationEdge firstEdge = unifiedPath.getEdge(0);
-            if (firstEdge != null && firstEdge.getFromLocation() != null) {
-                currentPath = pathFinder.findPath(playerPos, firstEdge.getFromLocation());
+            if (currentPath.isEmpty()) {
+                // Can't reach first edge - try simple walk
+                currentPath = calculateSimpleWalkToward(playerPos, 
+                        playerPos.distanceTo(firstEdge.getFromLocation()));
                 pathIndex = 0;
             }
-        } else {
-            log.debug("Unified pathfinding failed, trying direct pathfinding");
-            calculateDirectPath(playerPos, rand);
         }
+        
+        return true;
     }
-
-    private void calculateDirectPath(WorldPoint playerPos, Randomization rand) {
-        currentPath = pathFinder.findPath(playerPos, destination);
-
+    
+    /**
+     * Set up first-mile navigation (walk to nearest node, then use graph).
+     */
+    private boolean setupFirstMileNavigation(NavigationResult navResult, WorldPoint playerPos, Randomization rand) {
+        WebNode nearestNode = navResult.getNearestNodeToPlayer();
+        if (nearestNode == null) {
+            return false;
+        }
+        
+        // First, walk to the nearest node
+        WorldPoint nodePos = nearestNode.getWorldPoint();
+        currentPath = pathFinder.findPath(playerPos, nodePos);
+        
+        if (currentPath.isEmpty()) {
+            // A* can't find path - use simple walk toward the node
+            currentPath = calculateSimpleWalkToward(playerPos, navResult.getFirstMileDistance());
+        }
+        
         if (!currentPath.isEmpty()) {
-            log.debug("PathFinder found path with {} tiles", currentPath.size());
+            log.debug("First-mile: walking {} tiles to node '{}'", 
+                    currentPath.size(), nearestNode.getId());
             pathIndex = 0;
-
-            // Apply humanized deviation
-            if (rand.chance(PATH_DEVIATION_CHANCE) && currentPath.size() > 3) {
-                applyPathDeviation(rand);
+            
+            // Store the graph path for after we reach the first node
+            unifiedPath = navResult.getGraphPath();
+            currentEdgeIndex = 0;
+            
+            return true;
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Set up walk to the nearest navigation node (for isolated player).
+     */
+    private boolean setupWalkToNearestNode(NavigationResult navResult, WorldPoint playerPos) {
+        WebNode nearestNode = navResult.getNearestNodeToPlayer();
+        if (nearestNode == null) {
+            return false;
+        }
+        
+        WorldPoint nodePos = nearestNode.getWorldPoint();
+        int distance = playerPos.distanceTo(nodePos);
+        
+        currentPath = calculateSimpleWalkToward(playerPos, distance);
+        if (!currentPath.isEmpty()) {
+            log.debug("Walking {} tiles toward nearest node '{}'", distance, nearestNode.getId());
+            pathIndex = 0;
+            
+            // After reaching the node, we'll recalculate with the graph
+            unifiedPath = navResult.getGraphPath();
+            currentEdgeIndex = 0;
+            
+            return true;
+        }
+        
+        return false;
+    }
+    
+    /** Last navigation result for debugging/status */
+    private NavigationResult lastNavigationResult;
+    
+    /**
+     * Simple fallback: create waypoints walking toward destination.
+     * Used when both A* and WebWalker fail (e.g., no graph data for area).
+     * 
+     * @param playerPos current position
+     * @param totalDistance distance to destination
+     * @return list of waypoints toward destination
+     */
+    private List<WorldPoint> calculateSimpleWalkToward(WorldPoint playerPos, int totalDistance) {
+        if (totalDistance < 1) {
+            return Collections.emptyList();
+        }
+        
+        List<WorldPoint> path = new ArrayList<>();
+        path.add(playerPos);
+        
+        // Calculate direction
+        int dx = destination.getX() - playerPos.getX();
+        int dy = destination.getY() - playerPos.getY();
+        double dist = Math.sqrt(dx * dx + dy * dy);
+        
+        // Normalize direction
+        double dirX = dx / dist;
+        double dirY = dy / dist;
+        
+        // Create waypoints every 10-15 tiles toward destination
+        int stepSize = 12;
+        int steps = Math.min(3, (int) Math.ceil(dist / stepSize)); // Max 3 waypoints at a time
+        
+        for (int i = 1; i <= steps; i++) {
+            int stepDist = Math.min(i * stepSize, (int) dist);
+            WorldPoint waypoint = new WorldPoint(
+                    playerPos.getX() + (int) Math.round(dirX * stepDist),
+                    playerPos.getY() + (int) Math.round(dirY * stepDist),
+                    playerPos.getPlane()
+            );
+            path.add(waypoint);
+            
+            // If this waypoint is at or past destination, we're done
+            if (stepDist >= dist) {
+                break;
             }
         }
+        
+        // Always add destination as final waypoint if not already there
+        WorldPoint lastWaypoint = path.get(path.size() - 1);
+        if (!lastWaypoint.equals(destination)) {
+            path.add(destination);
+        }
+        
+        log.debug("Simple path: {} waypoints from {} toward {}", path.size(), playerPos, destination);
+        return path;
     }
 
     /**

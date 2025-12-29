@@ -1,0 +1,43 @@
+---
+alwaysApply: true
+---
+
+# RuneLite Plugin Development Rules
+
+## Event Subscriptions
+
+`@Subscribe` methods **MUST** be named `on<EventName>` exactly. RuneLite's EventBus enforces this at runtime.
+
+```java
+// CORRECT
+@Subscribe
+public void onGameTick(GameTick event) { }
+
+// WRONG - will throw IllegalArgumentException at startup
+@Subscribe
+public void onGameTickCustomName(GameTick event) { }
+```
+
+## ID Constants
+
+**ALWAYS** use `net.runelite.api` constants instead of hardcoded IDs:
+
+- `ItemID.BRONZE_AXE` not `1351`
+- `ObjectID.BANK_BOOTH_10355` not `10355`  
+- `NpcID.MAN` not `1`
+
+If no constant exists (rare), document the ID source in a comment.
+
+## External Plugins
+
+External plugins (from Plugin Hub) load **asynchronously after** built-in plugins. You cannot access them in `startUp()` - use `ExternalPluginsChanged` event or delayed initialization.
+
+## Widget/Inventory Interactions
+
+Never call widget methods from non-client threads. Use `clientThread.invokeLater()` for thread-safe widget access.
+
+## Quest Helper
+
+Quest Helper is an external plugin. Its classes are accessed via reflection since they're not compile-time dependencies:
+- Class: `com.questhelper.QuestHelperPlugin`
+- Access quest data through reflection on `getQuestManager()` etc.

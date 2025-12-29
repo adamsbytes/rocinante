@@ -128,10 +128,12 @@ public class WebWalker {
 
     /**
      * Load the navigation web from resources.
+     * Uses NavigationWebLoader to merge base web.json with all region and transport files.
      */
     private void loadNavigationWeb() {
         try {
-            navigationWeb = NavigationWeb.loadFromResources();
+            // Use NavigationWebLoader.loadComplete() to get all regions including Tutorial Island
+            navigationWeb = NavigationWebLoader.loadComplete();
             
             int nodeCount = navigationWeb.getNodes().size();
             int edgeCount = navigationWeb.getEdges().size();
@@ -553,6 +555,180 @@ public class WebWalker {
      */
     public NavigationPath findUnifiedPathToNearestBank(WorldPoint start) {
         return findUnifiedPathToNearestType(start, WebNodeType.BANK);
+    }
+
+    // ========================================================================
+    // Navigation Analysis (Best-Effort Pathfinding)
+    // ========================================================================
+    
+    /** Distance threshold for "near a node" (tiles) */
+    private static final int NEAR_NODE_THRESHOLD = 15;
+    
+    /** Distance threshold for "isolated" - too far to reasonably walk (tiles) */
+    private static final int ISOLATED_THRESHOLD = 100;
+    
+    /**
+     * Analyze navigation possibilities between two points.
+     * 
+     * <p>This provides comprehensive information about:
+     * <ul>
+     *   <li>Whether full graph navigation is possible</li>
+     *   <li>First-mile gaps (player far from any node)</li>
+     *   <li>Last-mile gaps (destination far from any node)</li>
+     *   <li>Suggested recovery actions</li>
+     * </ul>
+     * 
+     * <p>Use this when you need to understand WHY navigation might fail
+     * and what alternatives exist.
+     *
+     * @param playerPos   current player position
+     * @param destination intended destination
+     * @return comprehensive navigation analysis
+     */
+    public NavigationResult analyzeNavigation(WorldPoint playerPos, WorldPoint destination) {
+        if (unifiedGraph == null || navigationWeb == null) {
+            return NavigationResult.systemUnavailable();
+        }
+        
+        // Find nearest nodes to both endpoints
+        WebNode nearestToPlayer = unifiedGraph.findNearestNodeSamePlane(playerPos);
+        WebNode nearestToDestination = unifiedGraph.findNearestNodeAnyPlane(destination);
+        
+        // Calculate distances
+        int firstMileDistance = nearestToPlayer != null 
+                ? nearestToPlayer.distanceTo(playerPos) : Integer.MAX_VALUE;
+        int lastMileDistance = nearestToDestination != null 
+                ? nearestToDestination.distanceTo(destination) : Integer.MAX_VALUE;
+        
+        // Check for isolation
+        boolean playerIsolated = nearestToPlayer == null || firstMileDistance > ISOLATED_THRESHOLD;
+        boolean destinationIsolated = nearestToDestination == null || lastMileDistance > ISOLATED_THRESHOLD;
+        
+        // Complete isolation - both ends far from any node
+        if (playerIsolated && destinationIsolated) {
+            return NavigationResult.builder()
+                    .status(NavigationResult.Status.COMPLETELY_ISOLATED)
+                    .playerPosition(playerPos)
+                    .destination(destination)
+                    .nearestNodeToPlayer(nearestToPlayer)
+                    .nearestNodeToDestination(nearestToDestination)
+                    .firstMileDistance(firstMileDistance)
+                    .lastMileDistance(lastMileDistance)
+                    .estimatedGraphTicks(-1)
+                    .failureReason("Both player and destination are far from any navigation nodes")
+                    .suggestions(List.of(
+                            NavigationResult.Suggestion.USE_HOME_TELEPORT,
+                            NavigationResult.Suggestion.AREA_NOT_SUPPORTED))
+                    .build();
+        }
+        
+        // Player isolated
+        if (playerIsolated) {
+            return NavigationResult.playerIsolated(playerPos, destination, 
+                    nearestToPlayer, firstMileDistance);
+        }
+        
+        // Destination isolated
+        if (destinationIsolated) {
+            return NavigationResult.destinationIsolated(playerPos, destination,
+                    nearestToDestination, lastMileDistance);
+        }
+        
+        // Both near nodes - try to find graph path
+        NavigationPath graphPath = findUnifiedPath(
+                nearestToPlayer.getId(), 
+                nearestToDestination.getId(),
+                playerPos,
+                destination);
+        
+        // No path between nodes
+        if (graphPath == null || graphPath.isEmpty()) {
+            return NavigationResult.builder()
+                    .status(NavigationResult.Status.NO_PATH_BETWEEN_NODES)
+                    .playerPosition(playerPos)
+                    .destination(destination)
+                    .nearestNodeToPlayer(nearestToPlayer)
+                    .nearestNodeToDestination(nearestToDestination)
+                    .firstMileDistance(firstMileDistance)
+                    .lastMileDistance(lastMileDistance)
+                    .estimatedGraphTicks(-1)
+                    .failureReason("No path connects the nearest nodes - may require unlock or teleport")
+                    .suggestions(List.of(
+                            NavigationResult.Suggestion.UNLOCK_REQUIRED,
+                            NavigationResult.Suggestion.USE_TELEPORT))
+                    .build();
+        }
+        
+        // Determine status based on first/last mile distances
+        NavigationResult.Status status;
+        List<NavigationResult.Suggestion> suggestions = new ArrayList<>();
+        
+        boolean needsFirstMile = firstMileDistance > NEAR_NODE_THRESHOLD;
+        boolean needsLastMile = lastMileDistance > NEAR_NODE_THRESHOLD;
+        
+        if (needsFirstMile && needsLastMile) {
+            status = NavigationResult.Status.BOTH_ENDS_MANUAL;
+            suggestions.add(NavigationResult.Suggestion.WALK_TO_NEAREST_NODE);
+            suggestions.add(NavigationResult.Suggestion.WALK_FROM_LAST_NODE);
+        } else if (needsFirstMile) {
+            status = NavigationResult.Status.FIRST_MILE_MANUAL;
+            suggestions.add(NavigationResult.Suggestion.WALK_TO_NEAREST_NODE);
+        } else if (needsLastMile) {
+            status = NavigationResult.Status.LAST_MILE_MANUAL;
+            suggestions.add(NavigationResult.Suggestion.WALK_FROM_LAST_NODE);
+        } else {
+            status = NavigationResult.Status.FULL_PATH_AVAILABLE;
+        }
+        
+        return NavigationResult.builder()
+                .status(status)
+                .graphPath(graphPath)
+                .playerPosition(playerPos)
+                .destination(destination)
+                .nearestNodeToPlayer(nearestToPlayer)
+                .nearestNodeToDestination(nearestToDestination)
+                .firstMileDistance(needsFirstMile ? firstMileDistance : -1)
+                .lastMileDistance(needsLastMile ? lastMileDistance : -1)
+                .estimatedGraphTicks(graphPath.getTotalCostTicks())
+                .suggestions(suggestions)
+                .build();
+    }
+    
+    /**
+     * Find the best-effort path to a destination.
+     * 
+     * <p>This always returns a path if at all possible, even if it requires
+     * first-mile or last-mile manual walking. Use this when you want to
+     * "get as close as possible" rather than fail on partial coverage.
+     *
+     * @param playerPos   current player position
+     * @param destination intended destination
+     * @return navigation result with best available path
+     */
+    public NavigationResult findBestEffortPath(WorldPoint playerPos, WorldPoint destination) {
+        NavigationResult analysis = analyzeNavigation(playerPos, destination);
+        
+        // If we have any graph path, it's best effort
+        if (analysis.hasGraphPath()) {
+            return analysis;
+        }
+        
+        // If completely isolated, check if simple walk is viable
+        int directDistance = playerPos.distanceTo(destination);
+        if (directDistance <= ISOLATED_THRESHOLD) {
+            // Close enough for simple walk
+            return NavigationResult.builder()
+                    .status(NavigationResult.Status.BOTH_ENDS_MANUAL)
+                    .playerPosition(playerPos)
+                    .destination(destination)
+                    .firstMileDistance(directDistance)
+                    .lastMileDistance(-1)
+                    .estimatedGraphTicks(-1)
+                    .suggestions(List.of(NavigationResult.Suggestion.SIMPLE_WALK_TO_DESTINATION))
+                    .build();
+        }
+        
+        return analysis;
     }
 
     // ========================================================================

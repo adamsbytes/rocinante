@@ -81,12 +81,21 @@ fi
 echo "VNC server started - connect to port 5900"
 
 # Ensure Quest Helper is configured for Plugin Hub install
+# Write to BOTH settings locations (HOME and BOLT) to cover all launch modes
 SETTINGS_FILE="$HOME/.runelite/settings.properties"
-if [ ! -f "$SETTINGS_FILE" ] || ! grep -q "quest-helper" "$SETTINGS_FILE" 2>/dev/null; then
-    echo "Configuring Quest Helper in Plugin Hub settings..."
-    mkdir -p "$HOME/.runelite"
-    echo "runelite.externalPlugins=quest-helper" >> "$SETTINGS_FILE"
-fi
+BOLT_SETTINGS="$HOME/.local/share/bolt-launcher/.runelite/settings.properties"
+
+for settings in "$SETTINGS_FILE" "$BOLT_SETTINGS"; do
+    mkdir -p "$(dirname "$settings")"
+    if [ ! -f "$settings" ] || ! grep -q "runelite.externalPlugins=.*quest-helper" "$settings" 2>/dev/null; then
+        echo "Configuring Quest Helper in: $settings"
+        # Remove any existing externalPlugins line and add quest-helper
+        if [ -f "$settings" ]; then
+            sed -i '/^runelite\.externalPlugins=/d' "$settings" 2>/dev/null || true
+        fi
+        echo "runelite.externalPlugins=quest-helper" >> "$settings"
+    fi
+done
 
 # Build JVM arguments for RuneLite (passed via environment)
 export RUNELITE_JVM_ARGS="-Djava.awt.headless=false"
@@ -203,7 +212,7 @@ configure_runelite_settings() {
     DEFAULT_WORLD="${PREFERRED_WORLD:-301}"
     echo "Configuring default world: $DEFAULT_WORLD"
     
-    # Update global settings.properties
+    # Update global settings.properties (preserve externalPlugins)
     sed -i '/^runelite\.gameSize=/d' "$RUNELITE_SETTINGS" 2>/dev/null || true
     sed -i '/^runelite\.clientSize=/d' "$RUNELITE_SETTINGS" 2>/dev/null || true
     sed -i '/^defaultworld\./d' "$RUNELITE_SETTINGS" 2>/dev/null || true
@@ -213,6 +222,13 @@ runelite.gameSize=$GAME_SIZE
 defaultworld.defaultWorld=$DEFAULT_WORLD
 defaultworld.useLastWorld=false
 EOF
+    
+    # Ensure Quest Helper is in externalPlugins
+    if ! grep -q "runelite.externalPlugins=.*quest-helper" "$RUNELITE_SETTINGS" 2>/dev/null; then
+        sed -i '/^runelite\.externalPlugins=/d' "$RUNELITE_SETTINGS" 2>/dev/null || true
+        echo "runelite.externalPlugins=quest-helper" >> "$RUNELITE_SETTINGS"
+        echo "Added Quest Helper to externalPlugins"
+    fi
     
     # IMPORTANT: RuneLite uses profile-specific config files that override settings.properties
     # Update ALL existing profile files to ensure the default world setting takes effect

@@ -3,6 +3,7 @@ package com.rocinante.tasks.impl;
 import com.rocinante.input.SafeClickExecutor;
 import com.rocinante.state.PlayerState;
 import com.rocinante.tasks.AbstractTask;
+import com.rocinante.tasks.InteractionHelper;
 import com.rocinante.tasks.TaskContext;
 import com.rocinante.timing.DelayProfile;
 import com.rocinante.util.Randomization;
@@ -86,10 +87,6 @@ public class InteractObjectTask extends AbstractTask {
      */
     private static final int INTERACTION_TIMEOUT_TICKS = 10;
     
-    /**
-     * Maximum camera rotation retries to get object in viewport.
-     */
-    private static final int MAX_CAMERA_RETRIES = 3;
     
     /**
      * Maximum re-search attempts when object despawns during interaction.
@@ -173,15 +170,16 @@ public class InteractObjectTask extends AbstractTask {
     protected InteractionPhase phase = InteractionPhase.FIND_OBJECT;
     
     /**
-     * Camera rotation retry count for viewport issues.
-     */
-    protected int cameraRetryCount = 0;
-    
-    /**
      * Object despawn/re-search retry count.
      * Tracks how many times we've had to re-find the object due to despawn.
      */
     protected int despawnRetryCount = 0;
+    
+    /**
+     * Interaction helper for camera rotation and clickbox handling.
+     * Provides centralized, human-like interaction behavior.
+     */
+    protected InteractionHelper interactionHelper;
 
     /**
      * The object we found and are interacting with.
@@ -435,23 +433,16 @@ public class InteractObjectTask extends AbstractTask {
             return;
         }
         
-        // Use MouseCameraCoupler to ensure target is visible
-        var coupler = ctx.getMouseCameraCoupler();
-        if (coupler != null) {
-            CompletableFuture<Void> rotateFuture = coupler.ensureTargetVisible(targetPosition);
-            rotateFuture.whenComplete((v, ex) -> {
-                if (ex != null) {
-                    log.trace("Camera rotation failed: {}", ex.getMessage());
-                }
-                phase = InteractionPhase.MOVE_MOUSE;
-            });
-            
-            // Don't block - camera rotation happens async while we continue
-            log.debug("Rotating camera toward object at {}", targetPosition);
-        } else {
-            log.debug("No camera coupler available, skipping rotation");
-            phase = InteractionPhase.MOVE_MOUSE;
+        // Initialize interaction helper if needed
+        if (interactionHelper == null) {
+            interactionHelper = new InteractionHelper(ctx);
         }
+        
+        // Fire-and-forget camera rotation - like a human holding an arrow key
+        interactionHelper.startCameraRotation(targetPosition);
+        
+        // Immediately proceed to mouse movement - don't wait for camera
+        phase = InteractionPhase.MOVE_MOUSE;
     }
 
     // ========================================================================
@@ -468,44 +459,28 @@ public class InteractObjectTask extends AbstractTask {
             return;
         }
 
-        // Calculate click point on object
-        Point clickPoint = calculateClickPoint(ctx, targetObject);
-        if (clickPoint == null) {
-            log.warn("Could not calculate click point for object {}", objectId);
-            fail("Cannot determine click point");
-            return;
+        // Initialize interaction helper if needed
+        if (interactionHelper == null) {
+            interactionHelper = new InteractionHelper(ctx);
         }
+
+        // Use centralized click point resolution with smart waiting
+        InteractionHelper.ClickPointResult result = interactionHelper.getClickPointForObject(
+                targetObject, targetPosition);
         
-        // Check viewport visibility
-        if (ctx.getGameStateService() != null) {
-            boolean isVisible = ctx.getGameStateService().isPointVisibleInViewport(clickPoint.x, clickPoint.y);
-            
-            if (!isVisible) {
-                // Not visible at all - need to rotate camera
-                // After rotation, we want it in the center 2/3 (safe zone)
-                log.debug("Click point ({}, {}) not visible, rotating camera to center target", clickPoint.x, clickPoint.y);
-                cameraRetryCount++;
-                if (cameraRetryCount > MAX_CAMERA_RETRIES) {
-                    fail("Cannot get object into viewport after " + MAX_CAMERA_RETRIES + " camera rotations");
-                    return;
-                }
-                phase = InteractionPhase.ROTATE_CAMERA;
-                return;
-            }
-            
-            // If we already rotated camera this interaction, verify target ended up in safe zone
-            // This ensures camera rotation actually centered the target
-            if (cameraRetryCount > 0 && !ctx.getGameStateService().isPointInViewport(clickPoint.x, clickPoint.y)) {
-                log.debug("Camera rotated but target still at edge, rotating more");
-                cameraRetryCount++;
-                if (cameraRetryCount > MAX_CAMERA_RETRIES) {
-                    // Target visible but at edge after max retries - proceed anyway
-                    log.debug("Target at edge after max retries, proceeding with click");
-                } else {
-                    phase = InteractionPhase.ROTATE_CAMERA;
-                    return;
-                }
-            }
+        Point clickPoint;
+        if (result.hasPoint()) {
+            clickPoint = result.point;
+            log.debug("Got click point for object {} at ({}, {})", objectId, clickPoint.x, clickPoint.y);
+        } else if (result.shouldRotateCamera) {
+            interactionHelper.startCameraRotation(targetPosition);
+            return;
+        } else if (result.shouldWait) {
+            return;
+        } else {
+            log.warn("Could not get click point for object {}: {}", objectId, result.reason);
+            fail("Cannot determine click point: " + result.reason);
+            return;
         }
 
         log.debug("Moving mouse to object at canvas point ({}, {})", clickPoint.x, clickPoint.y);
@@ -590,7 +565,7 @@ public class InteractObjectTask extends AbstractTask {
         }
 
         // Re-validate object still exists
-        if (targetObject == null || targetObject.getClickbox() == null) {
+        if (targetObject == null) {
             despawnRetryCount++;
             if (despawnRetryCount > MAX_DESPAWN_RETRIES) {
                 log.error("Object {} despawned {} times - giving up", objectId, despawnRetryCount);
@@ -599,7 +574,6 @@ public class InteractObjectTask extends AbstractTask {
             }
             log.warn("Target object despawned before click (attempt {}/{}), re-searching",
                     despawnRetryCount, MAX_DESPAWN_RETRIES);
-            targetObject = null;
             targetPosition = null;
             cachedClickbox = null;
             phase = InteractionPhase.FIND_OBJECT;
@@ -931,32 +905,6 @@ public class InteractObjectTask extends AbstractTask {
         }
         // Fallback - shouldn't happen but just in case
         return null;
-    }
-
-    // ========================================================================
-    // Click Point Calculation
-    // ========================================================================
-
-    /**
-     * Calculate the screen point to click on the object.
-     */
-    protected Point calculateClickPoint(TaskContext ctx, TileObject obj) {
-        // Get object convex hull or bounding box
-        Shape clickableArea = obj.getClickbox();
-
-        if (clickableArea == null) {
-            log.warn("Object has no clickable area");
-            return null;
-        }
-
-        Rectangle bounds = clickableArea.getBounds();
-        if (bounds == null || bounds.width == 0 || bounds.height == 0) {
-            log.warn("Object has invalid bounds");
-            return null;
-        }
-
-        // Use centralized ClickPointCalculator for humanized positioning
-        return com.rocinante.input.ClickPointCalculator.getGaussianClickPoint(bounds);
     }
 
     // ========================================================================

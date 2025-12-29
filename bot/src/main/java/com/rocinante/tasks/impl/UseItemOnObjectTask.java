@@ -5,6 +5,7 @@ import com.rocinante.input.SafeClickExecutor;
 import com.rocinante.state.InventoryState;
 import com.rocinante.state.PlayerState;
 import com.rocinante.tasks.AbstractTask;
+import com.rocinante.tasks.InteractionHelper;
 import com.rocinante.tasks.TaskContext;
 import com.rocinante.util.Randomization;
 import lombok.Getter;
@@ -23,8 +24,6 @@ import net.runelite.api.WallObject;
 import net.runelite.api.coords.WorldPoint;
 
 import java.awt.Point;
-import java.awt.Rectangle;
-import java.awt.Shape;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -117,11 +116,21 @@ public class UseItemOnObjectTask extends AbstractTask {
      * Current execution phase.
      */
     private UseItemPhase phase = UseItemPhase.CLICK_ITEM;
+    
+    /**
+     * Interaction helper for camera rotation and clickbox handling.
+     */
+    private InteractionHelper interactionHelper;
 
     /**
      * The object we found and are interacting with.
      */
     private TileObject targetObject;
+    
+    /**
+     * Target object world position (cached for camera rotation).
+     */
+    private WorldPoint targetPosition;
 
     /**
      * Player position when interaction started.
@@ -272,6 +281,9 @@ public class UseItemOnObjectTask extends AbstractTask {
             case FIND_OBJECT:
                 executeFindObject(ctx);
                 break;
+            case WAIT_FOR_CLICKBOX:
+                executeWaitForClickbox(ctx);
+                break;
             case CLICK_OBJECT:
                 executeClickObject(ctx);
                 break;
@@ -344,9 +356,42 @@ public class UseItemOnObjectTask extends AbstractTask {
         // Store starting state for success detection
         startPosition = playerPos;
         startAnimation = player.getAnimationId();
+        targetPosition = getObjectWorldPoint(targetObject);
+        
+        // Initialize interaction helper
+        interactionHelper = new InteractionHelper(ctx);
+        // Start camera rotation immediately (fire-and-forget)
+        interactionHelper.startCameraRotation(targetPosition);
 
-        log.debug("Found object {} at {}", resolvedObjectId, getObjectWorldPoint(targetObject));
-        phase = UseItemPhase.CLICK_OBJECT;
+        log.debug("Found object {} at {}", resolvedObjectId, targetPosition);
+        phase = UseItemPhase.WAIT_FOR_CLICKBOX;
+    }
+    
+    // ========================================================================
+    // Phase: Wait for Clickbox
+    // ========================================================================
+    
+    private void executeWaitForClickbox(TaskContext ctx) {
+        if (targetObject == null) {
+            fail("Target object lost");
+            return;
+        }
+        
+        InteractionHelper.ClickPointResult result = interactionHelper.getClickPointForObject(
+                targetObject, targetPosition);
+        
+        if (result.hasPoint()) {
+            log.debug("Clickbox ready for object {} ({})", resolvedObjectId, result.reason);
+            phase = UseItemPhase.CLICK_OBJECT;
+        } else if (result.shouldRotateCamera) {
+            interactionHelper.startCameraRotation(targetPosition);
+        } else if (result.shouldWait) {
+            // Keep waiting
+            return;
+        } else {
+            log.warn("Could not get clickbox for object {}: {}", resolvedObjectId, result.reason);
+            fail("Cannot interact with object: " + result.reason);
+        }
     }
 
     // ========================================================================
@@ -566,38 +611,6 @@ public class UseItemOnObjectTask extends AbstractTask {
         return null;
     }
 
-    /**
-     * Calculate the screen point to click on the object.
-     */
-    private Point calculateClickPoint(TileObject obj) {
-        Shape clickableArea = obj.getClickbox();
-
-        if (clickableArea == null) {
-            log.warn("Object has no clickable area");
-            return null;
-        }
-
-        Rectangle bounds = clickableArea.getBounds();
-        if (bounds == null || bounds.width == 0 || bounds.height == 0) {
-            log.warn("Object has invalid bounds");
-            return null;
-        }
-
-        // Calculate random point within the clickable area using Gaussian distribution
-        int centerX = bounds.x + bounds.width / 2;
-        int centerY = bounds.y + bounds.height / 2;
-
-        double[] offset = Randomization.staticGaussian2D(0, 0, bounds.width / 4.0, bounds.height / 4.0);
-        int clickX = centerX + (int) offset[0];
-        int clickY = centerY + (int) offset[1];
-
-        // Clamp to bounds
-        clickX = Math.max(bounds.x, Math.min(clickX, bounds.x + bounds.width));
-        clickY = Math.max(bounds.y, Math.min(clickY, bounds.y + bounds.height));
-
-        return new Point(clickX, clickY);
-    }
-
     // ========================================================================
     // Description
     // ========================================================================
@@ -693,6 +706,7 @@ public class UseItemOnObjectTask extends AbstractTask {
     private enum UseItemPhase {
         CLICK_ITEM,
         FIND_OBJECT,
+        WAIT_FOR_CLICKBOX,
         CLICK_OBJECT,
         WAIT_RESPONSE
     }

@@ -16,6 +16,7 @@ import com.rocinante.util.ItemCollections;
 import com.rocinante.util.ObjectCollections;
 import net.runelite.api.ItemID;
 import net.runelite.api.ObjectID;
+import net.runelite.api.coords.WorldPoint;
 
 import javax.annotation.Nullable;
 import java.util.HashMap;
@@ -116,38 +117,6 @@ public class TutorialIsland implements Quest {
     public static final int NPC_CHICKEN = 3316;
     public static final int NPC_FISHING_SPOT = 3317;
 
-    // ========================================================================
-    // Constants - Object IDs
-    // ========================================================================
-
-    public static final int OBJECT_TREE = ObjectID.TREE_9730; // Tutorial Island trees
-    public static final int OBJECT_OAK = 37969;
-    public static final int OBJECT_TIN_ROCK = 37945;
-    public static final int OBJECT_COPPER_ROCK = 37944;
-    public static final int OBJECT_FURNACE = 37947;
-    public static final int OBJECT_ANVIL = 2097;
-    public static final int OBJECT_RANGE = 37728;
-    public static final int OBJECT_BANK_BOOTH = 37959;
-    public static final int OBJECT_POLL_BOOTH = 26815;
-    public static final int OBJECT_FIRE = 3769;
-
-    // Doors
-    public static final int OBJECT_GUIDE_DOOR = 9398;
-    public static final int OBJECT_SURVIVAL_GATE = 30165;
-    public static final int OBJECT_CHEF_DOOR_ENTER = 9709;
-    public static final int OBJECT_CHEF_DOOR_EXIT = 9710;
-    public static final int OBJECT_QUEST_DOOR = 30167;
-    public static final int OBJECT_QUEST_LADDER = 37942;
-    public static final int OBJECT_MINING_LADDER = 37943;
-    public static final int OBJECT_MINING_EXIT = 37948;
-    public static final int OBJECT_COMBAT_GATE = 37953;
-    public static final int OBJECT_COMBAT_LADDER = 37955;
-    public static final int OBJECT_RAT_GATE = 9721;
-    public static final int OBJECT_COMBAT_EXIT = 9722;
-    public static final int OBJECT_BANK_LADDER = 37956;
-    public static final int OBJECT_BANK_EXIT = 37961;
-    public static final int OBJECT_PRAYER_DOOR = 37962;
-    public static final int OBJECT_PRAYER_EXIT = 37963;
 
     // ========================================================================
     // Quest Interface
@@ -224,7 +193,7 @@ public class TutorialIsland implements Quest {
                 .withDialogueExpected(true));
 
         // var 10: Exit Gielinor Guide's house
-        steps.put(10, new ObjectQuestStep(OBJECT_GUIDE_DOOR, "Open", "Open the door to exit"));
+        steps.put(10, new ObjectQuestStep(ObjectID.DOOR_9398, "Open", "Open the door to exit"));
 
         // ====================================================================
         // Section 2: Survival Expert (var 20-120)
@@ -261,8 +230,8 @@ public class TutorialIsland implements Quest {
         // Note: Varp gap 90→120 is intentional. Successfully cooking shrimp may
         // advance varp through intermediate values as the game processes the action.
 
-        // var 120: Exit Survival Expert area
-        steps.put(120, new ObjectQuestStep(OBJECT_SURVIVAL_GATE, "Open", "Go through the gate"));
+        // var 120: Exit Survival Expert area (NEWBIEGATECLOSEDL2)
+        steps.put(120, new ObjectQuestStep(ObjectID.GATE_9470, "Open", "Go through the gate"));
 
         // Note: Varp gap 120→130 is intentional. Walking through the gate advances varp.
 
@@ -271,7 +240,7 @@ public class TutorialIsland implements Quest {
         // ====================================================================
 
         // var 130: Enter Chef's house
-        steps.put(130, new ObjectQuestStep(OBJECT_CHEF_DOOR_ENTER, "Open", "Enter the cook's building"));
+        steps.put(130, new ObjectQuestStep(ObjectID.DOOR_9709, "Open", "Enter the cook's building"));
 
         // var 140: Talk to Master Chef
         steps.put(140, new NpcQuestStep(NPC_MASTER_CHEF, "Talk to the Master Chef")
@@ -280,11 +249,11 @@ public class TutorialIsland implements Quest {
         // var 150: Make bread dough
         steps.put(150, createMakeDoughStep());
 
-        // var 160: Cook bread
-        steps.put(160, ItemQuestStep.useOn(ItemID.BREAD_DOUGH, OBJECT_RANGE, "Cook the bread dough"));
+        // var 160: Cook bread (NEWBIERANGE)
+        steps.put(160, ItemQuestStep.useOn(ItemID.BREAD_DOUGH, ObjectID.RANGE_9736, "Cook the bread dough"));
 
         // var 170: Exit Chef's house
-        steps.put(170, new ObjectQuestStep(OBJECT_CHEF_DOOR_EXIT, "Open", "Exit the cook's building"));
+        steps.put(170, new ObjectQuestStep(ObjectID.DOOR_9710, "Open", "Exit the cook's building"));
 
         // Note: Varp gap 170→200 is intentional. Walking between the Chef's house
         // and Quest Guide's house may advance varp through intermediate values.
@@ -293,8 +262,11 @@ public class TutorialIsland implements Quest {
         // Section 4: Quest Guide (var 200-250)
         // ====================================================================
 
-        // var 200: Enter Quest Guide's building
-        steps.put(200, new ObjectQuestStep(OBJECT_QUEST_DOOR, "Open", "Enter the quest guide's building"));
+        // var 200: Enter Quest Guide's building (NEWBIE_DOOR4)
+        // Quest Guide building is north of cook's house - need to walk there first
+        steps.put(200, new ObjectQuestStep(ObjectID.DOOR_9716, "Open", "Enter the quest guide's building")
+                .withWalkTo(new WorldPoint(3086, 3119, 0))
+                .withSearchRadius(20));
 
         // var 220: Talk to Quest Guide
         steps.put(220, new NpcQuestStep(NPC_QUEST_GUIDE, "Talk to the Quest Guide")
@@ -307,8 +279,8 @@ public class TutorialIsland implements Quest {
         steps.put(240, new NpcQuestStep(NPC_QUEST_GUIDE, "Talk to the Quest Guide again")
                 .withDialogueExpected(true));
 
-        // var 250: Go down ladder
-        steps.put(250, new ObjectQuestStep(OBJECT_QUEST_LADDER, "Climb-down", "Climb down the ladder"));
+        // var 250: Go down ladder (NEWBIELADDER1 - actually 9726 in game)
+        steps.put(250, new ObjectQuestStep(ObjectID.LADDER_9726, "Climb-down", "Climb down the ladder"));
 
         // Note: Varp gap 250→260 is intentional. Climbing the ladder advances varp.
 
@@ -343,8 +315,8 @@ public class TutorialIsland implements Quest {
         // var 350: Smith bronze dagger
         steps.put(350, createSmithDaggerStep());
 
-        // var 360: Enter combat area
-        steps.put(360, new ObjectQuestStep(OBJECT_MINING_EXIT, "Open", "Go through the gate"));
+        // var 360: Enter combat area (NEWBIEDOOR5_L)
+        steps.put(360, new ObjectQuestStep(ObjectID.GATE_9719, "Open", "Go through the gate"));
 
         // ====================================================================
         // Section 6: Combat Instructor (var 370-500)
@@ -374,8 +346,8 @@ public class TutorialIsland implements Quest {
         // var 430: Open combat styles tab (Tutorial Island teaches clicking tabs, not hotkeys)
         steps.put(430, WidgetQuestStep.openCombatStylesByClick("Open the combat styles tab"));
 
-        // var 440: Enter rat cage
-        steps.put(440, new ObjectQuestStep(OBJECT_RAT_GATE, "Open", "Enter the rat cage"));
+        // var 440: Enter rat cage (NEWBIE_DOOR6)
+        steps.put(440, new ObjectQuestStep(ObjectID.DOOR_9721, "Open", "Enter the rat cage"));
 
         // var 450: Attack rat (melee)
         steps.put(450, new CombatQuestStep(NPC_GIANT_RAT, "Attack the giant rat")
@@ -395,18 +367,18 @@ public class TutorialIsland implements Quest {
         // var 490: Wait for rat to die - combat initiated by step 480 handles the fight
         steps.put(490, new WaitQuestStep("Waiting for the rat to die"));
 
-        // var 500: Exit combat area
-        steps.put(500, new ObjectQuestStep(OBJECT_COMBAT_LADDER, "Climb-up", "Climb the ladder"));
+        // var 500: Exit combat area (NEWBIELADDERTOP2)
+        steps.put(500, new ObjectQuestStep(ObjectID.LADDER_9728, "Climb-up", "Climb the ladder"));
 
         // ====================================================================
         // Section 7: Account Guide / Bank (var 510-540)
         // ====================================================================
 
-        // var 510: Open bank
-        steps.put(510, new ObjectQuestStep(OBJECT_BANK_BOOTH, "Use", "Use the bank booth"));
+        // var 510: Open bank (NEWBIEBANKBOOTH)
+        steps.put(510, new ObjectQuestStep(ObjectID.BANK_BOOTH_10083, "Use", "Use the bank booth"));
 
         // var 520: Close bank and open poll booth
-        steps.put(520, new ObjectQuestStep(OBJECT_POLL_BOOTH, "Use", "Use the poll booth"));
+        steps.put(520, new ObjectQuestStep(ObjectCollections.POLL_BOOTHS, "Use", "Use the poll booth"));
 
         // var 530: Talk to Account Guide
         steps.put(530, new NpcQuestStep(NPC_ACCOUNT_GUIDE, "Talk to the Account Guide")
@@ -419,8 +391,8 @@ public class TutorialIsland implements Quest {
         steps.put(532, new NpcQuestStep(NPC_ACCOUNT_GUIDE, "Talk to the Account Guide again")
                 .withDialogueExpected(true));
 
-        // var 540: Exit account guide's room
-        steps.put(540, new ObjectQuestStep(OBJECT_BANK_EXIT, "Open", "Exit through the door"));
+        // var 540: Exit account guide's room (NEWBIE_DOOR8)
+        steps.put(540, new ObjectQuestStep(ObjectID.DOOR_9723, "Open", "Exit through the door"));
 
         // ====================================================================
         // Section 8: Brother Brace / Prayer (var 550-610)
@@ -602,7 +574,7 @@ public class TutorialIsland implements Quest {
      * 7. Interface closes and varbit 1777 updates with ironman status
      */
     private QuestStep createExitChapelStep() {
-        QuestStep exitChapel = new ObjectQuestStep(OBJECT_PRAYER_EXIT, "Open", "Exit the chapel");
+        QuestStep exitChapel = new ObjectQuestStep(ObjectID.DOOR_9724, "Open", "Exit the chapel");
         
         if (!shouldSelectIronmanMode()) {
             // Normal account - just exit chapel

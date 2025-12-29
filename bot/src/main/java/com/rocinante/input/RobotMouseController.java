@@ -281,12 +281,26 @@ public class RobotMouseController {
      * 
      * <p>Use this only when you have actual screen coordinates (e.g., from MouseInfo).
      * For game element coordinates, use {@link #moveToCanvas(int, int)}.
+     * 
+     * <p><b>THE HARD GUARD:</b> This is the ONLY place that blocks clicks outside the
+     * game window. All mouse operations flow through here. Planning/visibility checks
+     * belong at higher layers (InteractionHelper) which should handle camera rotation
+     * before reaching this point.
      *
      * @param screenX target X in screen coordinates
      * @param screenY target Y in screen coordinates
      * @return CompletableFuture that completes when movement is done
+     * @throws IllegalArgumentException via failed future if point is outside canvas
      */
     public CompletableFuture<Void> moveToScreen(int screenX, int screenY) {
+        // THE HARD GUARD: Nothing leaves the game window. Period.
+        if (!isPointInViewport(screenX, screenY)) {
+            log.error("HARD GUARD: Screen point ({}, {}) is outside canvas - this should have been caught earlier!", 
+                    screenX, screenY);
+            return CompletableFuture.failedFuture(
+                    new IllegalArgumentException("Screen point (" + screenX + ", " + screenY + ") is outside canvas - planning layer should have rotated camera"));
+        }
+        
         CompletableFuture<Void> future = new CompletableFuture<>();
 
         executor.execute(() -> {
@@ -343,6 +357,10 @@ public class RobotMouseController {
      * This method translates canvas coordinates to screen coordinates before moving.
      * Use this when you have coordinates from game elements (widgets, NPCs, objects)
      * which are always canvas-relative.
+     * 
+     * NO GUARD HERE: The hard guard in moveToScreen validates canvas bounds.
+     * Planning/visibility checks should be done at higher layers (InteractionHelper)
+     * which can trigger camera rotation if needed BEFORE calling this method.
      *
      * @param canvasX X coordinate relative to game canvas
      * @param canvasY Y coordinate relative to game canvas
@@ -350,6 +368,118 @@ public class RobotMouseController {
      */
     public CompletableFuture<Void> moveToCanvas(int canvasX, int canvasY) {
         return moveToCanvas(new CanvasPoint(canvasX, canvasY));
+    }
+    
+    /**
+     * Check if a point is within the 3D game area (world viewport).
+     * This is where game objects, NPCs, and ground items are RENDERED,
+     * but their clickboxes may extend beyond this into the UI space.
+     * 
+     * USE CASE: Planning and visibility decisions (e.g., "do we need to rotate camera?")
+     * NOT FOR: Blocking clicks - objects at screen edges have valid clickboxes outside this area
+     * 
+     * @param x X coordinate
+     * @param y Y coordinate
+     * @return true if point is within the 3D game area
+     */
+    public boolean isPointInGameArea(int x, int y) {
+        if (client == null) {
+            return true; // Can't validate without client
+        }
+        
+        // Get 3D game area bounds from client
+        int areaX = client.getViewportXOffset();
+        int areaY = client.getViewportYOffset();
+        int areaWidth = client.getViewportWidth();
+        int areaHeight = client.getViewportHeight();
+        
+        // Fallback for fixed mode
+        if (areaWidth <= 0 || areaHeight <= 0) {
+            areaX = 4;
+            areaY = 4;
+            areaWidth = 512;
+            areaHeight = 334;
+        }
+        
+        return x >= areaX && x < (areaX + areaWidth) &&
+               y >= areaY && y < (areaY + areaHeight);
+    }
+    
+    /**
+     * Check if a point is within the full viewport (entire game window).
+     * This includes UI elements like inventory, chat, minimap, etc.
+     * 
+     * @param x X coordinate  
+     * @param y Y coordinate
+     * @return true if point is within the game window
+     */
+    public boolean isPointInViewport(int x, int y) {
+        if (client == null) {
+            return true;
+        }
+        
+        Canvas canvas = client.getCanvas();
+        if (canvas == null) {
+            // Fallback to fixed mode dimensions
+            return x >= 0 && x < 765 && y >= 0 && y < 503;
+        }
+        
+        int width = canvas.getWidth();
+        int height = canvas.getHeight();
+        
+        return x >= 0 && x < width && y >= 0 && y < height;
+    }
+    
+    /**
+     * Clamp a point to be within the full viewport.
+     * 
+     * @param x X coordinate
+     * @param y Y coordinate
+     * @return clamped point
+     */
+    public Point clampToViewport(int x, int y) {
+        if (client == null) {
+            return new Point(Math.max(0, Math.min(x, 764)), Math.max(0, Math.min(y, 502)));
+        }
+        
+        Canvas canvas = client.getCanvas();
+        int width = canvas != null ? canvas.getWidth() : 765;
+        int height = canvas != null ? canvas.getHeight() : 503;
+        
+        return new Point(
+            Math.max(0, Math.min(x, width - 1)),
+            Math.max(0, Math.min(y, height - 1))
+        );
+    }
+    
+    /**
+     * Clamp a point to be within the game area (3D world canvas).
+     * 
+     * @param x X coordinate
+     * @param y Y coordinate  
+     * @return clamped point within game area
+     */
+    public Point clampToGameArea(int x, int y) {
+        if (client == null) {
+            return new Point(Math.max(4, Math.min(x, 515)), Math.max(4, Math.min(y, 337)));
+        }
+        
+        int areaX = client.getViewportXOffset();
+        int areaY = client.getViewportYOffset();
+        int areaWidth = client.getViewportWidth();
+        int areaHeight = client.getViewportHeight();
+        
+        if (areaWidth <= 0 || areaHeight <= 0) {
+            areaX = 4;
+            areaY = 4;
+            areaWidth = 512;
+            areaHeight = 334;
+        }
+        
+        return new Point(
+            Math.max(areaX, Math.min(x, areaX + areaWidth - 1)),
+            Math.max(areaY, Math.min(y, areaY + areaHeight - 1))
+        );
     }
 
 
@@ -411,9 +541,12 @@ public class RobotMouseController {
             int noisyX = bezierPoint.x + (int) Math.round(noiseOffset[0]);
             int noisyY = bezierPoint.y + (int) Math.round(noiseOffset[1]);
 
+            // Clamp to viewport (noise could push us outside)
+            Point clamped = clampToViewport(noisyX, noisyY);
+
             // Move mouse
-            robot.mouseMove(noisyX, noisyY);
-            currentPosition = new Point(noisyX, noisyY);
+            robot.mouseMove(clamped.x, clamped.y);
+            currentPosition = clamped;
 
             // Sleep for noise sample interval
             Thread.sleep(NOISE_SAMPLE_INTERVAL_MS);
@@ -555,8 +688,10 @@ public class RobotMouseController {
         int overshootX = target.x + (int) (Math.cos(angle) * overshootPixels);
         int overshootY = target.y + (int) (Math.sin(angle) * overshootPixels);
 
-        robot.mouseMove(overshootX, overshootY);
-        currentPosition = new Point(overshootX, overshootY);
+        // Clamp overshoot to viewport
+        Point clampedOvershoot = clampToViewport(overshootX, overshootY);
+        robot.mouseMove(clampedOvershoot.x, clampedOvershoot.y);
+        currentPosition = clampedOvershoot;
 
         // Delay before correction
         long delay = randomization.uniformRandomLong(MIN_OVERSHOOT_DELAY_MS, MAX_OVERSHOOT_DELAY_MS);
@@ -591,8 +726,10 @@ public class RobotMouseController {
         int correctedX = target.x + (int) (Math.cos(angle) * correctionPixels);
         int correctedY = target.y + (int) (Math.sin(angle) * correctionPixels);
 
-        robot.mouseMove(correctedX, correctedY);
-        currentPosition = new Point(correctedX, correctedY);
+        // Clamp micro-correction to viewport
+        Point clampedCorrection = clampToViewport(correctedX, correctedY);
+        robot.mouseMove(clampedCorrection.x, clampedCorrection.y);
+        currentPosition = clampedCorrection;
 
         log.trace("Micro-correction: {} pixels after {}ms", correctionPixels, delay);
     }
@@ -922,6 +1059,9 @@ public class RobotMouseController {
      * Execute a slow drift movement (500-2000ms).
      */
     private CompletableFuture<Void> executeSlowDrift(int targetX, int targetY) {
+        // Clamp drift target to viewport
+        Point clampedTarget = clampToViewport(targetX, targetY);
+        
         CompletableFuture<Void> future = new CompletableFuture<>();
 
         executor.execute(() -> {
@@ -932,17 +1072,19 @@ public class RobotMouseController {
 
                 while (System.currentTimeMillis() - startTime < duration) {
                     double t = (double) (System.currentTimeMillis() - startTime) / duration;
-                    int x = (int) (start.x + (targetX - start.x) * t);
-                    int y = (int) (start.y + (targetY - start.y) * t);
+                    int x = (int) (start.x + (clampedTarget.x - start.x) * t);
+                    int y = (int) (start.y + (clampedTarget.y - start.y) * t);
 
-                    robot.mouseMove(x, y);
-                    currentPosition = new Point(x, y);
+                    // Clamp interpolated point too (paranoid safety)
+                    Point clamped = clampToViewport(x, y);
+                    robot.mouseMove(clamped.x, clamped.y);
+                    currentPosition = clamped;
 
                     Thread.sleep(20); // Slow update rate for drift
                 }
 
-                robot.mouseMove(targetX, targetY);
-                currentPosition = new Point(targetX, targetY);
+                robot.mouseMove(clampedTarget.x, clampedTarget.y);
+                currentPosition = clampedTarget;
                 future.complete(null);
             } catch (Exception e) {
                 future.completeExceptionally(e);

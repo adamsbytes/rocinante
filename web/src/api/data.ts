@@ -115,11 +115,34 @@ interface WebJsonFile {
   nodes: RawLocation[];
 }
 
+interface RegionJsonFile {
+  region?: {
+    id: string;
+    name: string;
+  };
+  nodes: RawLocation[];
+}
+
+// Region files to load (must match bot's NavigationWebLoader)
+const REGION_FILES = [
+  'tutorial_island.json',
+  'misthalin.json',
+  'asgarnia.json',
+  'kandarin.json',
+  'morytania.json',
+  'kourend.json',
+  'varlamore.json',
+  'fremennik.json',
+  'karamja.json',
+  'kharidian.json',
+];
+
 let cachedLocations: LocationInfo[] | null = null;
 let locationsCacheTime = 0;
 
 /**
- * Load and parse navigation locations from web.json.
+ * Load and parse navigation locations from web.json AND all region files.
+ * Mirrors the bot's NavigationWebLoader.loadComplete() behavior.
  */
 export async function getLocations(): Promise<LocationInfo[]> {
   const now = Date.now();
@@ -129,20 +152,50 @@ export async function getLocations(): Promise<LocationInfo[]> {
     return cachedLocations;
   }
 
+  const allLocations: LocationInfo[] = [];
+
   try {
-    const file = Bun.file(`${BOT_DATA_PATH}/web.json`);
-    const data: WebJsonFile = await file.json();
-    
-    cachedLocations = data.nodes.map(n => ({
-      id: n.id,
-      name: n.name,
-      x: n.x,
-      y: n.y,
-      plane: n.plane ?? 0,
-      type: n.type as LocationInfo['type'],
-      tags: n.tags ?? [],
-    }));
-    
+    // Load base web.json
+    const baseFile = Bun.file(`${BOT_DATA_PATH}/web.json`);
+    if (await baseFile.exists()) {
+      const data: WebJsonFile = await baseFile.json();
+      for (const n of data.nodes) {
+        allLocations.push({
+          id: n.id,
+          name: n.name,
+          x: n.x,
+          y: n.y,
+          plane: n.plane ?? 0,
+          type: n.type as LocationInfo['type'],
+          tags: n.tags ?? [],
+        });
+      }
+    }
+
+    // Load all region files
+    for (const regionFile of REGION_FILES) {
+      try {
+        const file = Bun.file(`${BOT_DATA_PATH}/regions/${regionFile}`);
+        if (await file.exists()) {
+          const data: RegionJsonFile = await file.json();
+          for (const n of data.nodes) {
+            allLocations.push({
+              id: n.id,
+              name: n.name,
+              x: n.x,
+              y: n.y,
+              plane: n.plane ?? 0,
+              type: n.type as LocationInfo['type'],
+              tags: n.tags ?? [],
+            });
+          }
+        }
+      } catch (err) {
+        console.warn(`Failed to load region file ${regionFile}:`, err);
+      }
+    }
+
+    cachedLocations = allLocations;
     locationsCacheTime = now;
     return cachedLocations;
   } catch (error) {

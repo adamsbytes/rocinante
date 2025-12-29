@@ -1,11 +1,12 @@
 package com.rocinante.tasks.impl;
 
-import com.rocinante.input.GroundItemClickHelper;
+import com.rocinante.input.SafeClickExecutor;
 import com.rocinante.state.GroundItemSnapshot;
 import com.rocinante.state.InventoryState;
 import com.rocinante.state.PlayerState;
 import com.rocinante.state.WorldState;
 import com.rocinante.tasks.AbstractTask;
+import com.rocinante.tasks.InteractionHelper;
 import com.rocinante.tasks.TaskContext;
 import lombok.Getter;
 import lombok.Setter;
@@ -19,10 +20,10 @@ import java.util.Optional;
 /**
  * Task for picking up ground items.
  *
- * <p>Uses {@link GroundItemClickHelper} which handles:
+ * <p>Uses SafeClickExecutor with InteractionHelper for camera management:
  * <ul>
- *   <li>Left-click when item is on top of stack</li>
- *   <li>Right-click + menu select when item is buried</li>
+ *   <li>Automatic camera rotation when item is off-screen</li>
+ *   <li>Safe click execution with overlap detection</li>
  *   <li>Humanized click behavior per REQUIREMENTS.md Section 3.1.2</li>
  * </ul>
  *
@@ -119,6 +120,16 @@ public class PickupItemTask extends AbstractTask {
      */
     private boolean operationPending = false;
 
+    /**
+     * Helper for camera rotation and visibility checks.
+     */
+    private InteractionHelper interactionHelper;
+
+    /**
+     * Whether camera rotation is in progress.
+     */
+    private boolean cameraRotationPending = false;
+
     // ========================================================================
     // Constructor
     // ========================================================================
@@ -198,9 +209,9 @@ public class PickupItemTask extends AbstractTask {
             return false;
         }
 
-        // Check if GroundItemClickHelper is available
-        if (ctx.getGroundItemClickHelper() == null) {
-            log.error("GroundItemClickHelper not available in TaskContext");
+        // SafeClickExecutor is required
+        if (ctx.getSafeClickExecutor() == null) {
+            log.error("SafeClickExecutor not available in TaskContext");
             return false;
         }
 
@@ -264,61 +275,73 @@ public class PickupItemTask extends AbstractTask {
     // ========================================================================
 
     private void executeClickItem(TaskContext ctx) {
-        log.debug("Clicking ground item '{}' at {}", itemName, targetLocation);
-        operationPending = true;
-
-        // Get canvas position of the ground item
-        net.runelite.api.Point canvasPoint = getGroundItemCanvasPoint(ctx, targetLocation);
-        if (canvasPoint == null) {
-            log.warn("Cannot get canvas position for ground item at {}", targetLocation);
-            fail("Ground item not visible");
+        if (operationPending || cameraRotationPending) {
             return;
         }
 
-        // Use SafeClickExecutor if available for overlap protection
-        com.rocinante.input.SafeClickExecutor safeClick = ctx.getSafeClickExecutor();
-        if (safeClick != null) {
-            java.awt.Point awtPoint = new java.awt.Point(canvasPoint.getX(), canvasPoint.getY());
-            safeClick.clickGroundItem(awtPoint, itemName)
-                    .thenAccept(success -> {
-                        operationPending = false;
-                        if (success) {
-                            pickupTicks = 0;
-                            phase = PickupPhase.WAIT_PICKUP;
-                        } else {
-                            fail("Failed to click ground item: " + itemName);
-                        }
-                    })
-                    .exceptionally(e -> {
-                        operationPending = false;
-                        log.error("Failed to click ground item", e);
-                        fail("Click failed: " + e.getMessage());
-                        return null;
-                    });
-        } else {
-            // Fallback to GroundItemClickHelper
-            GroundItemClickHelper groundItemHelper = ctx.getGroundItemClickHelper();
-            groundItemHelper.clickGroundItem(targetLocation, itemId, itemName)
-                    .thenAccept(success -> {
-                        operationPending = false;
-                        if (success) {
-                            pickupTicks = 0;
-                            phase = PickupPhase.WAIT_PICKUP;
-                        } else {
-                            fail("Failed to click ground item: " + itemName);
-                        }
-                    })
-                    .exceptionally(e -> {
-                        operationPending = false;
-                        log.error("Failed to click ground item", e);
-                        fail("Click failed: " + e.getMessage());
-                        return null;
-                    });
+        // Initialize InteractionHelper on first use
+        if (interactionHelper == null) {
+            interactionHelper = new InteractionHelper(ctx);
         }
+
+        SafeClickExecutor safeClick = ctx.getSafeClickExecutor();
+        if (safeClick == null) {
+            fail("SafeClickExecutor not available - required for ground item interaction");
+            return;
+        }
+
+        // Get canvas position of the ground item
+        net.runelite.api.Point canvasPoint = getGroundItemCanvasPoint(ctx, targetLocation);
+        
+        if (canvasPoint == null) {
+            // Item not visible - rotate camera to see it
+            log.debug("Ground item '{}' at {} not visible, rotating camera", itemName, targetLocation);
+            cameraRotationPending = true;
+            interactionHelper.startCameraRotation(targetLocation);
+            
+            // Check back next tick after rotation starts
+            cameraRotationPending = false;
+            return;
+        }
+
+        // Validate the point is actually on screen (not negative/off-canvas)
+        java.awt.Canvas canvas = ctx.getClient().getCanvas();
+        if (canvas != null) {
+            int x = canvasPoint.getX();
+            int y = canvasPoint.getY();
+            if (x < 0 || x >= canvas.getWidth() || y < 0 || y >= canvas.getHeight()) {
+                log.debug("Ground item canvas point ({}, {}) is off-screen, rotating camera", x, y);
+                interactionHelper.startCameraRotation(targetLocation);
+                return;
+            }
+        }
+
+        log.debug("Clicking ground item '{}' at {} (canvas: {}, {})", 
+                itemName, targetLocation, canvasPoint.getX(), canvasPoint.getY());
+        operationPending = true;
+
+        java.awt.Point awtPoint = new java.awt.Point(canvasPoint.getX(), canvasPoint.getY());
+        safeClick.clickGroundItem(awtPoint, itemName)
+                .thenAccept(success -> {
+                    operationPending = false;
+                    if (success) {
+                        pickupTicks = 0;
+                        phase = PickupPhase.WAIT_PICKUP;
+                    } else {
+                        fail("Failed to click ground item: " + itemName);
+                    }
+                })
+                .exceptionally(e -> {
+                    operationPending = false;
+                    log.error("Failed to click ground item", e);
+                    fail("Click failed: " + e.getMessage());
+                    return null;
+                });
     }
 
     /**
      * Get canvas point for a ground item at a world location.
+     * Returns null if the item is not visible on screen.
      */
     @Nullable
     private net.runelite.api.Point getGroundItemCanvasPoint(TaskContext ctx, WorldPoint worldPos) {
@@ -332,7 +355,25 @@ public class PickupItemTask extends AbstractTask {
             return null;
         }
 
-        return net.runelite.api.Perspective.localToCanvas(client, localPoint, client.getPlane(), 0);
+        net.runelite.api.Point canvasPoint = net.runelite.api.Perspective.localToCanvas(client, localPoint, client.getPlane(), 0);
+        if (canvasPoint == null) {
+            return null;
+        }
+        
+        // Validate point is on screen
+        java.awt.Canvas canvas = client.getCanvas();
+        if (canvas == null) {
+            return null;
+        }
+        
+        int x = canvasPoint.getX();
+        int y = canvasPoint.getY();
+        if (x < 0 || x >= canvas.getWidth() || y < 0 || y >= canvas.getHeight()) {
+            log.debug("Ground item at {} has off-screen canvas point ({}, {})", worldPos, x, y);
+            return null;
+        }
+        
+        return canvasPoint;
     }
 
     // ========================================================================

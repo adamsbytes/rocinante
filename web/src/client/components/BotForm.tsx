@@ -3,7 +3,7 @@ import type { BotConfig } from '../../shared/types';
 
 interface BotFormProps {
   initialData?: BotConfig;
-  onSubmit: (data: Omit<BotConfig, 'id'>) => void;
+  onSubmit: (data: Omit<BotConfig, 'id' | 'vncPort'>) => void;
   isLoading?: boolean;
   submitLabel?: string;
 }
@@ -54,7 +54,7 @@ export const BotForm: Component<BotFormProps> = (props) => {
         : null,
       ironman: {
         enabled: accountType() !== 'NORMAL',
-        type: accountType() !== 'NORMAL' ? accountType() : null,
+        type: accountType() !== 'NORMAL' ? (accountType() as 'STANDARD_IRONMAN' | 'HARDCORE_IRONMAN' | 'ULTIMATE_IRONMAN') : null,
         hcimSafetyLevel: accountType() === 'HARDCORE_IRONMAN' ? hcimSafety() : null,
       },
       resources: {

@@ -148,6 +148,12 @@ export interface PlayerInfo {
   poisoned: boolean;
   /** Whether player is venomed */
   venomed: boolean;
+  /** Current world position X coordinate */
+  x: number;
+  /** Current world position Y coordinate */
+  y: number;
+  /** Current world position plane (0-3) */
+  plane: number;
   /** Skills data (skill name -> data) */
   skills: Record<string, SkillData>;
 }

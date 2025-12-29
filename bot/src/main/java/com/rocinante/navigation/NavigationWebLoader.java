@@ -97,6 +97,7 @@ public class NavigationWebLoader {
 
     private static void loadRegionFiles(MergedWebData merged) {
         String[] regionFiles = {
+                "tutorial_island.json",
                 "misthalin.json",
                 "asgarnia.json",
                 "kandarin.json",

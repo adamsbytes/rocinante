@@ -191,7 +191,8 @@ RUN mkdir -p .runelite/screenshots
 # Create Bolt config and data directories
 # These MUST exist so Docker volumes inherit correct ownership
 RUN mkdir -p .config/bolt-launcher \
-    && mkdir -p .local/share/bolt-launcher
+    && mkdir -p .local/share/bolt-launcher \
+    && mkdir -p .local/share/bolt-launcher/.runelite/rocinante/profiles
 
 # Anti-fingerprint: Create standard XDG user directories (looks like real desktop)
 RUN mkdir -p ~/Desktop ~/Documents ~/Downloads ~/Pictures ~/Music ~/Videos \

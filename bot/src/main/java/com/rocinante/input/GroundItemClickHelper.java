@@ -77,6 +77,7 @@ public class GroundItemClickHelper {
     private final Client client;
     private final RobotMouseController mouseController;
     private final HumanTimer humanTimer;
+    private MouseCameraCoupler cameraCoupler;
 
     // ========================================================================
     // Constructor
@@ -89,6 +90,13 @@ public class GroundItemClickHelper {
         this.humanTimer = humanTimer;
         log.info("GroundItemClickHelper initialized");
     }
+    
+    /**
+     * Set the camera coupler for rotating camera to see off-screen items.
+     */
+    public void setCameraCoupler(MouseCameraCoupler cameraCoupler) {
+        this.cameraCoupler = cameraCoupler;
+    }
 
     // ========================================================================
     // Public API
@@ -96,6 +104,7 @@ public class GroundItemClickHelper {
 
     /**
      * Click a ground item. Automatically determines left vs right click based on stack order.
+     * Will rotate camera if the item is not visible on screen.
      *
      * @param worldPosition tile where item is located
      * @param itemId        the item ID to pick up
@@ -109,19 +118,50 @@ public class GroundItemClickHelper {
             return CompletableFuture.completedFuture(false);
         }
 
+        String displayName = itemName != null ? itemName : "item " + itemId;
+
         // Get canvas position of the tile
         Point canvasPoint = getGroundItemCanvasPoint(worldPosition);
         if (canvasPoint == null) {
-            log.warn("Cannot get canvas position for ground item at {}", worldPosition);
-            return CompletableFuture.completedFuture(false);
+            // Item not visible - rotate camera and retry
+            if (cameraCoupler != null) {
+                log.debug("Ground item '{}' at {} not visible, rotating camera", displayName, worldPosition);
+                return cameraCoupler.ensureTargetVisible(worldPosition)
+                        .thenCompose(v -> {
+                            // After rotation, try to get canvas point again
+                            Point newCanvasPoint = getGroundItemCanvasPoint(worldPosition);
+                            if (newCanvasPoint == null) {
+                                log.warn("Ground item '{}' still not visible after camera rotation", displayName);
+                                return CompletableFuture.completedFuture(false);
+                            }
+                            return executeClickAfterCameraRotation(worldPosition, itemId, displayName, newCanvasPoint);
+                        });
+            } else {
+                log.warn("Cannot get canvas position for ground item at {} and no camera coupler available", worldPosition);
+                return CompletableFuture.completedFuture(false);
+            }
         }
 
         // Check if we need to right-click (item not on top)
         boolean needsRightClick = !isItemOnTop(worldPosition, itemId);
 
-        String displayName = itemName != null ? itemName : "item " + itemId;
         log.debug("Clicking ground item '{}' at {} (rightClick={})", displayName, worldPosition, needsRightClick);
 
+        if (needsRightClick) {
+            return executeRightClickLoot(canvasPoint, itemId, displayName);
+        } else {
+            return executeLeftClickLoot(canvasPoint, displayName);
+        }
+    }
+    
+    /**
+     * Execute click after camera rotation completed.
+     */
+    private CompletableFuture<Boolean> executeClickAfterCameraRotation(
+            WorldPoint worldPosition, int itemId, String displayName, Point canvasPoint) {
+        boolean needsRightClick = !isItemOnTop(worldPosition, itemId);
+        log.debug("Clicking ground item '{}' after camera rotation (rightClick={})", displayName, needsRightClick);
+        
         if (needsRightClick) {
             return executeRightClickLoot(canvasPoint, itemId, displayName);
         } else {
@@ -395,6 +435,7 @@ public class GroundItemClickHelper {
 
     /**
      * Get the canvas position for a ground item at the given world position.
+     * Returns null if the item is not visible on screen.
      */
     @Nullable
     private Point getGroundItemCanvasPoint(WorldPoint worldPosition) {
@@ -407,6 +448,23 @@ public class GroundItemClickHelper {
         // Height 0 is ground level for ground items
         Point canvasPoint = Perspective.localToCanvas(client, localPoint, worldPosition.getPlane(), 0);
         if (canvasPoint == null) {
+            return null;
+        }
+
+        // Validate point is on screen - don't return off-screen coordinates
+        java.awt.Canvas canvas = client.getCanvas();
+        if (canvas == null) {
+            return null;
+        }
+        
+        int x = canvasPoint.getX();
+        int y = canvasPoint.getY();
+        int canvasWidth = canvas.getWidth();
+        int canvasHeight = canvas.getHeight();
+        
+        if (x < 0 || x >= canvasWidth || y < 0 || y >= canvasHeight) {
+            log.debug("Ground item at {} has off-screen canvas point ({}, {}), item not visible",
+                    worldPosition, x, y);
             return null;
         }
 

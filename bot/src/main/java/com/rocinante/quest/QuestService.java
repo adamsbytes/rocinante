@@ -1,10 +1,18 @@
 package com.rocinante.quest;
 
+import com.rocinante.core.GameStateService;
+import com.rocinante.quest.bridge.ItemRequirementInfo;
 import com.rocinante.quest.bridge.QuestHelperBridge;
+import com.rocinante.quest.bridge.RequirementStatus;
 import com.rocinante.quest.impl.TutorialIsland;
+import com.rocinante.state.BankState;
+import com.rocinante.state.EquipmentState;
+import com.rocinante.state.InventoryState;
 import com.rocinante.state.IronmanState;
-import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.Client;
+import net.runelite.api.QuestState;
+import net.runelite.api.Skill;
 
 import javax.annotation.Nullable;
 import javax.inject.Inject;
@@ -15,118 +23,57 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Service for managing quest loading and Quest Helper plugin integration.
- *
- * <p>Per REQUIREMENTS.md Section 8.2.1, this service:
- * <ul>
- *   <li>Connects to Quest Helper plugin at runtime</li>
- *   <li>Translates Quest Helper quests to our Quest interface via QuestHelperBridge</li>
- *   <li>Maintains a registry of manually implemented quests (e.g., Tutorial Island)</li>
- *   <li>Provides unified quest lookup by ID or Quest Helper selection</li>
- * </ul>
- *
- * <p>Quest Resolution Order:
- * <ol>
- *   <li>Check manual quest registry first (for optimized implementations)</li>
- *   <li>Fall back to Quest Helper bridge for all other quests</li>
- * </ol>
- *
- * <p>Note: Quest Helper plugin dependency is declared at the plugin level
- * via {@code @PluginDependency(QuestHelperPlugin.class)} on RocinantePlugin.
- * The QuestHelperPlugin is injected here via Guice after it's initialized.
+ * Single source of truth for quest data AND player requirement status.
+ * 
+ * Quest Helper is REQUIRED. RocinantePlugin ensures Quest Helper is loaded
+ * before any systems that depend on QuestService are started.
  */
 @Slf4j
 @Singleton
 public class QuestService {
 
-    /**
-     * Quest Helper plugin instance, injected via Guice.
-     * This is the entry point to Quest Helper's API.
-     * May be null if Quest Helper plugin is not available.
-     */
-    @Nullable
     private Object questHelperPlugin;
-
-    /**
-     * Cached QuestManager reference from Quest Helper plugin.
-     */
-    @Nullable
     private Object questManager;
 
-    /**
-     * Manual quest implementations registry.
-     * Key: quest ID (lowercase, underscores for spaces)
-     * Value: Quest implementation
-     */
     private final Map<String, Quest> manualQuests = new ConcurrentHashMap<>();
-
-    /**
-     * Cached Quest Helper bridges.
-     * Key: Quest Helper instance hash
-     * Value: QuestHelperBridge wrapper
-     */
     private final Map<Integer, QuestHelperBridge> bridgeCache = new ConcurrentHashMap<>();
-
-    /**
-     * Provider for IronmanState, used when creating Tutorial Island quest.
-     */
     private final Provider<IronmanState> ironmanStateProvider;
-
-    /**
-     * Flag indicating whether Quest Helper integration is available.
-     */
-    @Getter
-    private boolean questHelperAvailable = false;
+    private final Provider<GameStateService> gameStateServiceProvider;
+    private final Provider<Client> clientProvider;
 
     @Inject
-    public QuestService(Provider<IronmanState> ironmanStateProvider) {
+    public QuestService(
+            Provider<IronmanState> ironmanStateProvider,
+            Provider<GameStateService> gameStateServiceProvider,
+            Provider<Client> clientProvider) {
         this.ironmanStateProvider = ironmanStateProvider;
-        registerBuiltInQuests();
+        this.gameStateServiceProvider = gameStateServiceProvider;
+        this.clientProvider = clientProvider;
     }
 
     /**
      * Initialize Quest Helper plugin reference.
-     * Called by RocinantePlugin after startup to inject the Quest Helper plugin.
-     *
-     * @param questHelperPlugin the Quest Helper plugin instance, or null if unavailable
+     * Called by RocinantePlugin AFTER Quest Helper has loaded.
+     * @param questHelperPlugin the Quest Helper plugin instance (must not be null)
      */
-    public void initializeQuestHelper(@Nullable Object questHelperPlugin) {
-        this.questHelperPlugin = questHelperPlugin;
-        this.questManager = null; // Reset cached manager
+    public void initializeQuestHelper(Object questHelperPlugin) {
+        if (questHelperPlugin == null) {
+            throw new IllegalArgumentException("questHelperPlugin cannot be null");
+        }
 
-        if (questHelperPlugin != null) {
-            try {
-                // Access QuestManager via questHelperPlugin.getQuestManager()
-                java.lang.reflect.Method getQuestManager = questHelperPlugin.getClass()
-                        .getMethod("getQuestManager");
-                this.questManager = getQuestManager.invoke(questHelperPlugin);
-                this.questHelperAvailable = true;
-                log.info("Quest Helper integration initialized successfully");
-            } catch (Exception e) {
-                log.warn("Failed to access Quest Helper's QuestManager", e);
-                this.questHelperAvailable = false;
-            }
-        } else {
-            log.info("Quest Helper plugin not available - using manual quests only");
-            this.questHelperAvailable = false;
+        this.questHelperPlugin = questHelperPlugin;
+
+        try {
+            var getQuestManager = questHelperPlugin.getClass().getMethod("getQuestManager");
+            this.questManager = getQuestManager.invoke(questHelperPlugin);
+            log.info("Quest Helper integration initialized");
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to access Quest Helper's QuestManager", e);
         }
     }
 
     /**
-     * Register built-in quest implementations.
-     */
-    private void registerBuiltInQuests() {
-        // Register Tutorial Island with lazy initialization
-        // (IronmanState provider allows deferred creation)
-        log.debug("Registering built-in quests");
-    }
-
-    /**
-     * Register a manual quest implementation.
-     *
-     * <p>Manual implementations take precedence over Quest Helper bridge
-     * for quests with the same ID.
-     *
-     * @param quest the quest to register
+     * Register a manual quest implementation. Manual quests take precedence over Quest Helper.
      */
     public void registerQuest(Quest quest) {
         String id = normalizeQuestId(quest.getId());
@@ -135,16 +82,7 @@ public class QuestService {
     }
 
     /**
-     * Get a quest by its ID.
-     *
-     * <p>Resolution order:
-     * <ol>
-     *   <li>Check manual quest registry</li>
-     *   <li>Search Quest Helper quests if available</li>
-     * </ol>
-     *
-     * @param questId the quest ID (case-insensitive)
-     * @return the quest, or null if not found
+     * Get a quest by ID. Manual quests first, then Quest Helper.
      */
     @Nullable
     public Quest getQuestById(String questId) {
@@ -154,10 +92,9 @@ public class QuestService {
 
         String normalizedId = normalizeQuestId(questId);
 
-        // Check manual registry first
+        // Manual registry first
         Quest manual = manualQuests.get(normalizedId);
         if (manual != null) {
-            log.debug("Found manual quest implementation for: {}", questId);
             return manual;
         }
 
@@ -168,38 +105,22 @@ public class QuestService {
             return tutorialIsland;
         }
 
-        // Try Quest Helper bridge
-        if (questHelperAvailable && questManager != null) {
-            return getQuestFromQuestHelper(questId);
-        }
-
-        log.debug("Quest not found: {}", questId);
-        return null;
+        // Quest Helper
+        return getQuestFromQuestHelper(questId);
     }
 
     /**
      * Get the currently selected quest from Quest Helper.
-     *
-     * @return the selected quest wrapped in our Quest interface, or null if none selected
      */
     @Nullable
     public Quest getSelectedQuestFromHelper() {
-        if (!questHelperAvailable || questManager == null) {
-            return null;
-        }
-
         try {
-            // Call questManager.getSelectedQuest()
-            java.lang.reflect.Method getSelectedQuest = questManager.getClass()
-                    .getMethod("getSelectedQuest");
+            var getSelectedQuest = questManager.getClass().getMethod("getSelectedQuest");
             Object questHelper = getSelectedQuest.invoke(questManager);
-
             if (questHelper == null) {
                 return null;
             }
-
-            // Get or create bridge for this quest helper
-            return getOrCreateBridge(questHelper);
+            return getOrCreateBridge(questHelper).toQuest();
         } catch (Exception e) {
             log.warn("Failed to get selected quest from Quest Helper", e);
             return null;
@@ -208,90 +129,92 @@ public class QuestService {
 
     /**
      * Get all available quests.
-     *
-     * <p>Returns a combination of:
-     * <ul>
-     *   <li>All registered manual quests</li>
-     *   <li>All Quest Helper quests (if available)</li>
-     * </ul>
-     *
-     * @return list of available quests
      */
     public List<Quest> getAvailableQuests() {
         List<Quest> quests = new ArrayList<>(manualQuests.values());
 
-        // Add Quest Helper quests if available
-        if (questHelperAvailable) {
-            List<Quest> helperQuests = getQuestHelperQuests();
-            // Filter out duplicates (manual implementations take precedence)
-            for (Quest helperQuest : helperQuests) {
-                String normalizedId = normalizeQuestId(helperQuest.getId());
-                if (!manualQuests.containsKey(normalizedId)) {
-                    quests.add(helperQuest);
-                }
+        for (Quest helperQuest : getQuestHelperQuests()) {
+            String normalizedId = normalizeQuestId(helperQuest.getId());
+            if (!manualQuests.containsKey(normalizedId)) {
+                quests.add(helperQuest);
             }
         }
 
         return Collections.unmodifiableList(quests);
     }
 
-    /**
-     * Check if a quest is available (either manual or via Quest Helper).
-     *
-     * @param questId the quest ID
-     * @return true if the quest is available
-     */
     public boolean isQuestAvailable(String questId) {
         return getQuestById(questId) != null;
     }
 
-    /**
-     * Get a quest from Quest Helper by ID.
-     *
-     * @param questId the quest ID
-     * @return the quest wrapped in our Quest interface, or null if not found
-     */
+    // ========================================================================
+    // Quest Data API - all data comes from Quest Helper
+    // ========================================================================
+
+    public int getQuestPoints(String questId) {
+        return getBridge(questId).getQuestPoints();
+    }
+
+    public boolean canStartQuest(String questId) {
+        return getBridge(questId).clientMeetsRequirements();
+    }
+
+    public boolean isMembers(String questId) {
+        return getBridge(questId).isMembers();
+    }
+
+    public String getDifficulty(String questId) {
+        return getBridge(questId).getDifficulty();
+    }
+
+    public List<QuestHelperBridge.SkillRequirementInfo> getSkillRequirements(String questId) {
+        return getBridge(questId).getSkillRequirements();
+    }
+
+    public List<QuestHelperBridge.QuestRequirementInfo> getQuestRequirements(String questId) {
+        return getBridge(questId).getQuestRequirements();
+    }
+
+    public List<com.rocinante.quest.bridge.ItemRequirementInfo> getItemRequirements(String questId) {
+        return getBridge(questId).extractItemRequirements();
+    }
+
+    // ========================================================================
+    // Internal
+    // ========================================================================
+
+    private QuestHelperBridge getBridge(String questId) {
+        List<Object> helpers = getQuestHelpersFromPlugin();
+        for (Object helper : helpers) {
+            String helperId = extractQuestHelperId(helper);
+            if (normalizeQuestId(helperId).equals(normalizeQuestId(questId))) {
+                return getOrCreateBridge(helper);
+            }
+        }
+        throw new IllegalStateException("Quest not found in Quest Helper: " + questId);
+    }
+
     @Nullable
     private Quest getQuestFromQuestHelper(String questId) {
-        if (!questHelperAvailable || questManager == null) {
-            return null;
-        }
-
         try {
-            // Quest Helper uses QuestHelperQuest enum to look up quests
-            // We need to find the quest by iterating available quests or using reflection
             List<Object> helpers = getQuestHelpersFromPlugin();
-            
             for (Object helper : helpers) {
-                // Check if this helper matches the quest ID
                 String helperId = extractQuestHelperId(helper);
                 if (normalizeQuestId(helperId).equals(normalizeQuestId(questId))) {
-                    return getOrCreateBridge(helper);
+                    return getOrCreateBridge(helper).toQuest();
                 }
             }
         } catch (Exception e) {
             log.warn("Failed to get quest {} from Quest Helper", questId, e);
         }
-
         return null;
     }
 
-    /**
-     * Get all Quest Helper quests.
-     *
-     * @return list of quests from Quest Helper
-     */
     private List<Quest> getQuestHelperQuests() {
         List<Quest> quests = new ArrayList<>();
-
-        if (!questHelperAvailable) {
-            return quests;
-        }
-
         try {
-            List<Object> helpers = getQuestHelpersFromPlugin();
-            for (Object helper : helpers) {
-                Quest quest = getOrCreateBridge(helper);
+            for (Object helper : getQuestHelpersFromPlugin()) {
+                Quest quest = getOrCreateBridge(helper).toQuest();
                 if (quest != null) {
                     quests.add(quest);
                 }
@@ -299,80 +222,42 @@ public class QuestService {
         } catch (Exception e) {
             log.warn("Failed to enumerate Quest Helper quests", e);
         }
-
         return quests;
     }
 
-    /**
-     * Get list of QuestHelper instances from Quest Helper plugin.
-     */
     @SuppressWarnings("unchecked")
     private List<Object> getQuestHelpersFromPlugin() {
-        List<Object> helpers = new ArrayList<>();
-
         try {
-            // Try to get quest helpers via QuestHelperQuest.getQuestHelpers()
             Class<?> questHelperQuestClass = Class.forName("com.questhelper.questinfo.QuestHelperQuest");
-            java.lang.reflect.Method getQuestHelpers = questHelperQuestClass
-                    .getMethod("getQuestHelpers", boolean.class);
-            
-            // Pass false to exclude developer quests
+            var getQuestHelpers = questHelperQuestClass.getMethod("getQuestHelpers", boolean.class);
             Object result = getQuestHelpers.invoke(null, false);
             if (result instanceof List) {
-                helpers.addAll((List<Object>) result);
+                return (List<Object>) result;
             }
-        } catch (ClassNotFoundException e) {
-            log.debug("QuestHelperQuest class not found - Quest Helper may not be loaded");
         } catch (Exception e) {
             log.warn("Failed to get quest helpers from plugin", e);
         }
-
-        return helpers;
+        return Collections.emptyList();
     }
 
-    /**
-     * Extract quest ID from a Quest Helper instance.
-     */
     private String extractQuestHelperId(Object questHelper) {
         try {
-            // Try getQuest().name() for enum name
-            java.lang.reflect.Method getQuest = questHelper.getClass().getMethod("getQuest");
+            var getQuest = questHelper.getClass().getMethod("getQuest");
             Object questEnum = getQuest.invoke(questHelper);
             if (questEnum != null) {
                 return questEnum.toString();
             }
         } catch (Exception e) {
-            log.trace("Could not extract quest ID via getQuest()", e);
+            log.trace("Could not extract quest ID", e);
         }
-
-        // Fall back to class name
         return questHelper.getClass().getSimpleName();
     }
 
-    /**
-     * Get or create a QuestHelperBridge for a Quest Helper instance.
-     * Returns the Quest interface wrapper via bridge.toQuest().
-     */
-    private Quest getOrCreateBridge(Object questHelper) {
+    private QuestHelperBridge getOrCreateBridge(Object questHelper) {
         int hash = System.identityHashCode(questHelper);
-        
-        QuestHelperBridge bridge = bridgeCache.get(hash);
-        if (bridge == null) {
-            bridge = new QuestHelperBridge(questHelper);
-            bridgeCache.put(hash, bridge);
-            log.debug("Created bridge for quest: {}", bridge.getMetadata().getName());
-        }
-        
-        // Return the Quest interface wrapper
-        return bridge.toQuest();
+        return bridgeCache.computeIfAbsent(hash, k -> new QuestHelperBridge(questHelper));
     }
 
-    /**
-     * Normalize a quest ID to lowercase with underscores.
-     *
-     * @param questId the quest ID
-     * @return normalized ID
-     */
     private String normalizeQuestId(String questId) {
         if (questId == null) {
             return "";
@@ -384,27 +269,189 @@ public class QuestService {
                 .replace(".", "");
     }
 
-    /**
-     * Clear cached bridges.
-     * Call this when Quest Helper state may have changed significantly.
-     */
     public void clearBridgeCache() {
         bridgeCache.clear();
-        log.debug("Cleared quest bridge cache");
     }
 
     /**
      * Get statistics about the quest service.
-     *
-     * @return map of statistic name to value
      */
     public Map<String, Object> getStatistics() {
         Map<String, Object> stats = new LinkedHashMap<>();
-        stats.put("questHelperAvailable", questHelperAvailable);
+        stats.put("questHelperAvailable", questManager != null);
         stats.put("manualQuestCount", manualQuests.size());
         stats.put("bridgeCacheSize", bridgeCache.size());
         stats.put("manualQuestIds", new ArrayList<>(manualQuests.keySet()));
         return stats;
     }
-}
 
+    // ========================================================================
+    // Complete Requirements Status API
+    // ========================================================================
+
+    /**
+     * Get complete requirements status for a quest with ACTUAL player state.
+     * This is the primary API for getting quest requirement info.
+     */
+    public RequirementStatus.QuestRequirementsStatus getRequirementsStatus(String questId) {
+        Client client = clientProvider.get();
+        GameStateService gss = gameStateServiceProvider.get();
+        
+        // Get basic quest info from Quest Helper
+        QuestHelperBridge bridge = getBridge(questId);
+        String questName = bridge.getMetadata().getName();
+        String difficulty = bridge.getDifficulty();
+        boolean members = bridge.isMembers();
+        int questPoints = bridge.getQuestPoints();
+        
+        // Get quest state
+        String state = getQuestStateString(questId, client);
+        boolean canStart = "NOT_STARTED".equals(state) && bridge.clientMeetsRequirements();
+        
+        // Build skill requirements with CURRENT player levels
+        List<RequirementStatus.SkillStatus> skillReqs = new ArrayList<>();
+        for (var skillReq : bridge.getSkillRequirements()) {
+            int currentLevel = getSkillLevel(client, skillReq.getSkillName());
+            skillReqs.add(RequirementStatus.SkillStatus.builder()
+                    .skillName(skillReq.getSkillName())
+                    .required(skillReq.getRequiredLevel())
+                    .current(currentLevel)
+                    .met(currentLevel >= skillReq.getRequiredLevel())
+                    .boostable(false) // Would need more reflection to get this
+                    .build());
+        }
+        
+        // Build quest requirements with ACTUAL completion status
+        List<RequirementStatus.QuestStatus> questReqs = new ArrayList<>();
+        for (var questReq : bridge.getQuestRequirements()) {
+            boolean completed = isQuestCompleted(questReq.getQuestId(), client);
+            questReqs.add(RequirementStatus.QuestStatus.builder()
+                    .questId(questReq.getQuestId())
+                    .questName(questReq.getQuestName())
+                    .met(completed)
+                    .build());
+        }
+        
+        // Build item requirements with ACTUAL inventory/equipment/bank counts
+        InventoryState inventory = gss.getInventoryState();
+        EquipmentState equipment = gss.getEquipmentState();
+        BankState bank = gss.getBankState();
+        
+        List<RequirementStatus.ItemStatus> itemReqs = new ArrayList<>();
+        for (ItemRequirementInfo itemReq : bridge.extractItemRequirements()) {
+            List<Integer> allIds = itemReq.getAllIds();
+            
+            int inInventory = countItemsInInventory(inventory, allIds);
+            int equipped = countItemsEquipped(equipment, allIds);
+            int inBank = countItemsInBank(bank, allIds);
+            int total = inInventory + equipped + inBank;
+            
+            itemReqs.add(RequirementStatus.ItemStatus.builder()
+                    .itemId(itemReq.getItemId())
+                    .name(itemReq.getName())
+                    .quantityRequired(itemReq.getQuantity())
+                    .inInventory(inInventory)
+                    .equipped(equipped)
+                    .inBank(inBank)
+                    .met(total >= itemReq.getQuantity())
+                    .obtainableDuringQuest(itemReq.isObtainableDuringQuest())
+                    .recommended(itemReq.isRecommended())
+                    .alternateIds(itemReq.getAlternateIds())
+                    .build());
+        }
+        
+        return RequirementStatus.QuestRequirementsStatus.builder()
+                .questId(questId)
+                .questName(questName)
+                .difficulty(difficulty)
+                .members(members)
+                .questPoints(questPoints)
+                .state(state)
+                .canStart(canStart)
+                .skillRequirements(skillReqs)
+                .questRequirements(questReqs)
+                .itemRequirements(itemReqs)
+                .build();
+    }
+
+    /**
+     * Get requirements status for all quests (for status display).
+     */
+    public List<RequirementStatus.QuestRequirementsStatus> getAllQuestRequirementsStatus() {
+        List<RequirementStatus.QuestRequirementsStatus> results = new ArrayList<>();
+        Client client = clientProvider.get();
+        
+        // Iterate through all RuneLite quests
+        for (net.runelite.api.Quest quest : net.runelite.api.Quest.values()) {
+            try {
+                RequirementStatus.QuestRequirementsStatus status = getRequirementsStatus(quest.name());
+                results.add(status);
+            } catch (Exception e) {
+                log.trace("Could not get requirements for quest {}: {}", quest.name(), e.getMessage());
+            }
+        }
+        
+        return results;
+    }
+
+    // ========================================================================
+    // Helper methods for requirement checking
+    // ========================================================================
+
+    private int getSkillLevel(Client client, String skillName) {
+        try {
+            Skill skill = Skill.valueOf(skillName.toUpperCase());
+            return client.getRealSkillLevel(skill);
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    private boolean isQuestCompleted(String questId, Client client) {
+        try {
+            net.runelite.api.Quest quest = net.runelite.api.Quest.valueOf(questId);
+            return quest.getState(client) == QuestState.FINISHED;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private String getQuestStateString(String questId, Client client) {
+        try {
+            net.runelite.api.Quest quest = net.runelite.api.Quest.valueOf(questId);
+            QuestState state = quest.getState(client);
+            return state != null ? state.name() : "NOT_STARTED";
+        } catch (Exception e) {
+            return "NOT_STARTED";
+        }
+    }
+
+    private int countItemsInInventory(InventoryState inventory, List<Integer> itemIds) {
+        int count = 0;
+        for (int id : itemIds) {
+            count += inventory.countItem(id);
+        }
+        return count;
+    }
+
+    private int countItemsEquipped(EquipmentState equipment, List<Integer> itemIds) {
+        int count = 0;
+        for (int id : itemIds) {
+            if (equipment.hasEquipped(id)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private int countItemsInBank(BankState bank, List<Integer> itemIds) {
+        if (bank.isUnknown()) {
+            return 0; // Bank not observed yet
+        }
+        int count = 0;
+        for (int id : itemIds) {
+            count += bank.countItem(id);
+        }
+        return count;
+    }
+}

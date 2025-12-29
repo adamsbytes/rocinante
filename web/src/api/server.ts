@@ -562,26 +562,6 @@ const bunServer = Bun.serve({
         }
       }
     },
-
-    // Called on WebSocket error
-    error(ws: ServerWebSocket<WebSocketData>, error) {
-      if (ws.data.type === 'vnc') {
-        console.error('VNC WebSocket error:', error);
-        const vncData = ws.data as VncWebSocketData;
-        if (vncData.tcpSocket) {
-          vncData.tcpSocket.end();
-        }
-      } else if (ws.data.type === 'status') {
-        const statusData = ws.data as StatusWebSocketData;
-        console.error(`Status WebSocket error for bot ${statusData.botId}:`, error);
-        if (statusData.pingInterval) {
-          clearInterval(statusData.pingInterval);
-        }
-        if (statusData.cleanup) {
-          statusData.cleanup();
-        }
-      }
-    },
   },
 });
 

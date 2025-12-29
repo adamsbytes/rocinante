@@ -39,11 +39,12 @@ export function getCommandsFilePath(botId: string): string {
 }
 
 /**
- * Ensure status directory exists for a bot.
+ * Ensure status directory exists for a bot with proper permissions.
+ * The directory must be writable by the container's runelite user (UID 1000).
  */
 export async function ensureStatusDir(botId: string): Promise<void> {
   const dir = getStatusDir(botId);
-  await mkdir(dir, { recursive: true });
+  await mkdir(dir, { recursive: true, mode: 0o777 });
 }
 
 // ============================================================================

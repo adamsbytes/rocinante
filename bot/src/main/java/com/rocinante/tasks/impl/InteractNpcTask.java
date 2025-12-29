@@ -3,16 +3,14 @@ package com.rocinante.tasks.impl;
 import com.rocinante.input.SafeClickExecutor;
 import com.rocinante.state.PlayerState;
 import com.rocinante.tasks.AbstractTask;
+import com.rocinante.tasks.InteractionHelper;
 import com.rocinante.tasks.TaskContext;
 import com.rocinante.util.Randomization;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
-import net.runelite.api.Model;
 import net.runelite.api.NPC;
-import net.runelite.api.Perspective;
-import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.widgets.Widget;
 
@@ -92,10 +90,6 @@ public class InteractNpcTask extends AbstractTask {
      */
     private static final int MAX_NPC_MOVEMENT = 3;
     
-    /**
-     * Maximum camera rotation retries to get NPC in viewport.
-     */
-    private static final int MAX_CAMERA_RETRIES = 3;
 
     // ========================================================================
     // Configuration
@@ -186,9 +180,9 @@ public class InteractNpcTask extends AbstractTask {
     private NpcInteractionPhase phase = NpcInteractionPhase.FIND_NPC;
     
     /**
-     * Camera rotation retry count for viewport issues.
+     * Interaction helper for camera rotation and clickbox handling.
      */
-    private int cameraRetryCount = 0;
+    private InteractionHelper interactionHelper;
 
     /**
      * The NPC we found and are interacting with.
@@ -485,24 +479,16 @@ public class InteractNpcTask extends AbstractTask {
             return;
         }
         
-        // Use MouseCameraCoupler to ensure target is visible
-        var coupler = ctx.getMouseCameraCoupler();
-        if (coupler != null) {
-            CompletableFuture<Void> rotateFuture = coupler.ensureTargetVisible(lastNpcPosition);
-            rotateFuture.whenComplete((v, ex) -> {
-                if (ex != null) {
-                    log.trace("Camera rotation failed: {}", ex.getMessage());
-                }
-                phase = NpcInteractionPhase.MOVE_MOUSE;
-            });
-            
-            // Don't block - camera rotation happens async while we continue
-            // The movement will happen concurrently which is natural
-            log.debug("Rotating camera toward NPC at {}", lastNpcPosition);
-        } else {
-            log.debug("No camera coupler available, skipping rotation");
-            phase = NpcInteractionPhase.MOVE_MOUSE;
+        // Initialize interaction helper if needed
+        if (interactionHelper == null) {
+            interactionHelper = new InteractionHelper(ctx);
         }
+        
+        // Fire-and-forget camera rotation - like a human holding an arrow key
+        interactionHelper.startCameraRotation(lastNpcPosition);
+        
+        // Immediately proceed to mouse movement - don't wait for camera
+        phase = NpcInteractionPhase.MOVE_MOUSE;
     }
 
     // ========================================================================
@@ -528,54 +514,36 @@ public class InteractNpcTask extends AbstractTask {
                 if (movement > MAX_NPC_MOVEMENT) {
                     log.debug("NPC moved significantly ({} tiles), re-targeting", movement);
                     lastNpcPosition = currentNpcPos;
-                    // Mouse will be moved to new position
                 }
             }
         }
 
-        // Calculate click point on NPC
-        Point clickPoint = calculateNpcClickPoint(ctx, targetNpc);
-        if (clickPoint == null) {
-            log.warn("Could not calculate click point for NPC {}", npcId);
-            fail("Cannot determine click point");
-            return;
+        // Initialize interaction helper if needed
+        if (interactionHelper == null) {
+            interactionHelper = new InteractionHelper(ctx);
         }
+
+        // Use centralized click point resolution with smart waiting
+        InteractionHelper.ClickPointResult result = interactionHelper.getClickPointForNpc(targetNpc);
         
-        // Check viewport visibility
-        if (ctx.getGameStateService() != null) {
-            boolean isVisible = ctx.getGameStateService().isPointVisibleInViewport(clickPoint.x, clickPoint.y);
-            
-            if (!isVisible) {
-                // Not visible at all - need to rotate camera
-                // After rotation, we want it in the center 2/3 (safe zone)
-                log.debug("Click point ({}, {}) not visible, rotating camera to center target", clickPoint.x, clickPoint.y);
-                cameraRetryCount++;
-                if (cameraRetryCount > MAX_CAMERA_RETRIES) {
-                    fail("Cannot get NPC into viewport after " + MAX_CAMERA_RETRIES + " camera rotations");
-                    return;
-                }
-                phase = NpcInteractionPhase.ROTATE_CAMERA;
-                return;
-            }
-            
-            // If we already rotated camera this interaction, verify target ended up in safe zone
-            // This ensures camera rotation actually centered the target
-            if (cameraRetryCount > 0 && !ctx.getGameStateService().isPointInViewport(clickPoint.x, clickPoint.y)) {
-                log.debug("Camera rotated but target still at edge, rotating more");
-                cameraRetryCount++;
-                if (cameraRetryCount > MAX_CAMERA_RETRIES) {
-                    // Target visible but at edge after max retries - proceed anyway
-                    log.debug("Target at edge after max retries, proceeding with click");
-                } else {
-                    phase = NpcInteractionPhase.ROTATE_CAMERA;
-                    return;
-                }
-            }
+        Point clickPoint;
+        if (result.hasPoint()) {
+            clickPoint = result.point;
+            log.debug("Got click point for NPC {} ({})", npcId, result.reason);
+        } else if (result.shouldRotateCamera) {
+            interactionHelper.startCameraRotation(lastNpcPosition);
+            return;
+        } else if (result.shouldWait) {
+            return;
+        } else {
+            log.warn("Could not get click point for NPC {}: {}", npcId, result.reason);
+            fail("Cannot determine click point: " + result.reason);
+            return;
         }
 
         log.debug("Moving mouse to NPC at canvas point ({}, {})", clickPoint.x, clickPoint.y);
 
-        // Start async mouse movement (canvas coordinates -> screen coordinates)
+        // Start async mouse movement
         movePending = true;
         CompletableFuture<Void> moveFuture = ctx.getMouseController().moveToCanvas(clickPoint.x, clickPoint.y);
 
@@ -845,80 +813,6 @@ public class InteractNpcTask extends AbstractTask {
         }
 
         return nearest;
-    }
-
-    // ========================================================================
-    // Click Point Calculation
-    // ========================================================================
-
-    /**
-     * Calculate the screen point to click on the NPC.
-     */
-    private Point calculateNpcClickPoint(TaskContext ctx, NPC npc) {
-        Shape clickableArea = npc.getConvexHull();
-
-        if (clickableArea == null) {
-            // Fall back to model bounds
-            log.debug("Using model bounds for NPC click point");
-            return calculateNpcModelCenter(ctx, npc);
-        }
-
-        Rectangle bounds = clickableArea.getBounds();
-        if (bounds == null || bounds.width == 0 || bounds.height == 0) {
-            return calculateNpcModelCenter(ctx, npc);
-        }
-
-        // Use centralized ClickPointCalculator for humanized positioning
-        return com.rocinante.input.ClickPointCalculator.getGaussianClickPoint(bounds);
-    }
-
-    /**
-     * Calculate click point using NPC model center.
-     * Uses Perspective.localToCanvas with proper height offset for accurate targeting.
-     */
-    private Point calculateNpcModelCenter(TaskContext ctx, NPC npc) {
-        LocalPoint localPoint = npc.getLocalLocation();
-        if (localPoint == null) {
-            return null;
-        }
-
-        Client client = ctx.getClient();
-
-        // Get NPC logical height and use center (half height) for click targeting
-        // This accounts for different NPC sizes (imps, dragons, etc.)
-        int npcHeight = npc.getLogicalHeight();
-        int clickHeight = npcHeight / 2;
-
-        // Get tile height at NPC location
-        int tileHeight = 0;
-        try {
-            tileHeight = Perspective.getTileHeight(client, localPoint, client.getPlane());
-        } catch (Exception e) {
-            log.trace("Could not get tile height for NPC at {}", localPoint);
-        }
-
-        // Calculate canvas point with proper height offset
-        // The z offset is negative because height goes up (negative in the coordinate system)
-        net.runelite.api.Point canvasPoint = Perspective.localToCanvas(
-                client, localPoint, client.getPlane(), tileHeight - clickHeight);
-
-        if (canvasPoint == null) {
-            log.trace("NPC {} not visible on screen", npc.getName());
-            return null;
-        }
-
-        // Add slight randomization using our centralized utility
-        Point clickPoint = com.rocinante.input.ClickPointCalculator.getGaussianClickPoint(
-                new java.awt.Rectangle(
-                        canvasPoint.getX() - 5,
-                        canvasPoint.getY() - 5,
-                        10,
-                        10
-                ),
-                0.20 // Smaller target = less variance
-        );
-
-        return clickPoint;
     }
 
     // ========================================================================

@@ -449,4 +449,47 @@ public final class ObjectCollections {
             ObjectID.RANGE_54049,
             ObjectID.RANGE_59682
     ));
+
+    // ========================================================================
+    // Poll Booths
+    // ========================================================================
+
+    /**
+     * Poll booth objects for voting.
+     * Various styles exist throughout the game (blue, brown, red, green, etc.)
+     */
+    public static final List<Integer> POLL_BOOTHS = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.POLL_BOOTH,            // 26492 - Blue standard
+            ObjectID.POLL_BOOTH_26796,      // Blue highlight
+            ObjectID.POLL_BOOTH_26797,      // Brown standard
+            ObjectID.POLL_BOOTH_26798,      // Brown highlight
+            ObjectID.POLL_BOOTH_26799,      // Red standard
+            ObjectID.POLL_BOOTH_26800,      // Red highlight
+            ObjectID.POLL_BOOTH_26801,      // Green standard
+            ObjectID.POLL_BOOTH_26802,      // Green highlight
+            ObjectID.POLL_BOOTH_26803,      // Swamp standard
+            ObjectID.POLL_BOOTH_26804,      // Swamp highlight
+            ObjectID.POLL_BOOTH_26805,      // Rotten standard
+            ObjectID.POLL_BOOTH_26806,      // Rotten highlight
+            ObjectID.POLL_BOOTH_26807,      // Grey standard
+            ObjectID.POLL_BOOTH_26808,      // Grey highlight
+            ObjectID.POLL_BOOTH_26809,      // Grey frame standard
+            ObjectID.POLL_BOOTH_26810,      // Grey frame highlight
+            ObjectID.POLL_BOOTH_26811,      // TzHaar standard
+            ObjectID.POLL_BOOTH_26812,      // TzHaar highlight
+            // Non-standard variants (only ID available, no named constant)
+            26813,                          // Brown variant
+            26814,                          // Red variant
+            26815,                          // Green variant (Tutorial Island)
+            26816,                          // Swamp variant
+            26817,                          // Rotten variant
+            26818,                          // Grey variant
+            26819,                          // Grey frame variant
+            26820,                          // TzHaar variant
+            ObjectID.POLL_BOOTH_32546,      // Sanguine standard
+            ObjectID.POLL_BOOTH_32547,      // Sanguine highlight
+            ObjectID.POLL_BOOTH_33481,      // Brimstone standard
+            ObjectID.POLL_BOOTH_33482,      // Brimstone highlight
+            ObjectID.POLL_BOOTH_50047       // Green noop variant
+    ));
 }

@@ -5,6 +5,7 @@ import com.rocinante.input.SafeClickExecutor;
 import com.rocinante.state.InventoryState;
 import com.rocinante.state.PlayerState;
 import com.rocinante.tasks.AbstractTask;
+import com.rocinante.tasks.InteractionHelper;
 import com.rocinante.tasks.TaskContext;
 import com.rocinante.util.Randomization;
 import lombok.Getter;
@@ -17,8 +18,6 @@ import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.widgets.Widget;
 
 import java.awt.Point;
-import java.awt.Rectangle;
-import java.awt.Shape;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -162,6 +161,11 @@ public class UseItemOnNpcTask extends AbstractTask {
      * Current execution phase.
      */
     private UseItemPhase phase = UseItemPhase.CLICK_ITEM;
+    
+    /**
+     * Interaction helper for camera rotation and clickbox handling.
+     */
+    private InteractionHelper interactionHelper;
 
     /**
      * The NPC we found and are interacting with.
@@ -464,11 +468,27 @@ public class UseItemOnNpcTask extends AbstractTask {
             }
         }
 
-        // Calculate click point on NPC
-        Point clickPoint = calculateNpcClickPoint(ctx, targetNpc);
-        if (clickPoint == null) {
-            log.warn("Could not calculate click point for NPC {}", npcId);
-            fail("Cannot determine click point");
+        // Initialize interaction helper if needed
+        if (interactionHelper == null) {
+            interactionHelper = new InteractionHelper(ctx);
+            interactionHelper.startCameraRotation(lastNpcPosition);
+        }
+
+        // Use centralized click point resolution
+        InteractionHelper.ClickPointResult result = interactionHelper.getClickPointForNpc(targetNpc);
+        
+        Point clickPoint;
+        if (result.hasPoint()) {
+            clickPoint = result.point;
+            log.debug("Got click point for NPC {} ({})", npcId, result.reason);
+        } else if (result.shouldRotateCamera) {
+            interactionHelper.startCameraRotation(lastNpcPosition);
+            return;
+        } else if (result.shouldWait) {
+            return;
+        } else {
+            log.warn("Could not get click point for NPC {}: {}", npcId, result.reason);
+            fail("Cannot determine click point: " + result.reason);
             return;
         }
 
@@ -686,44 +706,6 @@ public class UseItemOnNpcTask extends AbstractTask {
         }
 
         log.debug(sb.toString());
-    }
-
-    // ========================================================================
-    // Click Point Calculation
-    // ========================================================================
-
-    /**
-     * Calculate the screen point to click on the NPC.
-     * NPCs use getConvexHull() for their clickable area.
-     */
-    private Point calculateNpcClickPoint(TaskContext ctx, NPC npc) {
-        Shape convexHull = npc.getConvexHull();
-
-        if (convexHull == null) {
-            log.warn("NPC has no convex hull");
-            return null;
-        }
-
-        Rectangle bounds = convexHull.getBounds();
-        if (bounds == null || bounds.width == 0 || bounds.height == 0) {
-            log.warn("NPC has invalid bounds");
-            return null;
-        }
-
-        // Calculate random point within the clickable area using Gaussian distribution
-        // Per REQUIREMENTS.md Section 3.1.2: 2D Gaussian centered at 45-55%, σ = 15%
-        int centerX = bounds.x + bounds.width / 2;
-        int centerY = bounds.y + bounds.height / 2;
-
-        double[] offset = Randomization.staticGaussian2D(0, 0, bounds.width / 4.0, bounds.height / 4.0);
-        int clickX = centerX + (int) offset[0];
-        int clickY = centerY + (int) offset[1];
-
-        // Clamp to bounds
-        clickX = Math.max(bounds.x, Math.min(clickX, bounds.x + bounds.width));
-        clickY = Math.max(bounds.y, Math.min(clickY, bounds.y + bounds.height));
-
-        return new Point(clickX, clickY);
     }
 
     // ========================================================================

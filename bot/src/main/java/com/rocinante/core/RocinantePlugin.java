@@ -10,6 +10,7 @@ import net.runelite.api.events.GameTick;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.ExternalPluginsChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDependency;
 import net.runelite.client.plugins.PluginDescriptor;
@@ -49,6 +50,7 @@ import net.runelite.client.plugins.slayer.SlayerPluginService;
 
 import javax.annotation.Nullable;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -227,6 +229,13 @@ public class RocinantePlugin extends Plugin
     @Nullable
     private SlayerPluginService slayerPluginService;
 
+    // Quest Helper waiting state
+    private static final String QUEST_HELPER_CLASS = "com.questhelper.QuestHelperPlugin";
+    private static final Duration QUEST_HELPER_TIMEOUT = Duration.ofSeconds(30);
+    private Instant questHelperWaitStart;
+    private boolean questHelperInitialized = false;
+    private boolean questHelperTimeoutReported = false;
+
     @Override
     protected void startUp() throws Exception
     {
@@ -370,12 +379,15 @@ public class RocinantePlugin extends Plugin
         taskFactory.setCombatManager(combatManager);
         taskFactory.setQuestService(questService);
         
-        // Initialize QuestService with Quest Helper plugin (if available)
-        initializeQuestHelperIntegration();
-        
-        // Start status publishing and command processing
-        statusPublisher.start();
-        commandProcessor.start();
+        // Try to initialize Quest Helper immediately (might already be loaded)
+        if (tryInitializeQuestHelper()) {
+            // Quest Helper found, start status systems
+            startStatusSystems();
+        } else {
+            // Quest Helper not loaded yet, start waiting
+            questHelperWaitStart = Instant.now();
+            log.info("Waiting for Quest Helper plugin to load (timeout: {}s)...", QUEST_HELPER_TIMEOUT.getSeconds());
+        }
 
         // Ensure required RuneLite plugins are enabled
         ensureRequiredPluginsEnabled();
@@ -390,8 +402,8 @@ public class RocinantePlugin extends Plugin
         log.info("  Anti-Detection: registered (camera={}, coupler={}, sequencer={}, inefficiency={}, logout={})",
                 cameraController != null, mouseCameraCoupler != null, actionSequencer != null,
                 inefficiencyInjector != null, logoutHandler != null);
-        log.info("  StatusSystem: registered (xpTracker={}, publisher={}, commands={})",
-                xpTracker != null, statusPublisher != null, commandProcessor != null);
+        log.info("  StatusSystem: {} (waiting for Quest Helper: {})",
+                questHelperInitialized ? "started" : "pending", !questHelperInitialized);
     }
 
     /**
@@ -446,35 +458,86 @@ public class RocinantePlugin extends Plugin
     }
     
     /**
-     * Initialize Quest Helper plugin integration.
-     * 
-     * Per REQUIREMENTS.md Section 8.2.1, this finds the Quest Helper plugin at runtime
-     * and initializes QuestService with it for quest data extraction.
+     * Try to find and initialize Quest Helper plugin.
+     * @return true if Quest Helper was found and initialized, false if not yet loaded
      */
-    private void initializeQuestHelperIntegration() {
-        // Quest Helper plugin class name (external plugin)
-        final String QUEST_HELPER_CLASS = "com.questhelper.QuestHelperPlugin";
+    private boolean tryInitializeQuestHelper() {
+        if (questHelperInitialized) {
+            return true;
+        }
         
-        try {
-            // Find Quest Helper plugin instance
-            Object questHelperPlugin = null;
-            for (Plugin plugin : pluginManager.getPlugins()) {
-                if (plugin.getClass().getName().equals(QUEST_HELPER_CLASS)) {
-                    questHelperPlugin = plugin;
-                    break;
+        // Find Quest Helper plugin instance
+        for (Plugin plugin : pluginManager.getPlugins()) {
+            if (plugin.getClass().getName().equals(QUEST_HELPER_CLASS)) {
+                questService.initializeQuestHelper(plugin);
+                questHelperInitialized = true;
+                log.info("Quest Helper integration initialized");
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Start status publishing and command processing systems.
+     * Called after Quest Helper is confirmed available.
+     */
+    private void startStatusSystems() {
+        statusPublisher.start();
+        commandProcessor.start();
+        log.info("Status systems started (Quest Helper available)");
+    }
+    
+    /**
+     * Handle external plugins being loaded/changed.
+     * Quest Helper is an external plugin that may load after our plugin.
+     */
+    @Subscribe
+    public void onExternalPluginsChanged(ExternalPluginsChanged event) {
+        if (questHelperInitialized) {
+            return;
+        }
+        
+        if (tryInitializeQuestHelper()) {
+            startStatusSystems();
+        }
+    }
+    
+    /**
+     * Check for Quest Helper on each game tick during warmup period.
+     * Also enforces timeout - logs error once if Quest Helper not found.
+     */
+    @Subscribe
+    public void onGameTick(GameTick tick) {
+        if (questHelperInitialized || questHelperTimeoutReported) {
+            return;
+        }
+        
+        // Check if Quest Helper appeared
+        if (tryInitializeQuestHelper()) {
+            startStatusSystems();
+            return;
+        }
+        
+        // Check timeout
+        if (questHelperWaitStart != null) {
+            Duration elapsed = Duration.between(questHelperWaitStart, Instant.now());
+            if (elapsed.compareTo(QUEST_HELPER_TIMEOUT) > 0) {
+                // Final check before failing
+                if (tryInitializeQuestHelper()) {
+                    startStatusSystems();
+                    return;
                 }
+                
+                // Timeout exceeded - log error ONCE and mark as failed
+                // (Can't throw here - RuneLite catches and ignores exceptions in event handlers)
+                questHelperTimeoutReported = true;
+                log.error("Quest Helper plugin not found after {}s timeout. Quest Helper is REQUIRED.", 
+                        QUEST_HELPER_TIMEOUT.getSeconds());
+                log.error("Status publishing and quest data will NOT be available!");
+                log.error("Ensure Quest Helper is installed from Plugin Hub and enabled.");
             }
-            
-            if (questHelperPlugin != null) {
-                questService.initializeQuestHelper(questHelperPlugin);
-                log.info("Quest Helper integration initialized - quest data extraction available");
-            } else {
-                questService.initializeQuestHelper(null);
-                log.info("Quest Helper plugin not found - using manual quests only");
-            }
-        } catch (Exception e) {
-            log.warn("Failed to initialize Quest Helper integration", e);
-            questService.initializeQuestHelper(null);
         }
     }
     

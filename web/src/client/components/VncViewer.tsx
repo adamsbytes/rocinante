@@ -93,7 +93,9 @@ export const VncViewer: Component<VncViewerProps> = (props) => {
   const processProtocol = () => {
     if (dataBuffer.length < 12) return;
     
-    const version = new TextDecoder().decode(consumeData(12));
+    const versionData = consumeData(12);
+    if (!versionData) return;
+    const version = new TextDecoder().decode(versionData);
     console.log('VNC Server version:', version.trim());
     
     // Send our version

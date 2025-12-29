@@ -114,10 +114,10 @@
 - [ ] `ItemAcquisitonPlanner` - Complex methods to obtain items, such as recognizing "I need iron bars, I don't have those, but I have iron ore and 15 smithing" or some items are not tradeable, such as breadcrumbs
 - [ ] `QuestOrderPlanner` - Optimal quest ordering
 - [ ] `GearProgressionPlanner` - Equipment upgrade paths
+- [ ] `InventoryTask`
 - [X] `UnlockTracker` - Teleports, areas, features (integrated with WebWalker)
 - [X] `TravelTask` with behavioral profile preferences
 - [X] Full Grand Exchange handling (incl. `GrandExchangeTask`)
-- [ ] `InventoryTask`
 - [X] `BankTask`, `BuryBoneTask`, `DialogueTask`, `PuzzleTask`, `SettingsTask`, `TradeTask`, `WidgetInteractTask`
 
 **Test**: Give goal "complete Recipe for Disaster" - bot generates valid plan and begins execution.
@@ -236,8 +236,7 @@
 ## Phase 10: Ironman & HCIM Support
 **Goal**: Full ironman support with HCIM death prevention.
 
-- [X] `IronmanState` - Account type detection
-- [X] `IronmanRestrictions` - GE/trade blocking
+- [X] `IronmanState` - Account type detection, Ironman restrictions (GE/trade blocking, etc)
 - [ ] `SelfSufficiencyPlanner` - Item acquisition without GE
 - [ ] `ResourceGatheringPlanner` - Supply chain planning
 - [ ] `DropTableAnalyzer` - Monster farming optimization
@@ -260,7 +259,7 @@
 - [ ] `Sailing` skill support
 - [ ] `ClaudeAPIClient` - Anthropic API integration
 - [ ] `AIDirector` - Decision layer for ambiguous situations
-- [ ] Cannon integration (optional)
+- [ ] Cannon integration for slayer/combat tasks
 
 ---
 

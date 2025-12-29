@@ -65,6 +65,23 @@ public abstract class AbstractTask implements Task {
     @Getter
     protected String failureReason;
 
+    /**
+     * Progress indicator (0.0 to 1.0).
+     * Set to -1.0 if progress is not applicable or not tracked.
+     * Tasks can update this value as they execute to show progress in the UI.
+     */
+    @Getter
+    @Setter
+    protected double progress = -1.0;
+
+    /**
+     * Timestamp when the task started executing (for public access).
+     * Returns null if the task hasn't started yet.
+     */
+    public Instant getStartTime() {
+        return startTime;
+    }
+
     // ========================================================================
     // Phase Management Support
     // ========================================================================
@@ -233,6 +250,9 @@ public abstract class AbstractTask implements Task {
      * Mark the task as completed successfully.
      */
     protected void complete() {
+        log.debug("Task completing: {} [phase={}, ticks={}, elapsed={}ms]",
+                getDescription(), currentPhaseName, executionTicks,
+                startTime != null ? getExecutionDuration().toMillis() : 0);
         transitionTo(TaskState.COMPLETED);
     }
 
@@ -243,6 +263,9 @@ public abstract class AbstractTask implements Task {
      */
     protected void fail(String reason) {
         this.failureReason = reason;
+        log.debug("Task failing: {} - reason='{}' [phase={}, ticks={}, elapsed={}ms]",
+                getDescription(), reason, currentPhaseName, executionTicks,
+                startTime != null ? getExecutionDuration().toMillis() : 0);
         transitionTo(TaskState.FAILED);
     }
 
@@ -276,6 +299,9 @@ public abstract class AbstractTask implements Task {
                 log.debug("Task '{}' preconditions not met, skipping execution", getDescription());
                 return;
             }
+            // Log task start with configuration details
+            log.debug("Starting task: {} [timeout={}s, priority={}, maxRetries={}]",
+                    getDescription(), timeout.getSeconds(), priority, maxRetries);
             transitionTo(TaskState.RUNNING);
         }
 
@@ -406,6 +432,54 @@ public abstract class AbstractTask implements Task {
     public AbstractTask withMaxRetries(int maxRetries) {
         this.maxRetries = maxRetries;
         return this;
+    }
+
+    // ========================================================================
+    // Progress Tracking
+    // ========================================================================
+
+    /**
+     * Report progress as a fraction (0.0 to 1.0).
+     * 
+     * @param current the current count
+     * @param total the total count
+     */
+    protected void reportProgress(int current, int total) {
+        if (total <= 0) {
+            this.progress = -1.0;
+        } else {
+            this.progress = Math.min(1.0, Math.max(0.0, (double) current / total));
+        }
+    }
+
+    /**
+     * Report progress as a fraction (0.0 to 1.0).
+     * 
+     * @param current the current count
+     * @param total the total count
+     */
+    protected void reportProgress(long current, long total) {
+        if (total <= 0) {
+            this.progress = -1.0;
+        } else {
+            this.progress = Math.min(1.0, Math.max(0.0, (double) current / total));
+        }
+    }
+
+    /**
+     * Report progress directly as a percentage value.
+     * 
+     * @param progressValue the progress (0.0 to 1.0)
+     */
+    protected void reportProgress(double progressValue) {
+        this.progress = Math.min(1.0, Math.max(-1.0, progressValue));
+    }
+
+    /**
+     * Clear progress tracking (set to -1.0, meaning "not tracked").
+     */
+    protected void clearProgress() {
+        this.progress = -1.0;
     }
 
     // ========================================================================

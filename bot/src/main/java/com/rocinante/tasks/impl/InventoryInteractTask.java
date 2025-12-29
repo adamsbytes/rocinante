@@ -240,7 +240,11 @@ public class InventoryInteractTask extends AbstractTask {
         // Store starting state
         startItemCount = inventory.countItem(resolvedItemId);
 
-        log.debug("Clicking item {} in slot {} (action: {})", resolvedItemId, slot, action);
+        // Log slot position for debugging click issues
+        int row = slot / 4;
+        int col = slot % 4;
+        log.debug("Clicking item {} in slot {} (row={}, col={}, action='{}', count={})",
+                resolvedItemId, slot, row, col, action, startItemCount);
         operationPending = true;
 
         inventoryHelper.executeClick(slot, action + " item " + resolvedItemId)
@@ -283,9 +287,10 @@ public class InventoryInteractTask extends AbstractTask {
         String successReason = null;
 
         // Check for animation (eating/drinking typically has animation)
+        int animationId = player.getAnimationId();
         if (player.isAnimating()) {
             success = true;
-            successReason = "playing animation";
+            successReason = "playing animation (id=" + animationId + ")";
         }
 
         // Check if item count decreased (consumed)
@@ -293,7 +298,7 @@ public class InventoryInteractTask extends AbstractTask {
             int currentCount = inventory.countItem(resolvedItemId);
             if (currentCount < startItemCount) {
                 success = true;
-                successReason = "item consumed";
+                successReason = "item consumed (" + startItemCount + " -> " + currentCount + ")";
             }
         }
 
@@ -304,12 +309,14 @@ public class InventoryInteractTask extends AbstractTask {
         }
 
         if (success) {
-            log.info("Inventory interaction successful: {} {} ({})", action, resolvedItemId, successReason);
+            log.debug("Inventory interaction successful: {} {} ({})", action, resolvedItemId, successReason);
             complete();
             return;
         }
 
-        log.trace("Waiting for interaction response (tick {})", interactionTicks);
+        log.trace("Waiting for interaction response (tick {}/{}, animating={}, count={})",
+                interactionTicks, INTERACTION_TIMEOUT_TICKS, player.isAnimating(),
+                inventory.countItem(resolvedItemId));
     }
 
     // ========================================================================

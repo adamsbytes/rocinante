@@ -8,9 +8,11 @@ import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.Perspective;
+import net.runelite.api.ScriptID;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.GameTick;
+import net.runelite.client.callback.ClientThread;
 import net.runelite.client.eventbus.Subscribe;
 
 import javax.annotation.Nullable;
@@ -105,12 +107,32 @@ public class MouseCameraCoupler {
      * Margin from screen edge to consider a target "off-screen" (pixels).
      */
     private static final int SCREEN_MARGIN = 50;
+    
+    // === Zoom Settings ===
+    
+    /**
+     * Preferred zoom level (lower = more zoomed out).
+     * The default game range is roughly 128-896 without RuneLite expansion.
+     * Value ~128-200 is max zoomed out, ~800-1400 is max zoomed in.
+     */
+    private static final int PREFERRED_ZOOM_LEVEL = 200;
+    
+    /**
+     * If zoom is above this threshold, we're "too zoomed in" and should zoom out.
+     */
+    private static final int ZOOM_TOO_CLOSE_THRESHOLD = 400;
+    
+    /**
+     * Minimum interval between zoom checks (ms).
+     */
+    private static final long ZOOM_CHECK_INTERVAL_MS = 10000;
 
     // === Dependencies ===
     
     private final Client client;
     private final CameraController cameraController;
     private final Randomization randomization;
+    private final ClientThread clientThread;
     
     @Setter
     @Nullable
@@ -148,12 +170,18 @@ public class MouseCameraCoupler {
      * Last time a camera hold was performed.
      */
     private Instant lastCameraHoldTime = Instant.now();
+    
+    /**
+     * Last time zoom was checked/adjusted.
+     */
+    private Instant lastZoomCheckTime = Instant.EPOCH;
 
     @Inject
-    public MouseCameraCoupler(Client client, CameraController cameraController, Randomization randomization) {
+    public MouseCameraCoupler(Client client, CameraController cameraController, Randomization randomization, ClientThread clientThread) {
         this.client = client;
         this.cameraController = cameraController;
         this.randomization = randomization;
+        this.clientThread = clientThread;
         
         // Schedule first drift check
         scheduleNextDriftCheck();
@@ -333,6 +361,12 @@ public class MouseCameraCoupler {
         }
         
         Instant now = Instant.now();
+        
+        // Check zoom level periodically - zoom out if too close
+        if (Duration.between(lastZoomCheckTime, now).toMillis() >= ZOOM_CHECK_INTERVAL_MS) {
+            checkAndAdjustZoom();
+            lastZoomCheckTime = now;
+        }
         
         // Check for idle drift
         if (now.isAfter(nextDriftCheckTime)) {
@@ -560,6 +594,45 @@ public class MouseCameraCoupler {
         lastLookAroundCheckTime = Instant.now();
         lastCameraHoldTime = Instant.now();
         scheduleNextDriftCheck();
+    }
+
+    // ========================================================================
+    // Zoom Control
+    // ========================================================================
+
+    /**
+     * Check if we're too zoomed in and adjust if needed.
+     * Called periodically from tick().
+     */
+    private void checkAndAdjustZoom() {
+        int currentZoom = client.getScale();
+        if (currentZoom > ZOOM_TOO_CLOSE_THRESHOLD) {
+            log.info("Camera too zoomed in ({} > {}), zooming out to {}", 
+                    currentZoom, ZOOM_TOO_CLOSE_THRESHOLD, PREFERRED_ZOOM_LEVEL);
+            zoomToPreferred();
+        }
+    }
+
+    /**
+     * Zoom out to the preferred level for better visibility.
+     */
+    public void zoomToPreferred() {
+        clientThread.invokeLater(() -> {
+            int currentZoom = client.getScale();
+            if (currentZoom > PREFERRED_ZOOM_LEVEL + 50) {
+                log.debug("Zooming out from {} to preferred level {}", currentZoom, PREFERRED_ZOOM_LEVEL);
+                client.runScript(ScriptID.CAMERA_DO_ZOOM, PREFERRED_ZOOM_LEVEL, PREFERRED_ZOOM_LEVEL);
+            }
+        });
+    }
+
+    /**
+     * Get the current zoom level.
+     * 
+     * @return the current camera zoom scale
+     */
+    public int getCurrentZoom() {
+        return client.getScale();
     }
 }
 

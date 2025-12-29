@@ -2,12 +2,13 @@ import type { Component } from 'solid-js';
 import { useNavigate } from '@tanstack/solid-router';
 import { BotForm } from '../components/BotForm';
 import { useCreateBotMutation } from '../lib/api';
+import type { BotConfig } from '../../shared/types';
 
 export const BotNew: Component = () => {
   const navigate = useNavigate();
   const createMutation = useCreateBotMutation();
 
-  const handleSubmit = async (data: Parameters<typeof createMutation.mutate>[0]) => {
+  const handleSubmit = async (data: Omit<BotConfig, 'id' | 'vncPort'>) => {
     try {
       await createMutation.mutateAsync(data);
       navigate({ to: '/' });

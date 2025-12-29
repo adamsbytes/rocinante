@@ -12,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.Player;
+import net.runelite.api.QuestState;
 import net.runelite.api.Skill;
 import net.runelite.api.VarPlayer;
 import net.runelite.api.events.GameTick;
@@ -29,6 +30,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -275,19 +278,145 @@ public class StatusPublisher {
     }
 
     /**
-     * Build quest data from QuestService.
-     * This is called on refresh and builds the full quest list with requirement status.
+     * Build quest data from RuneLite's Quest API.
+     * 
+     * This provides real-time quest status by querying the game client directly
+     * for each quest's state (NOT_STARTED, IN_PROGRESS, FINISHED).
+     * 
+     * Skill/quest requirement details are only populated for quests from our
+     * QuestService (manual implementations), as RuneLite's Quest enum doesn't
+     * expose requirement metadata directly.
      */
     private BotStatus.QuestsData buildQuestsData() {
-        // TODO: Implement full quest data building from QuestService
-        // For now, return empty data - will be implemented when bot is working
+        List<BotStatus.QuestSummary> available = new ArrayList<>();
+        List<String> completed = new ArrayList<>();
+        List<String> inProgress = new ArrayList<>();
+        int totalQuestPoints = 0;
+        
+        // Only proceed if we're logged in
+        if (client.getGameState() != GameState.LOGGED_IN) {
+            return BotStatus.QuestsData.builder()
+                    .lastUpdated(System.currentTimeMillis())
+                    .available(available)
+                    .completed(completed)
+                    .inProgress(inProgress)
+                    .totalQuestPoints(0)
+                    .build();
+        }
+
+        try {
+            // Get total quest points
+            totalQuestPoints = client.getVarpValue(VarPlayer.QUEST_POINTS);
+        } catch (Exception e) {
+            log.trace("Could not read quest points: {}", e.getMessage());
+        }
+
+        // Build quest summaries from RuneLite's Quest enum
+        for (net.runelite.api.Quest quest : net.runelite.api.Quest.values()) {
+            try {
+                QuestState state = quest.getState(client);
+                String questId = quest.name();
+                String questName = quest.getName();
+
+                // Track completed and in-progress quests
+                if (state == QuestState.FINISHED) {
+                    completed.add(questId);
+                } else if (state == QuestState.IN_PROGRESS) {
+                    inProgress.add(questId);
+                }
+
+                // Build quest summary
+                BotStatus.QuestSummary summary = buildQuestSummary(quest, state);
+                if (summary != null) {
+                    available.add(summary);
+                }
+            } catch (Exception e) {
+                log.trace("Error getting state for quest {}: {}", quest.name(), e.getMessage());
+            }
+        }
+
         return BotStatus.QuestsData.builder()
                 .lastUpdated(System.currentTimeMillis())
-                .available(List.of())
-                .completed(List.of())
-                .inProgress(List.of())
-                .totalQuestPoints(0)
+                .available(available)
+                .completed(completed)
+                .inProgress(inProgress)
+                .totalQuestPoints(totalQuestPoints)
                 .build();
+    }
+
+    /**
+     * Build a QuestSummary for a single quest.
+     * All logic is delegated to QuestService - StatusPublisher just formats.
+     */
+    private BotStatus.QuestSummary buildQuestSummary(net.runelite.api.Quest quest, QuestState state) {
+        try {
+            // Get complete requirements status from QuestService
+            var reqStatus = questService.getRequirementsStatus(quest.name());
+            
+            // Convert to BotStatus format
+            List<BotStatus.SkillRequirementStatus> skillReqs = new ArrayList<>();
+            for (var sr : reqStatus.getSkillRequirements()) {
+                skillReqs.add(BotStatus.SkillRequirementStatus.builder()
+                        .skill(sr.getSkillName())
+                        .required(sr.getRequired())
+                        .current(sr.getCurrent())
+                        .met(sr.isMet())
+                        .boostable(sr.isBoostable())
+                        .build());
+            }
+            
+            List<BotStatus.QuestRequirementStatus> questReqs = new ArrayList<>();
+            for (var qr : reqStatus.getQuestRequirements()) {
+                questReqs.add(BotStatus.QuestRequirementStatus.builder()
+                        .questId(qr.getQuestId())
+                        .questName(qr.getQuestName())
+                        .met(qr.isMet())
+                        .build());
+            }
+            
+            List<BotStatus.ItemRequirementStatus> itemReqs = new ArrayList<>();
+            for (var ir : reqStatus.getItemRequirements()) {
+                itemReqs.add(BotStatus.ItemRequirementStatus.builder()
+                        .itemId(ir.getItemId())
+                        .itemName(ir.getName())
+                        .quantity(ir.getQuantityRequired())
+                        .inInventory(ir.getInInventory())
+                        .equipped(ir.getEquipped())
+                        .inBank(ir.getInBank())
+                        .met(ir.isMet())
+                        .obtainableDuringQuest(ir.isObtainableDuringQuest())
+                        .recommended(ir.isRecommended())
+                        .build());
+            }
+            
+            return BotStatus.QuestSummary.builder()
+                    .id(reqStatus.getQuestId())
+                    .name(reqStatus.getQuestName())
+                    .difficulty(reqStatus.getDifficulty())
+                    .members(reqStatus.isMembers())
+                    .questPoints(reqStatus.getQuestPoints())
+                    .state(reqStatus.getState())
+                    .canStart(reqStatus.isCanStart())
+                    .skillRequirements(skillReqs)
+                    .questRequirements(questReqs)
+                    .itemRequirements(itemReqs)
+                    .build();
+        } catch (Exception e) {
+            // Fallback: basic info only (Quest Helper bridge failed for this quest)
+            log.trace("Could not get full requirements for {}: {}", quest.name(), e.getMessage());
+            return BotStatus.QuestSummary.builder()
+                    .id(quest.name())
+                    .name(quest.getName())
+                    .difficulty("Unknown")
+                    .members(true)
+                    .questPoints(0)
+                    .state(state != null ? state.name() : "NOT_STARTED")
+                    .canStart(false)
+                    .skillRequirements(Collections.emptyList())
+                    .questRequirements(Collections.emptyList())
+                    .itemRequirements(Collections.emptyList())
+                    .build();
+        }
     }
 
     /**
@@ -321,7 +450,7 @@ public class StatusPublisher {
             
             log.trace("Status written to {}", statusFilePath);
         } catch (IOException e) {
-            log.warn("Failed to write status file: {}", e.getMessage());
+            log.warn("Failed to write status file: {} - {}", statusFilePath, e.toString());
         } catch (Exception e) {
             log.error("Error capturing status", e);
         }

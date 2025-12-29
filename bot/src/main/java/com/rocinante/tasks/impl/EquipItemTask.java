@@ -192,26 +192,49 @@ public class EquipItemTask extends AbstractTask {
         InventoryState inventory = ctx.getGameStateService().getInventoryState();
         EquipmentState equipment = ctx.getGameStateService().getEquipmentState();
 
+        log.debug("EquipItemTask.canExecute: itemIds={}, gearSet={}, attackStyle={}",
+                itemIds, gearSet != null ? gearSet.getName() : null, attackStyle);
+
         // If equipping from item list, find first available
         if (!itemIds.isEmpty()) {
             resolvedItemId = findFirstMatchingItem(inventory, equipment, itemIds);
             if (resolvedItemId == -1) {
-                log.debug("No item from {} found in inventory or equipment", itemIds);
+                log.debug("No item from {} found in inventory or equipment. " +
+                        "Inventory: {}, Equipped weapon: {}",
+                        itemIds, formatInventory(inventory), equipment.getWeaponId());
                 return false;
             }
-            log.debug("Resolved item {} from acceptable list {}", resolvedItemId, itemIds);
+            log.debug("Resolved item {} from acceptable list {} (already equipped: {})",
+                    resolvedItemId, itemIds, equipment.hasEquipped(resolvedItemId));
         }
 
         // If equipping gear set, verify items available
         if (gearSet != null && !gearSet.isEmpty()) {
             if (!gearSet.isAvailable(inventory, equipment)) {
-                log.debug("Gear set '{}' items not available", gearSet.getName());
+                log.debug("Gear set '{}' items not available. Required items: {}",
+                        gearSet.getName(), gearSet.getItemIds());
                 return false;
             }
+            log.debug("Gear set '{}' is available for equipping", gearSet.getName());
         }
 
         // For attack style, we'll try to auto-detect - verify later
         return true;
+    }
+
+    /**
+     * Format inventory for debug logging.
+     */
+    private String formatInventory(InventoryState inventory) {
+        StringBuilder sb = new StringBuilder("[");
+        boolean first = true;
+        for (net.runelite.api.Item item : inventory.getNonEmptyItems()) {
+            if (!first) sb.append(", ");
+            sb.append(item.getId());
+            first = false;
+        }
+        sb.append("]");
+        return sb.toString();
     }
 
     @Override

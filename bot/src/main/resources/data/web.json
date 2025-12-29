@@ -58,18 +58,8 @@
       "y": 3227,
       "plane": 0,
       "type": "GENERIC",
-      "tags": ["f2p", "safe", "toll"],
-      "metadata": {"toll_cost": "10", "free_after_quest": "PRINCE_ALI_RESCUE"}
-    },
-    {
-      "id": "al_kharid_toll_free_crossing",
-      "name": "Al Kharid Toll-Free Crossing",
-      "x": 3258,
-      "y": 3147,
-      "plane": 0,
-      "type": "GENERIC",
       "tags": ["f2p", "safe"],
-      "metadata": {"notes": "South of the toll gate, connects Lumbridge Swamp to Al Kharid"}
+      "metadata": {}
     },
     {
       "id": "al_kharid_bank",
@@ -430,207 +420,17 @@
       "type": "GENERIC",
       "tags": ["f2p"],
       "metadata": {}
-    },
-    {
-      "id": "lumbridge_castle_1f",
-      "name": "Lumbridge Castle 1st Floor",
-      "x": 3208,
-      "y": 3220,
-      "plane": 1,
-      "type": "GENERIC",
-      "tags": ["f2p", "safe"],
-      "metadata": {"notes": "Middle floor of Lumbridge Castle"}
-    },
-    {
-      "id": "varrock_palace_1f",
-      "name": "Varrock Palace 1st Floor",
-      "x": 3212,
-      "y": 3473,
-      "plane": 1,
-      "type": "GENERIC",
-      "tags": ["f2p", "safe"],
-      "metadata": {}
-    },
-    {
-      "id": "falador_castle_ground",
-      "name": "Falador Castle Ground Floor",
-      "x": 2968,
-      "y": 3341,
-      "plane": 0,
-      "type": "GENERIC",
-      "tags": ["f2p", "safe"],
-      "metadata": {}
-    },
-    {
-      "id": "falador_castle_1f",
-      "name": "Falador Castle 1st Floor",
-      "x": 2968,
-      "y": 3341,
-      "plane": 1,
-      "type": "GENERIC",
-      "tags": ["f2p", "safe"],
-      "metadata": {}
-    },
-    {
-      "id": "falador_castle_2f",
-      "name": "Falador Castle 2nd Floor",
-      "x": 2968,
-      "y": 3341,
-      "plane": 2,
-      "type": "GENERIC",
-      "tags": ["f2p", "safe"],
-      "metadata": {}
-    },
-    {
-      "id": "blue_moon_inn_ground",
-      "name": "Blue Moon Inn Ground Floor",
-      "x": 3226,
-      "y": 3399,
-      "plane": 0,
-      "type": "GENERIC",
-      "tags": ["f2p", "safe"],
-      "metadata": {}
-    },
-    {
-      "id": "blue_moon_inn_1f",
-      "name": "Blue Moon Inn 1st Floor",
-      "x": 3226,
-      "y": 3399,
-      "plane": 1,
-      "type": "GENERIC",
-      "tags": ["f2p", "safe"],
-      "metadata": {}
-    },
-    {
-      "id": "edgeville_dungeon_entrance",
-      "name": "Edgeville Dungeon Entrance",
-      "x": 3097,
-      "y": 3468,
-      "plane": 0,
-      "type": "GENERIC",
-      "tags": ["f2p", "safe"],
-      "metadata": {"notes": "Trapdoor entrance to Edgeville Dungeon"}
-    },
-    {
-      "id": "edgeville_dungeon",
-      "name": "Edgeville Dungeon",
-      "x": 3132,
-      "y": 9916,
-      "plane": 0,
-      "type": "GENERIC",
-      "tags": ["f2p"],
-      "metadata": {"notes": "Underground dungeon, use Region 12441"}
-    },
-    {
-      "id": "falador_shortcut_west",
-      "name": "Falador West Shortcut (Wall)",
-      "x": 2935,
-      "y": 3355,
-      "plane": 0,
-      "type": "GENERIC",
-      "tags": ["f2p", "safe", "shortcut"],
-      "metadata": {"notes": "Crumbling wall shortcut west of Falador"}
-    },
-    {
-      "id": "falador_shortcut_east",
-      "name": "Falador East Shortcut (Wall)",
-      "x": 2936,
-      "y": 3355,
-      "plane": 0,
-      "type": "GENERIC",
-      "tags": ["f2p", "safe", "shortcut"],
-      "metadata": {}
-    },
-    {
-      "id": "varrock_south_fence_north",
-      "name": "Varrock South Fence (North)",
-      "x": 3240,
-      "y": 3335,
-      "plane": 0,
-      "type": "GENERIC",
-      "tags": ["f2p", "safe", "shortcut"],
-      "metadata": {}
-    },
-    {
-      "id": "varrock_south_fence_south",
-      "name": "Varrock South Fence (South)",
-      "x": 3240,
-      "y": 3334,
-      "plane": 0,
-      "type": "GENERIC",
-      "tags": ["f2p", "safe", "shortcut"],
-      "metadata": {}
-    },
-    {
-      "id": "ge_shortcut_north",
-      "name": "GE Shortcut (North)",
-      "x": 3139,
-      "y": 3516,
-      "plane": 0,
-      "type": "GENERIC",
-      "tags": ["f2p", "safe", "shortcut"],
-      "metadata": {}
-    },
-    {
-      "id": "ge_shortcut_south",
-      "name": "GE Shortcut (South)",
-      "x": 3139,
-      "y": 3515,
-      "plane": 0,
-      "type": "GENERIC",
-      "tags": ["f2p", "safe", "shortcut"],
-      "metadata": {}
-    },
-    {
-      "id": "arceuus_library",
-      "name": "Arceuus Library",
-      "x": 1632,
-      "y": 3807,
-      "plane": 0,
-      "type": "TRAINING",
-      "tags": ["p2p", "safe", "minigame"],
-      "metadata": {"minigame": "arceuus_library", "region_id": "6459", "resource": "magic,runecraft"}
-    },
-    {
-      "id": "arceuus_bank",
-      "name": "Arceuus Bank",
-      "x": 1624,
-      "y": 3743,
-      "plane": 0,
-      "type": "BANK",
-      "tags": ["p2p", "safe"],
-      "metadata": {"bank_type": "booth"}
-    },
-    {
-      "id": "arceuus_center",
-      "name": "Arceuus Center",
-      "x": 1700,
-      "y": 3750,
-      "plane": 0,
-      "type": "GENERIC",
-      "tags": ["p2p", "safe"],
-      "metadata": {}
-    },
-    {
-      "id": "wintertodt",
-      "name": "Wintertodt Camp",
-      "x": 1630,
-      "y": 3959,
-      "plane": 0,
-      "type": "TRAINING",
-      "tags": ["p2p", "safe", "minigame"],
-      "metadata": {"minigame": "wintertodt", "region_id": "6461,6462", "resource": "firemaking"}
     }
   ],
   "edges": [
     {
       "from": "lumbridge_castle",
       "to": "lumbridge_bank",
-      "type": "STAIRS",
+      "type": "WALK",
       "cost_ticks": 25,
       "bidirectional": true,
       "requirements": [],
-      "metadata": {"notes": "Climb stairs to 2nd floor", "object_id": "16671"}
+      "metadata": {"notes": "Climb stairs to 2nd floor"}
     },
     {
       "from": "lumbridge_castle",
@@ -671,31 +471,11 @@
     {
       "from": "al_kharid_gate",
       "to": "al_kharid_bank",
-      "type": "TOLL",
-      "cost_ticks": 75,
-      "bidirectional": true,
-      "requirements": [
-        {"type": "ITEM", "item_id": 995, "value": 10, "consumed": true}
-      ],
-      "metadata": {"toll_cost": "10", "free_after_quest": "PRINCE_ALI_RESCUE", "object_ids": "44052,44053,44054,44055"}
-    },
-    {
-      "from": "lumbridge_swamp",
-      "to": "al_kharid_toll_free_crossing",
       "type": "WALK",
-      "cost_ticks": 55,
+      "cost_ticks": 70,
       "bidirectional": true,
       "requirements": [],
-      "metadata": {"notes": "Southern toll-free route from Lumbridge to Al Kharid"}
-    },
-    {
-      "from": "al_kharid_toll_free_crossing",
-      "to": "al_kharid_bank",
-      "type": "WALK",
-      "cost_ticks": 40,
-      "bidirectional": true,
-      "requirements": [],
-      "metadata": {"notes": "Direct path from toll-free crossing to Al Kharid"}
+      "metadata": {}
     },
     {
       "from": "al_kharid_gate",
@@ -1104,273 +884,6 @@
         ]}
       ],
       "metadata": {"teleport_type": "spell", "spell_name": "Lumbridge Teleport"}
-    },
-    {
-      "from": "lumbridge_castle",
-      "to": "lumbridge_castle_1f",
-      "type": "STAIRS",
-      "cost_ticks": 5,
-      "bidirectional": false,
-      "requirements": [],
-      "metadata": {"object_id": "16671", "action": "Climb-up", "from_plane": "0", "to_plane": "1"}
-    },
-    {
-      "from": "lumbridge_castle_1f",
-      "to": "lumbridge_castle",
-      "type": "STAIRS",
-      "cost_ticks": 5,
-      "bidirectional": false,
-      "requirements": [],
-      "metadata": {"object_id": "16673", "action": "Climb-down", "from_plane": "1", "to_plane": "0"}
-    },
-    {
-      "from": "lumbridge_castle_1f",
-      "to": "lumbridge_bank",
-      "type": "STAIRS",
-      "cost_ticks": 5,
-      "bidirectional": false,
-      "requirements": [],
-      "metadata": {"object_id": "16671", "action": "Climb-up", "from_plane": "1", "to_plane": "2"}
-    },
-    {
-      "from": "lumbridge_bank",
-      "to": "lumbridge_castle_1f",
-      "type": "STAIRS",
-      "cost_ticks": 5,
-      "bidirectional": false,
-      "requirements": [],
-      "metadata": {"object_id": "16673", "action": "Climb-down", "from_plane": "2", "to_plane": "1"}
-    },
-    {
-      "from": "varrock_palace",
-      "to": "varrock_palace_1f",
-      "type": "STAIRS",
-      "cost_ticks": 5,
-      "bidirectional": false,
-      "requirements": [],
-      "metadata": {"object_id": "11796", "action": "Climb-up", "from_plane": "0", "to_plane": "1"}
-    },
-    {
-      "from": "varrock_palace_1f",
-      "to": "varrock_palace",
-      "type": "STAIRS",
-      "cost_ticks": 5,
-      "bidirectional": false,
-      "requirements": [],
-      "metadata": {"object_id": "11797", "action": "Climb-down", "from_plane": "1", "to_plane": "0"}
-    },
-    {
-      "from": "falador_center",
-      "to": "falador_castle_ground",
-      "type": "WALK",
-      "cost_ticks": 45,
-      "bidirectional": true,
-      "requirements": [],
-      "metadata": {}
-    },
-    {
-      "from": "falador_castle_ground",
-      "to": "falador_castle_1f",
-      "type": "STAIRS",
-      "cost_ticks": 5,
-      "bidirectional": false,
-      "requirements": [],
-      "metadata": {"object_id": "24072", "action": "Climb-up", "from_plane": "0", "to_plane": "1"}
-    },
-    {
-      "from": "falador_castle_1f",
-      "to": "falador_castle_ground",
-      "type": "STAIRS",
-      "cost_ticks": 5,
-      "bidirectional": false,
-      "requirements": [],
-      "metadata": {"object_id": "24073", "action": "Climb-down", "from_plane": "1", "to_plane": "0"}
-    },
-    {
-      "from": "falador_castle_1f",
-      "to": "falador_castle_2f",
-      "type": "STAIRS",
-      "cost_ticks": 5,
-      "bidirectional": false,
-      "requirements": [],
-      "metadata": {"object_id": "24072", "action": "Climb-up", "from_plane": "1", "to_plane": "2"}
-    },
-    {
-      "from": "falador_castle_2f",
-      "to": "falador_castle_1f",
-      "type": "STAIRS",
-      "cost_ticks": 5,
-      "bidirectional": false,
-      "requirements": [],
-      "metadata": {"object_id": "24073", "action": "Climb-down", "from_plane": "2", "to_plane": "1"}
-    },
-    {
-      "from": "varrock_center",
-      "to": "blue_moon_inn_ground",
-      "type": "WALK",
-      "cost_ticks": 25,
-      "bidirectional": true,
-      "requirements": [],
-      "metadata": {}
-    },
-    {
-      "from": "blue_moon_inn_ground",
-      "to": "blue_moon_inn_1f",
-      "type": "STAIRS",
-      "cost_ticks": 5,
-      "bidirectional": false,
-      "requirements": [],
-      "metadata": {"object_id": "11797", "action": "Climb-up", "from_plane": "0", "to_plane": "1"}
-    },
-    {
-      "from": "blue_moon_inn_1f",
-      "to": "blue_moon_inn_ground",
-      "type": "STAIRS",
-      "cost_ticks": 5,
-      "bidirectional": false,
-      "requirements": [],
-      "metadata": {"object_id": "11799", "action": "Climb-down", "from_plane": "1", "to_plane": "0"}
-    },
-    {
-      "from": "edgeville_bank",
-      "to": "edgeville_dungeon_entrance",
-      "type": "WALK",
-      "cost_ticks": 30,
-      "bidirectional": true,
-      "requirements": [],
-      "metadata": {}
-    },
-    {
-      "from": "edgeville_dungeon_entrance",
-      "to": "edgeville_dungeon",
-      "type": "STAIRS",
-      "cost_ticks": 8,
-      "bidirectional": false,
-      "requirements": [],
-      "metadata": {"object_id": "1579", "action": "Climb-down", "from_plane": "0", "to_plane": "0", "notes": "Trapdoor to dungeon"}
-    },
-    {
-      "from": "edgeville_dungeon",
-      "to": "edgeville_dungeon_entrance",
-      "type": "STAIRS",
-      "cost_ticks": 8,
-      "bidirectional": false,
-      "requirements": [],
-      "metadata": {"object_id": "17385", "action": "Climb-up", "notes": "Ladder out of dungeon"}
-    },
-    {
-      "from": "falador_west_bank",
-      "to": "falador_shortcut_west",
-      "type": "WALK",
-      "cost_ticks": 20,
-      "bidirectional": true,
-      "requirements": [],
-      "metadata": {}
-    },
-    {
-      "from": "falador_shortcut_west",
-      "to": "falador_shortcut_east",
-      "type": "AGILITY",
-      "cost_ticks": 3,
-      "bidirectional": true,
-      "requirements": [
-        {"type": "AGILITY_LEVEL", "value": 5}
-      ],
-      "metadata": {"object_id": "24222", "action": "Climb-over", "failure_rate": "0.15"}
-    },
-    {
-      "from": "falador_shortcut_east",
-      "to": "rimmington_mine",
-      "type": "WALK",
-      "cost_ticks": 60,
-      "bidirectional": true,
-      "requirements": [],
-      "metadata": {}
-    },
-    {
-      "from": "varrock_south_mine",
-      "to": "varrock_south_fence_north",
-      "type": "WALK",
-      "cost_ticks": 40,
-      "bidirectional": true,
-      "requirements": [],
-      "metadata": {}
-    },
-    {
-      "from": "varrock_south_fence_north",
-      "to": "varrock_south_fence_south",
-      "type": "AGILITY",
-      "cost_ticks": 3,
-      "bidirectional": true,
-      "requirements": [
-        {"type": "AGILITY_LEVEL", "value": 13}
-      ],
-      "metadata": {"object_id": "16518", "action": "Climb-over", "failure_rate": "0.08"}
-    },
-    {
-      "from": "varrock_south_fence_south",
-      "to": "champions_guild",
-      "type": "WALK",
-      "cost_ticks": 65,
-      "bidirectional": true,
-      "requirements": [],
-      "metadata": {}
-    },
-    {
-      "from": "edgeville_monastery",
-      "to": "ge_shortcut_north",
-      "type": "WALK",
-      "cost_ticks": 110,
-      "bidirectional": true,
-      "requirements": [],
-      "metadata": {}
-    },
-    {
-      "from": "ge_shortcut_north",
-      "to": "ge_shortcut_south",
-      "type": "AGILITY",
-      "cost_ticks": 5,
-      "bidirectional": true,
-      "requirements": [
-        {"type": "AGILITY_LEVEL", "value": 21}
-      ],
-      "metadata": {"object_id": "16529", "action": "Squeeze-through", "failure_rate": "0.05", "notes": "GE underwall tunnel"}
-    },
-    {
-      "from": "ge_shortcut_south",
-      "to": "varrock_ge",
-      "type": "WALK",
-      "cost_ticks": 40,
-      "bidirectional": true,
-      "requirements": [],
-      "metadata": {}
-    },
-    {
-      "from": "arceuus_library",
-      "to": "arceuus_bank",
-      "type": "WALK",
-      "cost_ticks": 80,
-      "bidirectional": true,
-      "requirements": [],
-      "metadata": {"notes": "Walk south from library to bank"}
-    },
-    {
-      "from": "arceuus_bank",
-      "to": "arceuus_center",
-      "type": "WALK",
-      "cost_ticks": 100,
-      "bidirectional": true,
-      "requirements": [],
-      "metadata": {}
-    },
-    {
-      "from": "arceuus_library",
-      "to": "wintertodt",
-      "type": "WALK",
-      "cost_ticks": 200,
-      "bidirectional": true,
-      "requirements": [],
-      "metadata": {"notes": "Walk north from library to Wintertodt camp"}
     }
   ],
   "regions": [
@@ -1378,13 +891,12 @@
       "id": "misthalin",
       "name": "Misthalin",
       "nodes": [
-        "lumbridge_castle", "lumbridge_castle_1f", "lumbridge_bank", "lumbridge_general_store", 
+        "lumbridge_castle", "lumbridge_bank", "lumbridge_general_store", 
         "lumbridge_church", "lumbridge_swamp", "varrock_west_bank", 
-        "varrock_east_bank", "varrock_ge", "varrock_center", "varrock_palace", "varrock_palace_1f",
+        "varrock_east_bank", "varrock_ge", "varrock_center", "varrock_palace",
         "varrock_sword_shop", "varrock_staff_shop", "varrock_rune_shop",
-        "varrock_south_mine", "varrock_south_fence_north", "varrock_south_fence_south",
-        "draynor_village", "draynor_bank", "draynor_manor", "draynor_willows",
-        "blue_moon_inn_ground", "blue_moon_inn_1f", "champions_guild"
+        "varrock_south_mine", "draynor_village", "draynor_bank", 
+        "draynor_manor", "draynor_willows"
       ],
       "members_only": false,
       "wilderness": false
@@ -1395,14 +907,10 @@
       "nodes": [
         "falador_east_bank", "falador_west_bank", "falador_center", 
         "falador_park", "falador_party_room", "falador_mining_guild",
-        "falador_castle_ground", "falador_castle_1f", "falador_castle_2f",
-        "falador_shortcut_west", "falador_shortcut_east",
         "port_sarim_docks", "port_sarim_deposit_box", "port_sarim_fishing",
         "rimmington", "rimmington_mine", "dwarven_mine_entrance",
         "barbarian_village", "barbarian_village_fishing",
-        "edgeville_bank", "edgeville_furnace", "edgeville_monastery",
-        "edgeville_dungeon_entrance", "edgeville_dungeon",
-        "ge_shortcut_north", "ge_shortcut_south"
+        "edgeville_bank", "edgeville_furnace", "edgeville_monastery"
       ],
       "members_only": false,
       "wilderness": false
@@ -1411,7 +919,7 @@
       "id": "kharidian_desert",
       "name": "Kharidian Desert",
       "nodes": [
-        "al_kharid_gate", "al_kharid_bank", "al_kharid_mine", "al_kharid_palace", "al_kharid_toll_free_crossing"
+        "al_kharid_gate", "al_kharid_bank", "al_kharid_mine", "al_kharid_palace"
       ],
       "members_only": false,
       "wilderness": false
@@ -1422,13 +930,6 @@
       "nodes": ["wilderness_ditch"],
       "members_only": false,
       "wilderness": true
-    },
-    {
-      "id": "great_kourend",
-      "name": "Great Kourend",
-      "nodes": ["arceuus_library", "arceuus_bank", "arceuus_center", "wintertodt"],
-      "members_only": true,
-      "wilderness": false
     }
   ]
 }

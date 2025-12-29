@@ -135,6 +135,9 @@ public class BotStatus {
 
         /**
          * Create TaskInfo from a Task instance.
+         * 
+         * Extracts progress and elapsed time from AbstractTask implementations.
+         * For other Task implementations, uses default values.
          */
         public static TaskInfo fromTask(Task task) {
             if (task == null) {
@@ -142,15 +145,35 @@ public class BotStatus {
             }
 
             List<String> subtasks = new ArrayList<>();
-            // If this is a composite task, we could extract subtask info here
-            // For now, just use the main description
+            double progress = -1.0;
+            long elapsedMs = 0;
+
+            // Extract additional info from AbstractTask implementations
+            if (task instanceof com.rocinante.tasks.AbstractTask) {
+                com.rocinante.tasks.AbstractTask abstractTask = (com.rocinante.tasks.AbstractTask) task;
+                
+                // Get progress if tracked (-1.0 means not tracked)
+                progress = abstractTask.getProgress();
+                
+                // Get elapsed time from execution duration
+                java.time.Duration duration = abstractTask.getExecutionDuration();
+                if (duration != null) {
+                    elapsedMs = duration.toMillis();
+                }
+                
+                // Extract subtask info if available (from phase tracking)
+                String currentPhase = abstractTask.getCurrentPhaseName();
+                if (currentPhase != null && !currentPhase.equals("INIT") && !currentPhase.isEmpty()) {
+                    subtasks.add("Phase: " + currentPhase);
+                }
+            }
 
             return TaskInfo.builder()
                     .description(task.getDescription())
                     .state(task.getState().name())
-                    .progress(-1) // Progress tracking would need to be added to tasks
+                    .progress(progress)
                     .subtasks(subtasks)
-                    .elapsedMs(0) // Would need timing from AbstractTask
+                    .elapsedMs(elapsedMs)
                     .build();
         }
     }
@@ -305,6 +328,21 @@ public class BotStatus {
         boolean venomed;
 
         /**
+         * Current world position X coordinate.
+         */
+        int x;
+
+        /**
+         * Current world position Y coordinate.
+         */
+        int y;
+
+        /**
+         * Current world position plane (0-3).
+         */
+        int plane;
+
+        /**
          * Skills data.
          */
         Map<String, SkillData> skills;
@@ -352,6 +390,14 @@ public class BotStatus {
                     .mapToInt(SkillData::getLevel)
                     .sum();
 
+            // Get position
+            int x = 0, y = 0, plane = 0;
+            if (playerState.getWorldPosition() != null) {
+                x = playerState.getWorldPosition().getX();
+                y = playerState.getWorldPosition().getY();
+                plane = playerState.getWorldPosition().getPlane();
+            }
+
             return PlayerInfo.builder()
                     .name(playerName)
                     .combatLevel(combatLevel)
@@ -364,6 +410,9 @@ public class BotStatus {
                     .runEnergy(playerState.getRunEnergy())
                     .poisoned(playerState.isPoisoned())
                     .venomed(playerState.isVenomed())
+                    .x(x)
+                    .y(y)
+                    .plane(plane)
                     .skills(skills)
                     .build();
         }
@@ -582,7 +631,12 @@ public class BotStatus {
         String itemName;
         int itemId;
         int quantity;
-        boolean have;
+        int inInventory;
+        int equipped;
+        int inBank;
+        boolean met;
+        boolean obtainableDuringQuest;
+        boolean recommended;
     }
 
     // ========================================================================

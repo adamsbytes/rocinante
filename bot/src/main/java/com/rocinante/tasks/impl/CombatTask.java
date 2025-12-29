@@ -5,6 +5,7 @@ import com.rocinante.combat.TargetSelector;
 import com.rocinante.combat.spell.CombatSpell;
 import com.rocinante.state.*;
 import com.rocinante.tasks.AbstractTask;
+import com.rocinante.tasks.InteractionHelper;
 import com.rocinante.tasks.Task;
 import com.rocinante.tasks.TaskContext;
 import com.rocinante.tasks.TaskPriority;
@@ -16,13 +17,11 @@ import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.NPC;
-import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.widgets.Widget;
 
 import java.awt.Point;
 import java.awt.Rectangle;
-import java.awt.Shape;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
@@ -135,6 +134,11 @@ public class CombatTask extends AbstractTask {
      * Ticks waiting in current phase.
      */
     private int phaseWaitTicks = 0;
+    
+    /**
+     * Interaction helper for camera rotation and clickbox handling.
+     */
+    private InteractionHelper interactionHelper;
 
     /**
      * Maximum ticks to wait before considering target lost.
@@ -496,6 +500,7 @@ public class CombatTask extends AbstractTask {
         currentTarget = target.get();
         lastTargetPosition = currentTarget.getWorldPosition();
         idleTicks = 0;
+        interactionHelper = null; // Reset for new target
         phaseWaitTicks = 0;
 
         log.debug("Selected target: {}", currentTarget.getSummary());
@@ -867,13 +872,29 @@ public class CombatTask extends AbstractTask {
             return;
         }
 
-        // Calculate click point
-        Point clickPoint = calculateNpcClickPoint(ctx, targetNpc);
-        if (clickPoint == null) {
-            log.warn("Cannot calculate click point for target");
+        // Initialize interaction helper if needed
+        if (interactionHelper == null) {
+            interactionHelper = new InteractionHelper(ctx);
+            interactionHelper.startCameraRotation(targetNpc.getWorldLocation());
+        }
+
+        // Use centralized click point resolution
+        InteractionHelper.ClickPointResult result = interactionHelper.getClickPointForNpc(targetNpc);
+        
+        Point clickPoint;
+        if (result.hasPoint()) {
+            clickPoint = result.point;
+        } else if (result.shouldRotateCamera) {
+            interactionHelper.startCameraRotation(targetNpc.getWorldLocation());
+            return;
+        } else if (result.shouldWait) {
+            return;
+        } else {
+            log.warn("Cannot get click point for target: {}", result.reason);
             phaseWaitTicks++;
             if (phaseWaitTicks > MAX_WAIT_TICKS) {
                 currentTarget = null;
+                interactionHelper = null; // Reset for next target
                 phase = CombatPhase.FIND_TARGET;
             }
             return;
@@ -1388,29 +1409,6 @@ public class CombatTask extends AbstractTask {
             currentTarget = npc.get();
             lastTargetPosition = currentTarget.getWorldPosition();
         }
-    }
-
-    private Point calculateNpcClickPoint(TaskContext ctx, NPC npc) {
-        // Use centralized ClickPointCalculator for NPC click points
-        Point clickPoint = com.rocinante.input.ClickPointCalculator.getNpcClickPoint(npc);
-        if (clickPoint != null) {
-            return clickPoint;
-        }
-        
-        // Fallback to model center calculation
-        return calculateNpcModelCenter(ctx, npc);
-    }
-
-    private Point calculateNpcModelCenter(TaskContext ctx, NPC npc) {
-        LocalPoint localPoint = npc.getLocalLocation();
-        if (localPoint == null) {
-            return null;
-        }
-
-        // Fallback to canvas center
-        Client client = ctx.getClient();
-        java.awt.Dimension canvasSize = client.getCanvas().getSize();
-        return new Point(canvasSize.width / 2, canvasSize.height / 2);
     }
 
     // ========================================================================

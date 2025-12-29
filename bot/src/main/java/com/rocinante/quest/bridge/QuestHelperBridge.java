@@ -2151,6 +2151,269 @@ public class QuestHelperBridge {
     }
 
     // ========================================================================
+    // Quest Points and Requirements
+    // ========================================================================
+
+    /**
+     * Get the quest point reward for completing this quest.
+     *
+     * @return quest points
+     * @throws IllegalStateException if unable to determine
+     */
+    public int getQuestPoints() {
+        try {
+            Method method = findMethod(questHelperInstance.getClass(), "getQuestPointReward");
+            if (method != null) {
+                method.setAccessible(true);
+                Object reward = method.invoke(questHelperInstance);
+                if (reward != null) {
+                    Method getPoints = reward.getClass().getMethod("getPoints");
+                    return (int) getPoints.invoke(reward);
+                }
+            }
+            // No quest point reward defined = 0 points (some quests give 0)
+            return 0;
+        } catch (Exception e) {
+            log.warn("Failed to get quest points from Quest Helper", e);
+            throw new IllegalStateException("Cannot get quest points from Quest Helper", e);
+        }
+    }
+
+    /**
+     * Check if this is a members-only quest.
+     *
+     * @return true if members quest, false if F2P
+     */
+    public boolean isMembers() {
+        try {
+            // Get the quest enum from the helper (it has getQuest())
+            Method getQuestMethod = findMethod(questHelperInstance.getClass(), "getQuest");
+            if (getQuestMethod != null) {
+                getQuestMethod.setAccessible(true);
+                Object questEnum = getQuestMethod.invoke(questHelperInstance);
+                if (questEnum != null) {
+                    // QuestHelperQuest has getQuestType() which returns QuestDetails.Type
+                    Method getQuestType = questEnum.getClass().getMethod("getQuestType");
+                    Object questType = getQuestType.invoke(questEnum);
+                    if (questType != null) {
+                        String typeName = questType.toString();
+                        // F2P, SKILL_F2P are free; P2P, SKILL_P2P are members
+                        return !typeName.contains("F2P");
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to determine if quest is members from Quest Helper", e);
+        }
+        // Default to members if we can't determine (safer assumption)
+        return true;
+    }
+
+    /**
+     * Get the quest difficulty.
+     *
+     * @return difficulty string
+     */
+    public String getDifficulty() {
+        try {
+            Method getQuestMethod = findMethod(questHelperInstance.getClass(), "getQuest");
+            if (getQuestMethod != null) {
+                getQuestMethod.setAccessible(true);
+                Object questEnum = getQuestMethod.invoke(questHelperInstance);
+                if (questEnum != null) {
+                    Method getDifficulty = questEnum.getClass().getMethod("getDifficulty");
+                    Object difficulty = getDifficulty.invoke(questEnum);
+                    if (difficulty != null) {
+                        return difficulty.toString();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.trace("Could not get difficulty: {}", e.getMessage());
+        }
+        return "Unknown";
+    }
+
+    /**
+     * Get the general requirements for this quest.
+     *
+     * @return list of requirement descriptions, or empty list if unable to determine
+     */
+    public List<String> getGeneralRequirementDescriptions() {
+        List<String> descriptions = new ArrayList<>();
+        try {
+            Method method = findMethod(questHelperInstance.getClass(), "getGeneralRequirements");
+            if (method != null) {
+                method.setAccessible(true);
+                Object result = method.invoke(questHelperInstance);
+                if (result instanceof List) {
+                    @SuppressWarnings("unchecked")
+                    List<Object> reqs = (List<Object>) result;
+                    for (Object req : reqs) {
+                        if (req == null) continue;
+                        try {
+                            // Requirement has getDisplayText() method
+                            Method getDisplayText = req.getClass().getMethod("getDisplayText");
+                            String text = (String) getDisplayText.invoke(req);
+                            if (text != null && !text.isEmpty()) {
+                                descriptions.add(text);
+                            }
+                        } catch (Exception e) {
+                            // Try toString as fallback
+                            descriptions.add(req.toString());
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.trace("Could not get general requirements: {}", e.getMessage());
+        }
+        return descriptions;
+    }
+
+    /**
+     * Check if the client currently meets all quest requirements.
+     *
+     * @return true if requirements are met, false otherwise
+     */
+    public boolean clientMeetsRequirements() {
+        try {
+            Method method = findMethod(questHelperInstance.getClass(), "clientMeetsRequirements");
+            if (method != null) {
+                method.setAccessible(true);
+                Object result = method.invoke(questHelperInstance);
+                if (result instanceof Boolean) {
+                    return (Boolean) result;
+                }
+            }
+        } catch (Exception e) {
+            log.trace("Could not check requirements: {}", e.getMessage());
+        }
+        // Default to true if we can't determine
+        return true;
+    }
+
+    /**
+     * Get skill requirements for this quest.
+     *
+     * @return list of SkillRequirementInfo objects
+     */
+    public List<SkillRequirementInfo> getSkillRequirements() {
+        List<SkillRequirementInfo> skills = new ArrayList<>();
+        try {
+            Method method = findMethod(questHelperInstance.getClass(), "getGeneralRequirements");
+            if (method != null) {
+                method.setAccessible(true);
+                Object result = method.invoke(questHelperInstance);
+                if (result instanceof List) {
+                    @SuppressWarnings("unchecked")
+                    List<Object> reqs = (List<Object>) result;
+                    for (Object req : reqs) {
+                        if (req == null) continue;
+                        String className = req.getClass().getSimpleName();
+                        // SkillRequirement has getSkill() and getRequiredLevel()
+                        if (className.contains("SkillRequirement")) {
+                            try {
+                                Method getSkill = req.getClass().getMethod("getSkill");
+                                Method getRequiredLevel = req.getClass().getMethod("getRequiredLevel");
+                                Method check = req.getClass().getMethod("check", net.runelite.api.Client.class);
+                                
+                                Object skill = getSkill.invoke(req);
+                                int level = (int) getRequiredLevel.invoke(req);
+                                String skillName = skill != null ? skill.toString() : "Unknown";
+                                
+                                // We can't easily check if met without a client reference
+                                // For now, just capture the requirement
+                                skills.add(new SkillRequirementInfo(skillName, level, false));
+                            } catch (Exception e) {
+                                log.trace("Could not extract skill requirement details", e);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.trace("Could not get skill requirements: {}", e.getMessage());
+        }
+        return skills;
+    }
+
+    /**
+     * Get quest requirements for this quest.
+     *
+     * @return list of QuestRequirementInfo objects
+     */
+    public List<QuestRequirementInfo> getQuestRequirements() {
+        List<QuestRequirementInfo> quests = new ArrayList<>();
+        try {
+            Method method = findMethod(questHelperInstance.getClass(), "getGeneralRequirements");
+            if (method != null) {
+                method.setAccessible(true);
+                Object result = method.invoke(questHelperInstance);
+                if (result instanceof List) {
+                    @SuppressWarnings("unchecked")
+                    List<Object> reqs = (List<Object>) result;
+                    for (Object req : reqs) {
+                        if (req == null) continue;
+                        String className = req.getClass().getSimpleName();
+                        // QuestRequirement has getQuest()
+                        if (className.contains("QuestRequirement")) {
+                            try {
+                                Method getQuest = req.getClass().getMethod("getQuest");
+                                Object quest = getQuest.invoke(req);
+                                if (quest != null) {
+                                    // QuestHelperQuest enum has getName()
+                                    Method getName = quest.getClass().getMethod("getName");
+                                    String questName = (String) getName.invoke(quest);
+                                    String questId = quest.toString();
+                                    quests.add(new QuestRequirementInfo(questId, questName, false));
+                                }
+                            } catch (Exception e) {
+                                log.trace("Could not extract quest requirement details", e);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.trace("Could not get quest requirements: {}", e.getMessage());
+        }
+        return quests;
+    }
+
+    /**
+     * Skill requirement info extracted from Quest Helper.
+     */
+    @Getter
+    public static class SkillRequirementInfo {
+        private final String skillName;
+        private final int requiredLevel;
+        private final boolean met;
+
+        public SkillRequirementInfo(String skillName, int requiredLevel, boolean met) {
+            this.skillName = skillName;
+            this.requiredLevel = requiredLevel;
+            this.met = met;
+        }
+    }
+
+    /**
+     * Quest requirement info extracted from Quest Helper.
+     */
+    @Getter
+    public static class QuestRequirementInfo {
+        private final String questId;
+        private final String questName;
+        private final boolean completed;
+
+        public QuestRequirementInfo(String questId, String questName, boolean completed) {
+            this.questId = questId;
+            this.questName = questName;
+            this.completed = completed;
+        }
+    }
+
+    // ========================================================================
     // Metadata Class
     // ========================================================================
 

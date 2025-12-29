@@ -13,6 +13,7 @@ import com.rocinante.util.PerlinNoise;
 import com.rocinante.util.Randomization;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
+import net.runelite.client.callback.ClientThread;
 
 import java.awt.AWTException;
 import java.util.function.Function;
@@ -112,8 +113,8 @@ public class BehaviorModule extends AbstractModule {
     @Provides
     @Singleton
     public MouseCameraCoupler provideMouseCameraCoupler(Client client, CameraController cameraController,
-                                                         Randomization randomization) {
-        return new MouseCameraCoupler(client, cameraController, randomization);
+                                                         Randomization randomization, ClientThread clientThread) {
+        return new MouseCameraCoupler(client, cameraController, randomization, clientThread);
     }
 
     /**

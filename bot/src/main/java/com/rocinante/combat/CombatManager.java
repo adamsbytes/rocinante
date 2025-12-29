@@ -85,6 +85,8 @@ public class CombatManager {
     private final PrayerFlicker prayerFlicker;
     private final SpecialAttackManager specialAttackManager;
     private final Randomization randomization;
+    
+    private com.rocinante.input.MouseCameraCoupler cameraCoupler;
 
     // ========================================================================
     // Widget Constants (from RuneLite InterfaceID)
@@ -208,6 +210,13 @@ public class CombatManager {
         this.specialAttackManager = specialAttackManager;
         this.randomization = randomization;
         log.info("CombatManager initialized with delegated managers");
+    }
+    
+    /**
+     * Set the camera coupler for rotating camera to see off-screen targets.
+     */
+    public void setCameraCoupler(com.rocinante.input.MouseCameraCoupler cameraCoupler) {
+        this.cameraCoupler = cameraCoupler;
     }
 
     // ========================================================================
@@ -800,24 +809,48 @@ public class CombatManager {
             return;
         }
         
+        final NPC finalTargetNpc = targetNpc;
+        final String npcName = aggressor.getNpcName();
+        
         // Calculate click point on NPC using convex hull or model center
         Point clickPoint = calculateNpcClickPoint(targetNpc);
         if (clickPoint == null) {
-            log.warn("Cannot calculate click point for NPC {}", aggressor.getNpcName());
+            // NPC not visible - rotate camera and retry
+            if (cameraCoupler != null) {
+                log.debug("NPC {} not visible, rotating camera", npcName);
+                cameraCoupler.ensureTargetVisible(targetNpc.getWorldLocation())
+                        .thenRun(() -> {
+                            Point newClickPoint = calculateNpcClickPoint(finalTargetNpc);
+                            if (newClickPoint != null) {
+                                executeRetargetClick(finalTargetNpc, npcName, newClickPoint);
+                            } else {
+                                log.warn("NPC {} still not visible after camera rotation", npcName);
+                            }
+                        });
+            } else {
+                log.warn("Cannot calculate click point for NPC {} and no camera coupler available", npcName);
+            }
             return;
         }
         
+        executeRetargetClick(targetNpc, npcName, clickPoint);
+    }
+    
+    /**
+     * Execute the actual retarget click on an NPC.
+     */
+    private void executeRetargetClick(NPC targetNpc, String npcName, Point clickPoint) {
         log.debug("Retargeting {} at canvas point ({}, {})", 
-                aggressor.getNpcName(), clickPoint.x, clickPoint.y);
+                npcName, clickPoint.x, clickPoint.y);
         
         // Move mouse and click on the NPC
         mouseController.moveToCanvas(clickPoint.x, clickPoint.y)
                 .thenCompose(v -> mouseController.click())
                 .thenRun(() -> {
-                    log.debug("Retarget click on {} completed", aggressor.getNpcName());
+                    log.debug("Retarget click on {} completed", npcName);
                 })
                 .exceptionally(e -> {
-                    log.error("Retarget click failed for {}: {}", aggressor.getNpcName(), e.getMessage());
+                    log.error("Retarget click failed for {}: {}", npcName, e.getMessage());
                     return null;
                 });
     }
@@ -864,14 +897,22 @@ public class CombatManager {
             net.runelite.api.Point canvasPoint = net.runelite.api.Perspective.localToCanvas(
                     client, localPoint, client.getPlane(), npc.getLogicalHeight() / 2);
             if (canvasPoint != null) {
-                return new Point(canvasPoint.getX(), canvasPoint.getY());
+                // Validate point is on screen
+                java.awt.Canvas canvas = client.getCanvas();
+                if (canvas != null) {
+                    int x = canvasPoint.getX();
+                    int y = canvasPoint.getY();
+                    if (x >= 0 && x < canvas.getWidth() && y >= 0 && y < canvas.getHeight()) {
+                        return new Point(x, y);
+                    }
+                    log.debug("NPC canvas point ({}, {}) is off-screen", x, y);
+                }
             }
         }
         
-        // Last resort: use canvas center (not ideal but better than nothing)
-        log.warn("Using canvas center as fallback for NPC click point");
-        java.awt.Dimension canvasSize = client.getCanvas().getSize();
-        return new Point(canvasSize.width / 2, canvasSize.height / 2);
+        // NPC not visible - return null to signal camera rotation needed
+        log.debug("NPC not visible on screen, cannot calculate click point");
+        return null;
     }
 
     private void executeLoot(CombatAction action) {

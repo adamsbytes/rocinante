@@ -41,10 +41,13 @@ export function useBotQuery(id: () => string) {
 }
 
 // Mutations
+/** Type for bot creation/update data - excludes server-managed fields */
+type BotFormData = Omit<BotConfig, 'id' | 'vncPort'>;
+
 export function useCreateBotMutation() {
   const queryClient = useQueryClient();
   return createMutation(() => ({
-    mutationFn: (bot: Omit<BotConfig, 'id'>) =>
+    mutationFn: (bot: BotFormData) =>
       fetchApi<BotConfig>('/bots', {
         method: 'POST',
         body: JSON.stringify(bot),
@@ -58,7 +61,7 @@ export function useCreateBotMutation() {
 export function useUpdateBotMutation() {
   const queryClient = useQueryClient();
   return createMutation(() => ({
-    mutationFn: ({ id, ...bot }: BotConfig) =>
+    mutationFn: ({ id, ...bot }: BotFormData & { id: string }) =>
       fetchApi<BotConfig>(`/bots/${id}`, {
         method: 'PUT',
         body: JSON.stringify(bot),
