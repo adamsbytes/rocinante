@@ -3,6 +3,7 @@ package com.rocinante.tasks;
 import com.rocinante.input.CameraController;
 import com.rocinante.input.ClickPointCalculator;
 import com.rocinante.input.MouseCameraCoupler;
+import com.rocinante.util.ObjectCollections;
 import com.rocinante.util.Randomization;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
@@ -16,6 +17,7 @@ import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.Shape;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -132,12 +134,26 @@ public class InteractionHelper {
                 net.runelite.api.Point canvasPoint = net.runelite.api.Perspective.localToCanvas(
                         client, localPoint, client.getPlane(), 0);
                 if (canvasPoint != null) {
-                    java.awt.Canvas canvas = client.getCanvas();
-                    if (canvas != null) {
-                        startCameraRotationTowardCanvasPoint(canvasPoint.getX(), canvasPoint.getY(), 
-                                canvas.getWidth(), canvas.getHeight());
-                        return;
+                    // Use 3D game area bounds, not full canvas - objects are only
+                    // clickable within the 3D viewport, not in UI areas
+                    int gameAreaX = client.getViewportXOffset();
+                    int gameAreaY = client.getViewportYOffset();
+                    int gameAreaWidth = client.getViewportWidth();
+                    int gameAreaHeight = client.getViewportHeight();
+                    
+                    // Fallback for fixed mode
+                    if (gameAreaWidth <= 0 || gameAreaHeight <= 0) {
+                        gameAreaX = 4;
+                        gameAreaY = 4;
+                        gameAreaWidth = 512;
+                        gameAreaHeight = 334;
                     }
+                    
+                    startCameraRotationTowardCanvasPoint(
+                            canvasPoint.getX(), canvasPoint.getY(),
+                            gameAreaX, gameAreaY, 
+                            gameAreaX + gameAreaWidth, gameAreaY + gameAreaHeight);
+                    return;
                 }
             }
         }
@@ -147,59 +163,94 @@ public class InteractionHelper {
     }
     
     /**
-     * Rotate camera based on where the object currently is on the canvas.
-     * This is the CORRECT approach - if X < 0, rotate LEFT. If X > width, rotate RIGHT.
+     * Threshold for using arrow keys vs mouse-based rotation.
+     * Rotations >= this use arrow keys (more human-like for larger turns).
+     * Rotations < this use mouse drag (more precise for small adjustments).
      */
-    private void startCameraRotationTowardCanvasPoint(int canvasX, int canvasY, int canvasWidth, int canvasHeight) {
+    private static final int ARROW_KEY_THRESHOLD_DEGREES = 20;
+
+    /**
+     * Rotate camera based on where the object currently is relative to the 3D game area.
+     * Objects outside the game area (in UI regions) need camera rotation to bring them into view.
+     * 
+     * Uses arrow keys for normal rotations (>= 20°) and mouse for small adjustments.
+     */
+    private void startCameraRotationTowardCanvasPoint(int canvasX, int canvasY, 
+            int gameAreaLeft, int gameAreaTop, int gameAreaRight, int gameAreaBottom) {
         CameraController cameraController = ctx.getCameraController();
         if (cameraController == null) {
             log.debug("No camera controller available");
             return;
         }
         
-        // Calculate how far off-screen the object is
+        // Calculate how far outside the 3D game area the object is
         int offscreenAmount = 0;
-        boolean rotateLeft = false; // Positive yaw change = rotate right (clockwise)
+        boolean rotateLeft = false;
         
-        if (canvasX < 0) {
-            // Object is off-screen LEFT - need to rotate LEFT (counter-clockwise)
-            offscreenAmount = -canvasX;
-            rotateLeft = true;
-        } else if (canvasX >= canvasWidth) {
-            // Object is off-screen RIGHT - need to rotate RIGHT (clockwise)
-            offscreenAmount = canvasX - canvasWidth;
-            rotateLeft = false;
+        if (canvasX < gameAreaLeft) {
+            // Object is off-screen LEFT - rotate camera RIGHT to bring it into view
+            // Camera rotating RIGHT (clockwise) shifts objects LEFT on screen,
+            // which brings objects from the LEFT side into the viewport
+            offscreenAmount = gameAreaLeft - canvasX;
+            rotateLeft = false;  // rotate RIGHT
+        } else if (canvasX >= gameAreaRight) {
+            // Object is off-screen RIGHT - rotate camera LEFT to bring it into view
+            // Camera rotating LEFT (counter-clockwise) shifts objects RIGHT on screen,
+            // which brings objects from the RIGHT side into the viewport
+            offscreenAmount = canvasX - gameAreaRight;
+            rotateLeft = true;  // rotate LEFT
         } else {
             // Object is on screen horizontally - check vertical
-            if (canvasY < 0 || canvasY >= canvasHeight) {
+            if (canvasY < gameAreaTop || canvasY >= gameAreaBottom) {
                 // Off-screen vertically - just rotate a bit to try to help
                 offscreenAmount = 50;
                 rotateLeft = ctx.getRandomization().chance(0.5);
             } else {
-                // Object is actually on screen - no rotation needed
-                log.debug("Object at ({}, {}) is on screen, no rotation needed", canvasX, canvasY);
+                // Object is actually within 3D game area - no rotation needed
+                log.debug("Object at ({}, {}) is within game area ({},{} to {},{}), no rotation needed", 
+                        canvasX, canvasY, gameAreaLeft, gameAreaTop, gameAreaRight, gameAreaBottom);
                 return;
             }
         }
         
+        int gameAreaWidth = gameAreaRight - gameAreaLeft;
+        
         // Calculate rotation amount based on how far off-screen
-        // Roughly: 90 degrees per half-canvas-width off-screen
-        int canvasHalfWidth = canvasWidth / 2;
-        double rotationFraction = Math.min(1.5, (double) offscreenAmount / canvasHalfWidth);
-        int rotationDegrees = (int) (45 + rotationFraction * 60); // 45-105 degrees based on distance
+        // For reference: game area is ~512 pixels wide, so objects can be thousands of pixels off-screen
+        // when the camera is facing the wrong direction entirely (need 180° rotation)
+        int gameAreaHalfWidth = gameAreaWidth / 2;
+        double rotationFraction = Math.min(3.0, (double) offscreenAmount / gameAreaHalfWidth);
+        // Scale: 0 -> 45°, 1 (half-width) -> 90°, 2 (full-width) -> 135°, 3+ -> 180°
+        int rotationDegrees = (int) (45 + rotationFraction * 45);
         
         // Add some randomization
         rotationDegrees += (int) ctx.getRandomization().gaussianRandom(0, 10);
-        rotationDegrees = Math.max(30, Math.min(120, rotationDegrees));
+        rotationDegrees = Math.max(30, Math.min(210, rotationDegrees));
         
-        log.debug("Object at canvas ({}, {}), off-screen by {} pixels, rotating {} by {}°",
-                canvasX, canvasY, offscreenAmount, rotateLeft ? "LEFT" : "RIGHT", rotationDegrees);
+        log.debug("Object at canvas ({}, {}), off-screen by {} pixels, rotating {} by {}° using {}",
+                canvasX, canvasY, offscreenAmount, rotateLeft ? "LEFT" : "RIGHT", rotationDegrees,
+                rotationDegrees >= ARROW_KEY_THRESHOLD_DEGREES ? "arrow keys" : "mouse");
         
         if (cameraRotationInProgress.compareAndSet(false, true)) {
-            // Negative degrees = rotate left (counter-clockwise)
-            double rotationDegreesWithSign = rotateLeft ? -rotationDegrees : rotationDegrees;
+            CompletableFuture<Void> rotateFuture;
             
-            CompletableFuture<Void> rotateFuture = cameraController.rotateBy(rotationDegreesWithSign, 0);
+            if (rotationDegrees >= ARROW_KEY_THRESHOLD_DEGREES) {
+                // Use arrow keys for normal/large rotations (more human-like)
+                CameraController.Direction direction = rotateLeft 
+                        ? CameraController.Direction.LEFT 
+                        : CameraController.Direction.RIGHT;
+                
+                // Calculate hold duration based on rotation needed
+                // At MEDIUM speed (60°/sec), estimate duration needed
+                long estimatedDurationMs = (long) (rotationDegrees / 60.0 * 1000) + 200; // +200ms buffer
+                estimatedDurationMs = Math.max(500, Math.min(3000, estimatedDurationMs));
+                
+                rotateFuture = cameraController.performCameraHold(direction, estimatedDurationMs, rotationDegrees + 15);
+            } else {
+                // Use mouse for small adjustments (more precise)
+                double rotationDegreesWithSign = rotateLeft ? -rotationDegrees : rotationDegrees;
+                rotateFuture = cameraController.rotateBy(rotationDegreesWithSign, 0);
+            }
             
             rotateFuture.whenComplete((v, ex) -> {
                 cameraRotationInProgress.set(false);
@@ -299,6 +350,9 @@ public class InteractionHelper {
     /**
      * Get click point for a TileObject with smart waiting and fallback logic.
      * 
+     * PROACTIVE approach: Check if clickbox is fully visible BEFORE generating click point.
+     * If not fully visible, rotate camera first. Never generate clicks outside viewport.
+     * 
      * Call this each tick until you get a point or shouldWait is false.
      * 
      * @param obj the tile object to get click point for
@@ -316,22 +370,46 @@ public class InteractionHelper {
         if (clickableArea != null) {
             Rectangle bounds = clickableArea.getBounds();
             if (bounds != null && bounds.width > 0 && bounds.height > 0) {
-                Point point = ClickPointCalculator.getGaussianClickPoint(bounds);
                 
-                // CRITICAL: Verify point is actually visible in viewport
-                if (!isPointVisible(point)) {
-                    log.debug("Clickbox point ({}, {}) is outside viewport - need camera rotation", 
-                            point.x, point.y);
-                    // Trigger camera rotation instead of returning invalid point
+                // PROACTIVE: Check if ENTIRE clickbox is in viewport BEFORE generating click
+                // If not fully visible, rotate camera first - never plan clicks outside viewport
+                Rectangle viewport = getViewportBounds();
+                if (!isClickboxFullyVisible(bounds, viewport)) {
+                    log.debug("Clickbox bounds {} not fully in viewport {} - rotating camera first",
+                            bounds, viewport);
+                    
                     if (cameraRetryCount.get() < MAX_CAMERA_RETRIES) {
                         cameraRetryCount.incrementAndGet();
-                        if (worldPoint != null) {
-                            startCameraRotation(worldPoint);
-                        }
-                        return ClickPointResult.needsRotation("clickbox outside viewport");
+                        // Rotate to center the clickbox in the viewport
+                        rotateToCenterClickbox(bounds, viewport);
+                        return ClickPointResult.needsRotation("clickbox not fully visible, centering camera");
                     }
-                    return ClickPointResult.failed("clickbox outside viewport after max retries");
+                    return ClickPointResult.failed("clickbox not fully visible after max camera rotations");
                 }
+                
+                // Clickbox is fully visible - now safe to generate click point
+                int objectId = obj.getId();
+                double stdDev = ObjectCollections.requiresPreciseClick(objectId)
+                        ? ClickPointCalculator.PRECISE_STD_DEV
+                        : ClickPointCalculator.DEFAULT_STD_DEV;
+                
+                // Generate click point biased toward current mouse position (lazy human behavior)
+                Point mousePos = getCurrentMouseCanvasPosition();
+                
+                log.debug("Generating click point for object {}: bounds={}, stdDev={}, mousePos={}", 
+                        objectId, bounds, stdDev, mousePos);
+                
+                Point point = generateBiasedClickPoint(bounds, stdDev, mousePos);
+                
+                // Sanity check: point MUST be within bounds
+                if (!bounds.contains(point.x, point.y)) {
+                    log.error("BUG: Generated click point ({}, {}) is OUTSIDE bounds {}!", 
+                            point.x, point.y, bounds);
+                    // Fallback to exact center
+                    point = new Point((int) bounds.getCenterX(), (int) bounds.getCenterY());
+                }
+                
+                log.debug("Final click point for object {}: ({}, {})", objectId, point.x, point.y);
                 
                 clickboxWaitTicks.set(0); // Reset for next interaction
                 return ClickPointResult.success(point);
@@ -416,22 +494,32 @@ public class InteractionHelper {
             return null;
         }
 
-        // Validate point is actually on screen - don't return offscreen coordinates
+        // Validate point is within the 3D game area (not just canvas) - objects can only 
+        // be clicked within the 3D viewport, not in UI areas like chat box or inventory
         int x = canvasPoint.getX();
         int y = canvasPoint.getY();
         
-        java.awt.Canvas canvas = client.getCanvas();
-        if (canvas == null) {
-            return null;
+        // Get 3D game area bounds - this is where objects are RENDERED and CLICKABLE
+        int gameAreaX = client.getViewportXOffset();
+        int gameAreaY = client.getViewportYOffset();
+        int gameAreaWidth = client.getViewportWidth();
+        int gameAreaHeight = client.getViewportHeight();
+        
+        // Fallback for fixed mode if viewport dimensions are invalid
+        if (gameAreaWidth <= 0 || gameAreaHeight <= 0) {
+            gameAreaX = 4;
+            gameAreaY = 4;
+            gameAreaWidth = 512;
+            gameAreaHeight = 334;
         }
         
-        int canvasWidth = canvas.getWidth();
-        int canvasHeight = canvas.getHeight();
+        int gameAreaRight = gameAreaX + gameAreaWidth;
+        int gameAreaBottom = gameAreaY + gameAreaHeight;
         
-        // Point must be within canvas bounds (with small margin)
-        if (x < 0 || x >= canvasWidth || y < 0 || y >= canvasHeight) {
-            log.debug("Fallback point ({}, {}) is off-screen (canvas {}x{}), object not visible",
-                    x, y, canvasWidth, canvasHeight);
+        // Point must be within 3D game area (where objects are clickable)
+        if (x < gameAreaX || x >= gameAreaRight || y < gameAreaY || y >= gameAreaBottom) {
+            log.debug("Fallback point ({}, {}) is outside 3D game area ({},{} to {},{}), object not visible",
+                    x, y, gameAreaX, gameAreaY, gameAreaRight, gameAreaBottom);
             return null;
         }
 
@@ -440,9 +528,9 @@ public class InteractionHelper {
         int offsetX = (int) rand.gaussianRandom(0, 15);
         int offsetY = (int) rand.gaussianRandom(0, 15);
         
-        // Clamp to canvas bounds
-        x = Math.max(10, Math.min(canvasWidth - 10, x + offsetX));
-        y = Math.max(10, Math.min(canvasHeight - 10, y + offsetY));
+        // Clamp to 3D game area bounds (with margin)
+        x = Math.max(gameAreaX + 10, Math.min(gameAreaRight - 10, x + offsetX));
+        y = Math.max(gameAreaY + 10, Math.min(gameAreaBottom - 10, y + offsetY));
 
         return new Point(x, y);
     }
@@ -468,6 +556,233 @@ public class InteractionHelper {
     }
 
     // ========================================================================
+    // Proactive Camera Centering for Clickbox Visibility
+    // ========================================================================
+
+    /**
+     * Get the viewport bounds (3D game area, not full canvas).
+     */
+    private Rectangle getViewportBounds() {
+        Client client = ctx.getClient();
+        if (client == null) {
+            return new Rectangle(4, 4, 512, 334); // Fixed mode fallback
+        }
+        
+        int x = client.getViewportXOffset();
+        int y = client.getViewportYOffset();
+        int w = client.getViewportWidth();
+        int h = client.getViewportHeight();
+        
+        if (w <= 0 || h <= 0) {
+            return new Rectangle(4, 4, 512, 334); // Fixed mode fallback
+        }
+        
+        return new Rectangle(x, y, w, h);
+    }
+
+    /**
+     * Check if the entire clickbox is within the viewport.
+     * We want the WHOLE clickbox visible so any click point we generate will be valid.
+     * 
+     * @param clickbox the clickbox bounds
+     * @param viewport the viewport bounds
+     * @return true if clickbox is fully contained within viewport
+     */
+    private boolean isClickboxFullyVisible(Rectangle clickbox, Rectangle viewport) {
+        // Add a small margin so we're not clicking right at the edge
+        int margin = 5;
+        Rectangle safeViewport = new Rectangle(
+                viewport.x + margin,
+                viewport.y + margin,
+                viewport.width - 2 * margin,
+                viewport.height - 2 * margin);
+        
+        return safeViewport.contains(clickbox);
+    }
+
+    /**
+     * Rotate the camera to center the clickbox in the viewport.
+     * This is called BEFORE generating a click point, ensuring clicks will be valid.
+     * 
+     * @param clickbox the clickbox bounds to center
+     * @param viewport the viewport bounds
+     */
+    private void rotateToCenterClickbox(Rectangle clickbox, Rectangle viewport) {
+        CameraController cameraController = ctx.getCameraController();
+        if (cameraController == null) {
+            log.debug("No camera controller available for clickbox centering");
+            return;
+        }
+        
+        // Determine which edge(s) of the clickbox are outside the viewport
+        boolean leftOutside = clickbox.x < viewport.x;
+        boolean rightOutside = clickbox.x + clickbox.width > viewport.x + viewport.width;
+        boolean topOutside = clickbox.y < viewport.y;
+        boolean bottomOutside = clickbox.y + clickbox.height > viewport.y + viewport.height;
+        
+        // Calculate how much of the clickbox is outside on each side
+        int leftOverhang = leftOutside ? viewport.x - clickbox.x : 0;
+        int rightOverhang = rightOutside ? (clickbox.x + clickbox.width) - (viewport.x + viewport.width) : 0;
+        
+        log.debug("Clickbox {} vs viewport {}: leftOut={}, rightOut={}, topOut={}, bottomOut={}, leftOverhang={}, rightOverhang={}",
+                clickbox, viewport, leftOutside, rightOutside, topOutside, bottomOutside, leftOverhang, rightOverhang);
+        
+        // Determine rotation direction based on which side has more overhang
+        // If left edge is outside viewport: rotate camera RIGHT to bring it in
+        // If right edge is outside viewport: rotate camera LEFT to bring it in
+        if (leftOverhang > 0 || rightOverhang > 0) {
+            boolean rotateLeft = rightOverhang > leftOverhang;
+            int overhang = Math.max(leftOverhang, rightOverhang);
+            
+            // Calculate rotation: more overhang = more rotation needed
+            // Rough estimate: 1 pixel overhang ≈ 0.5 degrees rotation
+            int rotationDegrees = Math.max(20, Math.min(90, overhang / 2));
+            rotationDegrees += (int) ctx.getRandomization().gaussianRandom(0, 5);
+            
+            log.debug("Rotating {} by {}° to center clickbox (overhang: {}px)", 
+                    rotateLeft ? "LEFT" : "RIGHT", rotationDegrees, overhang);
+            
+            if (cameraRotationInProgress.compareAndSet(false, true)) {
+                CompletableFuture<Void> rotateFuture;
+                if (rotationDegrees >= ARROW_KEY_THRESHOLD_DEGREES) {
+                    // Use arrow keys for larger rotations
+                    CameraController.Direction direction = rotateLeft 
+                            ? CameraController.Direction.LEFT 
+                            : CameraController.Direction.RIGHT;
+                    // Calculate hold duration based on rotation needed (~60°/sec)
+                    long estimatedDurationMs = (long) (rotationDegrees / 60.0 * 1000) + 200;
+                    estimatedDurationMs = Math.max(500, Math.min(3000, estimatedDurationMs));
+                    rotateFuture = cameraController.performCameraHold(direction, estimatedDurationMs, rotationDegrees + 10);
+                } else {
+                    // Use mouse for smaller adjustments
+                    double rotationDegreesWithSign = rotateLeft ? -rotationDegrees : rotationDegrees;
+                    rotateFuture = cameraController.rotateBy(rotationDegreesWithSign, 0);
+                }
+                rotateFuture
+                        .orTimeout(5, TimeUnit.SECONDS)
+                        .whenComplete((v, ex) -> {
+                            cameraRotationInProgress.set(false);
+                            if (ex != null) {
+                                log.warn("Clickbox centering rotation failed: {}", ex.getMessage());
+                            }
+                        });
+            }
+        } else if (topOutside || bottomOutside) {
+            // Vertical overhang only - do a small random rotation to try to help
+            log.debug("Clickbox has vertical overhang only, doing small corrective rotation");
+            int rotationDegrees = 30 + (int) ctx.getRandomization().gaussianRandom(0, 10);
+            boolean rotateLeft = ctx.getRandomization().chance(0.5);
+            
+            if (cameraRotationInProgress.compareAndSet(false, true)) {
+                double rotationDegreesWithSign = rotateLeft ? -rotationDegrees : rotationDegrees;
+                cameraController.rotateBy(rotationDegreesWithSign, 0)
+                        .orTimeout(5, TimeUnit.SECONDS)
+                        .whenComplete((v, ex) -> cameraRotationInProgress.set(false));
+            }
+        } else {
+            // Clickbox is actually fully visible (shouldn't reach here normally)
+            log.debug("Clickbox {} is actually fully within viewport {}", clickbox, viewport);
+        }
+    }
+
+    /**
+     * Get current mouse position in canvas coordinates.
+     * Returns null if position cannot be determined.
+     */
+    @Nullable
+    private Point getCurrentMouseCanvasPosition() {
+        try {
+            java.awt.PointerInfo pointerInfo = java.awt.MouseInfo.getPointerInfo();
+            if (pointerInfo == null) {
+                return null;
+            }
+            java.awt.Point screenPos = pointerInfo.getLocation();
+            
+            // Convert screen coordinates to canvas coordinates
+            Client client = ctx.getClient();
+            if (client == null || client.getCanvas() == null) {
+                return null;
+            }
+            
+            java.awt.Point canvasLocation = client.getCanvas().getLocationOnScreen();
+            int canvasX = screenPos.x - canvasLocation.x;
+            int canvasY = screenPos.y - canvasLocation.y;
+            
+            return new Point(canvasX, canvasY);
+        } catch (Exception e) {
+            // Canvas might not be displayable, etc.
+            return null;
+        }
+    }
+
+    /**
+     * Generate a click point within the clickbox, biased toward the current mouse position.
+     * Humans are lazy and tend to click the part of an object closest to their cursor.
+     * 
+     * @param bounds the clickbox bounds
+     * @param stdDev standard deviation as percentage (0.15 = 15% of dimension)
+     * @param mousePos current mouse position (nullable)
+     * @return click point GUARANTEED to be within bounds
+     */
+    private Point generateBiasedClickPoint(Rectangle bounds, double stdDev, @Nullable Point mousePos) {
+        Randomization rand = ctx.getRandomization();
+        
+        // Default center of bounds
+        double centerX = bounds.getCenterX();
+        double centerY = bounds.getCenterY();
+        
+        // If we have mouse position and it's reasonably close, bias toward it
+        // (humans are lazy and click the part of an object closest to their cursor)
+        if (mousePos != null) {
+            double distToMouse = Math.hypot(mousePos.x - centerX, mousePos.y - centerY);
+            
+            // Only apply bias if mouse is within reasonable distance (prevents extreme bias)
+            if (distToMouse < 200) {
+                // Moderate bias factor - people don't click exactly at edges
+                double biasFactor = 0.2;
+                
+                // Calculate direction from bounds center to mouse
+                double dirX = mousePos.x - centerX;
+                double dirY = mousePos.y - centerY;
+                
+                // Clamp the bias to at most 20% of dimensions (keeps point near center)
+                double maxBiasX = bounds.width * 0.2;
+                double maxBiasY = bounds.height * 0.2;
+                
+                double biasX = Math.max(-maxBiasX, Math.min(maxBiasX, dirX * biasFactor));
+                double biasY = Math.max(-maxBiasY, Math.min(maxBiasY, dirY * biasFactor));
+                
+                centerX += biasX;
+                centerY += biasY;
+            }
+        }
+        
+        // Generate gaussian point around the (potentially biased) center
+        // CRITICAL: stdDev is a percentage (0.15 = 15%), must multiply by dimension!
+        double offsetX = rand.gaussianRandom(0, bounds.width * stdDev);
+        double offsetY = rand.gaussianRandom(0, bounds.height * stdDev);
+        
+        double x = centerX + offsetX;
+        double y = centerY + offsetY;
+        
+        // HARD CLAMP: Click point MUST be within bounds with small margin for safety
+        int margin = 3;
+        int clampedX = (int) Math.max(bounds.x + margin, Math.min(bounds.x + bounds.width - margin - 1, x));
+        int clampedY = (int) Math.max(bounds.y + margin, Math.min(bounds.y + bounds.height - margin - 1, y));
+        
+        // Debug log to help diagnose issues
+        if (log.isTraceEnabled()) {
+            log.trace("Generated click point: center=({}, {}), bias=({}, {}), offset=({}, {}), final=({}, {}), bounds={}",
+                    (int)bounds.getCenterX(), (int)bounds.getCenterY(),
+                    (int)(centerX - bounds.getCenterX()), (int)(centerY - bounds.getCenterY()),
+                    (int)offsetX, (int)offsetY,
+                    clampedX, clampedY, bounds);
+        }
+        
+        return new Point(clampedX, clampedY);
+    }
+
+    // ========================================================================
     // Click Point Resolution for NPCs
     // ========================================================================
 
@@ -488,7 +803,39 @@ public class InteractionHelper {
         if (convexHull != null) {
             Rectangle bounds = convexHull.getBounds();
             if (bounds != null && bounds.width > 0 && bounds.height > 0) {
-                Point point = ClickPointCalculator.getGaussianClickPoint(bounds);
+                
+                // PROACTIVE: Check if ENTIRE clickbox is in viewport BEFORE generating click
+                Rectangle viewport = getViewportBounds();
+                if (!isClickboxFullyVisible(bounds, viewport)) {
+                    log.debug("NPC clickbox bounds {} not fully in viewport {} - rotating camera first",
+                            bounds, viewport);
+                    
+                    if (cameraRetryCount.get() < MAX_CAMERA_RETRIES) {
+                        cameraRetryCount.incrementAndGet();
+                        rotateToCenterClickbox(bounds, viewport);
+                        return ClickPointResult.needsRotation("NPC clickbox not fully visible, centering camera");
+                    }
+                    return ClickPointResult.failed("NPC clickbox not fully visible after max camera rotations");
+                }
+                
+                // Clickbox is fully visible - safe to generate click point
+                Point mousePos = getCurrentMouseCanvasPosition();
+                
+                log.debug("Generating click point for NPC {}: bounds={}, mousePos={}", 
+                        npc.getName(), bounds, mousePos);
+                
+                Point point = generateBiasedClickPoint(bounds, ClickPointCalculator.DEFAULT_STD_DEV, mousePos);
+                
+                // Sanity check: point MUST be within bounds
+                if (!bounds.contains(point.x, point.y)) {
+                    log.error("BUG: Generated NPC click point ({}, {}) is OUTSIDE bounds {}!", 
+                            point.x, point.y, bounds);
+                    // Fallback to exact center
+                    point = new Point((int) bounds.getCenterX(), (int) bounds.getCenterY());
+                }
+                
+                log.debug("Final click point for NPC {}: ({}, {})", npc.getName(), point.x, point.y);
+                
                 clickboxWaitTicks.set(0);
                 return ClickPointResult.success(point);
             }
@@ -560,20 +907,30 @@ public class InteractionHelper {
             return null;
         }
 
-        // Validate point is actually on screen
+        // Validate point is within the 3D game area - NPCs can only be clicked in viewport
         int x = canvasPoint.getX();
         int y = canvasPoint.getY();
         
-        java.awt.Canvas canvas = client.getCanvas();
-        if (canvas == null) {
-            return null;
+        // Get 3D game area bounds
+        int gameAreaX = client.getViewportXOffset();
+        int gameAreaY = client.getViewportYOffset();
+        int gameAreaWidth = client.getViewportWidth();
+        int gameAreaHeight = client.getViewportHeight();
+        
+        // Fallback for fixed mode
+        if (gameAreaWidth <= 0 || gameAreaHeight <= 0) {
+            gameAreaX = 4;
+            gameAreaY = 4;
+            gameAreaWidth = 512;
+            gameAreaHeight = 334;
         }
         
-        int canvasWidth = canvas.getWidth();
-        int canvasHeight = canvas.getHeight();
+        int gameAreaRight = gameAreaX + gameAreaWidth;
+        int gameAreaBottom = gameAreaY + gameAreaHeight;
         
-        if (x < 0 || x >= canvasWidth || y < 0 || y >= canvasHeight) {
-            log.debug("NPC fallback point ({}, {}) is off-screen, NPC not visible", x, y);
+        if (x < gameAreaX || x >= gameAreaRight || y < gameAreaY || y >= gameAreaBottom) {
+            log.debug("NPC fallback point ({}, {}) is outside 3D game area ({},{} to {},{}), NPC not visible",
+                    x, y, gameAreaX, gameAreaY, gameAreaRight, gameAreaBottom);
             return null;
         }
 
@@ -581,9 +938,9 @@ public class InteractionHelper {
         int offsetX = (int) rand.gaussianRandom(0, 20);
         int offsetY = (int) rand.gaussianRandom(0, 20);
         
-        // Clamp to canvas bounds
-        x = Math.max(10, Math.min(canvasWidth - 10, x + offsetX));
-        y = Math.max(10, Math.min(canvasHeight - 10, y + offsetY));
+        // Clamp to 3D game area bounds
+        x = Math.max(gameAreaX + 10, Math.min(gameAreaRight - 10, x + offsetX));
+        y = Math.max(gameAreaY + 10, Math.min(gameAreaBottom - 10, y + offsetY));
 
         return new Point(x, y);
     }
@@ -616,6 +973,38 @@ public class InteractionHelper {
             return false;
         }
         return ctx.getGameStateService().isPointInViewport(point.x, point.y);
+    }
+
+    // ========================================================================
+    // Utility Methods
+    // ========================================================================
+
+    /**
+     * Get the 3D game area bounds where objects are rendered and clickable.
+     * 
+     * @param client the RuneLite client
+     * @return Rectangle representing the clickable game area
+     */
+    private Rectangle getGameAreaBounds(Client client) {
+        if (client == null) {
+            // Default fallback for fixed mode
+            return new Rectangle(4, 4, 512, 334);
+        }
+        
+        int gameAreaX = client.getViewportXOffset();
+        int gameAreaY = client.getViewportYOffset();
+        int gameAreaWidth = client.getViewportWidth();
+        int gameAreaHeight = client.getViewportHeight();
+        
+        // Fallback for fixed mode if viewport dimensions are invalid
+        if (gameAreaWidth <= 0 || gameAreaHeight <= 0) {
+            gameAreaX = 4;
+            gameAreaY = 4;
+            gameAreaWidth = 512;
+            gameAreaHeight = 334;
+        }
+        
+        return new Rectangle(gameAreaX, gameAreaY, gameAreaWidth, gameAreaHeight);
     }
 
     // ========================================================================

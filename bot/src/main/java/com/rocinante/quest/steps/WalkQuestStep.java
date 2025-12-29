@@ -107,6 +107,11 @@ public class WalkQuestStep extends QuestStep {
     }
 
     @Override
+    public WorldPoint getTargetLocation() {
+        return destination;
+    }
+
+    @Override
     public List<Task> toTasks(TaskContext ctx) {
         List<Task> tasks = new ArrayList<>();
 

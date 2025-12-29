@@ -180,13 +180,13 @@ export async function getLocations(): Promise<LocationInfo[]> {
           const data: RegionJsonFile = await file.json();
           for (const n of data.nodes) {
             allLocations.push({
-              id: n.id,
-              name: n.name,
-              x: n.x,
-              y: n.y,
-              plane: n.plane ?? 0,
-              type: n.type as LocationInfo['type'],
-              tags: n.tags ?? [],
+      id: n.id,
+      name: n.name,
+      x: n.x,
+      y: n.y,
+      plane: n.plane ?? 0,
+      type: n.type as LocationInfo['type'],
+      tags: n.tags ?? [],
             });
           }
         }

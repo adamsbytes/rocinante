@@ -24,7 +24,10 @@ export const VncViewer: Component<VncViewerProps> = (props) => {
   
   const [status, setStatus] = createSignal<VncStatus>('connecting');
   const [error, setError] = createSignal<string | null>(null);
-  const [dimensions, setDimensions] = createSignal({ width: 1920, height: 1080 });
+  // Server-reported dimensions (actual VNC framebuffer size)
+  const [serverDimensions, setServerDimensions] = createSignal({ width: 1920, height: 1080 });
+  // Canvas dimensions (fixed at 1080p for consistent zoom)
+  const canvasDimensions = { width: 1920, height: 1080 };
   const [reconnectAttempt, setReconnectAttempt] = createSignal(0);
   const [isReconnecting, setIsReconnecting] = createSignal(false);
 
@@ -79,7 +82,8 @@ export const VncViewer: Component<VncViewerProps> = (props) => {
   const sendFramebufferUpdateRequest = (incremental: boolean) => {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     
-    const { width, height } = dimensions();
+    // Request the actual server framebuffer size (not our scaled canvas size)
+    const { width, height } = serverDimensions();
     const msg = new Uint8Array(10);
     msg[0] = 3; // FramebufferUpdateRequest
     msg[1] = incremental ? 1 : 0;
@@ -188,7 +192,9 @@ export const VncViewer: Component<VncViewerProps> = (props) => {
     serverName = new TextDecoder().decode(name);
     console.log('VNC Desktop:', serverName, width, 'x', height);
     
-    setDimensions({ width, height });
+    // Store server dimensions (actual VNC framebuffer size)
+    setServerDimensions({ width, height });
+    console.log('VNC: Server is', width, 'x', height, '- canvas fixed at', canvasDimensions.width, 'x', canvasDimensions.height);
     
     // Set pixel format to 32-bit RGBA
     const setPixelFormat = new Uint8Array(20);
@@ -259,11 +265,22 @@ export const VncViewer: Component<VncViewerProps> = (props) => {
             return;
           }
           
-          // Draw to canvas
+          // Draw to canvas with scaling
           if (canvasRef) {
             const ctx = canvasRef.getContext('2d');
             if (ctx) {
-              const imageData = ctx.createImageData(w, h);
+              // Calculate scale factor (server -> canvas)
+              const server = serverDimensions();
+              const scaleX = canvasDimensions.width / server.width;
+              const scaleY = canvasDimensions.height / server.height;
+              
+              // Create temporary canvas for the incoming rectangle
+              const tempCanvas = document.createElement('canvas');
+              tempCanvas.width = w;
+              tempCanvas.height = h;
+              const tempCtx = tempCanvas.getContext('2d');
+              if (tempCtx) {
+                const imageData = tempCtx.createImageData(w, h);
               for (let j = 0; j < w * h; j++) {
                 // VNC sends BGRX, canvas wants RGBA
                 imageData.data[j * 4 + 0] = pixelData[j * 4 + 2]; // R
@@ -271,7 +288,15 @@ export const VncViewer: Component<VncViewerProps> = (props) => {
                 imageData.data[j * 4 + 2] = pixelData[j * 4 + 0]; // B
                 imageData.data[j * 4 + 3] = 255; // A
               }
-              ctx.putImageData(imageData, x, y);
+                tempCtx.putImageData(imageData, 0, 0);
+                
+                // Draw scaled to main canvas
+                ctx.drawImage(
+                  tempCanvas,
+                  0, 0, w, h,  // source rect
+                  x * scaleX, y * scaleY, w * scaleX, h * scaleY  // dest rect (scaled)
+                );
+              }
             }
           }
         }
@@ -449,12 +474,11 @@ export const VncViewer: Component<VncViewerProps> = (props) => {
     }
   });
 
-  // Update canvas size when dimensions change
+  // Set canvas size once on mount (fixed at 1080p)
   createEffect(() => {
-    const { width, height } = dimensions();
     if (canvasRef) {
-      canvasRef.width = width;
-      canvasRef.height = height;
+      canvasRef.width = canvasDimensions.width;
+      canvasRef.height = canvasDimensions.height;
     }
   });
 
@@ -467,10 +491,10 @@ export const VncViewer: Component<VncViewerProps> = (props) => {
     <div class={`relative bg-black rounded-lg overflow-hidden ${props.class ?? ''}`}>
       <canvas
         ref={canvasRef}
-        width={dimensions().width}
-        height={dimensions().height}
+        width={canvasDimensions.width}
+        height={canvasDimensions.height}
         class="w-full h-auto"
-        style={{ "max-width": "100%", "aspect-ratio": `${dimensions().width} / ${dimensions().height}` }}
+        style={{ "max-width": "100%", "aspect-ratio": `${canvasDimensions.width} / ${canvasDimensions.height}` }}
       />
       <Show when={status() !== 'connected'}>
         {/* Use reduced opacity (bg-black/60) to keep last frame visible during reconnection */}

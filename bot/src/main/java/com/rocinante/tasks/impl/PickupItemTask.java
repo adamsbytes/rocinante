@@ -320,23 +320,23 @@ public class PickupItemTask extends AbstractTask {
                 itemName, targetLocation, canvasPoint.getX(), canvasPoint.getY());
         operationPending = true;
 
-        java.awt.Point awtPoint = new java.awt.Point(canvasPoint.getX(), canvasPoint.getY());
-        safeClick.clickGroundItem(awtPoint, itemName)
-                .thenAccept(success -> {
-                    operationPending = false;
-                    if (success) {
-                        pickupTicks = 0;
-                        phase = PickupPhase.WAIT_PICKUP;
-                    } else {
-                        fail("Failed to click ground item: " + itemName);
-                    }
-                })
-                .exceptionally(e -> {
-                    operationPending = false;
-                    log.error("Failed to click ground item", e);
-                    fail("Click failed: " + e.getMessage());
-                    return null;
-                });
+            java.awt.Point awtPoint = new java.awt.Point(canvasPoint.getX(), canvasPoint.getY());
+            safeClick.clickGroundItem(awtPoint, itemName)
+                    .thenAccept(success -> {
+                        operationPending = false;
+                        if (success) {
+                            pickupTicks = 0;
+                            phase = PickupPhase.WAIT_PICKUP;
+                        } else {
+                            fail("Failed to click ground item: " + itemName);
+                        }
+                    })
+                    .exceptionally(e -> {
+                        operationPending = false;
+                        log.error("Failed to click ground item", e);
+                        fail("Click failed: " + e.getMessage());
+                        return null;
+                    });
     }
 
     /**

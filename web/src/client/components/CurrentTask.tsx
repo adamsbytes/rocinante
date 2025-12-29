@@ -63,7 +63,7 @@ export const CurrentTask: Component<CurrentTaskProps> = (props) => {
       >
         <div class="flex items-center gap-3">
           {/* Task indicator */}
-          <div class="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center">
+          <div class="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center flex-shrink-0">
             <Show when={props.disabled}>
               <span class="text-gray-600">💤</span>
             </Show>
@@ -75,8 +75,8 @@ export const CurrentTask: Component<CurrentTaskProps> = (props) => {
           </div>
 
           {/* Task description */}
-          <div class="flex flex-col">
-            <span class="font-semibold text-gray-100">
+          <div class="flex flex-col min-w-0">
+            <span class="font-semibold text-gray-100 truncate">
               <Show when={props.disabled}>
                 <span class="text-gray-500">Bot Offline</span>
               </Show>
@@ -95,14 +95,30 @@ export const CurrentTask: Component<CurrentTaskProps> = (props) => {
                 </Show>
               </div>
             </Show>
+            <Show when={!props.disabled && !props.task}>
+              <span class="text-sm text-gray-500">Waiting for task...</span>
+            </Show>
             <Show when={props.disabled}>
               <span class="text-sm text-gray-500">Start the bot to see task status</span>
             </Show>
           </div>
         </div>
 
-        {/* Queue badge and expand arrow */}
+        {/* Progress bar (inline) + Queue badge + expand arrow */}
         <div class="flex items-center gap-3">
+          {/* Inline progress bar */}
+          <Show when={hasProgress()}>
+            <div class="flex items-center gap-2 min-w-[120px]">
+              <div class="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                <div
+                  class="h-full bg-gradient-to-r from-green-500 to-emerald-400 transition-all duration-300 ease-out"
+                  style={{ width: `${progressPercent()}%` }}
+                />
+              </div>
+              <span class="text-xs text-gray-500 w-8 text-right">{progressPercent()}%</span>
+            </div>
+          </Show>
+          
           <Show when={!props.disabled && hasQueue()}>
             <div class="px-2 py-1 rounded bg-gray-700 text-xs text-gray-300">
               {props.queue!.pending} queued
@@ -113,7 +129,7 @@ export const CurrentTask: Component<CurrentTaskProps> = (props) => {
           </Show>
           <Show when={!props.disabled}>
             <svg
-              class={`w-5 h-5 text-gray-400 transform transition-transform ${expanded() ? 'rotate-180' : ''}`}
+              class={`w-5 h-5 text-gray-400 transform transition-transform flex-shrink-0 ${expanded() ? 'rotate-180' : ''}`}
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -123,22 +139,6 @@ export const CurrentTask: Component<CurrentTaskProps> = (props) => {
           </Show>
         </div>
       </div>
-
-      {/* Progress bar */}
-      <Show when={hasProgress()}>
-        <div class="px-4 pb-2">
-          <div class="h-1.5 bg-gray-700 rounded-full overflow-hidden">
-            <div
-              class="h-full bg-gradient-to-r from-green-500 to-emerald-400 transition-all duration-300 ease-out"
-              style={{ width: `${progressPercent()}%` }}
-            />
-          </div>
-          <div class="flex justify-between text-xs text-gray-500 mt-1">
-            <span>Progress</span>
-            <span>{progressPercent()}%</span>
-          </div>
-        </div>
-      </Show>
 
       {/* Expanded details - only show when not disabled */}
       <Show when={expanded() && !props.disabled}>

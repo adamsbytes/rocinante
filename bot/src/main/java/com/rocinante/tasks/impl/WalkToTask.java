@@ -497,6 +497,22 @@ public class WalkToTask extends AbstractTask {
     }
 
     @Override
+    protected void resetImpl() {
+        // Reset all execution state for retry
+        phase = WalkPhase.INIT;
+        currentPath.clear();
+        pathIndex = 0;
+        unifiedPath = null;
+        currentEdgeIndex = 0;
+        lastPosition = null;
+        ticksSinceMove = 0;
+        clickPending = false;
+        repathAttempts = 0;
+        runTogglePending = false;
+        log.debug("WalkToTask reset for retry");
+    }
+
+    @Override
     protected void executeImpl(TaskContext ctx) {
         // Initialize navigation services on first execution
         if (!servicesInitialized) {
@@ -720,7 +736,7 @@ public class WalkToTask extends AbstractTask {
         // Strategy 1: Direct A* pathfinding (works within loaded scene)
         // This is fastest and works for short distances or when already near destination
         if (distance <= WEBWALKER_DISTANCE_THRESHOLD) {
-            currentPath = pathFinder.findPath(playerPos, destination);
+            currentPath = new ArrayList<>(pathFinder.findPath(playerPos, destination));
             if (!currentPath.isEmpty()) {
                 log.debug("Direct A*: found path with {} tiles", currentPath.size());
                 pathIndex = 0;
@@ -792,7 +808,7 @@ public class WalkToTask extends AbstractTask {
         }
         
         // Strategy 3: Simple walk toward destination (last resort)
-        currentPath = calculateSimpleWalkToward(playerPos, distance);
+        currentPath = new ArrayList<>(calculateSimpleWalkToward(playerPos, distance));
         if (!currentPath.isEmpty()) {
             log.debug("Simple walk: {} tiles toward destination", currentPath.size());
             pathIndex = 0;
@@ -813,18 +829,18 @@ public class WalkToTask extends AbstractTask {
         }
         
         log.debug("Graph path: {} edges, ~{} ticks", unifiedPath.size(), navResult.getEstimatedGraphTicks());
-        currentEdgeIndex = 0;
-        
+            currentEdgeIndex = 0;
+            
         // Get local path to first edge
-        NavigationEdge firstEdge = unifiedPath.getEdge(0);
-        if (firstEdge != null && firstEdge.getFromLocation() != null) {
-            currentPath = pathFinder.findPath(playerPos, firstEdge.getFromLocation());
+            NavigationEdge firstEdge = unifiedPath.getEdge(0);
+            if (firstEdge != null && firstEdge.getFromLocation() != null) {
+                currentPath = new ArrayList<>(pathFinder.findPath(playerPos, firstEdge.getFromLocation()));
             pathIndex = 0;
             
             if (currentPath.isEmpty()) {
                 // Can't reach first edge - try simple walk
-                currentPath = calculateSimpleWalkToward(playerPos, 
-                        playerPos.distanceTo(firstEdge.getFromLocation()));
+                currentPath = new ArrayList<>(calculateSimpleWalkToward(playerPos, 
+                        playerPos.distanceTo(firstEdge.getFromLocation())));
                 pathIndex = 0;
             }
         }
@@ -843,18 +859,18 @@ public class WalkToTask extends AbstractTask {
         
         // First, walk to the nearest node
         WorldPoint nodePos = nearestNode.getWorldPoint();
-        currentPath = pathFinder.findPath(playerPos, nodePos);
+        currentPath = new ArrayList<>(pathFinder.findPath(playerPos, nodePos));
         
         if (currentPath.isEmpty()) {
             // A* can't find path - use simple walk toward the node
-            currentPath = calculateSimpleWalkToward(playerPos, navResult.getFirstMileDistance());
+            currentPath = new ArrayList<>(calculateSimpleWalkToward(playerPos, navResult.getFirstMileDistance()));
         }
-        
+
         if (!currentPath.isEmpty()) {
             log.debug("First-mile: walking {} tiles to node '{}'", 
                     currentPath.size(), nearestNode.getId());
             pathIndex = 0;
-            
+
             // Store the graph path for after we reach the first node
             unifiedPath = navResult.getGraphPath();
             currentEdgeIndex = 0;
@@ -877,7 +893,7 @@ public class WalkToTask extends AbstractTask {
         WorldPoint nodePos = nearestNode.getWorldPoint();
         int distance = playerPos.distanceTo(nodePos);
         
-        currentPath = calculateSimpleWalkToward(playerPos, distance);
+        currentPath = new ArrayList<>(calculateSimpleWalkToward(playerPos, distance));
         if (!currentPath.isEmpty()) {
             log.debug("Walking {} tiles toward nearest node '{}'", distance, nearestNode.getId());
             pathIndex = 0;
@@ -1060,7 +1076,7 @@ public class WalkToTask extends AbstractTask {
         NavigationEdge currentEdge = unifiedPath.getEdge(currentEdgeIndex);
         if (currentEdge == null) {
             // No more edges, go to destination
-            currentPath = pathFinder.findPath(playerPos, destination);
+            currentPath = new ArrayList<>(pathFinder.findPath(playerPos, destination));
             pathIndex = 0;
             return;
         }
@@ -1072,7 +1088,7 @@ public class WalkToTask extends AbstractTask {
 
         if (!atEdgeStart) {
             // Need to walk to edge start first
-            currentPath = pathFinder.findPath(playerPos, edgeStart);
+            currentPath = new ArrayList<>(pathFinder.findPath(playerPos, edgeStart));
             pathIndex = 0;
             return;
         }
@@ -1126,7 +1142,7 @@ public class WalkToTask extends AbstractTask {
             edgeDest = destination;
         }
         
-        currentPath = pathFinder.findPath(playerPos, edgeDest);
+        currentPath = new ArrayList<>(pathFinder.findPath(playerPos, edgeDest));
         pathIndex = 0;
         currentEdgeIndex++; // Move to next edge
         
@@ -1416,17 +1432,47 @@ public class WalkToTask extends AbstractTask {
             }
         }
 
-        // Calculate screen point for click
+        // Calculate screen point for click - try minimap first, then viewport
         Point screenPoint = calculateMinimapPoint(ctx, clickTarget);
         if (screenPoint == null) {
             // Try viewport click for nearby tiles
             screenPoint = calculateViewportPoint(ctx, clickTarget);
         }
 
+        // If primary target failed, try progressively closer points from the path
+        if (screenPoint == null && !currentPath.isEmpty()) {
+            for (int i = pathIndex; i < currentPath.size(); i++) {
+                WorldPoint fallbackTarget = currentPath.get(i);
+                if (fallbackTarget.equals(clickTarget)) {
+                    continue; // Skip the one we already tried
+                }
+                
+                int fallbackDist = playerPos.distanceTo(fallbackTarget);
+                if (fallbackDist <= 2) {
+                    continue; // Too close, not worth clicking
+                }
+                
+                screenPoint = calculateMinimapPoint(ctx, fallbackTarget);
+                if (screenPoint == null) {
+                    screenPoint = calculateViewportPoint(ctx, fallbackTarget);
+                }
+                
+                if (screenPoint != null) {
+                    log.debug("Using fallback click target {} (dist={}) instead of {} (dist={})", 
+                            fallbackTarget, fallbackDist, clickTarget, playerPos.distanceTo(clickTarget));
+                    clickTarget = fallbackTarget;
+                    break;
+                }
+            }
+        }
+
         if (screenPoint == null) {
-            log.debug("Could not calculate click point for {}", clickTarget);
+            log.debug("Could not calculate click point for {} or any fallback points", clickTarget);
             return;
         }
+
+        // Capture final target for lambda
+        final WorldPoint finalClickTarget = clickTarget;
 
         // Perform the click (minimap and viewport points are canvas-relative)
         clickPending = true;
@@ -1435,7 +1481,7 @@ public class WalkToTask extends AbstractTask {
         moveFuture.thenCompose(v -> ctx.getMouseController().click())
                 .thenRun(() -> {
                     clickPending = false;
-                    log.trace("Clicked to walk toward {}", clickTarget);
+                    log.trace("Clicked to walk toward {}", finalClickTarget);
                 })
                 .exceptionally(e -> {
                     clickPending = false;
@@ -1881,7 +1927,7 @@ public class WalkToTask extends AbstractTask {
         
         // Calculate path to overshoot if needed
         if (currentPath.isEmpty() && pathFinder != null && playerPos != null && destination != null) {
-            currentPath = pathFinder.findPath(playerPos, destination);
+            currentPath = new ArrayList<>(pathFinder.findPath(playerPos, destination));
             pathIndex = 0;
         }
         
@@ -1918,7 +1964,7 @@ public class WalkToTask extends AbstractTask {
         
         // Calculate path to original destination if needed
         if (currentPath.isEmpty() && pathFinder != null && playerPos != null && destination != null) {
-            currentPath = pathFinder.findPath(playerPos, destination);
+            currentPath = new ArrayList<>(pathFinder.findPath(playerPos, destination));
             pathIndex = 0;
         }
         

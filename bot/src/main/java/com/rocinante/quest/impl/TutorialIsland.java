@@ -9,6 +9,8 @@ import com.rocinante.quest.steps.*;
 import com.rocinante.state.Conditions;
 import com.rocinante.state.IronmanState;
 import com.rocinante.state.StateCondition;
+import com.rocinante.tasks.Task;
+import com.rocinante.tasks.TaskContext;
 import com.rocinante.tasks.impl.DialogueTask;
 import com.rocinante.tasks.impl.IronmanSelectionTask;
 import com.rocinante.tasks.impl.SettingsTask;
@@ -19,6 +21,7 @@ import net.runelite.api.ObjectID;
 import net.runelite.api.coords.WorldPoint;
 
 import javax.annotation.Nullable;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -302,8 +305,8 @@ public class TutorialIsland implements Quest {
         // var 310: Mine copper
         steps.put(310, new ObjectQuestStep(ObjectCollections.COPPER_ROCKS, "Mine", "Mine some copper ore"));
 
-        // var 320: Smelt bronze bar
-        steps.put(320, new ObjectQuestStep(ObjectCollections.FURNACES, "Smelt", "Smelt a bronze bar"));
+        // var 320: Smelt bronze bar (Tutorial Island furnace uses "Use" not "Smelt")
+        steps.put(320, new ObjectQuestStep(ObjectCollections.FURNACES, "Use", "Smelt a bronze bar"));
 
         // var 330: Talk to Mining Instructor
         steps.put(330, new NpcQuestStep(NPC_MINING_INSTRUCTOR, "Talk to the Mining Instructor")
@@ -315,8 +318,9 @@ public class TutorialIsland implements Quest {
         // var 350: Smith bronze dagger
         steps.put(350, createSmithDaggerStep());
 
-        // var 360: Enter combat area (NEWBIEDOOR5_L)
-        steps.put(360, new ObjectQuestStep(ObjectID.GATE_9719, "Open", "Go through the gate"));
+        // var 360: Enter combat area (NEWBIEDOOR4L/R - the gate between mining and combat areas)
+        // Note: 9719/9720 is NEWBIEDOOR5 which is a different gate. The gate here is 9717/9718.
+        steps.put(360, new ObjectQuestStep(Arrays.asList(ObjectID.GATE_9717, ObjectID.GATE_9718), "Open", "Go through the gate"));
 
         // ====================================================================
         // Section 6: Combat Instructor (var 370-500)
@@ -329,12 +333,12 @@ public class TutorialIsland implements Quest {
         // var 390: Open equipment tab (Tutorial Island teaches clicking tabs, not hotkeys)
         steps.put(390, WidgetQuestStep.openEquipmentByClick("Open the equipment tab"));
 
-        // var 400: Open equipment stats
-        steps.put(400, new WidgetQuestStep(387, 17, "View equipment stats")
+        // var 400: Open equipment stats (387:1 = EQUIPMENT button, NOT 387:17 which is SLOT2)
+        steps.put(400, new WidgetQuestStep(387, 1, "View equipment stats")
                 .withAction(WidgetQuestStep.WidgetAction.CLICK));
 
-        // var 405: Equip bronze dagger
-        steps.put(405, ItemQuestStep.equip(ItemID.BRONZE_DAGGER, "Equip the bronze dagger"));
+        // var 405: Equip bronze dagger, then close the equipment stats interface
+        steps.put(405, createEquipDaggerAndCloseStep());
 
         // var 410: Talk to Combat Instructor
         steps.put(410, new NpcQuestStep(NPC_COMBAT_INSTRUCTOR, "Talk to the Combat Instructor again")
@@ -346,8 +350,9 @@ public class TutorialIsland implements Quest {
         // var 430: Open combat styles tab (Tutorial Island teaches clicking tabs, not hotkeys)
         steps.put(430, WidgetQuestStep.openCombatStylesByClick("Open the combat styles tab"));
 
-        // var 440: Enter rat cage (NEWBIE_DOOR6)
-        steps.put(440, new ObjectQuestStep(ObjectID.DOOR_9721, "Open", "Enter the rat cage"));
+        // var 440: Enter rat cage (NEWBIEDOOR5_L/R at 9519/9520)
+        // Note: Despite the name, NEWBIEDOOR5 (9719/9720) is the rat cage gate, not NEWBIE_DOOR6 (9721)
+        steps.put(440, new ObjectQuestStep(Arrays.asList(ObjectID.GATE_9719, ObjectID.GATE_9720), "Open", "Enter the rat cage"));
 
         // var 450: Attack rat (melee)
         steps.put(450, new CombatQuestStep(NPC_GIANT_RAT, "Attack the giant rat")
@@ -357,8 +362,8 @@ public class TutorialIsland implements Quest {
         steps.put(460, new WaitQuestStep("Waiting for the giant rat to die"));
 
         // var 470: Exit rat cage and talk to Combat Instructor
-        steps.put(470, new NpcQuestStep(NPC_COMBAT_INSTRUCTOR, "Talk to the Combat Instructor")
-                .withDialogueExpected(true));
+        // Must go through the gate first, then talk to instructor
+        steps.put(470, createExitRatCageAndTalkStep());
 
         // var 480: Equip bow and arrows, attack rat with ranged
         steps.put(480, new CombatQuestStep(NPC_GIANT_RAT, "Equip bow and arrows, attack the rat")
@@ -367,18 +372,23 @@ public class TutorialIsland implements Quest {
         // var 490: Wait for rat to die - combat initiated by step 480 handles the fight
         steps.put(490, new WaitQuestStep("Waiting for the rat to die"));
 
-        // var 500: Exit combat area (NEWBIELADDERTOP2)
-        steps.put(500, new ObjectQuestStep(ObjectID.LADDER_9728, "Climb-up", "Climb the ladder"));
+        // var 500: Exit combat area - climb UP from bottom of ladder (NEWBIELADDER2)
+        // Note: 9727 is the ladder at the BOTTOM (climb up), 9728 is at the TOP (climb down)
+        steps.put(500, new ObjectQuestStep(ObjectID.LADDER_9727, "Climb-up", "Climb the ladder"));
 
         // ====================================================================
         // Section 7: Account Guide / Bank (var 510-540)
         // ====================================================================
 
-        // var 510: Open bank (NEWBIEBANKBOOTH)
-        steps.put(510, new ObjectQuestStep(ObjectID.BANK_BOOTH_10083, "Use", "Use the bank booth"));
+        // var 510: Open bank, then close it (varbit advances after bank interface is used)
+        steps.put(510, createUseBankAndCloseStep());
 
-        // var 520: Close bank and open poll booth
-        steps.put(520, new ObjectQuestStep(ObjectCollections.POLL_BOOTHS, "Use", "Use the poll booth"));
+        // var 520: Use poll booth, then click through the MESBOX dialogue
+        // The poll booth shows an info message that needs to be dismissed with spacebar
+        steps.put(520, createUsePollBoothStep());
+
+        // var 525: Go through the door to the Account Guide's room (NEWBIE_DOOR6)
+        steps.put(525, new ObjectQuestStep(ObjectID.DOOR_9721, "Open", "Go through the door to the Account Guide"));
 
         // var 530: Talk to Account Guide
         steps.put(530, new NpcQuestStep(NPC_ACCOUNT_GUIDE, "Talk to the Account Guide")
@@ -391,15 +401,17 @@ public class TutorialIsland implements Quest {
         steps.put(532, new NpcQuestStep(NPC_ACCOUNT_GUIDE, "Talk to the Account Guide again")
                 .withDialogueExpected(true));
 
-        // var 540: Exit account guide's room (NEWBIE_DOOR8)
-        steps.put(540, new ObjectQuestStep(ObjectID.DOOR_9723, "Open", "Exit through the door"));
+        // var 540: Exit account guide's room (NEWBIE_DOOR7)
+        steps.put(540, new ObjectQuestStep(ObjectID.DOOR_9722, "Open", "Exit through the door"));
 
         // ====================================================================
         // Section 8: Brother Brace / Prayer (var 550-610)
         // ====================================================================
 
-        // var 550: Talk to Brother Brace
+        // var 550: Talk to Brother Brace (in the chapel south of the bank)
+        // Need to walk there first since he's outside render range from the Account Guide area
         steps.put(550, new NpcQuestStep(NPC_BROTHER_BRACE, "Talk to Brother Brace")
+                .withWalkTo(new WorldPoint(3127, 3107, 0))
                 .withDialogueExpected(true));
 
         // var 560: Open prayer tab (Tutorial Island teaches clicking tabs, not hotkeys)
@@ -543,6 +555,56 @@ public class TutorialIsland implements Quest {
     }
 
     /**
+     * Create the step for equipping the bronze dagger and then closing the
+     * equipment stats interface by pressing Escape.
+     * 
+     * The equipment stats interface opens for this tutorial step, and the bot
+     * needs to close it after equipping to allow subsequent steps to execute.
+     */
+    private QuestStep createEquipDaggerAndCloseStep() {
+        return new QuestStep("Equip the bronze dagger") {
+            @Override
+            public StepType getType() {
+                return StepType.CUSTOM;
+            }
+
+            @Override
+            public List<Task> toTasks(TaskContext ctx) {
+                List<Task> tasks = new java.util.ArrayList<>();
+                
+                // First, equip the dagger
+                tasks.add(new com.rocinante.tasks.impl.EquipItemTask(ItemID.BRONZE_DAGGER)
+                        .withDescription("Equip the bronze dagger"));
+                
+                // Then, close the equipment stats interface by pressing Escape
+                tasks.add(new com.rocinante.tasks.AbstractTask() {
+                    @Override
+                    public String getDescription() {
+                        return "Close equipment stats interface";
+                    }
+
+                    @Override
+                    public boolean canExecute(TaskContext ctx) {
+                        return true;
+                    }
+
+                    @Override
+                    protected void executeImpl(TaskContext ctx) {
+                        ctx.getKeyboardController().pressEscape()
+                            .thenRun(this::complete)
+                            .exceptionally(e -> {
+                                fail("Failed to press Escape: " + e.getMessage());
+                                return null;
+                            });
+                    }
+                });
+                
+                return tasks;
+            }
+        };
+    }
+
+    /**
      * Create the step for equipping sword and shield.
      * Uses a CompositeQuestStep to ensure both items are equipped sequentially.
      * Each EquipItemTask handles the case where the item is already equipped.
@@ -555,6 +617,33 @@ public class TutorialIsland implements Quest {
         equipStep.addStep(ItemQuestStep.equip(ItemID.WOODEN_SHIELD, "Equip the wooden shield"));
 
         return equipStep;
+    }
+
+    /**
+     * Create the step for exiting the rat cage and talking to the Combat Instructor.
+     * After killing the rat with melee, the player must exit through the gate and
+     * return to the Combat Instructor.
+     */
+    private QuestStep createExitRatCageAndTalkStep() {
+        ConditionalQuestStep.CompositeQuestStep composite =
+                new ConditionalQuestStep.CompositeQuestStep("Exit rat cage and talk to Combat Instructor");
+
+        // Step 1: Exit through the gate (NEWBIEDOOR5_L/R)
+        composite.addStep(new ObjectQuestStep(
+                Arrays.asList(ObjectID.GATE_9719, ObjectID.GATE_9720), 
+                "Open", 
+                "Exit the rat cage"));
+
+        // Step 2: Talk to Combat Instructor
+        // Note: withDialogueExpected adds a DialogueTask as a 3rd child
+        composite.addStep(new NpcQuestStep(NPC_COMBAT_INSTRUCTOR, "Talk to the Combat Instructor")
+                .withDialogueExpected(true));
+
+        // Partial retry is correct here: if gate succeeds but NPC talk fails,
+        // player is already OUTSIDE the cage - retrying just the NPC task is right.
+        // Full retry would send them back INTO the cage, making things worse.
+
+        return composite;
     }
 
     /**
@@ -633,6 +722,144 @@ public class TutorialIsland implements Quest {
         composite.addStep(new CustomQuestStep("Set interface to fixed mode",
                 ctx -> SettingsTask.setFixedMode()));
         
+        return composite;
+    }
+
+    /**
+     * Create the step for using the poll booth, clicking through the dialogue, and closing the interface.
+     * 
+     * The poll booth:
+     * 0. First close any lingering interface (e.g., from a previous run)
+     * 1. Opens a poll interface
+     * 2. Shows a MESBOX dialogue that needs to be dismissed with spacebar
+     * 3. The poll interface needs to be closed with Escape
+     */
+    private QuestStep createUsePollBoothStep() {
+        ConditionalQuestStep.CompositeQuestStep composite =
+                new ConditionalQuestStep.CompositeQuestStep("Use the poll booth");
+
+        // Step 0: Close any lingering interface from a previous run/crash
+        composite.addStep(new CustomQuestStep("Clear any open interface",
+                ctx -> new com.rocinante.tasks.AbstractTask() {
+                    @Override
+                    public String getDescription() {
+                        return "Clear any open interface";
+                    }
+
+                    @Override
+                    public boolean canExecute(TaskContext taskCtx) {
+                        return true;
+                    }
+
+                    @Override
+                    protected void executeImpl(TaskContext taskCtx) {
+                        taskCtx.getKeyboardController().pressEscape()
+                            .thenRun(() -> {
+                                try { Thread.sleep(200); } catch (InterruptedException ignored) {}
+                                complete();
+                            })
+                            .exceptionally(e -> {
+                                // Even if escape fails, continue anyway
+                                complete();
+                                return null;
+                            });
+                    }
+                    
+                    @Override
+                    protected void resetImpl() {
+                        // No state to reset
+                    }
+                }));
+
+        // Step 1: Use the poll booth (opens a MESBOX dialogue, not animation)
+        composite.addStep(new ObjectQuestStep(ObjectCollections.POLL_BOOTHS, "Use", "Use the poll booth")
+                .withDialogueExpected(true));
+
+        // Step 2: Click through the dialogue (spacebar)
+        composite.addStep(new DialogueQuestStep("Click through poll booth message")
+                .withClickThrough(true));
+
+        // Step 3: Close the poll interface (Escape)
+        composite.addStep(new CustomQuestStep("Close poll interface",
+                ctx -> new com.rocinante.tasks.AbstractTask() {
+                    @Override
+                    public String getDescription() {
+                        return "Close poll interface";
+                    }
+
+                    @Override
+                    public boolean canExecute(TaskContext taskCtx) {
+                        return true;
+                    }
+
+                    @Override
+                    protected void executeImpl(TaskContext taskCtx) {
+                        taskCtx.getKeyboardController().pressEscape()
+                            .thenRun(() -> {
+                                try { Thread.sleep(300); } catch (InterruptedException ignored) {}
+                                complete();
+                            })
+                            .exceptionally(e -> {
+                                fail("Failed to press Escape: " + e.getMessage());
+                                return null;
+                            });
+                    }
+                    
+                    @Override
+                    protected void resetImpl() {
+                        // No state to reset
+                    }
+                }));
+
+        return composite;
+    }
+
+    /**
+     * Create the step for using the bank booth and then closing the bank interface.
+     * 
+     * The tutorial just wants you to open the bank to see it, then close it.
+     * Varbit advances to 520 after you close the bank.
+     */
+    private QuestStep createUseBankAndCloseStep() {
+        ConditionalQuestStep.CompositeQuestStep composite =
+                new ConditionalQuestStep.CompositeQuestStep("Use the bank booth and close it");
+
+        // Step 1: Use the bank booth to open it
+        composite.addStep(new ObjectQuestStep(ObjectID.BANK_BOOTH_10083, "Use", "Use the bank booth"));
+
+        // Step 2: Press Escape to close the bank interface
+        composite.addStep(new CustomQuestStep("Close the bank interface",
+                ctx -> new com.rocinante.tasks.AbstractTask() {
+                    @Override
+                    public String getDescription() {
+                        return "Press Escape to close bank";
+                    }
+
+                    @Override
+                    public boolean canExecute(TaskContext taskCtx) {
+                        return true;
+                    }
+
+                    @Override
+                    protected void executeImpl(TaskContext taskCtx) {
+                        taskCtx.getKeyboardController().pressEscape()
+                            .thenRun(() -> {
+                                // Small delay to let interface close
+                                try { Thread.sleep(300); } catch (InterruptedException ignored) {}
+                                complete();
+                            })
+                            .exceptionally(e -> {
+                                fail("Failed to press Escape: " + e.getMessage());
+                                return null;
+                            });
+                    }
+                    
+                    @Override
+                    protected void resetImpl() {
+                        // No state to reset
+                    }
+                }));
+
         return composite;
     }
 }

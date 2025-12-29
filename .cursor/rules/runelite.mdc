@@ -36,6 +36,51 @@ External plugins (from Plugin Hub) load **asynchronously after** built-in plugin
 
 Never call widget methods from non-client threads. Use `clientThread.invokeLater()` for thread-safe widget access.
 
+## Finding Widget/Object/NPC IDs
+
+The **source of truth** for IDs is the RuneLite source at `/tmp/runelite-src/`:
+
+### Widget IDs
+
+Widget IDs are `groupId:childId`. Find them in:
+```
+/tmp/runelite-src/runelite-api/src/main/java/net/runelite/api/gameval/InterfaceID.java
+```
+
+The file contains inner classes for each interface. Widget IDs are stored as hex:
+```java
+// 0x0183_0001 = group 0x0183 (387 decimal) : child 0x0001 (1 decimal) = 387:1
+public static final int EQUIPMENT = 0x0183_0001;  // Widget 387:1
+public static final int SLOT2 = 0x0183_0011;      // Widget 387:17 (0x11 = 17)
+```
+
+**To find a widget:**
+```bash
+# Find interface group by name
+grep -rn "WORNITEMS\|Equipment" /tmp/runelite-src/runelite-api/src/main/java/net/runelite/api/gameval/InterfaceID.java
+
+# View all children in that interface class
+grep -B2 -A50 "class Wornitems" /tmp/runelite-src/runelite-api/src/main/java/net/runelite/api/gameval/InterfaceID.java
+```
+
+### Object/NPC IDs
+
+For objects and NPCs, use the `gameval` package for the canonical names:
+```
+/tmp/runelite-src/runelite-api/src/main/java/net/runelite/api/gameval/ObjectID.java
+/tmp/runelite-src/runelite-api/src/main/java/net/runelite/api/gameval/NpcID.java
+```
+
+These show the internal names (e.g., `NEWBIEDOOR4L = 9717` for Tutorial Island gate).
+
+**Example workflow:**
+```bash
+# Bot logs show object 9717 exists but 9719 doesn't work
+grep -rn "971[7-9]" /tmp/runelite-src/runelite-api/src/main/java/net/runelite/api/gameval/ObjectID.java
+# Result: NEWBIEDOOR4L = 9717, NEWBIEDOOR4R = 9718, NEWBIEDOOR5_L = 9719
+# Now you know 9717/9718 are the correct IDs for that gate
+```
+
 ## Quest Helper
 
 Quest Helper is an external plugin. Its classes are accessed via reflection since they're not compile-time dependencies:

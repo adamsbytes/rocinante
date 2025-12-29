@@ -1,12 +1,15 @@
 package com.rocinante.quest.steps;
 
 import com.rocinante.state.StateCondition;
+import com.rocinante.tasks.CompositeTask;
 import com.rocinante.tasks.Task;
 import com.rocinante.tasks.TaskContext;
 import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -173,6 +176,14 @@ public class ConditionalQuestStep extends QuestStep {
      */
     public static class CompositeQuestStep extends QuestStep {
         private final List<QuestStep> subSteps = new ArrayList<>();
+        
+        /**
+         * If true (default), retries resume from the failed child task.
+         * If false, retries restart from the beginning of the composite.
+         */
+        @Getter
+        @Setter
+        private boolean retryFromFailed = true;
 
         public CompositeQuestStep(String text) {
             super(text);
@@ -189,11 +200,23 @@ public class ConditionalQuestStep extends QuestStep {
 
         @Override
         public List<Task> toTasks(TaskContext ctx) {
-            List<Task> tasks = new ArrayList<>();
+            // Collect all child tasks
+            List<Task> childTasks = new ArrayList<>();
             for (QuestStep step : subSteps) {
-                tasks.addAll(step.toTasks(ctx));
+                childTasks.addAll(step.toTasks(ctx));
             }
-            return tasks;
+            
+            // If only one task, return it directly
+            if (childTasks.size() == 1) {
+                return childTasks;
+            }
+            
+            // Wrap in a CompositeTask with our retry setting
+            CompositeTask composite = CompositeTask.sequential(childTasks.toArray(new Task[0]))
+                    .withDescription(getText())
+                    .withRetryFromFailed(retryFromFailed);
+            
+            return Collections.singletonList(composite);
         }
 
         public List<QuestStep> getSubSteps() {

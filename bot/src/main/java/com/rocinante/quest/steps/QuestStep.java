@@ -6,7 +6,9 @@ import com.rocinante.tasks.TaskContext;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.experimental.Accessors;
+import net.runelite.api.coords.WorldPoint;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -119,6 +121,20 @@ public abstract class QuestStep {
      * @return list of tasks to execute for this step
      */
     public abstract List<Task> toTasks(TaskContext ctx);
+
+    /**
+     * Get the target location for this step, if any.
+     * 
+     * This is used by QuestExecutor to automatically walk to the step's location
+     * if the player is far away. Subclasses should override this to return their
+     * specific target location (NPC spawn, object location, etc.).
+     *
+     * @return the target WorldPoint, or null if no specific location
+     */
+    @Nullable
+    public WorldPoint getTargetLocation() {
+        return null;
+    }
 
     /**
      * Check if this step's conditions are currently met.

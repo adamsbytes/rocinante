@@ -4,7 +4,8 @@ import { useBotQuery, useStartBotMutation, useStopBotMutation, useRestartBotMuta
 import { StatusBadge } from '../components/StatusBadge';
 import { VncViewer, type VncStatus } from '../components/VncViewer';
 import { LogsViewer } from '../components/LogsViewer';
-import { createBotStatusStore, type ConnectionState } from '../lib/statusStore';
+import { createBotStatusStore } from '../lib/statusStore';
+import { createPersistedSignal } from '../lib/persistedSignal';
 import { CurrentTask } from '../components/CurrentTask';
 import { SessionStatsPanel, InlineSessionStats } from '../components/SessionStatsPanel';
 import { AccountStatsGrid } from '../components/AccountStatsGrid';
@@ -24,7 +25,7 @@ export const BotDetail: Component = () => {
   const [showLogs, setShowLogs] = createSignal(false);
   const [vncStatus, setVncStatus] = createSignal<VncStatus>('connecting');
   const [vncError, setVncError] = createSignal<string | null>(null);
-  const [statsView, setStatsView] = createSignal<StatsView>('grid');
+  const [statsView, setStatsView] = createPersistedSignal<StatsView>('stats-view', 'grid');
 
   const handleVncStatusChange = (status: VncStatus, error?: string | null) => {
     setVncStatus(status);
@@ -37,22 +38,41 @@ export const BotDetail: Component = () => {
   const isError = () => botQuery.data?.status.state === 'error';
   const isRestarting = () => restartMutation.isPending;
 
-  // Status store - only create when bot is running
-  const statusStore = createMemo(() => {
-    if (isRunning()) {
-      return createBotStatusStore({ botId: params().id });
+  // Status store - created once on mount, like VncViewer
+  // Using refs to avoid effect-based lifecycle which causes disconnects on isRunning() flickers
+  let statusStoreRef: ReturnType<typeof createBotStatusStore> | null = null;
+  let statusStoreBotId: string | null = null;
+  const [statusStore, setStatusStore] = createSignal<ReturnType<typeof createBotStatusStore> | null>(null);
+
+  // Create status store for current bot - only recreate if botId changes
+  createEffect(() => {
+    const botId = params().id;
+    
+    // Only act if botId changed
+    if (statusStoreBotId === botId) {
+      return;
     }
-    return null;
+
+    // Disconnect old store if exists
+    if (statusStoreRef) {
+      statusStoreRef.disconnect();
+      statusStoreRef = null;
+      setStatusStore(null);
+    }
+
+    // Create new store for this bot (regardless of running state - store handles reconnection)
+    statusStoreRef = createBotStatusStore({ botId });
+    statusStoreBotId = botId;
+    setStatusStore(statusStoreRef);
   });
 
   // Cleanup status store on unmount
   onCleanup(() => {
-    statusStore()?.disconnect();
+    statusStoreRef?.disconnect();
   });
 
   // Derived status data
   const runtimeStatus = () => statusStore()?.status() || null;
-  const statusConnectionState = () => statusStore()?.connectionState() || 'disconnected';
 
   const handleDelete = async () => {
     try {
@@ -76,40 +96,36 @@ export const BotDetail: Component = () => {
         >
           {(bot) => (
             <>
-              {/* Header */}
-              <div class="flex items-start justify-between mb-6">
-                <div>
-                  <div class="flex items-center gap-3 mb-2">
-                    <h2 class="text-2xl font-bold">{bot().name}</h2>
+              {/* Header - responsive: stacks on mobile */}
+              <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-3 mb-2 flex-wrap">
+                    <h2 class="text-xl sm:text-2xl font-bold truncate">{bot().name}</h2>
                     <StatusBadge state={bot().status.state} />
-                    {/* Status connection indicator */}
-                    <Show when={isRunning()}>
-                      <StatusConnectionBadge state={statusConnectionState()} />
-                    </Show>
                   </div>
-                  <div class="flex items-center gap-4">
-                    <p class="text-[var(--text-secondary)]">{bot().username}</p>
+                  <div class="flex items-center gap-4 flex-wrap">
+                    <p class="text-[var(--text-secondary)] text-sm sm:text-base truncate">{bot().username}</p>
                     {/* Inline session stats when running */}
                     <Show when={isRunning() && runtimeStatus()?.session}>
                       <InlineSessionStats session={runtimeStatus()!.session} />
                     </Show>
                   </div>
                 </div>
-                <div class="flex gap-2">
+                <div class="flex flex-wrap gap-2">
                   {isRunning() ? (
                     /* Running state: restart + stop buttons */
                     <>
                       <button
                         onClick={() => restartMutation.mutate(params().id)}
                         disabled={isRestarting() || isStopping()}
-                        class="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 rounded-lg font-medium transition-colors"
+                        class="px-3 sm:px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 rounded-lg font-medium transition-colors text-sm sm:text-base"
                       >
                         {isRestarting() ? 'Restarting...' : 'Restart'}
                       </button>
                       <button
                         onClick={() => stopMutation.mutate(params().id)}
                         disabled={isStopping()}
-                        class="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded-lg font-medium transition-colors"
+                        class="px-3 sm:px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded-lg font-medium transition-colors text-sm sm:text-base"
                       >
                         {isStopping() ? 'Stopping...' : 'Stop'}
                       </button>
@@ -120,14 +136,14 @@ export const BotDetail: Component = () => {
                       <button
                         onClick={() => startMutation.mutate(params().id)}
                         disabled={isStarting()}
-                        class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-lg font-medium transition-colors"
+                        class="px-3 sm:px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-lg font-medium transition-colors text-sm sm:text-base"
                       >
                         {isStarting() ? 'Starting...' : 'Retry'}
                       </button>
                       <button
                         onClick={() => stopMutation.mutate(params().id)}
                         disabled={isStopping()}
-                        class="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded-lg font-medium transition-colors"
+                        class="px-3 sm:px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded-lg font-medium transition-colors text-sm sm:text-base"
                         title="Force stop / cleanup container"
                       >
                         {isStopping() ? 'Stopping...' : 'Stop'}
@@ -138,21 +154,21 @@ export const BotDetail: Component = () => {
                     <button
                       onClick={() => startMutation.mutate(params().id)}
                       disabled={isStarting()}
-                      class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-lg font-medium transition-colors"
+                      class="px-3 sm:px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-lg font-medium transition-colors text-sm sm:text-base"
                     >
                       Start
                     </button>
                   )}
                   <button
                     onClick={() => setShowLogs(true)}
-                    class="px-4 py-2 bg-[var(--bg-tertiary)] hover:bg-zinc-700 rounded-lg font-medium transition-colors"
+                    class="px-3 sm:px-4 py-2 bg-[var(--bg-tertiary)] hover:bg-zinc-700 rounded-lg font-medium transition-colors text-sm sm:text-base"
                   >
                     Logs
                   </button>
                   <Link
                     to="/bots/$id/edit"
                     params={{ id: params().id }}
-                    class="px-4 py-2 bg-[var(--bg-tertiary)] hover:bg-zinc-700 rounded-lg font-medium transition-colors"
+                    class="px-3 sm:px-4 py-2 bg-[var(--bg-tertiary)] hover:bg-zinc-700 rounded-lg font-medium transition-colors text-sm sm:text-base"
                   >
                     Edit
                   </Link>
@@ -168,35 +184,25 @@ export const BotDetail: Component = () => {
               <div class="mb-6">
                 <div class="flex items-center gap-3 mb-3">
                   <h3 class="text-lg font-semibold">Live View</h3>
-                  <Show when={isRunning()}>
+                  {/* Only show status when there's an issue - connected state is implicit */}
+                  <Show when={isRunning() && vncStatus() !== 'connected'}>
                     <span class="flex items-center gap-1.5 text-xs">
                       <span
                         class={`w-2 h-2 rounded-full ${
-                          vncStatus() === 'connected'
-                            ? 'bg-emerald-500'
-                            : vncStatus() === 'connecting'
+                          vncStatus() === 'connecting'
                             ? 'bg-amber-500 animate-pulse'
                             : 'bg-red-500'
                         }`}
                       />
                       <span class={
-                        vncStatus() === 'connected'
-                          ? 'text-emerald-400'
-                          : vncStatus() === 'connecting'
+                        vncStatus() === 'connecting'
                           ? 'text-amber-400'
                           : 'text-red-400'
                       }>
-                        {vncStatus() === 'connected' && 'Connected'}
                         {vncStatus() === 'connecting' && 'Connecting...'}
-                        {vncStatus() === 'disconnected' && 'Disconnected'}
+                        {vncStatus() === 'disconnected' && 'Reconnecting...'}
                         {vncStatus() === 'error' && (vncError() || 'Error')}
                       </span>
-                    </span>
-                  </Show>
-                  <Show when={!isRunning()}>
-                    <span class="flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full bg-gray-800">
-                      <span class="w-1.5 h-1.5 rounded-full bg-gray-500" />
-                      <span class="text-gray-400">Offline</span>
                     </span>
                   </Show>
                 </div>
@@ -390,30 +396,6 @@ export const BotDetail: Component = () => {
   );
 };
 
-/**
- * Status connection badge showing WebSocket connection state.
- */
-const StatusConnectionBadge: Component<{ state: ConnectionState }> = (props) => {
-  const config = () => {
-    switch (props.state) {
-      case 'connected':
-        return { color: 'bg-cyan-500', text: 'text-cyan-400', label: 'Live' };
-      case 'connecting':
-        return { color: 'bg-amber-500 animate-pulse', text: 'text-amber-400', label: 'Connecting' };
-      case 'error':
-        return { color: 'bg-red-500', text: 'text-red-400', label: 'Error' };
-      default:
-        return { color: 'bg-gray-500', text: 'text-gray-400', label: 'Offline' };
-    }
-  };
-
-  return (
-    <span class="flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full bg-gray-800">
-      <span class={`w-1.5 h-1.5 rounded-full ${config().color}`} />
-      <span class={config().text}>{config().label}</span>
-    </span>
-  );
-};
 
 /**
  * VNC Offline placeholder - shows when bot is not running.

@@ -1,5 +1,4 @@
-import { watch } from 'fs';
-import { mkdir } from 'fs/promises';
+import { mkdir, unlink } from 'fs/promises';
 import { join } from 'path';
 import type { BotRuntimeStatus, BotCommand, CommandsFile } from '../shared/types';
 
@@ -79,7 +78,6 @@ export async function readBotStatus(botId: string): Promise<BotRuntimeStatus | n
 type StatusCallback = (status: BotRuntimeStatus) => void;
 
 interface WatcherEntry {
-  watcher: ReturnType<typeof watch> | null;
   callbacks: Set<StatusCallback>;
   lastStatus: BotRuntimeStatus | null;
   pollInterval: NodeJS.Timeout | null;
@@ -97,14 +95,13 @@ export function watchBotStatus(botId: string, callback: StatusCallback): () => v
   
   if (!entry) {
     entry = {
-      watcher: null,
       callbacks: new Set(),
       lastStatus: null,
       pollInterval: null,
     };
     watchers.set(botId, entry);
     
-    // Start watching
+    // Start polling for status updates
     startWatcher(botId, entry);
   }
   
@@ -129,10 +126,12 @@ export function watchBotStatus(botId: string, callback: StatusCallback): () => v
 
 /**
  * Start the file watcher for a bot's status file.
+ * 
+ * NOTE: We always use polling because fs.watch is unreliable with Docker volume mounts.
+ * The files are written by the container to a mounted volume, and fs.watch often
+ * silently fails to detect changes in this scenario.
  */
 async function startWatcher(botId: string, entry: WatcherEntry): Promise<void> {
-  const statusDir = getStatusDir(botId);
-  
   // Ensure directory exists
   await ensureStatusDir(botId);
   
@@ -142,23 +141,8 @@ async function startWatcher(botId: string, entry: WatcherEntry): Promise<void> {
     entry.lastStatus = initialStatus;
   }
   
-  // Try to use fs.watch for efficient file watching
-  try {
-    entry.watcher = watch(statusDir, (eventType, filename) => {
-      if (filename === 'status.json') {
-        handleStatusChange(botId, entry);
-      }
-    });
-    
-    entry.watcher.on('error', (error) => {
-      console.error(`Watcher error for bot ${botId}:`, error);
-      // Fall back to polling
-      startPolling(botId, entry);
-    });
-  } catch (error) {
-    console.warn(`Could not start file watcher for bot ${botId}, using polling:`, error);
-    startPolling(botId, entry);
-  }
+  // Always use polling for Docker volume reliability
+  startPolling(botId, entry);
 }
 
 /**
@@ -206,14 +190,68 @@ async function handleStatusChange(botId: string, entry: WatcherEntry): Promise<v
  * Stop the watcher for a bot.
  */
 function stopWatcher(botId: string, entry: WatcherEntry): void {
-  if (entry.watcher) {
-    entry.watcher.close();
-    entry.watcher = null;
-  }
-  
   if (entry.pollInterval) {
     clearInterval(entry.pollInterval);
     entry.pollInterval = null;
+  }
+}
+
+/**
+ * Reset the status file for a bot to initial state.
+ * Called when stopping/restarting to prevent stale data on next start.
+ * 
+ * Note: The container writes status.json as UID 1000, so we may not have
+ * permission to overwrite it directly. We delete and recreate instead.
+ */
+export async function resetStatusFile(botId: string): Promise<void> {
+  const filePath = getStatusFilePath(botId);
+  
+  const initialStatus: BotRuntimeStatus = {
+    timestamp: Date.now(),
+    gameState: 'LOGIN_SCREEN',
+    task: null,
+    session: null,
+    player: null,
+    queue: {
+      pending: 0,
+      descriptions: [],
+    },
+    quests: null,
+  };
+  
+  try {
+    await ensureStatusDir(botId);
+    
+    // Delete existing file first (may be owned by container user UID 1000)
+    // Directory has 0o777 so we can delete even if we can't overwrite
+    try {
+      await unlink(filePath);
+    } catch (unlinkError) {
+      // Ignore if file doesn't exist
+      if ((unlinkError as NodeJS.ErrnoException).code !== 'ENOENT') {
+        throw unlinkError;
+      }
+    }
+    
+    // Write new file (will be owned by current user)
+    await Bun.write(filePath, JSON.stringify(initialStatus, null, 2));
+    console.log(`Reset status file for bot ${botId}`);
+  } catch (error) {
+    console.warn(`Failed to reset status file for bot ${botId}:`, error);
+  }
+  
+  // Also update cached status in any active watcher
+  const entry = watchers.get(botId);
+  if (entry) {
+    entry.lastStatus = initialStatus;
+    // Notify callbacks of the reset
+    for (const callback of entry.callbacks) {
+      try {
+        callback(initialStatus);
+      } catch (err) {
+        console.error(`Error in status callback for bot ${botId}:`, err);
+      }
+    }
   }
 }
 

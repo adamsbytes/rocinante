@@ -63,11 +63,11 @@ public class QuestService {
 
         this.questHelperPlugin = questHelperPlugin;
 
-        try {
+            try {
             var getQuestManager = questHelperPlugin.getClass().getMethod("getQuestManager");
-            this.questManager = getQuestManager.invoke(questHelperPlugin);
+                this.questManager = getQuestManager.invoke(questHelperPlugin);
             log.info("Quest Helper integration initialized");
-        } catch (Exception e) {
+            } catch (Exception e) {
             throw new IllegalStateException("Failed to access Quest Helper's QuestManager", e);
         }
     }
@@ -106,7 +106,7 @@ public class QuestService {
         }
 
         // Quest Helper
-        return getQuestFromQuestHelper(questId);
+            return getQuestFromQuestHelper(questId);
     }
 
     /**
@@ -134,9 +134,9 @@ public class QuestService {
         List<Quest> quests = new ArrayList<>(manualQuests.values());
 
         for (Quest helperQuest : getQuestHelperQuests()) {
-            String normalizedId = normalizeQuestId(helperQuest.getId());
-            if (!manualQuests.containsKey(normalizedId)) {
-                quests.add(helperQuest);
+                String normalizedId = normalizeQuestId(helperQuest.getId());
+                if (!manualQuests.containsKey(normalizedId)) {
+                    quests.add(helperQuest);
             }
         }
 

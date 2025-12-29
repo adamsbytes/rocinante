@@ -379,7 +379,7 @@ public final class ClickPointCalculator {
         // Clamp to canvas
         int x = Math.max(canvasRect.x, Math.min(point.x, canvasRect.x + canvasRect.width - 1));
         int y = Math.max(canvasRect.y, Math.min(point.y, canvasRect.y + canvasRect.height - 1));
-        
+
         return new Point(x, y);
     }
     
@@ -503,7 +503,7 @@ public final class ClickPointCalculator {
         if (bounds == null || bounds.width == 0 || bounds.height == 0) {
             return null;
         }
-        
+
         Rectangle canvasBounds = getCanvasBounds(client);
         
         // Calculate intersection with canvas
@@ -750,7 +750,7 @@ public final class ClickPointCalculator {
     // ========================================================================
     // Bounds Clamping
     // ========================================================================
-    
+
     /**
      * Clamp a point to be within bounds.
      *

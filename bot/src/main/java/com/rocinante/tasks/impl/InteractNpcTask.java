@@ -397,6 +397,25 @@ public class InteractNpcTask extends AbstractTask {
     }
 
     @Override
+    protected void resetImpl() {
+        // Reset all execution state for retry
+        phase = NpcInteractionPhase.FIND_NPC;
+        targetNpc = null;
+        lastNpcPosition = null;
+        startPosition = null;
+        interactionTicks = 0;
+        movePending = false;
+        clickPending = false;
+        menuSelectionPending = false;
+        retargetAttempts = 0;
+        cachedClickbox = null;
+        if (interactionHelper != null) {
+            interactionHelper.reset();
+        }
+        log.debug("InteractNpcTask reset for retry");
+    }
+
+    @Override
     protected void executeImpl(TaskContext ctx) {
         switch (phase) {
             case FIND_NPC:
@@ -433,6 +452,11 @@ public class InteractNpcTask extends AbstractTask {
     private void executeFindNpc(TaskContext ctx) {
         PlayerState player = ctx.getPlayerState();
         WorldPoint playerPos = player.getWorldPosition();
+
+        // Reset interaction helper for fresh camera retry counts
+        if (interactionHelper != null) {
+            interactionHelper.reset();
+        }
 
         // Search for NPC
         targetNpc = findNearestNpc(ctx, playerPos);
@@ -488,7 +512,7 @@ public class InteractNpcTask extends AbstractTask {
         interactionHelper.startCameraRotation(lastNpcPosition);
         
         // Immediately proceed to mouse movement - don't wait for camera
-        phase = NpcInteractionPhase.MOVE_MOUSE;
+            phase = NpcInteractionPhase.MOVE_MOUSE;
     }
 
     // ========================================================================
@@ -532,13 +556,13 @@ public class InteractNpcTask extends AbstractTask {
             log.debug("Got click point for NPC {} ({})", npcId, result.reason);
         } else if (result.shouldRotateCamera) {
             interactionHelper.startCameraRotation(lastNpcPosition);
-            return;
+                    return;
         } else if (result.shouldWait) {
-            return;
-        } else {
+                return;
+                } else {
             log.warn("Could not get click point for NPC {}: {}", npcId, result.reason);
             fail("Cannot determine click point: " + result.reason);
-            return;
+                    return;
         }
 
         log.debug("Moving mouse to NPC at canvas point ({}, {})", clickPoint.x, clickPoint.y);

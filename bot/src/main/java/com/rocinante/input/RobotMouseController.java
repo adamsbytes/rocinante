@@ -281,7 +281,7 @@ public class RobotMouseController {
      * 
      * <p>Use this only when you have actual screen coordinates (e.g., from MouseInfo).
      * For game element coordinates, use {@link #moveToCanvas(int, int)}.
-     * 
+     *
      * <p><b>THE HARD GUARD:</b> This is the ONLY place that blocks clicks outside the
      * game window. All mouse operations flow through here. Planning/visibility checks
      * belong at higher layers (InteractionHelper) which should handle camera rotation
@@ -413,21 +413,26 @@ public class RobotMouseController {
      * @param y Y coordinate
      * @return true if point is within the game window
      */
-    public boolean isPointInViewport(int x, int y) {
+    public boolean isPointInViewport(int screenX, int screenY) {
         if (client == null) {
             return true;
         }
         
         Canvas canvas = client.getCanvas();
         if (canvas == null) {
-            // Fallback to fixed mode dimensions
-            return x >= 0 && x < 765 && y >= 0 && y < 503;
+            // Fallback to fixed mode dimensions - assume no offset
+            return screenX >= 0 && screenX < 765 && screenY >= 0 && screenY < 503;
         }
         
+        // Get the canvas position on screen and its dimensions
+        Point offset = getCanvasOffset();
         int width = canvas.getWidth();
         int height = canvas.getHeight();
         
-        return x >= 0 && x < width && y >= 0 && y < height;
+        // Screen coordinates must be within the canvas area on screen
+        // Canvas at screen position (offset.x, offset.y) with size (width, height)
+        return screenX >= offset.x && screenX < (offset.x + width) 
+            && screenY >= offset.y && screenY < (offset.y + height);
     }
     
     /**
@@ -437,18 +442,17 @@ public class RobotMouseController {
      * @param y Y coordinate
      * @return clamped point
      */
-    public Point clampToViewport(int x, int y) {
-        if (client == null) {
-            return new Point(Math.max(0, Math.min(x, 764)), Math.max(0, Math.min(y, 502)));
-        }
+    public Point clampToViewport(int screenX, int screenY) {
+        Point offset = getCanvasOffset();
         
-        Canvas canvas = client.getCanvas();
+        Canvas canvas = client != null ? client.getCanvas() : null;
         int width = canvas != null ? canvas.getWidth() : 765;
         int height = canvas != null ? canvas.getHeight() : 503;
         
+        // Clamp screen coordinates to the canvas area on screen
         return new Point(
-            Math.max(0, Math.min(x, width - 1)),
-            Math.max(0, Math.min(y, height - 1))
+            Math.max(offset.x, Math.min(screenX, offset.x + width - 1)),
+            Math.max(offset.y, Math.min(screenY, offset.y + height - 1))
         );
     }
     

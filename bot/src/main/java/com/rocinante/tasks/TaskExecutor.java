@@ -603,13 +603,14 @@ public class TaskExecutor {
             log.info("Task '{}' failed, retry {}/{} in {}ms",
                     currentTask.getDescription(), currentRetryCount, maxRetries, backoffMs);
 
-            // Reset task state if possible
+            // Reset task state for retry - uses proper reset method that handles subclass state
             if (currentTask instanceof AbstractTask) {
-                // Create a new instance for retry would be better,
-                // but for now we'll keep the same task
-                ((AbstractTask) currentTask).state = TaskState.PENDING;
-                ((AbstractTask) currentTask).startTime = null;
-                ((AbstractTask) currentTask).executionTicks = 0;
+                ((AbstractTask) currentTask).resetForRetry();
+                
+                // For composite tasks, also prepare child tasks for partial or full retry
+                if (currentTask instanceof CompositeTask) {
+                    ((CompositeTask) currentTask).prepareForRetry();
+                }
             }
         } else {
             log.warn("Task '{}' failed after {} retries, abandoning",

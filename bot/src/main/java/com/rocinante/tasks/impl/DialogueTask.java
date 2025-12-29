@@ -334,6 +334,17 @@ public class DialogueTask extends AbstractTask {
     }
 
     @Override
+    protected void resetImpl() {
+        // Reset all execution state for retry
+        phase = DialoguePhase.DETECT_DIALOGUE;
+        continueClicks = 0;
+        clickPending = false;
+        waitTicks = 0;
+        lastDialogueText = null;
+        log.debug("DialogueTask reset for retry");
+    }
+
+    @Override
     protected void executeImpl(TaskContext ctx) {
         if (clickPending) {
             return;

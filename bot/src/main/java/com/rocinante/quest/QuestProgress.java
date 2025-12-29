@@ -87,6 +87,28 @@ public class QuestProgress {
     }
 
     /**
+     * Force a refresh from actual game varbits, ignoring cached state.
+     * 
+     * This is called after login/reconnect to ensure the progress tracker
+     * is synchronized with the actual game state.
+     *
+     * @param client the game client for reading progress
+     */
+    public void forceRefresh(Client client) {
+        // Reset cached state to force re-evaluation
+        int previousValue = lastVarbitValue;
+        lastVarbitValue = -1;  // Force update to detect change
+        currentStep = null;
+        completed = false;
+        
+        // Now do a normal update
+        boolean changed = update(client);
+        
+        log.info("Force refresh: varbit {} -> {}, changed={}",
+                previousValue, lastVarbitValue, changed);
+    }
+
+    /**
      * Update progress with a specific varbit value.
      * Useful for testing or manual progression.
      *

@@ -2,7 +2,7 @@ import Docker from 'dockerode';
 import { join } from 'path';
 import { mkdirSync, existsSync } from 'fs';
 import type { BotConfig, BotStatus } from '../shared/types';
-import { getStatusDir, ensureStatusDir } from './status';
+import { getStatusDir, ensureStatusDir, resetStatusFile } from './status';
 
 const docker = new Docker({ socketPath: '/var/run/docker.sock' });
 
@@ -265,7 +265,9 @@ export async function stopBot(botId: string): Promise<void> {
   );
 
   if (!existing) {
-    return; // Container doesn't exist
+    // Even if container doesn't exist, reset stale status file
+    await resetStatusFile(botId);
+    return;
   }
 
   const container = docker.getContainer(existing.Id);
@@ -280,6 +282,9 @@ export async function stopBot(botId: string): Promise<void> {
 
   // Always remove container on stop - bot config is separate from container
   await container.remove();
+  
+  // Reset status file to initial state
+  await resetStatusFile(botId);
 }
 
 export async function restartBot(bot: BotConfig): Promise<void> {

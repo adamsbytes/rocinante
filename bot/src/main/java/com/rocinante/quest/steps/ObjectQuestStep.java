@@ -75,6 +75,12 @@ public class ObjectQuestStep extends QuestStep {
     private List<Integer> alternateObjectIds = new ArrayList<>();
 
     /**
+     * Whether to expect a dialogue/interface to open as the success indicator.
+     * Use for objects like poll booths that don't cause animation/movement.
+     */
+    private boolean dialogueExpected = false;
+
+    /**
      * Create an object quest step.
      *
      * @param objectId   the object ID
@@ -126,6 +132,11 @@ public class ObjectQuestStep extends QuestStep {
     }
 
     @Override
+    public WorldPoint getTargetLocation() {
+        return walkToLocation;
+    }
+
+    @Override
     public List<Task> toTasks(TaskContext ctx) {
         List<Task> tasks = new ArrayList<>();
 
@@ -149,6 +160,11 @@ public class ObjectQuestStep extends QuestStep {
         // Pass alternate object IDs if any
         if (!alternateObjectIds.isEmpty()) {
             objectTask.withAlternateIds(alternateObjectIds);
+        }
+
+        // Set dialogue expectation (for objects like poll booths that open interfaces)
+        if (dialogueExpected) {
+            objectTask.setDialogueExpected(true);
         }
 
         tasks.add(objectTask);
@@ -224,6 +240,18 @@ public class ObjectQuestStep extends QuestStep {
      */
     public ObjectQuestStep withAlternateIds(List<Integer> ids) {
         this.alternateObjectIds.addAll(ids);
+        return this;
+    }
+
+    /**
+     * Set whether to expect a dialogue/interface to open (builder-style).
+     * Use for objects like poll booths that don't cause animation/movement.
+     *
+     * @param expected true if dialogue/interface is expected
+     * @return this step for chaining
+     */
+    public ObjectQuestStep withDialogueExpected(boolean expected) {
+        this.dialogueExpected = expected;
         return this;
     }
 }

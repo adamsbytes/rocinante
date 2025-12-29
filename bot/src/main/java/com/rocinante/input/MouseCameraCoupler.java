@@ -269,8 +269,15 @@ public class MouseCameraCoupler {
     }
 
     /**
+     * Threshold for using arrow keys vs mouse-based rotation.
+     * Rotations >= this use arrow keys (more human-like for larger turns).
+     */
+    private static final int ARROW_KEY_THRESHOLD_DEGREES = 20;
+
+    /**
      * Pre-rotate camera to bring a world point on screen.
      * Called before clicking on off-screen objects/NPCs.
+     * Uses arrow keys for normal rotations, mouse for small adjustments.
      * 
      * @param worldPoint the world point to rotate toward
      * @return CompletableFuture that completes when rotation is done (or skipped)
@@ -301,10 +308,40 @@ public class MouseCameraCoupler {
             targetAngle += 360;
         }
         
-        log.debug("Pre-rotating camera to show target at {} (angle: {}°)", worldPoint, (int) targetAngle);
+        // Calculate rotation needed
+        double currentAngle = cameraController.getCurrentYawDegrees();
+        double deltaAngle = targetAngle - currentAngle;
         
+        // Normalize to -180 to 180
+        while (deltaAngle > 180) deltaAngle -= 360;
+        while (deltaAngle < -180) deltaAngle += 360;
+        
+        int rotationDegrees = Math.abs((int) deltaAngle);
+        rotationDegrees = Math.min(rotationDegrees, MAX_COUPLED_ROTATION_DEGREES * 2);
+        rotationDegrees = Math.max(rotationDegrees, MIN_COUPLED_ROTATION_DEGREES);
+        
+        boolean rotateLeft = deltaAngle < 0;
+        
+        log.debug("Pre-rotating camera to show target at {} (angle: {}°, delta: {}°, using {})", 
+                worldPoint, (int) targetAngle, rotationDegrees,
+                rotationDegrees >= ARROW_KEY_THRESHOLD_DEGREES ? "arrow keys" : "mouse");
+        
+        if (rotationDegrees >= ARROW_KEY_THRESHOLD_DEGREES) {
+            // Use arrow keys for normal/large rotations (more human-like)
+            CameraController.Direction direction = rotateLeft 
+                    ? CameraController.Direction.LEFT 
+                    : CameraController.Direction.RIGHT;
+            
+            // Calculate hold duration based on rotation needed (60°/sec at MEDIUM speed)
+            long estimatedDurationMs = (long) (rotationDegrees / 60.0 * 1000) + 200;
+            estimatedDurationMs = Math.max(500, Math.min(3000, estimatedDurationMs));
+            
+            return cameraController.performCameraHold(direction, estimatedDurationMs, rotationDegrees + 15);
+        } else {
+            // Use mouse for small adjustments (more precise)
         return cameraController.rotateTowardTarget(targetAngle, 
-                MIN_COUPLED_ROTATION_DEGREES, MAX_COUPLED_ROTATION_DEGREES * 2);
+                    MIN_COUPLED_ROTATION_DEGREES, MAX_COUPLED_ROTATION_DEGREES);
+        }
     }
 
     /**
@@ -606,6 +643,8 @@ public class MouseCameraCoupler {
      */
     private void checkAndAdjustZoom() {
         int currentZoom = client.getScale();
+        log.debug("Zoom check: current={}, threshold={}, preferred={}", 
+                currentZoom, ZOOM_TOO_CLOSE_THRESHOLD, PREFERRED_ZOOM_LEVEL);
         if (currentZoom > ZOOM_TOO_CLOSE_THRESHOLD) {
             log.info("Camera too zoomed in ({} > {}), zooming out to {}", 
                     currentZoom, ZOOM_TOO_CLOSE_THRESHOLD, PREFERRED_ZOOM_LEVEL);

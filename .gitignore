@@ -25,7 +25,8 @@ Thumbs.db
 logs/
 
 # Data (contains sensitive bot configs)
-data/bots.json
+**/data/bots.json
+**/data/status/
 
 # Gradle
 .gradle/

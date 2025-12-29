@@ -6,6 +6,11 @@ export default defineConfig({
   plugins: [solid(), tailwindcss()],
   server: {
     port: 5173,
+    watch: {
+      // Exclude data directory from file watching - status files update every second
+      // which would otherwise trigger continuous HMR updates
+      ignored: ['**/data/**'],
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:3000',

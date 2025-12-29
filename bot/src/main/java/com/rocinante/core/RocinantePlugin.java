@@ -466,9 +466,9 @@ public class RocinantePlugin extends Plugin
             return true;
         }
         
-        // Find Quest Helper plugin instance
-        for (Plugin plugin : pluginManager.getPlugins()) {
-            if (plugin.getClass().getName().equals(QUEST_HELPER_CLASS)) {
+            // Find Quest Helper plugin instance
+            for (Plugin plugin : pluginManager.getPlugins()) {
+                if (plugin.getClass().getName().equals(QUEST_HELPER_CLASS)) {
                 questService.initializeQuestHelper(plugin);
                 questHelperInitialized = true;
                 log.info("Quest Helper integration initialized");

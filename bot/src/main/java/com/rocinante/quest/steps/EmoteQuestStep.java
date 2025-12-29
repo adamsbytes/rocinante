@@ -158,6 +158,11 @@ public class EmoteQuestStep extends QuestStep {
     }
 
     @Override
+    public WorldPoint getTargetLocation() {
+        return walkToLocation;
+    }
+
+    @Override
     public List<Task> toTasks(TaskContext ctx) {
         List<Task> tasks = new ArrayList<>();
 

@@ -78,7 +78,7 @@ export const AccountStatsGrid: Component<AccountStatsGridProps> = (props) => {
   return (
     <div class={`bg-gray-800/60 rounded-lg border border-gray-700 p-4 ${props.class || ''}`}>
       {/* Header */}
-      <div class="flex items-center justify-between mb-4">
+      <div class="flex items-center mb-4">
         <h3 class="font-semibold text-gray-100 flex items-center gap-2">
           <svg class="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
@@ -86,10 +86,6 @@ export const AccountStatsGrid: Component<AccountStatsGridProps> = (props) => {
           </svg>
           Skills
         </h3>
-        <div class="text-sm">
-          <span class="text-gray-400">Total: </span>
-          <span class="text-amber-300 font-semibold">{totalLevel()}</span>
-        </div>
       </div>
 
       {/* Player info */}
@@ -104,9 +100,17 @@ export const AccountStatsGrid: Component<AccountStatsGridProps> = (props) => {
               <div class="text-sm text-gray-400">Combat Level {props.player!.combatLevel}</div>
             </div>
           </div>
-          <div class="text-right">
-            <div class="text-sm text-gray-400">Quest Points</div>
-            <div class="text-lg font-semibold text-amber-300">{props.player!.questPoints}</div>
+          <div class="text-right flex items-center gap-2">
+            <div>
+              <div class="text-sm text-gray-400">Quest Points</div>
+              <div class="text-lg font-semibold text-amber-300">{props.player!.questPoints}</div>
+            </div>
+            <img 
+              src="https://oldschool.runescape.wiki/images/Quest_point_icon.png" 
+              alt="Quest Points"
+              class="w-8 h-8 object-contain"
+              loading="lazy"
+            />
           </div>
         </div>
       </Show>

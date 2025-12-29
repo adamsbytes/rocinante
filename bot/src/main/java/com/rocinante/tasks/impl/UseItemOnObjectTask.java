@@ -255,6 +255,22 @@ public class UseItemOnObjectTask extends AbstractTask {
         return true;
     }
 
+    @Override
+    protected void resetImpl() {
+        // Reset all execution state for retry
+        phase = UseItemPhase.CLICK_ITEM;
+        targetObject = null;
+        targetPosition = null;
+        startPosition = null;
+        startAnimation = -1;
+        interactionTicks = 0;
+        operationPending = false;
+        if (interactionHelper != null) {
+            interactionHelper.reset();
+        }
+        log.debug("UseItemOnObjectTask reset for retry");
+    }
+
     /**
      * Find the first item ID from the list that exists in inventory.
      * Returns in priority order (first in list = highest priority).
@@ -382,7 +398,7 @@ public class UseItemOnObjectTask extends AbstractTask {
         
         if (result.hasPoint()) {
             log.debug("Clickbox ready for object {} ({})", resolvedObjectId, result.reason);
-            phase = UseItemPhase.CLICK_OBJECT;
+        phase = UseItemPhase.CLICK_OBJECT;
         } else if (result.shouldRotateCamera) {
             interactionHelper.startCameraRotation(targetPosition);
         } else if (result.shouldWait) {

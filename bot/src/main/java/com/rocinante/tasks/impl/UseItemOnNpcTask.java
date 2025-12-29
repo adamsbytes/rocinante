@@ -335,6 +335,23 @@ public class UseItemOnNpcTask extends AbstractTask {
         return true;
     }
 
+    @Override
+    protected void resetImpl() {
+        // Reset all execution state for retry
+        phase = UseItemPhase.CLICK_ITEM;
+        targetNpc = null;
+        lastNpcPosition = null;
+        startPosition = null;
+        startAnimation = -1;
+        interactionTicks = 0;
+        operationPending = false;
+        retargetAttempts = 0;
+        if (interactionHelper != null) {
+            interactionHelper.reset();
+        }
+        log.debug("UseItemOnNpcTask reset for retry");
+    }
+
     /**
      * Find the first item ID from the list that exists in inventory.
      * Returns in priority order (first in list = highest priority).

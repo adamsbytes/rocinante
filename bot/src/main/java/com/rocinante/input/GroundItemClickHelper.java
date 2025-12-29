@@ -138,7 +138,7 @@ public class GroundItemClickHelper {
                         });
             } else {
                 log.warn("Cannot get canvas position for ground item at {} and no camera coupler available", worldPosition);
-                return CompletableFuture.completedFuture(false);
+            return CompletableFuture.completedFuture(false);
             }
         }
 
@@ -161,7 +161,7 @@ public class GroundItemClickHelper {
             WorldPoint worldPosition, int itemId, String displayName, Point canvasPoint) {
         boolean needsRightClick = !isItemOnTop(worldPosition, itemId);
         log.debug("Clicking ground item '{}' after camera rotation (rightClick={})", displayName, needsRightClick);
-        
+
         if (needsRightClick) {
             return executeRightClickLoot(canvasPoint, itemId, displayName);
         } else {

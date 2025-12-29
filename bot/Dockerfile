@@ -207,6 +207,10 @@ RUN mkdir -p ~/Desktop ~/Documents ~/Downloads ~/Pictures ~/Music ~/Videos \
 # Copy Rocinante plugin from build stage
 COPY --from=rocinante-builder --chown=runelite:runelite /build/build/libs/rocinante-*.jar .runelite/plugins/
 
+# Copy Quest Helper plugin (built in stage 1, required for quest data)
+# Rename to consistent name for entrypoint.sh to find it
+COPY --from=quest-helper-builder --chown=runelite:runelite /build/quest-helper/build/libs/quest-helper-*.jar .runelite/plugins/quest-helper.jar
+
 # Copy automation scripts and templates
 COPY --chown=runelite:runelite entrypoint.sh /home/runelite/
 COPY --chown=runelite:runelite bolt-login.sh /home/runelite/

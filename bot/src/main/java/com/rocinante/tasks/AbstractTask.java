@@ -277,6 +277,27 @@ public abstract class AbstractTask implements Task {
         fail("Task aborted externally");
     }
 
+    /**
+     * Reset this task for retry.
+     * Clears base task state and calls resetImpl() for subclass-specific state.
+     */
+    public final void resetForRetry() {
+        this.state = TaskState.PENDING;
+        this.startTime = null;
+        this.executionTicks = 0;
+        this.aborted = false;
+        this.failureReason = null;
+        resetImpl();
+    }
+
+    /**
+     * Override in subclasses to reset task-specific state on retry.
+     * Called by resetForRetry() after base state is cleared.
+     */
+    protected void resetImpl() {
+        // Default: no additional state to reset
+    }
+
     // ========================================================================
     // Execution
     // ========================================================================

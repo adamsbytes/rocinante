@@ -492,4 +492,48 @@ public final class ObjectCollections {
             ObjectID.POLL_BOOTH_33482,      // Brimstone highlight
             ObjectID.POLL_BOOTH_50047       // Green noop variant
     ));
+
+    // ========================================================================
+    // Precise Click Objects
+    // ========================================================================
+
+    /**
+     * Objects that require precise clicking due to small hitboxes or proximity to other clickables.
+     * These objects use a tighter Gaussian distribution for click point calculation.
+     */
+    public static final List<Integer> PRECISE_CLICK_OBJECTS = Collections.unmodifiableList(Arrays.asList(
+            // Tutorial Island gates
+            ObjectID.GATE_9470,             // Survival Expert gate
+            ObjectID.GATE_9717,             // Mining to combat gate (left)
+            ObjectID.GATE_9718,             // Mining to combat gate (right)
+            ObjectID.GATE_9719,             // Tutorial gate
+            ObjectID.GATE_9720,             // Tutorial gate
+            
+            // Common gates with small hitboxes
+            ObjectID.GATE_1558,
+            ObjectID.GATE_1559,
+            ObjectID.GATE_1560,
+            ObjectID.GATE_1561,
+            ObjectID.GATE_1562,
+            ObjectID.GATE_1563,
+            ObjectID.GATE_1564,
+            ObjectID.GATE_1567,
+            ObjectID.GATE_1568,
+            ObjectID.GATE_2050,
+            ObjectID.GATE_2051,
+            ObjectID.GATE_2058,
+            
+            // Tutorial Island ladder
+            ObjectID.LADDER_9726
+    ));
+
+    /**
+     * Check if an object ID requires precise clicking.
+     * 
+     * @param objectId the object ID to check
+     * @return true if the object needs precise clicking
+     */
+    public static boolean requiresPreciseClick(int objectId) {
+        return PRECISE_CLICK_OBJECTS.contains(objectId);
+    }
 }

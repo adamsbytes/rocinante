@@ -251,6 +251,10 @@ public class CombatQuestStep extends QuestStep {
         }
 
         // Build target selector config
+        // For ranged/magic (attackRange > 1), don't skip "unreachable" NPCs - we can hit them from a distance
+        // The CombatTask will handle trying different targets if one can't be hit
+        boolean isRangedOrMagic = attackRange > 1;
+        
         TargetSelectorConfig.TargetSelectorConfigBuilder targetConfigBuilder = TargetSelectorConfig.builder()
                 .priority(SelectionPriority.TARGETING_PLAYER)
                 .priority(SelectionPriority.SPECIFIC_ID)
@@ -258,7 +262,7 @@ public class CombatQuestStep extends QuestStep {
                 .targetNpcId(npcId)
                 .searchRadius(searchRadius)
                 .skipInCombatWithOthers(true)
-                .skipUnreachable(true)
+                .skipUnreachable(!isRangedOrMagic)  // Only skip unreachable for melee
                 .skipDead(true);
 
         TargetSelectorConfig targetConfig = targetConfigBuilder.build();

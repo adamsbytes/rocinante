@@ -176,13 +176,14 @@ public class MenuHelper {
 
     /**
      * Find and click the menu entry matching the action.
+     * If the entry is not found, clicks Cancel to dismiss the menu.
      */
     private CompletableFuture<Boolean> findAndClickMenuEntry(String action, @Nullable String targetName) {
         Rectangle menuEntryBounds = findMenuEntry(action, targetName);
 
         if (menuEntryBounds == null) {
-            log.warn("Could not find menu entry '{}' for target '{}' - menu may have closed", action, targetName);
-            return CompletableFuture.completedFuture(false);
+            log.warn("Could not find menu entry '{}' for target '{}' - clicking Cancel to dismiss", action, targetName);
+            return clickCancelAndFail();
         }
 
         // Calculate humanized click position within the menu entry
@@ -196,6 +197,46 @@ public class MenuHelper {
                 .thenApply(v -> {
                     log.debug("Menu selection completed for '{}'", action);
                     return true;
+                });
+    }
+
+    /**
+     * Click the Cancel entry to dismiss an unwanted menu.
+     * Cancel is always the last entry in the menu.
+     */
+    private CompletableFuture<Boolean> clickCancelAndFail() {
+        Rectangle cancelBounds = findMenuEntry("Cancel", null);
+        
+        if (cancelBounds != null) {
+            int clickX = cancelBounds.x + randomOffset(cancelBounds.width);
+            int clickY = cancelBounds.y + randomOffset(cancelBounds.height);
+            
+            log.debug("Clicking Cancel at ({}, {}) to dismiss menu", clickX, clickY);
+            
+            return mouseController.moveToCanvas(clickX, clickY)
+                    .thenCompose(v -> mouseController.click())
+                    .thenApply(v -> {
+                        log.debug("Menu dismissed with Cancel");
+                        return false; // Still return false since we didn't find the desired action
+                    })
+                    .exceptionally(e -> {
+                        log.warn("Failed to click Cancel: {}", e.getMessage());
+                        return false;
+                    });
+        }
+        
+        // If Cancel isn't found, try pressing Escape key as fallback
+        log.debug("Cancel entry not found, pressing Escape to dismiss menu");
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                java.awt.Robot robot = new java.awt.Robot();
+                robot.keyPress(java.awt.event.KeyEvent.VK_ESCAPE);
+                Thread.sleep(50);
+                robot.keyRelease(java.awt.event.KeyEvent.VK_ESCAPE);
+            } catch (Exception e) {
+                log.warn("Failed to press Escape: {}", e.getMessage());
+            }
+            return false;
                 });
     }
 

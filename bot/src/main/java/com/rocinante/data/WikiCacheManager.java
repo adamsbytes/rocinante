@@ -136,13 +136,24 @@ public class WikiCacheManager {
 
     /**
      * File cache entry format for JSON serialization.
+     * Note: Must be a class (not record) because GSON 2.8.5 can't deserialize records.
      */
-    private record FileCacheEntry(
-            String key,
-            String content,
-            String timestamp,
-            String contentType
-    ) {
+    private static class FileCacheEntry {
+        String key;
+        String content;
+        String timestamp;
+        String contentType;
+
+        // Default constructor for GSON
+        FileCacheEntry() {}
+
+        FileCacheEntry(String key, String content, String timestamp, String contentType) {
+            this.key = key;
+            this.content = content;
+            this.timestamp = timestamp;
+            this.contentType = contentType;
+        }
+
         static FileCacheEntry from(CacheEntry entry) {
             return new FileCacheEntry(
                     entry.key(),
@@ -440,7 +451,7 @@ public class WikiCacheManager {
         try {
             String json = Files.readString(filePath, StandardCharsets.UTF_8);
             FileCacheEntry fileEntry = gson.fromJson(json, FileCacheEntry.class);
-            if (fileEntry == null || fileEntry.content() == null) {
+            if (fileEntry == null || fileEntry.content == null) {
                 log.warn("Invalid cache file (null content): {}", filePath);
                 return Optional.empty();
             }

@@ -85,7 +85,7 @@ public class CombatManager {
     private final PrayerFlicker prayerFlicker;
     private final SpecialAttackManager specialAttackManager;
     private final Randomization randomization;
-    
+
     private com.rocinante.input.MouseCameraCoupler cameraCoupler;
 
     // ========================================================================

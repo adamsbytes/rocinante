@@ -6,14 +6,19 @@ import com.rocinante.tasks.Task;
 import com.rocinante.tasks.TaskContext;
 import com.rocinante.tasks.TaskExecutor;
 import com.rocinante.tasks.TaskState;
+import com.rocinante.tasks.impl.WalkToTask;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
+import net.runelite.api.GameState;
+import net.runelite.api.coords.WorldPoint;
+import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.client.eventbus.Subscribe;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -43,6 +48,15 @@ import java.util.List;
 @Slf4j
 @Singleton
 public class QuestExecutor {
+
+    /**
+     * Distance threshold in tiles. If player is further than this from the step's
+     * target location, automatically prepend a WalkToTask.
+     * 
+     * Set to 15 tiles (roughly render/interaction range) - if the target is within
+     * this range, the step's own logic should be able to handle finding/interacting.
+     */
+    private static final int AUTO_WALK_THRESHOLD_TILES = 15;
 
     private final Client client;
     private final TaskExecutor taskExecutor;
@@ -140,6 +154,48 @@ public class QuestExecutor {
     }
 
     /**
+     * Handle game state changes - force varbit refresh on login.
+     * 
+     * This ensures that after any disconnect/reconnect, the quest progress
+     * is re-synchronized with the actual game state rather than relying on
+     * potentially stale cached values.
+     */
+    @Subscribe
+    public void onGameStateChanged(GameStateChanged event) {
+        if (event.getGameState() == GameState.LOGGED_IN) {
+            if (running && progress != null) {
+                log.info("Login detected - forcing quest progress refresh from actual varbits");
+                
+                // Force a refresh by resetting the tracked value
+                // This ensures the next update() call will re-read and re-evaluate
+                forceProgressRefresh();
+            }
+        }
+    }
+
+    /**
+     * Force a refresh of quest progress from actual game varbits.
+     * 
+     * Call this after login, reconnect, or any situation where the cached
+     * progress state might be stale.
+     */
+    public void forceProgressRefresh() {
+        if (progress == null || client == null) {
+            return;
+        }
+        
+        // Reset the task state so we don't try to continue stale tasks
+        currentStepTask = null;
+        lastExecutedStep = null;
+        waitingForStepCompletion = false;
+        
+        // Force progress to re-evaluate by clearing its cached state
+        progress.forceRefresh(client);
+        
+        log.info("Quest progress refreshed: {}", progress);
+    }
+
+    /**
      * Game tick handler - called each tick to check progress and execute steps.
      */
     @Subscribe
@@ -225,20 +281,54 @@ public class QuestExecutor {
 
     /**
      * Execute a quest step by converting it to tasks.
+     * 
+     * If the step has a target location and the player is far from it,
+     * this automatically prepends a WalkToTask to get there first.
      *
      * @param step the step to execute
      */
     private void executeStep(QuestStep step) {
         log.info("Executing step: {}", step.getText());
 
-        // Convert step to tasks
-        List<Task> tasks = step.toTasks(taskContext);
+        // Check if we need to walk to the step's location first
+        WorldPoint targetLocation = step.getTargetLocation();
+        WorldPoint playerLocation = client.getLocalPlayer() != null 
+                ? client.getLocalPlayer().getWorldLocation() 
+                : null;
+        
+        boolean needsAutoWalk = false;
+        if (targetLocation != null && playerLocation != null) {
+            int distance = playerLocation.distanceTo(targetLocation);
+            if (distance > AUTO_WALK_THRESHOLD_TILES) {
+                log.info("Player is {} tiles from step target location {}, auto-walking first", 
+                        distance, targetLocation);
+                needsAutoWalk = true;
+            } else {
+                log.debug("Player is {} tiles from step target location {}, no auto-walk needed", 
+                        distance, targetLocation);
+            }
+        }
 
-        if (tasks == null || tasks.isEmpty()) {
+        // Convert step to tasks
+        List<Task> stepTasks = step.toTasks(taskContext);
+
+        if (stepTasks == null || stepTasks.isEmpty()) {
             log.warn("Step {} produced no tasks", step.getText());
             waitingForStepCompletion = true;
             lastExecutedStep = step;
             return;
+        }
+
+        // Build final task list, potentially with WalkToTask prepended
+        List<Task> tasks;
+        if (needsAutoWalk) {
+            tasks = new ArrayList<>();
+            WalkToTask walkTask = new WalkToTask(targetLocation)
+                    .withDescription("Auto-walk to step location: " + step.getText());
+            tasks.add(walkTask);
+            tasks.addAll(stepTasks);
+        } else {
+            tasks = stepTasks;
         }
 
         // Create composite if multiple tasks

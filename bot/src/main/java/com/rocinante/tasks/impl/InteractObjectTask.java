@@ -22,6 +22,7 @@ import net.runelite.api.TileObject;
 import net.runelite.api.WallObject;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
+import net.runelite.api.widgets.Widget;
 
 import java.awt.Point;
 import java.awt.Rectangle;
@@ -145,6 +146,14 @@ public class InteractObjectTask extends AbstractTask {
     @Getter
     @Setter
     private boolean acceptPositionChange = true;
+
+    /**
+     * Whether to expect a dialogue/interface to open as the success indicator.
+     * When true, the task completes when any dialogue widget is visible.
+     */
+    @Getter
+    @Setter
+    private boolean dialogueExpected = false;
 
     /**
      * Custom description.
@@ -354,6 +363,26 @@ public class InteractObjectTask extends AbstractTask {
     }
 
     @Override
+    protected void resetImpl() {
+        // Reset all execution state for retry
+        phase = InteractionPhase.FIND_OBJECT;
+        despawnRetryCount = 0;
+        targetObject = null;
+        targetPosition = null;
+        startPosition = null;
+        startAnimation = -1;
+        interactionTicks = 0;
+        movePending = false;
+        clickPending = false;
+        menuSelectionPending = false;
+        cachedClickbox = null;
+        if (interactionHelper != null) {
+            interactionHelper.reset();
+        }
+        log.debug("InteractObjectTask reset for retry");
+    }
+
+    @Override
     protected void executeImpl(TaskContext ctx) {
         switch (phase) {
             case FIND_OBJECT:
@@ -390,6 +419,11 @@ public class InteractObjectTask extends AbstractTask {
     protected void executeFindObject(TaskContext ctx) {
         PlayerState player = ctx.getPlayerState();
         WorldPoint playerPos = player.getWorldPosition();
+
+        // Reset interaction helper for fresh camera retry counts
+        if (interactionHelper != null) {
+            interactionHelper.reset();
+        }
 
         // Search for object
         targetObject = findNearestObject(ctx, playerPos);
@@ -442,7 +476,7 @@ public class InteractObjectTask extends AbstractTask {
         interactionHelper.startCameraRotation(targetPosition);
         
         // Immediately proceed to mouse movement - don't wait for camera
-        phase = InteractionPhase.MOVE_MOUSE;
+            phase = InteractionPhase.MOVE_MOUSE;
     }
 
     // ========================================================================
@@ -474,13 +508,13 @@ public class InteractObjectTask extends AbstractTask {
             log.debug("Got click point for object {} at ({}, {})", objectId, clickPoint.x, clickPoint.y);
         } else if (result.shouldRotateCamera) {
             interactionHelper.startCameraRotation(targetPosition);
-            return;
+                    return;
         } else if (result.shouldWait) {
-            return;
-        } else {
+                return;
+                } else {
             log.warn("Could not get click point for object {}: {}", objectId, result.reason);
             fail("Cannot determine click point: " + result.reason);
-            return;
+                    return;
         }
 
         log.debug("Moving mouse to object at canvas point ({}, {})", clickPoint.x, clickPoint.y);
@@ -683,19 +717,28 @@ public class InteractObjectTask extends AbstractTask {
         }
 
         PlayerState player = ctx.getPlayerState();
+        Client client = ctx.getClient();
 
         // Check for success indicators
         boolean success = false;
         String successReason = null;
 
+        // Check for dialogue/interface (if expected) - check first as it's most reliable for objects like poll booths
+        if (!success && dialogueExpected) {
+            if (isDialogueOpen(client)) {
+                success = true;
+                successReason = "dialogue/interface opened";
+            }
+        }
+
         // Check for expected animation
-        if (successAnimationId > 0 && player.isAnimating(successAnimationId)) {
+        if (!success && successAnimationId > 0 && player.isAnimating(successAnimationId)) {
             success = true;
             successReason = "playing expected animation";
         }
 
-        // Check for any animation (if no specific animation expected)
-        if (!success && successAnimationId < 0 && player.isAnimating()) {
+        // Check for any animation (if no specific animation expected and dialogue not expected)
+        if (!success && successAnimationId < 0 && !dialogueExpected && player.isAnimating()) {
             success = true;
             successReason = "playing animation";
         }
@@ -723,6 +766,30 @@ public class InteractObjectTask extends AbstractTask {
 
         // Not yet successful, continue waiting
         log.trace("Waiting for interaction response (tick {})", interactionTicks);
+    }
+
+    /**
+     * Check if any dialogue or interface widget is currently open.
+     * Covers common dialogue types including MESBOX.
+     */
+    private boolean isDialogueOpen(Client client) {
+        // Common dialogue/interface widget group IDs:
+        // 231 = NPC dialogue
+        // 217 = Player dialogue  
+        // 219 = Dialogue options
+        // 229 = MESBOX (info messages like poll booth)
+        // 193 = Sprite dialogue
+        // 162 = Polls interface
+        int[] dialogueGroups = {231, 217, 219, 229, 193, 162};
+
+        for (int groupId : dialogueGroups) {
+            Widget widget = client.getWidget(groupId, 0);
+            if (widget != null && !widget.isHidden()) {
+                log.debug("Dialogue/interface widget {} is open", groupId);
+                return true;
+            }
+        }
+        return false;
     }
 
     // ========================================================================

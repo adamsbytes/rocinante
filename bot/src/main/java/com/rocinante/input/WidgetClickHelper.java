@@ -85,6 +85,7 @@ public class WidgetClickHelper {
         if (widget == null || widget.isHidden()) {
             log.warn("Widget {}:{} not found or hidden{}", groupId, childId,
                     description != null ? " (" + description + ")" : "");
+            logWidgetDebugInfo(groupId, childId, widget);
             return CompletableFuture.completedFuture(false);
         }
 
@@ -576,6 +577,86 @@ public class WidgetClickHelper {
      */
     int randomOffset(int dimension) {
         return ClickPointCalculator.calculateGaussianOffset(dimension);
+    }
+
+    // ========================================================================
+    // Debug Logging
+    // ========================================================================
+
+    /**
+     * Log debug info about widget state when lookup fails.
+     * Only logs at DEBUG level to avoid spam during normal operation.
+     *
+     * @param groupId the requested group ID
+     * @param childId the requested child ID
+     * @param widget  the widget that was found (may be null or hidden)
+     */
+    private void logWidgetDebugInfo(int groupId, int childId, @Nullable Widget widget) {
+        if (!log.isDebugEnabled()) {
+            return;
+        }
+
+        StringBuilder sb = new StringBuilder("Widget lookup failed - diagnostic info:\n");
+        sb.append("  Requested: ").append(groupId).append(":").append(childId).append("\n");
+        
+        // Status of the requested widget
+        sb.append("  Widget status: ");
+        if (widget == null) {
+            sb.append("NULL\n");
+        } else {
+            sb.append("exists, hidden=").append(widget.isHidden())
+              .append(", bounds=").append(widget.getBounds()).append("\n");
+        }
+        
+        // Check if the parent group exists
+        Widget parent = client.getWidget(groupId, 0);
+        sb.append("  Parent group (").append(groupId).append(":0): ");
+        if (parent == null) {
+            sb.append("NULL - group not loaded\n");
+        } else {
+            sb.append("exists, hidden=").append(parent.isHidden()).append("\n");
+            
+            // List visible children in this group
+            sb.append("  Visible children in group ").append(groupId).append(":\n");
+            int visibleCount = 0;
+            for (int i = 0; i < 50 && visibleCount < 20; i++) {
+                Widget child = client.getWidget(groupId, i);
+                if (child != null && !child.isHidden()) {
+                    Rectangle bounds = child.getBounds();
+                    sb.append("    ").append(groupId).append(":").append(i)
+                      .append(" - bounds=").append(bounds != null ? bounds.toString() : "null");
+                    String text = child.getText();
+                    if (text != null && !text.isEmpty()) {
+                        sb.append(", text=\"").append(text.length() > 30 ? text.substring(0, 30) + "..." : text).append("\"");
+                    }
+                    Widget[] dynamicChildren = child.getDynamicChildren();
+                    if (dynamicChildren != null && dynamicChildren.length > 0) {
+                        sb.append(", dynamicChildren=").append(dynamicChildren.length);
+                    }
+                    sb.append("\n");
+                    visibleCount++;
+                }
+            }
+            if (visibleCount == 0) {
+                sb.append("    (none visible)\n");
+            }
+        }
+        
+        // List other visible interface groups
+        sb.append("  Other visible interface groups: ");
+        StringBuilder visibleGroups = new StringBuilder();
+        int[] commonGroups = {149, 387, 12, 15, 541, 218, 593, 231, 217, 219, 193, 233, 465, 300, 162, 163, 164};
+        for (int gid : commonGroups) {
+            if (gid == groupId) continue; // Skip the one we already checked
+            Widget w = client.getWidget(gid, 0);
+            if (w != null && !w.isHidden()) {
+                if (visibleGroups.length() > 0) visibleGroups.append(", ");
+                visibleGroups.append(gid);
+            }
+        }
+        sb.append(visibleGroups.length() > 0 ? visibleGroups.toString() : "none").append("\n");
+        
+        log.debug(sb.toString());
     }
 }
 

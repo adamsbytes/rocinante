@@ -165,6 +165,7 @@ public class TargetSelector {
 
     /**
      * Check if an NPC passes all avoidance filters.
+     * Note: NPC ID/name filtering is handled separately to allow self-defense against other NPCs.
      */
     private boolean passesAvoidanceFilters(NpcSnapshot npc, WorldPoint playerPos) {
         // Skip dead NPCs
@@ -193,6 +194,28 @@ public class TargetSelector {
         }
 
         return true;
+    }
+
+    /**
+     * Check if an NPC matches the configured target ID/name filters.
+     */
+    private boolean matchesTargetFilter(NpcSnapshot npc) {
+        // If no target filter configured, all NPCs match
+        if (!config.hasTargetNpcIds() && !config.hasTargetNpcNames()) {
+            return true;
+        }
+
+        // Check ID match
+        if (config.hasTargetNpcIds() && config.isTargetNpcId(npc.getId())) {
+            return true;
+        }
+
+        // Check name match
+        if (config.hasTargetNpcNames() && config.isTargetNpcName(npc.getName())) {
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -296,19 +319,38 @@ public class TargetSelector {
 
         switch (priority) {
             case TARGETING_PLAYER:
-                // Filter to only NPCs targeting the player, then get nearest
-                filtered = filtered.stream()
+                // Get all NPCs targeting the player
+                List<NpcSnapshot> attackingUs = filtered.stream()
                         .filter(NpcSnapshot::isTargetingPlayer)
                         .collect(Collectors.toList());
-                if (filtered.isEmpty()) {
+                
+                if (attackingUs.isEmpty()) {
                     return Optional.empty();
                 }
-                sortByDistance(filtered, playerPos);
-                return Optional.of(filtered.get(0));
+                
+                // PREFER NPCs that match our target filter (e.g., if hunting chickens and a chicken attacks)
+                List<NpcSnapshot> matchingTargets = attackingUs.stream()
+                        .filter(this::matchesTargetFilter)
+                        .collect(Collectors.toList());
+                
+                if (!matchingTargets.isEmpty()) {
+                    // Fight the matching target that's attacking us
+                    sortByDistance(matchingTargets, playerPos);
+                    log.debug("TARGETING_PLAYER: Found {} matching target(s) attacking us", matchingTargets.size());
+                    return Optional.of(matchingTargets.get(0));
+                }
+                
+                // SELF-DEFENSE: No matching targets attacking, but something else is
+                // Fight back against whatever is attacking us
+                sortByDistance(attackingUs, playerPos);
+                log.debug("TARGETING_PLAYER: Self-defense against {} (not a configured target)", 
+                        attackingUs.get(0).getName());
+                return Optional.of(attackingUs.get(0));
 
             case LOWEST_HP:
-                // Filter to NPCs with visible health bars, sort by HP ascending
+                // Filter to configured targets with visible health bars, sort by HP ascending
                 filtered = filtered.stream()
+                        .filter(this::matchesTargetFilter)
                         .filter(NpcSnapshot::isHealthBarVisible)
                         .collect(Collectors.toList());
                 if (filtered.isEmpty()) {
@@ -318,15 +360,19 @@ public class TargetSelector {
                 return Optional.of(filtered.get(0));
 
             case HIGHEST_HP:
-                // Filter to NPCs with visible health bars, sort by HP descending
+                // Filter to configured targets with visible health bars, sort by HP descending
                 filtered = filtered.stream()
+                        .filter(this::matchesTargetFilter)
                         .filter(NpcSnapshot::isHealthBarVisible)
                         .collect(Collectors.toList());
                 if (filtered.isEmpty()) {
                     // For highest HP, also include full-health NPCs (no health bar)
-                    if (!targets.isEmpty()) {
-                        sortByDistance(targets, playerPos);
-                        return Optional.of(targets.get(0));
+                    List<NpcSnapshot> matchingFull = targets.stream()
+                            .filter(this::matchesTargetFilter)
+                            .collect(Collectors.toList());
+                    if (!matchingFull.isEmpty()) {
+                        sortByDistance(matchingFull, playerPos);
+                        return Optional.of(matchingFull.get(0));
                     }
                     return Optional.empty();
                 }
@@ -334,10 +380,18 @@ public class TargetSelector {
                 return Optional.of(filtered.get(0));
 
             case NEAREST:
+                // Filter to configured targets, then sort by distance
+                filtered = filtered.stream()
+                        .filter(this::matchesTargetFilter)
+                        .collect(Collectors.toList());
+                if (filtered.isEmpty()) {
+                    return Optional.empty();
+                }
                 sortByDistance(filtered, playerPos);
-                return filtered.isEmpty() ? Optional.empty() : Optional.of(filtered.get(0));
+                return Optional.of(filtered.get(0));
 
             case SPECIFIC_ID:
+                // Filter to specific NPC IDs only
                 if (!config.hasTargetNpcIds()) {
                     return Optional.empty();
                 }
@@ -351,6 +405,7 @@ public class TargetSelector {
                 return Optional.of(filtered.get(0));
 
             case SPECIFIC_NAME:
+                // Filter to specific NPC names only
                 if (!config.hasTargetNpcNames()) {
                     return Optional.empty();
                 }

@@ -25,8 +25,10 @@ import java.awt.Rectangle;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
@@ -144,6 +146,33 @@ public class CombatTask extends AbstractTask {
      * Maximum ticks to wait before considering target lost.
      */
     private static final int MAX_WAIT_TICKS = 20;
+
+    /**
+     * Maximum ticks to wait for combat to start after clicking a target.
+     * For ranged/magic, if combat doesn't start, the target may be obstructed.
+     */
+    private static final int MAX_ATTACK_WAIT_TICKS = 8;
+
+    /**
+     * Ticks since we clicked on target (waiting for combat to start).
+     */
+    private int attackWaitTicks = 0;
+
+    /**
+     * Set of NPC indices that we've tried to attack but couldn't hit.
+     * These are temporarily skipped to try other targets.
+     */
+    private final Set<Integer> failedTargetIndices = new HashSet<>();
+
+    /**
+     * Tick count when failed targets were last cleared.
+     */
+    private int failedTargetsClearTick = 0;
+
+    /**
+     * Clear failed targets every N ticks to allow retrying.
+     */
+    private static final int FAILED_TARGETS_CLEAR_INTERVAL = 50;
 
     /**
      * Maximum ticks idle before retrying.
@@ -308,6 +337,27 @@ public class CombatTask extends AbstractTask {
     }
 
     @Override
+    protected void resetImpl() {
+        // Reset all execution state for retry
+        phase = CombatPhase.FIND_TARGET;
+        currentTarget = null;
+        lastTargetPosition = null;
+        // Note: killsCompleted is NOT reset - this is cumulative for the task
+        taskStartTime = null;
+        movePending = false;
+        clickPending = false;
+        idleTicks = 0;
+        phaseWaitTicks = 0;
+        attackWaitTicks = 0;
+        failedTargetIndices.clear();
+        failedTargetsClearTick = 0;
+        if (interactionHelper != null) {
+            interactionHelper.reset();
+        }
+        log.debug("CombatTask reset for retry");
+    }
+
+    @Override
     protected void executeImpl(TaskContext ctx) {
         if (taskStartTime == null) {
             taskStartTime = Instant.now();
@@ -463,6 +513,17 @@ public class CombatTask extends AbstractTask {
     private void executeFindTarget(TaskContext ctx) {
         PlayerState player = ctx.getPlayerState();
 
+        // Periodically clear failed targets to allow retrying
+        int currentTick = getExecutionTicks();
+        if (currentTick - failedTargetsClearTick > FAILED_TARGETS_CLEAR_INTERVAL) {
+            if (!failedTargetIndices.isEmpty()) {
+                log.debug("Clearing {} failed targets after {} ticks", 
+                        failedTargetIndices.size(), FAILED_TARGETS_CLEAR_INTERVAL);
+                failedTargetIndices.clear();
+            }
+            failedTargetsClearTick = currentTick;
+        }
+
         // If player is in combat, go to monitor phase
         if (player.isInCombat()) {
             updateCurrentTarget(ctx);
@@ -479,6 +540,7 @@ public class CombatTask extends AbstractTask {
             lastTargetPosition = currentTarget.getWorldPosition();
             idleTicks = 0;
             phaseWaitTicks = 0;
+            attackWaitTicks = 0;
             log.debug("Using forced target: {}", currentTarget.getSummary());
             
             // Go directly to attack for priority targets
@@ -486,8 +548,9 @@ public class CombatTask extends AbstractTask {
             return;
         }
 
-        // Select a new target via normal selection
-        Optional<NpcSnapshot> target = targetSelector.selectTarget();
+        // Select a new target via normal selection, excluding failed targets
+        Optional<NpcSnapshot> target = targetSelector.selectTarget()
+                .filter(npc -> !failedTargetIndices.contains(npc.getIndex()));
 
         if (target.isEmpty()) {
             idleTicks++;
@@ -502,6 +565,7 @@ public class CombatTask extends AbstractTask {
         idleTicks = 0;
         interactionHelper = null; // Reset for new target
         phaseWaitTicks = 0;
+        attackWaitTicks = 0;
 
         log.debug("Selected target: {}", currentTarget.getSummary());
 
@@ -820,7 +884,9 @@ public class CombatTask extends AbstractTask {
         }
 
         if (movePending || clickPending) {
-            return; // Wait for pending actions
+            // Waiting for click to complete - increment attack wait counter
+            attackWaitTicks++;
+            return;
         }
 
         PlayerState player = ctx.getPlayerState();
@@ -828,7 +894,22 @@ public class CombatTask extends AbstractTask {
         // Check if we're already attacking this target
         if (player.isInCombat() && player.getTargetNpcIndex() == currentTarget.getIndex()) {
             spellSelected = false;
+            attackWaitTicks = 0; // Successfully started combat
             phase = CombatPhase.MONITOR_COMBAT;
+            return;
+        }
+
+        // Check if we've been waiting too long for combat to start
+        // This means we clicked but couldn't actually hit the target (e.g., obstructed for ranged)
+        if (attackWaitTicks > MAX_ATTACK_WAIT_TICKS && config.getTargetConfig() != null 
+                && !config.getTargetConfig().isSkipUnreachable()) {
+            log.debug("Attack failed after {} ticks - marking target {} as failed (obstructed?)", 
+                    attackWaitTicks, currentTarget.getIndex());
+            failedTargetIndices.add(currentTarget.getIndex());
+            currentTarget = null;
+            spellSelected = false;
+            attackWaitTicks = 0;
+            phase = CombatPhase.FIND_TARGET;
             return;
         }
 

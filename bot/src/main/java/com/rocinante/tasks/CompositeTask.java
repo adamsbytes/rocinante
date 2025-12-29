@@ -88,6 +88,15 @@ public class CompositeTask extends AbstractTask {
     @Setter
     private String description;
 
+    /**
+     * If true, retries start from the failed child task.
+     * If false, retries restart from the beginning.
+     * Default is true (partial retry).
+     */
+    @Getter
+    @Setter
+    private boolean retryFromFailed = true;
+
     // ========================================================================
     // Execution State
     // ========================================================================
@@ -96,6 +105,12 @@ public class CompositeTask extends AbstractTask {
      * Current child index (for SEQUENTIAL and LOOP modes).
      */
     private int currentIndex = 0;
+
+    /**
+     * Index of the last successfully completed child.
+     * Used to resume from correct position on partial retry.
+     */
+    private int lastCompletedIndex = -1;
 
     /**
      * Current loop iteration (for LOOP mode).
@@ -232,6 +247,28 @@ public class CompositeTask extends AbstractTask {
         return this;
     }
 
+    /**
+     * Set whether retries should resume from the failed child (builder-style).
+     * Default is true (partial retry).
+     *
+     * @param retryFromFailed true to resume from failed child, false to restart from beginning
+     * @return this composite for chaining
+     */
+    public CompositeTask withRetryFromFailed(boolean retryFromFailed) {
+        this.retryFromFailed = retryFromFailed;
+        return this;
+    }
+
+    /**
+     * Convenience method to restart from beginning on retry.
+     *
+     * @return this composite for chaining
+     */
+    public CompositeTask withRetryAll() {
+        this.retryFromFailed = false;
+        return this;
+    }
+
     // ========================================================================
     // Task Implementation
     // ========================================================================
@@ -286,6 +323,7 @@ public class CompositeTask extends AbstractTask {
         TaskState childState = current.getState();
         if (childState == TaskState.COMPLETED) {
             current.onComplete(ctx);
+            lastCompletedIndex = currentIndex;
             currentIndex++;
             log.debug("Sequential child {} completed, advancing to {}",
                     currentIndex - 1, currentIndex);
@@ -431,18 +469,66 @@ public class CompositeTask extends AbstractTask {
     }
 
     /**
-     * Reset all children to PENDING state for loop iteration.
+     * Reset all children for loop iteration or full retry.
      */
     private void resetChildren() {
         for (Task child : children) {
+            resetChild(child);
+        }
+    }
+
+    /**
+     * Reset a single child task for retry.
+     * Uses resetForRetry() if available to properly reset subclass state.
+     */
+    private void resetChild(Task child) {
             if (child instanceof AbstractTask) {
-                AbstractTask at = (AbstractTask) child;
-                at.state = TaskState.PENDING;
-                at.startTime = null;
-                at.executionTicks = 0;
-                at.aborted = false;
-                at.failureReason = null;
+            ((AbstractTask) child).resetForRetry();
+        }
+    }
+
+    /**
+     * Prepare this composite for retry after failure.
+     * Called when the task transitions from FAILED to PENDING.
+     * 
+     * If retryFromFailed is true (default), only the failed child is reset.
+     * If retryFromFailed is false, all children are reset and index goes to 0.
+     */
+    public void prepareForRetry() {
+        if (retryFromFailed && executionMode == ExecutionMode.SEQUENTIAL) {
+            // Only reset the failed child (current index), keep completed children as-is
+            if (currentIndex < children.size()) {
+                Task failedChild = children.get(currentIndex);
+                resetChild(failedChild);
+                log.debug("Partial retry: resetting child {} ({}), resuming from there",
+                        currentIndex, failedChild.getDescription());
             }
+        } else {
+            // Full reset - start from beginning
+            currentIndex = 0;
+            lastCompletedIndex = -1;
+            currentIteration = 0;
+            failedCount = 0;
+            completedCount = 0;
+            childCompleted = null;
+            resetChildren();
+            log.debug("Full retry: resetting all children, starting from index 0");
+        }
+    }
+
+    @Override
+    protected void resetImpl() {
+        // IMPORTANT: Do NOT reset currentIndex here!
+        // prepareForRetry() handles the index logic based on partial vs full retry.
+        // If we reset currentIndex to 0 here, prepareForRetry() will reset the wrong child.
+        // 
+        // This method only resets iteration/count state for non-sequential modes
+        // and is a no-op for sequential mode since prepareForRetry() handles everything.
+        if (executionMode != ExecutionMode.SEQUENTIAL) {
+            currentIteration = 0;
+            failedCount = 0;
+            completedCount = 0;
+            childCompleted = null;
         }
     }
 

@@ -100,6 +100,11 @@ public class GroundItemQuestStep extends QuestStep {
     }
 
     @Override
+    public WorldPoint getTargetLocation() {
+        return location;
+    }
+
+    @Override
     public List<Task> toTasks(TaskContext ctx) {
         List<Task> tasks = new ArrayList<>();
 

@@ -33,8 +33,9 @@ rm -rf "$BOLT_DATA/CefCache/SingletonCookie" 2>/dev/null || true
 sleep 1
 
 # Start Xvfb virtual display
+# Using 960x540 (qHD) - scales exactly 2x to 1080p, minimal wasted space
 echo "Starting Xvfb on display :99..."
-Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +render -noreset &
+Xvfb :99 -screen 0 960x540x24 -ac +extension GLX +render -noreset &
 XVFB_PID=$!
 sleep 2
 
@@ -87,13 +88,24 @@ BOLT_SETTINGS="$HOME/.local/share/bolt-launcher/.runelite/settings.properties"
 
 for settings in "$SETTINGS_FILE" "$BOLT_SETTINGS"; do
     mkdir -p "$(dirname "$settings")"
+    echo "Configuring Quest Helper in: $settings"
+    
+    # Ensure externalPlugins includes quest-helper
     if [ ! -f "$settings" ] || ! grep -q "runelite.externalPlugins=.*quest-helper" "$settings" 2>/dev/null; then
-        echo "Configuring Quest Helper in: $settings"
-        # Remove any existing externalPlugins line and add quest-helper
         if [ -f "$settings" ]; then
             sed -i '/^runelite\.externalPlugins=/d' "$settings" 2>/dev/null || true
         fi
         echo "runelite.externalPlugins=quest-helper" >> "$settings"
+    fi
+    
+    # Enable Quest Helper plugin
+    if ! grep -q "^runelite\.questhelperplugin=true" "$settings" 2>/dev/null; then
+        sed -i '/^runelite\.questhelperplugin=/d' "$settings" 2>/dev/null || true
+        sed -i '/^questhelpervars\./d' "$settings" 2>/dev/null || true
+        cat >> "$settings" << EOF
+runelite.questhelperplugin=true
+questhelpervars.selected-assist-level=true
+EOF
     fi
 done
 
@@ -129,7 +141,7 @@ echo "Character Name: ${CHARACTER_NAME:-<not set>}"
 echo "2FA Enabled: $([ -n "$TOTP_SECRET" ] && echo 'Yes (TOTP)' || echo 'No')"
 echo "Ironman Mode: ${IRONMAN_MODE:-false}"
 echo "Ironman Type: ${IRONMAN_TYPE:-N/A}"
-echo "Game Size: ${GAME_SIZE:-1920x1080}"
+echo "Game Size: ${GAME_SIZE:-960x540}"
 echo "Quest Helper: Pre-configured for auto-install"
 echo "VNC: Enabled (port 5900)"
 echo "Fast Track: $([ -f "$JAGEX_SESSION_FILE" ] && [ -s "$JAGEX_SESSION_FILE" ] && echo 'Available (saved session)' || echo 'Not available (first run)')"
@@ -150,21 +162,29 @@ echo "Found Bolt launcher at: $BOLT_PATH"
 BOLT_HOME="$HOME/.local/share/bolt-launcher"
 REPO_DIR="$BOLT_HOME/.runelite/repository2"
 PLUGIN_JAR="$BOLT_HOME/.runelite/plugins/rocinante-0.1.0-SNAPSHOT.jar"
+QUEST_HELPER_JAR="$BOLT_HOME/.runelite/plugins/quest-helper.jar"
 CREDENTIALS_FILE="$BOLT_HOME/.runelite/credentials.properties"
 BOLT_RUNELITE_PLUGINS="$BOLT_HOME/.runelite/plugins"
 # Persistent Jagex session env vars - enables fast track on subsequent launches
 JAGEX_SESSION_FILE="$BOLT_HOME/jagex_session.env"
 
-# Copy Rocinante plugin to Bolt's RuneLite plugins directory
+# Copy plugins to Bolt's RuneLite plugins directory
 mkdir -p "$BOLT_RUNELITE_PLUGINS"
 if [ -f "$HOME/.runelite/plugins/rocinante-"*.jar ]; then
     echo "Copying Rocinante plugin to Bolt's plugin directory..."
     cp "$HOME/.runelite/plugins/rocinante-"*.jar "$BOLT_RUNELITE_PLUGINS/"
-    echo "Plugin copied to: $BOLT_RUNELITE_PLUGINS/"
-    ls -la "$BOLT_RUNELITE_PLUGINS/"
 else
     echo "WARNING: Rocinante plugin JAR not found in ~/.runelite/plugins/"
 fi
+
+if [ -f "$HOME/.runelite/plugins/quest-helper.jar" ]; then
+    echo "Copying Quest Helper plugin to Bolt's plugin directory..."
+    cp "$HOME/.runelite/plugins/quest-helper.jar" "$BOLT_RUNELITE_PLUGINS/"
+else
+    echo "WARNING: Quest Helper JAR not found in ~/.runelite/plugins/"
+fi
+echo "Plugins in Bolt directory:"
+ls -la "$BOLT_RUNELITE_PLUGINS/"
 
 # JVM module opens required for RuneLite's reflection-heavy code on JDK 17+
 # These prevent InaccessibleObjectException and NoSuchFieldException errors
@@ -193,8 +213,11 @@ build_classpath() {
             RUNELITE_CP="$jar"
         fi
     done
-    # Add our plugin to the classpath
+    # Add our plugin and Quest Helper to the classpath
     RUNELITE_CP="$RUNELITE_CP:$PLUGIN_JAR"
+    if [ -f "$QUEST_HELPER_JAR" ]; then
+        RUNELITE_CP="$RUNELITE_CP:$QUEST_HELPER_JAR"
+    fi
     echo "$RUNELITE_CP"
 }
 
@@ -205,7 +228,7 @@ configure_runelite_settings() {
     mkdir -p "$(dirname "$RUNELITE_SETTINGS")"
     
     # Set game/client size from environment (default to Xvfb resolution)
-    GAME_SIZE="${GAME_SIZE:-1920x1080}"
+    GAME_SIZE="${GAME_SIZE:-960x540}"
     echo "Configuring RuneLite for resolution: $GAME_SIZE"
     
     # Set default world from environment (default to 301 - safe F2P world)
@@ -230,22 +253,54 @@ EOF
         echo "Added Quest Helper to externalPlugins"
     fi
     
+    # Enable Quest Helper plugin in settings.properties (fallback when no profile exists)
+    if ! grep -q "^runelite\.questhelperplugin=true" "$RUNELITE_SETTINGS" 2>/dev/null; then
+        sed -i '/^runelite\.questhelperplugin=/d' "$RUNELITE_SETTINGS" 2>/dev/null || true
+        sed -i '/^questhelpervars\./d' "$RUNELITE_SETTINGS" 2>/dev/null || true
+        cat >> "$RUNELITE_SETTINGS" << EOF
+runelite.questhelperplugin=true
+questhelpervars.selected-assist-level=true
+EOF
+        echo "Enabled Quest Helper plugin in settings"
+    fi
+    
     # IMPORTANT: RuneLite uses profile-specific config files that override settings.properties
-    # Update ALL existing profile files to ensure the default world setting takes effect
+    # Update ALL existing profile files to ensure settings take effect
     if [ -d "$PROFILES_DIR" ]; then
         echo "Updating profile configs in $PROFILES_DIR..."
         for profile_file in "$PROFILES_DIR"/*.properties; do
             if [ -f "$profile_file" ]; then
                 echo "  Updating: $(basename "$profile_file")"
-                # Remove existing defaultworld settings
+                # Remove existing settings we're about to set
                 sed -i '/^defaultworld\./d' "$profile_file" 2>/dev/null || true
-                # Add our settings
+                sed -i '/^runelite\.questhelperplugin=/d' "$profile_file" 2>/dev/null || true
+                sed -i '/^runelite\.externalPlugins=/d' "$profile_file" 2>/dev/null || true
+                sed -i '/^questhelpervars\./d' "$profile_file" 2>/dev/null || true
+                # Add our settings - enable Quest Helper plugin
+                # Note: RuneLite uses profile configs, NOT settings.properties after first launch
+                # externalPlugins tells RuneLite to install from Plugin Hub
+                # questhelperplugin=true enables the plugin once installed
                 cat >> "$profile_file" << EOF
 defaultworld.defaultWorld=$DEFAULT_WORLD
 defaultworld.useLastWorld=false
+runelite.externalPlugins=quest-helper
+runelite.questhelperplugin=true
+questhelpervars.selected-assist-level=true
 EOF
             fi
         done
+    else
+        # Create default profile if none exists
+        mkdir -p "$PROFILES_DIR"
+        DEFAULT_PROFILE="$PROFILES_DIR/default.properties"
+        echo "Creating default profile: $DEFAULT_PROFILE"
+        cat > "$DEFAULT_PROFILE" << EOF
+defaultworld.defaultWorld=$DEFAULT_WORLD
+defaultworld.useLastWorld=false
+runelite.externalPlugins=quest-helper
+runelite.questhelperplugin=true
+questhelpervars.selected-assist-level=true
+EOF
     fi
 }
 
