@@ -217,7 +217,7 @@ public class TradeHandler {
      */
     private void handleTradeRequest(String playerName) {
         // Check 1: Ironman accounts cannot trade
-        if (ironmanState != null && ironmanState.isIronman()) {
+        if (ironmanState.isIronman()) {
             log.info("Auto-declining trade from {} - ironman account", playerName);
             // Ironman can't accept trades anyway, no action needed
             return;

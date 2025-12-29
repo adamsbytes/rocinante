@@ -402,12 +402,20 @@ public class QuestHelperBridge {
                     if (implementsOwnerStep(qhStep)) {
                         return translateOwnerStep(qhStep);
                     }
-                    log.debug("Unsupported step type: {}", stepClassName);
-                    return translateGenericStep(qhStep);
+                    // Try generic translation first, throw if that also fails
+                    QuestStep genericResult = translateGenericStep(qhStep);
+                    if (genericResult != null) {
+                        return genericResult;
+                    }
+                    throw new UnsupportedOperationException(
+                        "Unknown Quest Helper step type: " + stepClassName + " - needs implementation");
             }
+        } catch (UnsupportedOperationException e) {
+            // Re-throw UnsupportedOperationException as-is (intentional failures)
+            throw e;
         } catch (Exception e) {
-            log.warn("Failed to translate step: {}", stepClassName, e);
-            return null;
+            throw new IllegalStateException(
+                "Failed to translate Quest Helper step type: " + stepClassName, e);
         }
     }
 
@@ -495,12 +503,8 @@ public class QuestHelperBridge {
         String itemName = extractItemNameFromStep(qhStep, text);
 
         if (itemId <= 0) {
-            log.warn("Could not extract item ID from ItemStep: text={}", text);
-            // Fall back to walk step if we have a location
-            if (location != null) {
-                return new WalkQuestStep(location, text);
-            }
-            return null;
+            throw new IllegalStateException(
+                "ItemStep missing item ID - Quest Helper data incomplete: " + text);
         }
 
         // Create GroundItemQuestStep
@@ -704,10 +708,9 @@ public class QuestHelperBridge {
             return new WalkQuestStep(location, text);
         }
 
-        // Return a generic widget step that does nothing specific
-        // This would be a placeholder that needs manual handling
-        log.debug("Translated DetailedQuestStep as placeholder: {}", text);
-        return null;
+        // DetailedQuestStep without location or teleport cannot be automated
+        throw new UnsupportedOperationException(
+            "DetailedQuestStep without location or teleport - manual implementation needed: " + text);
     }
 
     /**
@@ -724,7 +727,14 @@ public class QuestHelperBridge {
             return teleportStep;
         }
         
-        log.debug("Generic step translation (unsupported type): {}", text);
+        // Try walk step if location available
+        if (location != null) {
+            log.debug("Generic step translation with location: {}", text);
+            return new WalkQuestStep(location, text);
+        }
+        
+        // Generic step without usable data - return null to let caller handle
+        log.debug("Generic step translation (no location, no teleport): {}", text);
         return null;
     }
     
@@ -959,12 +969,8 @@ public class QuestHelperBridge {
         } else if (spriteId > 0) {
             step = EmoteQuestStep.fromSpriteId(spriteId, text);
         } else {
-            log.warn("Could not extract emote from EmoteStep: {}", text);
-            // Fall back to walk step if we have location
-            if (location != null) {
-                return null; // Let caller handle with WalkQuestStep
-            }
-            return null;
+            throw new IllegalStateException(
+                "EmoteStep missing emote data - Quest Helper data incomplete: " + text);
         }
 
         if (location != null) {
@@ -987,8 +993,8 @@ public class QuestHelperBridge {
         WorldPoint location = getWorldPoint(qhStep);
 
         if (location == null) {
-            log.warn("DigStep has no location: {}", text);
-            return null;
+            throw new IllegalStateException(
+                "DigStep missing location - Quest Helper data incomplete: " + text);
         }
 
         DigQuestStep step = new DigQuestStep(location, text);
@@ -1005,8 +1011,8 @@ public class QuestHelperBridge {
         WorldPoint location = getWorldPoint(qhStep);
 
         if (location == null) {
-            log.warn("TileStep has no location: {}", text);
-            return null;
+            throw new IllegalStateException(
+                "TileStep missing location - Quest Helper data incomplete: " + text);
         }
 
         WalkQuestStep step = new WalkQuestStep(location, text);
@@ -1043,8 +1049,8 @@ public class QuestHelperBridge {
             }
         }
 
-        log.warn("Could not extract widget details from WidgetStep: {}", text);
-        return null;
+        throw new IllegalStateException(
+            "WidgetStep missing widget details - Quest Helper data incomplete: " + text);
     }
 
     /**
@@ -1092,8 +1098,8 @@ public class QuestHelperBridge {
             return wrapper;
         }
 
-        log.warn("Could not translate NpcEmoteStep: {}", text);
-        return null;
+        throw new IllegalStateException(
+            "NpcEmoteStep translation failed - Quest Helper data incomplete: " + text);
     }
 
     /**
@@ -1844,6 +1850,7 @@ public class QuestHelperBridge {
     }
 
     private WorldPoint getWorldPoint(Object step) {
+        String stepClassName = step.getClass().getSimpleName();
         try {
             // Try definedPoint first (new QH style)
             Field definedPointField = findField(step.getClass(), "definedPoint");
@@ -1866,8 +1873,12 @@ public class QuestHelperBridge {
                 return (WorldPoint) worldPointField.get(step);
             }
         } catch (Exception e) {
-            log.trace("Could not get world point", e);
+            log.warn("Failed to extract WorldPoint from {} step - Quest Helper API may have changed", 
+                    stepClassName, e);
+            return null;
         }
+        // No location field found - this is normal for some step types
+        log.trace("No WorldPoint field found in {} step", stepClassName);
         return null;
     }
 

@@ -4,13 +4,13 @@ import com.rocinante.core.GameStateService;
 import com.rocinante.data.WikiDataService;
 import com.rocinante.data.model.WeaponInfo;
 import com.rocinante.state.*;
+import com.rocinante.util.NpcUtils;
+import com.rocinante.util.Randomization;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.client.game.ItemManager;
-
-import com.rocinante.util.Randomization;
 
 import javax.annotation.Nullable;
 import javax.inject.Inject;
@@ -212,8 +212,7 @@ public class SpecialAttackManager {
      * Check if we should use spec on the given target.
      */
     private boolean shouldSpecTarget(NpcSnapshot target) {
-        // TODO: Implement boss detection via WikiDataService or NPC data
-        boolean isBoss = target.getCombatLevel() >= 100; // Simple heuristic for now
+        boolean isBoss = NpcUtils.isBoss(target.getName());
 
         return config.shouldSpecTarget(
                 target.getId(),

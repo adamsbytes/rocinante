@@ -467,11 +467,8 @@ public class TaskContext {
     @Nullable
     public ResourceAwareness getResourceAwareness() {
         // Get account type
-        AccountType accountType = AccountType.NORMAL;
         com.rocinante.state.IronmanState ironmanState = getIronmanState();
-        if (ironmanState != null) {
-            accountType = ironmanState.getEffectiveType();
-        }
+        AccountType accountType = ironmanState.getEffectiveType();
         
         // Get inventory and equipment state
         InventoryState inventory = getInventoryState();
@@ -485,8 +482,10 @@ public class TaskContext {
         // Check for fairy ring access
         boolean hasFairyRingAccess = checkFairyRingAccess(inventory, equipment);
         
-        // Check for spirit tree access (simplified - assumes available if unlockTracker exists)
-        boolean hasSpiritTreeAccess = unlockTracker != null;
+        // Spirit tree access requires Tree Gnome Village quest completion
+        // Individual destination requirements (Corsair Curse, Song of the Elves, etc.)
+        // are handled by the navigation graph edge requirements
+        boolean hasSpiritTreeAccess = unlockTracker.isQuestCompleted(net.runelite.api.Quest.TREE_GNOME_VILLAGE);
         
         return ResourceAwareness.fromGameState(
                 accountType,

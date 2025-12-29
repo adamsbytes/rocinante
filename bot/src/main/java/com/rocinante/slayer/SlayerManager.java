@@ -895,7 +895,7 @@ public class SlayerManager {
         }
 
         IronmanState ironmanState = gameStateService.getIronmanState();
-        boolean isHcim = ironmanState != null && ironmanState.isHardcore();
+        boolean isHcim = ironmanState.isHardcore();
 
         if (!isHcim || !sessionConfig.isHcimSafetyEnabled()) {
             return TaskLocationResolver.ResolverOptions.IGNORE_SAFETY;

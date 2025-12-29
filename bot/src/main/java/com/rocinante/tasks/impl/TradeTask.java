@@ -218,7 +218,7 @@ public class TradeTask extends AbstractTask {
 
         // Ironman accounts cannot trade with other players
         IronmanState ironmanState = ctx.getGameStateService().getIronmanState();
-        if (ironmanState != null && ironmanState.isIronman()) {
+        if (ironmanState.isIronman()) {
             log.debug("Cannot trade - account is an ironman");
             return false;
         }

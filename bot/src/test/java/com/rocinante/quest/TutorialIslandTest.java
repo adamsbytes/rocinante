@@ -131,7 +131,11 @@ public class TutorialIslandTest {
 
     @Before
     public void setUp() {
-        tutorialIsland = new TutorialIsland();
+        // Create a mock IronmanState that represents a normal account (no ironman)
+        IronmanState mockIronmanState = mock(IronmanState.class);
+        when(mockIronmanState.getIntendedType()).thenReturn(AccountType.NORMAL);
+        
+        tutorialIsland = new TutorialIsland(mockIronmanState);
         steps = tutorialIsland.loadSteps();
     }
 
@@ -323,28 +327,10 @@ public class TutorialIslandTest {
         assertFalse(tutorialIsland.isStarted(0));
     }
 
-    // ========================================================================
-    // NPC ID Tests
-    // ========================================================================
-
-    @Test
-    public void testNpcIdsPositive() {
-        assertTrue(TutorialIsland.NPC_GIELINOR_GUIDE > 0);
-        assertTrue(TutorialIsland.NPC_SURVIVAL_EXPERT > 0);
-        assertTrue(TutorialIsland.NPC_MASTER_CHEF > 0);
-        assertTrue(TutorialIsland.NPC_QUEST_GUIDE > 0);
-        assertTrue(TutorialIsland.NPC_MINING_INSTRUCTOR > 0);
-        assertTrue(TutorialIsland.NPC_COMBAT_INSTRUCTOR > 0);
-        assertTrue(TutorialIsland.NPC_ACCOUNT_GUIDE > 0);
-        assertTrue(TutorialIsland.NPC_BROTHER_BRACE > 0);
-        assertTrue(TutorialIsland.NPC_MAGIC_INSTRUCTOR > 0);
-        assertTrue(TutorialIsland.NPC_GIANT_RAT > 0);
-        assertTrue(TutorialIsland.NPC_CHICKEN > 0);
-        assertTrue(TutorialIsland.NPC_FISHING_SPOT > 0);
-    }
-
-    // Note: Object ID tests removed - TutorialIsland uses quest step-based
-    // object interactions via ObjectInteraction commands, not static constants
+    // Note: NPC ID tests removed - TutorialIsland uses NpcID constants directly
+    // in step definitions, not static NPC_* constants on the class itself.
+    // Object ID tests also removed - TutorialIsland uses ObjectID constants
+    // and quest step-based object interactions.
 
     // ========================================================================
     // Step Text Tests

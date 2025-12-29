@@ -249,11 +249,11 @@ public class TaskLocationResolver {
     }
 
     private boolean shouldApplyHcimFilter(
-            @Nullable IronmanState ironmanState, ResolverOptions options) {
+            IronmanState ironmanState, ResolverOptions options) {
         if (!options.isApplyHcimSafety()) {
             return false;
         }
-        return ironmanState != null && ironmanState.isHardcore();
+        return ironmanState.isHardcore();
     }
 
     // ========================================================================

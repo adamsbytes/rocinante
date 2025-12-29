@@ -389,7 +389,7 @@ public class GrandExchangeTask extends AbstractTask {
 
         // Critical: Ironmen cannot use GE
         var ironmanState = ctx.getIronmanState();
-        if (ironmanState != null && !ironmanState.canUseGrandExchange()) {
+        if (!ironmanState.canUseGrandExchange()) {
             log.warn("Cannot execute GE task: Ironman accounts cannot use the Grand Exchange");
             return false;
         }
@@ -465,7 +465,7 @@ public class GrandExchangeTask extends AbstractTask {
     private void executeValidate(TaskContext ctx) {
         // Double-check ironman status
         var ironmanState = ctx.getIronmanState();
-        if (ironmanState != null && !ironmanState.canUseGrandExchange()) {
+        if (!ironmanState.canUseGrandExchange()) {
             fail("Ironman accounts cannot use the Grand Exchange");
             return;
         }

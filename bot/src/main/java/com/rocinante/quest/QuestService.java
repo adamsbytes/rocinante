@@ -122,7 +122,7 @@ public class QuestService {
             }
             return getOrCreateBridge(questHelper).toQuest();
         } catch (Exception e) {
-            log.warn("Failed to get selected quest from Quest Helper", e);
+            log.error("Failed to get selected quest from Quest Helper - Quest Helper may be incompatible", e);
             return null;
         }
     }
@@ -205,7 +205,7 @@ public class QuestService {
                 }
             }
         } catch (Exception e) {
-            log.warn("Failed to get quest {} from Quest Helper", questId, e);
+            log.error("Failed to get quest {} from Quest Helper - reflection may have failed", questId, e);
         }
         return null;
     }
@@ -220,7 +220,7 @@ public class QuestService {
                 }
             }
         } catch (Exception e) {
-            log.warn("Failed to enumerate Quest Helper quests", e);
+            log.error("Failed to enumerate Quest Helper quests - Quest Helper integration broken", e);
         }
         return quests;
     }
@@ -235,7 +235,7 @@ public class QuestService {
                 return (List<Object>) result;
             }
         } catch (Exception e) {
-            log.warn("Failed to get quest helpers from plugin", e);
+            log.error("Failed to get quest helpers from plugin - Quest Helper API may have changed", e);
         }
         return Collections.emptyList();
     }

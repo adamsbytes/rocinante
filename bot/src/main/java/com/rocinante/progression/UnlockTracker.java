@@ -71,8 +71,8 @@ public class UnlockTracker {
     public boolean isPrayerUnlocked(Prayer prayer) {
         PrayerUnlock unlock = PrayerUnlock.forPrayer(prayer);
         if (unlock == null) {
-            log.warn("Unknown prayer: {}", prayer);
-            return false;
+            throw new IllegalArgumentException(
+                "Unknown prayer: " + prayer + " - add to PrayerUnlock enum");
         }
         return isPrayerUnlockMet(unlock);
     }
@@ -407,8 +407,8 @@ public class UnlockTracker {
                 return checkFavourRequirement(requirement);
 
             default:
-                log.warn("Unknown EdgeRequirementType: {}", type);
-                return false;
+                throw new IllegalStateException(
+                    "Unknown EdgeRequirementType: " + type + " - update UnlockTracker");
         }
     }
 
@@ -462,8 +462,8 @@ public class UnlockTracker {
             Skill skill = Skill.valueOf(skillName.toUpperCase());
             return getSkillLevel(skill) >= requirement.getValue();
         } catch (IllegalArgumentException e) {
-            log.warn("Unknown skill in requirement: {}", skillName);
-            return false;
+            throw new IllegalArgumentException(
+                "Unknown skill: " + skillName + " - check EdgeRequirement data", e);
         }
     }
 
@@ -497,8 +497,8 @@ public class UnlockTracker {
             // Default: check if quest is completed
             return isQuestCompleted(quest);
         } catch (IllegalArgumentException e) {
-            log.warn("Unknown quest in requirement: {}", questId);
-            return false;
+            throw new IllegalArgumentException(
+                "Unknown quest: " + questId + " - check EdgeRequirement data", e);
         } catch (Exception e) {
             log.warn("Error checking quest requirement for {}: {}", questId, e.getMessage());
             return false;
@@ -600,16 +600,16 @@ public class UnlockTracker {
                     Prayer prayer = Prayer.valueOf(identifier);
                     return isPrayerUnlocked(prayer);
                 } catch (IllegalArgumentException e) {
-                    log.warn("Unknown prayer identifier: {}", identifier);
-                    return false;
+                    throw new IllegalArgumentException(
+                        "Unknown identifier for type " + type + ": " + identifier, e);
                 }
             case QUEST:
                 try {
                     Quest quest = Quest.valueOf(identifier);
                     return isQuestCompleted(quest);
                 } catch (IllegalArgumentException e) {
-                    log.warn("Unknown quest identifier: {}", identifier);
-                    return false;
+                    throw new IllegalArgumentException(
+                        "Unknown identifier for type " + type + ": " + identifier, e);
                 }
             case SKILL:
                 // Format: "SKILL_NAME:LEVEL" e.g., "PRAYER:43"
@@ -620,10 +620,12 @@ public class UnlockTracker {
                         int level = Integer.parseInt(parts[1]);
                         return meetsSkillRequirement(skill, level);
                     } catch (Exception e) {
-                        log.warn("Invalid skill requirement format: {}", identifier);
+                        throw new IllegalArgumentException(
+                            "Invalid skill requirement format: " + identifier, e);
                     }
                 }
-                return false;
+                throw new IllegalArgumentException(
+                    "Invalid skill identifier format (expected SKILL_NAME:LEVEL): " + identifier);
             case TELEPORT:
                 return isTeleportUnlocked(identifier);
             case TRANSPORTATION:
@@ -633,7 +635,8 @@ public class UnlockTracker {
             case FEATURE:
                 return isFeatureUnlocked(identifier);
             default:
-                return false;
+                throw new IllegalArgumentException(
+                    "Unknown UnlockType: " + type);
         }
     }
 
@@ -694,8 +697,8 @@ public class UnlockTracker {
             return constructionLevel >= 50; // Basic portal room requirement
         }
 
-        log.debug("Unknown teleport identifier: {}", identifier);
-        return false;
+        throw new IllegalArgumentException(
+            "Unknown teleport identifier: " + identifier + " - add to teleport checks");
     }
 
     // ========================================================================
@@ -747,8 +750,8 @@ public class UnlockTracker {
             return isQuestCompleted(Quest.ENLIGHTENED_JOURNEY);
         }
 
-        log.debug("Unknown transportation identifier: {}", identifier);
-        return false;
+        throw new IllegalArgumentException(
+            "Unknown transportation identifier: " + identifier + " - add to transportation checks");
     }
 
     /**
@@ -881,9 +884,30 @@ public class UnlockTracker {
             }
         }
 
-        // Unknown area - assume accessible (conservative default)
-        log.debug("Unknown area identifier: {}, assuming accessible", identifier);
-        return true;
+        // Unknown area - fail fast to expose missing area data
+        throw new IllegalArgumentException(
+            "Unknown area identifier: " + identifier + " - add to area checks");
+    }
+
+    // ========================================================================
+    // Player-Owned House Checks
+    // ========================================================================
+
+    /**
+     * Check if the player owns a player-owned house.
+     * Uses varbit 2187 which is 0 for no house, 1 for house owned.
+     *
+     * @return true if the player has purchased a house from an estate agent
+     * @throws IllegalStateException if varbit cannot be read while logged in
+     */
+    public boolean hasPlayerOwnedHouse() {
+        if (client.getGameState().getState() < net.runelite.api.GameState.LOGGED_IN.getState()) {
+            throw new IllegalStateException("Cannot check POH ownership: not logged in");
+        }
+        
+        int pohValue = client.getVarbitValue(VARBIT_POH_OWNED);
+        log.trace("POH ownership varbit {}: {}", VARBIT_POH_OWNED, pohValue);
+        return pohValue == 1;
     }
 
     // ========================================================================
@@ -898,6 +922,11 @@ public class UnlockTracker {
      */
     private boolean isFeatureUnlocked(String identifier) {
         String upper = identifier.toUpperCase();
+
+        // Player-owned house ownership
+        if (upper.equals("POH_OWNED") || upper.equals("PLAYER_OWNED_HOUSE")) {
+            return hasPlayerOwnedHouse();
+        }
 
         // NPC Contact spell - requires Lunar Diplomacy and 67 Magic
         if (upper.equals("NPC_CONTACT")) {
@@ -946,8 +975,8 @@ public class UnlockTracker {
             return getSkillLevel(Skill.ATTACK) + getSkillLevel(Skill.STRENGTH) >= 130;
         }
 
-        log.debug("Unknown feature identifier: {}", identifier);
-        return false;
+        throw new IllegalArgumentException(
+            "Unknown feature identifier: " + identifier + " - add to feature checks");
     }
 
     // ========================================================================
@@ -1010,6 +1039,13 @@ public class UnlockTracker {
      * NMZ requires 5+ quest bosses defeated.
      */
     private static final int VARBIT_NMZ_BOSS_COUNT = 3946;
+
+    /**
+     * Varbit for player-owned house ownership.
+     * 0 = no house owned, 1 = house owned.
+     * From VarbitID.POH_HOUSE_LOCATION - despite the name, this is a binary yes/no.
+     */
+    private static final int VARBIT_POH_OWNED = 2187;
 
     /**
      * Kourend favour varbits by house index.
@@ -1217,8 +1253,8 @@ public class UnlockTracker {
             }
         }
         
-        log.warn("Unknown Kourend house: {}", houseName);
-        return 0;
+        throw new IllegalArgumentException(
+            "Unknown Kourend house: " + houseName + " - check house name spelling");
     }
 
     // ========================================================================

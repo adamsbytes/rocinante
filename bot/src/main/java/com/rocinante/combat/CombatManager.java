@@ -239,6 +239,7 @@ public class CombatManager {
         EquipmentState equipmentState = gameStateService.getEquipmentState();
 
         if (!playerState.isValid()) {
+            log.debug("CombatManager skipping tick - player state invalid (in-game loading/login)");
             return;
         }
 

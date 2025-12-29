@@ -1,6 +1,7 @@
 package com.rocinante.behavior;
 
 import com.rocinante.state.CombatState;
+import com.rocinante.state.IronmanState;
 import com.rocinante.state.NpcSnapshot;
 import com.rocinante.tasks.Task;
 import net.runelite.api.Client;
@@ -30,6 +31,9 @@ public class BotActivityTrackerTest {
     @Mock
     private Supplier<Task> currentTaskSupplier;
     
+    @Mock
+    private IronmanState ironmanState;
+    
     private BotActivityTracker activityTracker;
 
     @Before
@@ -39,8 +43,9 @@ public class BotActivityTrackerTest {
         when(client.getVarbitValue(anyInt())).thenReturn(0);
         when(combatStateSupplier.get()).thenReturn(CombatState.EMPTY);
         when(currentTaskSupplier.get()).thenReturn(null);
+        when(ironmanState.getEffectiveType()).thenReturn(AccountType.NORMAL);
         
-        activityTracker = new BotActivityTracker(client, combatStateSupplier, currentTaskSupplier);
+        activityTracker = new BotActivityTracker(client, combatStateSupplier, currentTaskSupplier, ironmanState);
     }
 
     // ========================================================================
@@ -61,7 +66,7 @@ public class BotActivityTrackerTest {
 
     @Test
     public void testAccountType_Normal() {
-        when(client.getVarbitValue(1777)).thenReturn(0);
+        when(ironmanState.getEffectiveType()).thenReturn(AccountType.NORMAL);
         
         activityTracker.tick();
         
@@ -72,7 +77,7 @@ public class BotActivityTrackerTest {
 
     @Test
     public void testAccountType_Ironman() {
-        when(client.getVarbitValue(1777)).thenReturn(1);
+        when(ironmanState.getEffectiveType()).thenReturn(AccountType.IRONMAN);
         
         activityTracker.tick();
         
@@ -83,7 +88,7 @@ public class BotActivityTrackerTest {
 
     @Test
     public void testAccountType_HCIM() {
-        when(client.getVarbitValue(1777)).thenReturn(3);
+        when(ironmanState.getEffectiveType()).thenReturn(AccountType.HARDCORE_IRONMAN);
         
         activityTracker.tick();
         
@@ -288,7 +293,7 @@ public class BotActivityTrackerTest {
 
     @Test
     public void testCanInterrupt_HCIM_False_ForAnyCombat() {
-        when(client.getVarbitValue(1777)).thenReturn(3); // HCIM
+        when(ironmanState.getEffectiveType()).thenReturn(AccountType.HARDCORE_IRONMAN);
         activityTracker.tick();
         
         activityTracker.setExplicitActivity(ActivityType.HIGH);
@@ -315,7 +320,7 @@ public class BotActivityTrackerTest {
 
     @Test
     public void testCanEnterAFK_HCIM_False_ForCombat() {
-        when(client.getVarbitValue(1777)).thenReturn(3); // HCIM
+        when(ironmanState.getEffectiveType()).thenReturn(AccountType.HARDCORE_IRONMAN);
         activityTracker.tick();
         
         activityTracker.setExplicitActivity(ActivityType.HIGH);

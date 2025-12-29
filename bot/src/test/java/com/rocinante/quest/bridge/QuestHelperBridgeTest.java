@@ -549,17 +549,16 @@ public class QuestHelperBridgeTest {
         assertTrue("Empty choices should result in empty resolvers", resolvers.isEmpty());
     }
 
-    @Test
+    @Test(expected = RuntimeException.class)
     public void testTranslateItemStepWithNoItemId() throws Exception {
         MockItemStep mockStep = new MockItemStep();
         mockStep.text = Arrays.asList("Pick up the item.");
         mockStep.definedPoint = new MockDefinedPoint(3100, 3200, 0);
         // No requirements set - item ID extraction should fail
 
-        GroundItemQuestStep result = translateItemStep(mockStep);
-
-        // Should fall back to walk step or return null
-        // Based on implementation, it returns null if itemId <= 0
+        // Should throw IllegalStateException wrapped in RuntimeException
+        // because item ID is required for ItemStep translation
+        translateItemStep(mockStep);
     }
 
     // ========================================================================

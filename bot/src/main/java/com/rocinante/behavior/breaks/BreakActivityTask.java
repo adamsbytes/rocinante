@@ -470,7 +470,6 @@ public class BreakActivityTask extends AbstractTask {
         int chatX = randomization.uniformRandomInt(50, 200);
         int chatY = randomization.uniformRandomInt(400, 480);
         
-        // Just hover over chat area (scroll not implemented in mouse controller)
         pendingOperation = ctx.getMouseController().moveToCanvas(chatX, chatY)
             .thenCompose(v -> ctx.getHumanTimer().sleep(randomization.uniformRandomLong(500, 1500)));
     }
@@ -485,7 +484,6 @@ public class BreakActivityTask extends AbstractTask {
         if (minimap != null && !minimap.isHidden()) {
             Rectangle bounds = minimap.getBounds();
             if (bounds != null && bounds.width > 0) {
-                // Just hover over minimap area (drag not implemented in mouse controller)
                 int x = bounds.x + randomization.uniformRandomInt(10, bounds.width - 10);
                 int y = bounds.y + randomization.uniformRandomInt(10, bounds.height - 10);
                 

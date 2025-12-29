@@ -424,9 +424,7 @@ public class GameStateService {
         }
 
         // Update IronmanState from varbit (tracks actual account type)
-        if (ironmanState != null) {
-            ironmanState.updateFromVarbit();
-        }
+        ironmanState.updateFromVarbit();
         
         // Update interface mode (cheap check, cached result)
         updateInterfaceMode();
@@ -554,19 +552,8 @@ public class GameStateService {
      * @return account type for profile generation
      */
     private com.rocinante.behavior.AccountType detectAccountType() {
-        if (ironmanState != null) {
-            // IronmanState handles intended vs actual type logic
-            return ironmanState.getEffectiveType();
-        }
-        
-        // Fallback: read varbit directly
-        try {
-            int varbitValue = client.getVarbitValue(1777); // ACCOUNT_TYPE varbit
-            return com.rocinante.behavior.AccountType.fromVarbit(varbitValue);
-        } catch (Exception e) {
-            log.debug("Could not detect account type: {}", e.getMessage());
-            return com.rocinante.behavior.AccountType.NORMAL;
-        }
+        // IronmanState handles intended vs actual type logic
+        return ironmanState.getEffectiveType();
     }
     
     /**

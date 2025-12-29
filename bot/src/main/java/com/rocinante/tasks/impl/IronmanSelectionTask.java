@@ -205,23 +205,17 @@ public class IronmanSelectionTask extends AbstractTask {
         }
         
         // Force immediate varbit update
-        if (ironmanState != null) {
-            ironmanState.updateFromVarbit();
-            AccountType actualType = ironmanState.getActualType();
-            
-            if (actualType == targetType) {
-                log.info("Ironman mode selected successfully: {}", actualType.getDisplayName());
-                complete();
-            } else {
-                log.error("Ironman mode mismatch after selection: target={}, actual={}", 
-                        targetType, actualType);
-                fail(String.format("Selection failed: got %s instead of %s", 
-                        actualType.getDisplayName(), targetType.getDisplayName()));
-            }
-        } else {
-            // No IronmanState to verify with - just complete
-            log.warn("No IronmanState available for verification");
+        ironmanState.updateFromVarbit();
+        AccountType actualType = ironmanState.getActualType();
+        
+        if (actualType == targetType) {
+            log.info("Ironman mode selected successfully: {}", actualType.getDisplayName());
             complete();
+        } else {
+            log.error("Ironman mode mismatch after selection: target={}, actual={}", 
+                    targetType, actualType);
+            fail(String.format("Selection failed: got %s instead of %s", 
+                    actualType.getDisplayName(), targetType.getDisplayName()));
         }
     }
 

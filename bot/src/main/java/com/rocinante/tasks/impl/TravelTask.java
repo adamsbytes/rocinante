@@ -1717,8 +1717,27 @@ public class TravelTask extends AbstractTask {
     // ========================================================================
 
     private void executeClickPohPortal(TaskContext ctx) {
-        log.warn("POH portal teleport not fully implemented - requires object interaction");
-        fail("POH portal teleport requires integration with InteractObjectTask");
+        // First, verify player owns a POH
+        if (!ctx.getUnlockTracker().hasPlayerOwnedHouse()) {
+            log.error("Cannot use POH portal - player does not own a house");
+            fail("POH portal requires a player-owned house (purchase from estate agent)");
+            return;
+        }
+
+        // TODO: Implement actual POH portal interaction
+        // This requires:
+        // 1. Being inside the POH (via house teleport or entering a POH portal in the world)
+        // 2. Navigating to the portal room
+        // 3. Clicking the appropriate portal for the destination
+        // 
+        // IMPORTANT: When POH portal navigation edges are added to the navigation graph,
+        // they MUST include a POH_OWNED requirement type so the pathfinder won't consider
+        // them for players without houses. Example edge requirement:
+        //   { "type": "POH_OWNED" }
+        //
+        // For now, fail clearly until the full implementation is complete.
+        log.error("POH portal teleport not yet implemented - requires InteractObjectTask integration");
+        fail("POH portal teleport not yet implemented");
     }
 
     // ========================================================================

@@ -21,7 +21,7 @@ import net.runelite.api.NpcID;
 import net.runelite.api.ObjectID;
 import net.runelite.api.coords.WorldPoint;
 
-import javax.annotation.Nullable;
+import javax.inject.Inject;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -62,9 +62,8 @@ public class TutorialIsland implements Quest {
     
     /**
      * IronmanState for reading intended account type.
-     * If null, assumes NORMAL account (no ironman selection needed).
+     * Required for determining if ironman mode should be selected during tutorial.
      */
-    @Nullable
     private final IronmanState ironmanState;
 
     // ========================================================================
@@ -74,17 +73,11 @@ public class TutorialIsland implements Quest {
     /**
      * Create Tutorial Island quest with IronmanState support.
      * 
-     * @param ironmanState ironman state (null = normal account)
+     * @param ironmanState ironman state for account type handling
      */
-    public TutorialIsland(@Nullable IronmanState ironmanState) {
+    @Inject
+    public TutorialIsland(IronmanState ironmanState) {
         this.ironmanState = ironmanState;
-    }
-    
-    /**
-     * Default constructor for normal accounts.
-     */
-    public TutorialIsland() {
-        this(null);
     }
 
     // ========================================================================
@@ -465,9 +458,7 @@ public class TutorialIsland implements Quest {
         
         // var 1000: Tutorial complete - mark in IronmanState
         steps.put(1000, new CustomQuestStep("Tutorial Island complete", ctx -> {
-            if (ironmanState != null) {
-                ironmanState.markTutorialCompleted();
-            }
+            ironmanState.markTutorialCompleted();
             // Return a no-op task that completes immediately
             return new com.rocinante.tasks.AbstractTask() {
                 {
@@ -504,10 +495,6 @@ public class TutorialIsland implements Quest {
      * @return true if player should talk to Paul and select ironman mode
      */
     private boolean shouldSelectIronmanMode() {
-        if (ironmanState == null) {
-            return false;
-        }
-        
         AccountType intendedType = ironmanState.getIntendedType();
         
         // Only select ironman if intended type is an ironman variant

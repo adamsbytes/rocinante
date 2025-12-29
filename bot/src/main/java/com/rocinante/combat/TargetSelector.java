@@ -124,6 +124,7 @@ public class TargetSelector {
         PlayerState playerState = gameStateService.getPlayerState();
 
         if (!playerState.isValid()) {
+            log.debug("TargetSelector: player state invalid, returning empty target list");
             return Collections.emptyList();
         }
 

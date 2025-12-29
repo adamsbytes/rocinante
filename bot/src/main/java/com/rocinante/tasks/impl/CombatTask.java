@@ -1199,7 +1199,7 @@ public class CombatTask extends AbstractTask {
 
         // Check if account is ironman for loot restrictions
         var ironmanState = ctx.getIronmanState();
-        boolean isIronman = ironmanState != null && ironmanState.isIronman();
+        boolean isIronman = ironmanState.isIronman();
 
         // Get ground items near the kill location
         List<GroundItemSnapshot> nearbyItems = worldState.getGroundItems().stream()

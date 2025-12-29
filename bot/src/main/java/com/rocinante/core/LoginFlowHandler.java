@@ -155,7 +155,7 @@ public class LoginFlowHandler {
         
         log.info("LoginFlowHandler initialized. CHARACTER_NAME={}, ironman intended={}", 
                 characterName != null ? characterName : "<not set>",
-                ironmanState != null ? ironmanState.getIntendedType() : "unknown");
+                ironmanState.getIntendedType());
     }
 
     @Subscribe

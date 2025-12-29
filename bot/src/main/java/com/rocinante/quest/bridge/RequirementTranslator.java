@@ -270,6 +270,12 @@ public class RequirementTranslator {
 
         // ItemRequirement uses mustBeEquipped() method, but field is also called mustBeEquipped
         boolean mustBeEquipped = getBoolFieldSafe(req, "mustBeEquipped", false);
+        
+        // Items obtainable during quest don't need to be checked - they'll be acquired as part of quest steps
+        boolean obtainableDuringQuest = getBoolFieldSafe(req, "obtainableDuringQuest", false);
+        if (obtainableDuringQuest) {
+            return StateCondition.always();
+        }
 
         // Handle alternate items (field is named alternateItems, not alternateItemIds)
         List<Integer> allIds = new ArrayList<>();
@@ -287,10 +293,13 @@ public class RequirementTranslator {
             int[] idArray = allIds.stream().mapToInt(i -> i).toArray();
             return Conditions.hasAnyEquipped(idArray);
         } else {
-            // Check inventory (or bank, or ground - simplified to inventory for now)
+            // Check inventory OR bank - item just needs to be owned
             return ctx -> {
                 for (int id : allIds) {
                     if (ctx.getInventoryState().hasItem(id, quantity)) {
+                        return true;
+                    }
+                    if (ctx.getBankState().hasItem(id, quantity)) {
                         return true;
                     }
                 }
@@ -882,7 +891,8 @@ public class RequirementTranslator {
                 return value != null ? value.toString() : defaultValue;
             }
         } catch (Exception e) {
-            // Ignore
+            log.debug("Failed to get string field '{}', using default '{}': {}", 
+                    fieldName, defaultValue, e.getMessage());
         }
         return defaultValue;
     }
@@ -895,7 +905,8 @@ public class RequirementTranslator {
                 return field.get(obj);
             }
         } catch (Exception e) {
-            log.trace("Could not get field value: {}", fieldName);
+            log.warn("Failed to get field '{}' from {} - Quest Helper API may have changed",
+                    fieldName, obj.getClass().getSimpleName(), e);
         }
         return null;
     }

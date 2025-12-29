@@ -4,6 +4,7 @@ import com.rocinante.state.CombatState;
 import com.rocinante.state.NpcSnapshot;
 import com.rocinante.tasks.Task;
 import com.rocinante.tasks.TaskExecutor;
+import com.rocinante.util.NpcUtils;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
@@ -17,7 +18,6 @@ import javax.inject.Provider;
 import javax.inject.Singleton;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Collections;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -40,32 +40,6 @@ public class BotActivityTracker {
     // Varbit IDs
     private static final int ACCOUNT_TYPE_VARBIT = 1777;
     private static final int WILDERNESS_LEVEL_VARBIT = 5963;
-    
-    /**
-     * Boss NPC names for boss fight detection.
-     * Extensible - add more bosses as needed.
-     */
-    private static final Set<String> BOSS_NAMES = Set.of(
-            // GWD
-            "General Graardor", "K'ril Tsutsaroth", "Commander Zilyana", "Kree'arra",
-            // Wilderness bosses
-            "Callisto", "Vet'ion", "Venenatis", "Scorpia", "Chaos Fanatic", "Crazy archaeologist",
-            "King Black Dragon", "Chaos Elemental",
-            // Solo bosses
-            "Zulrah", "Vorkath", "The Nightmare", "Phosani's Nightmare",
-            "Corporeal Beast", "Giant Mole", "Sarachnis", "Kalphite Queen",
-            "Dagannoth Rex", "Dagannoth Prime", "Dagannoth Supreme",
-            "Cerberus", "Abyssal Sire", "Kraken", "Thermonuclear smoke devil",
-            "Alchemical Hydra", "Grotesque Guardians",
-            // Raids
-            "Great Olm", "Verzik Vitur", "The Leviathan", "The Whisperer",
-            "Vardorvis", "Duke Sucellus",
-            // Slayer bosses
-            "Skotizo",
-            // Other
-            "TzTok-Jad", "TzKal-Zuk", "Hespori", "Mimic", "The Gauntlet",
-            "Crystalline Hunllef", "Corrupted Hunllef"
-    );
     
     /**
      * Dangerous area regions (region IDs where extra caution is needed).
@@ -146,13 +120,14 @@ public class BotActivityTracker {
     }
 
     /**
-     * Constructor for testing with explicit suppliers.
+     * Constructor for testing with explicit suppliers and IronmanState.
      */
     public BotActivityTracker(Client client,
                               Supplier<CombatState> combatStateSupplier,
-                              Supplier<Task> currentTaskSupplier) {
+                              Supplier<Task> currentTaskSupplier,
+                              com.rocinante.state.IronmanState ironmanState) {
         this.client = client;
-        this.ironmanState = null;
+        this.ironmanState = ironmanState;
         this.combatStateSupplier = combatStateSupplier;
         this.currentTaskSupplier = currentTaskSupplier;
     }
@@ -189,17 +164,7 @@ public class BotActivityTracker {
 
     private void updateAccountType() {
         // Delegate to IronmanState for authoritative account type
-        if (ironmanState != null) {
-            accountType = ironmanState.getEffectiveType();
-        } else {
-            // Fallback: read varbit directly
-            try {
-                int varbitValue = client.getVarbitValue(ACCOUNT_TYPE_VARBIT);
-                accountType = AccountType.fromVarbit(varbitValue);
-            } catch (Exception e) {
-                log.trace("Could not read account type varbit: {}", e.getMessage());
-            }
-        }
+        accountType = ironmanState.getEffectiveType();
     }
 
     private void updateDangerousAreaStatus() {
@@ -223,8 +188,8 @@ public class BotActivityTracker {
         }
         
         NpcSnapshot target = combatState.getTargetNpc();
-        if (target != null && target.getName() != null) {
-            inBossFight = BOSS_NAMES.contains(target.getName());
+        if (target != null) {
+            inBossFight = NpcUtils.isBoss(target.getName());
         } else {
             inBossFight = false;
         }
@@ -376,25 +341,6 @@ public class BotActivityTracker {
     // ========================================================================
     // Utility
     // ========================================================================
-
-    /**
-     * Get a set of all known boss names (for extension/modification).
-     * 
-     * @return unmodifiable set of boss names
-     */
-    public static Set<String> getBossNames() {
-        return Collections.unmodifiableSet(BOSS_NAMES);
-    }
-
-    /**
-     * Check if a specific NPC name is considered a boss.
-     * 
-     * @param npcName the NPC name to check
-     * @return true if it's a boss
-     */
-    public static boolean isBoss(String npcName) {
-        return npcName != null && BOSS_NAMES.contains(npcName);
-    }
 
     /**
      * Get a summary of current tracking state.
