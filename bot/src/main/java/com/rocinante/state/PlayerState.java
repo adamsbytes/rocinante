@@ -2,8 +2,12 @@ package com.rocinante.state;
 
 import lombok.Builder;
 import lombok.Value;
+import net.runelite.api.Skill;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
+
+import java.util.Collections;
+import java.util.Map;
 
 /**
  * Immutable snapshot of player state as specified in REQUIREMENTS.md Section 6.2.1.
@@ -40,6 +44,8 @@ public class PlayerState {
             .spellbook(0)
             .homeTeleportCooldownSeconds(0)
             .minigameTeleportCooldownSeconds(0)
+            .baseSkillLevels(Collections.emptyMap())
+            .boostedSkillLevels(Collections.emptyMap())
             .build();
 
     // ========================================================================
@@ -175,6 +181,26 @@ public class PlayerState {
      * Calculated from VarPlayer.LAST_MINIGAME_TELEPORT (888).
      */
     int minigameTeleportCooldownSeconds;
+
+    // ========================================================================
+    // Skill Levels
+    // ========================================================================
+
+    /**
+     * Base (real/unboosted) skill levels for all skills.
+     * These are the actual trained levels, not affected by boosts or drains.
+     * Populated from Client.getRealSkillLevel() for all skills.
+     */
+    @Builder.Default
+    Map<Skill, Integer> baseSkillLevels = Collections.emptyMap();
+
+    /**
+     * Current boosted (or drained) skill levels for all skills.
+     * These are the effective levels after potions, prayers, drains, etc.
+     * Populated from Client.getBoostedSkillLevel() for all skills.
+     */
+    @Builder.Default
+    Map<Skill, Integer> boostedSkillLevels = Collections.emptyMap();
 
     // ========================================================================
     // Convenience Methods
@@ -413,6 +439,115 @@ public class PlayerState {
         int minutes = minigameTeleportCooldownSeconds / 60;
         int seconds = minigameTeleportCooldownSeconds % 60;
         return String.format("%d:%02d", minutes, seconds);
+    }
+
+    // ========================================================================
+    // Skill Level Methods
+    // ========================================================================
+
+    /**
+     * Get the base (real) level for a skill.
+     *
+     * @param skill the skill to check
+     * @return base level, or -1 if not tracked
+     */
+    public int getBaseLevel(Skill skill) {
+        return baseSkillLevels.getOrDefault(skill, -1);
+    }
+
+    /**
+     * Get the boosted (current) level for a skill.
+     *
+     * @param skill the skill to check
+     * @return boosted level, or -1 if not tracked
+     */
+    public int getBoostedLevel(Skill skill) {
+        return boostedSkillLevels.getOrDefault(skill, -1);
+    }
+
+    /**
+     * Check if a skill is currently drained (boosted level below base level).
+     *
+     * @param skill the skill to check
+     * @return true if the skill is drained
+     */
+    public boolean isSkillDrained(Skill skill) {
+        int base = getBaseLevel(skill);
+        int boosted = getBoostedLevel(skill);
+        if (base <= 0 || boosted < 0) {
+            return false; // Unknown levels
+        }
+        return boosted < base;
+    }
+
+    /**
+     * Check if a skill is currently boosted (boosted level above base level).
+     *
+     * @param skill the skill to check
+     * @return true if the skill is boosted
+     */
+    public boolean isSkillBoosted(Skill skill) {
+        int base = getBaseLevel(skill);
+        int boosted = getBoostedLevel(skill);
+        if (base <= 0 || boosted < 0) {
+            return false; // Unknown levels
+        }
+        return boosted > base;
+    }
+
+    /**
+     * Get the difference between boosted and base level for a skill.
+     * Positive = boosted, negative = drained.
+     *
+     * @param skill the skill to check
+     * @return level difference, or 0 if unknown
+     */
+    public int getSkillLevelDifference(Skill skill) {
+        int base = getBaseLevel(skill);
+        int boosted = getBoostedLevel(skill);
+        if (base <= 0 || boosted < 0) {
+            return 0;
+        }
+        return boosted - base;
+    }
+
+    /**
+     * Check if the player meets a skill requirement.
+     *
+     * @param skill the skill to check
+     * @param requiredLevel the required level
+     * @return true if base level meets or exceeds requirement
+     */
+    public boolean hasSkillLevel(Skill skill, int requiredLevel) {
+        int base = getBaseLevel(skill);
+        return base >= requiredLevel;
+    }
+
+    /**
+     * Get combat level (calculated from base skill levels).
+     *
+     * @return combat level, or 3 if levels are unknown
+     */
+    public int getCombatLevel() {
+        int attack = getBaseLevel(Skill.ATTACK);
+        int strength = getBaseLevel(Skill.STRENGTH);
+        int defence = getBaseLevel(Skill.DEFENCE);
+        int hitpoints = getBaseLevel(Skill.HITPOINTS);
+        int ranged = getBaseLevel(Skill.RANGED);
+        int magic = getBaseLevel(Skill.MAGIC);
+        int prayer = getBaseLevel(Skill.PRAYER);
+
+        if (attack < 0 || strength < 0 || defence < 0 || hitpoints < 0 
+            || ranged < 0 || magic < 0 || prayer < 0) {
+            return 3; // Default combat level
+        }
+
+        double base = 0.25 * (defence + hitpoints + Math.floor(prayer / 2.0));
+        double melee = 0.325 * (attack + strength);
+        double range = 0.325 * (Math.floor(ranged / 2.0) + ranged);
+        double mage = 0.325 * (Math.floor(magic / 2.0) + magic);
+
+        return (int) Math.floor(base + Math.max(melee, Math.max(range, mage)));
     }
 }
 

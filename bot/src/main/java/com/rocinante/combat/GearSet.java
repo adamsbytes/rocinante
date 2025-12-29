@@ -185,7 +185,14 @@ public class GearSet {
     }
 
     /**
-     * Create a gear set for specific items (auto-detects attack style).
+     * Create a gear set for specific items (auto-detects attack style and slots).
+     *
+     * <p>Slot detection priority:
+     * <ol>
+     *   <li>Check WeaponCategories for known weapons/ammo</li>
+     *   <li>Check ItemSlotCategories for armor/accessories</li>
+     *   <li>Default to weapon slot if unknown</li>
+     * </ol>
      *
      * @param itemIds the item IDs to include in the set
      * @return GearSet with the specified items
@@ -195,8 +202,7 @@ public class GearSet {
         AttackStyle detectedStyle = AttackStyle.MELEE;
 
         for (int itemId : itemIds) {
-            // Detect slot based on item (would need item definitions in real implementation)
-            // For now, assume weapon slot for simplicity
+            // Detect slot and attack style based on item categories
             if (WeaponCategories.isRangedWeapon(itemId)) {
                 builder.weapon(itemId);
                 detectedStyle = AttackStyle.RANGED;
@@ -205,8 +211,28 @@ public class GearSet {
                 detectedStyle = AttackStyle.MAGIC;
             } else if (WeaponCategories.isAmmo(itemId)) {
                 builder.ammo(itemId);
+            } else if (ItemSlotCategories.isHelmet(itemId)) {
+                builder.helmet(itemId);
+            } else if (ItemSlotCategories.isBody(itemId)) {
+                builder.body(itemId);
+            } else if (ItemSlotCategories.isLegs(itemId)) {
+                builder.legs(itemId);
+            } else if (ItemSlotCategories.isCape(itemId)) {
+                builder.cape(itemId);
+            } else if (ItemSlotCategories.isAmulet(itemId)) {
+                builder.amulet(itemId);
+            } else if (ItemSlotCategories.isGloves(itemId)) {
+                builder.gloves(itemId);
+            } else if (ItemSlotCategories.isBoots(itemId)) {
+                builder.boots(itemId);
+            } else if (ItemSlotCategories.isRing(itemId)) {
+                builder.ring(itemId);
+            } else if (ItemSlotCategories.isShield(itemId)) {
+                builder.shield(itemId);
+            } else {
+                // Default to weapon slot for unknown items
+                builder.weapon(itemId);
             }
-            // Additional slot detection would go here
         }
 
         return builder.attackStyle(detectedStyle).build();

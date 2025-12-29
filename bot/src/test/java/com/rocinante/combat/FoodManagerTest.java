@@ -178,7 +178,9 @@ public class FoodManagerTest {
 
     @Test
     public void testCheckAndEat_NullWhenNoFood() {
-        PlayerState player = createValidPlayerState(20, 99);
+        // Health above panic threshold (25%) - no food means no action needed
+        // (Below panic with no food would trigger FLEE, tested separately)
+        PlayerState player = createValidPlayerState(30, 99);
         InventoryState inventory = createEmptyInventory();
 
         when(gameStateService.getPlayerState()).thenReturn(player);

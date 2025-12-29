@@ -152,9 +152,16 @@ public class LongBreakTask extends BehavioralTask {
         breakScheduler.onBreakCompleted(BreakType.LONG_BREAK, actualDuration);
         
         if (logoutInitiated) {
-            // Would need to handle reconnection here
-            log.info("Long break with logout completed after {} minutes", 
+            log.info("Long break with logout completed after {} minutes - reconnection required", 
                     actualDuration.toMinutes());
+            // Note: The calling system (BotBrain/TaskExecutor) should check if reconnection
+            // is needed after this task completes by checking GameState.
+            // LoginTask can be instantiated and queued by the orchestration layer.
+            // 
+            // Pattern for callers:
+            //   if (client.getGameState() != GameState.LOGGED_IN) {
+            //       taskExecutor.queueTask(new LoginTask());
+            //   }
         } else {
             log.info("Long break completed after {} minutes", actualDuration.toMinutes());
         }

@@ -130,18 +130,20 @@ public class RequirementTranslator {
                 case "NoItemRequirement":
                     return translateNoItemRequirement(qhRequirement);
                 case "StepIsActiveRequirement":
-                    // Step state tracking - always true as a baseline
-                    return StateCondition.always();
+                    // Step state tracking - requires runtime quest step state
+                    log.warn("StepIsActiveRequirement cannot be evaluated statically - blocking progress for safety");
+                    return StateCondition.never();
                 case "ConfigRequirement":
-                    // Config-based requirements are RuneLite client settings
-                    return StateCondition.always();
+                    // Config-based requirements are RuneLite client settings - cannot be evaluated
+                    log.warn("ConfigRequirement requires RuneLite config access - blocking progress for safety");
+                    return StateCondition.never();
                 default:
-                    log.debug("Unsupported requirement type: {}", className);
-                    return StateCondition.always();
+                    log.error("Unknown requirement type '{}' - blocking progress for safety", className);
+                    return StateCondition.never();
             }
         } catch (Exception e) {
-            log.warn("Failed to translate requirement {}: {}", className, e.getMessage());
-            return StateCondition.always();
+            log.error("Failed to translate requirement {} - blocking progress for safety: {}", className, e.getMessage());
+            return StateCondition.never();
         }
     }
 

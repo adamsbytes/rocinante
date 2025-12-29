@@ -754,10 +754,8 @@ public class TutorialIsland implements Quest {
                     @Override
                     protected void executeImpl(TaskContext taskCtx) {
                         taskCtx.getKeyboardController().pressEscape()
-                            .thenRun(() -> {
-                                try { Thread.sleep(200); } catch (InterruptedException ignored) {}
-                                complete();
-                            })
+                            .thenCompose(v -> taskCtx.getHumanTimer().sleep(200))
+                            .thenRun(this::complete)
                             .exceptionally(e -> {
                                 // Even if escape fails, continue anyway
                                 complete();
@@ -795,10 +793,8 @@ public class TutorialIsland implements Quest {
                     @Override
                     protected void executeImpl(TaskContext taskCtx) {
                         taskCtx.getKeyboardController().pressEscape()
-                            .thenRun(() -> {
-                                try { Thread.sleep(300); } catch (InterruptedException ignored) {}
-                                complete();
-                            })
+                            .thenCompose(v -> taskCtx.getHumanTimer().sleep(300))
+                            .thenRun(this::complete)
                             .exceptionally(e -> {
                                 fail("Failed to press Escape: " + e.getMessage());
                                 return null;
@@ -843,11 +839,8 @@ public class TutorialIsland implements Quest {
                     @Override
                     protected void executeImpl(TaskContext taskCtx) {
                         taskCtx.getKeyboardController().pressEscape()
-                            .thenRun(() -> {
-                                // Small delay to let interface close
-                                try { Thread.sleep(300); } catch (InterruptedException ignored) {}
-                                complete();
-                            })
+                            .thenCompose(v -> taskCtx.getHumanTimer().sleep(300))  // Small delay to let interface close
+                            .thenRun(this::complete)
                             .exceptionally(e -> {
                                 fail("Failed to press Escape: " + e.getMessage());
                                 return null;

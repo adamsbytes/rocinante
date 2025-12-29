@@ -348,7 +348,8 @@ public class GearSwitcher {
         CompletableFuture.runAsync(() -> {
             try {
                 Thread.sleep(delayMs);
-            } catch (InterruptedException ignored) {
+            } catch (InterruptedException e) {
+                log.debug("Gear switch delay interrupted: {}", e.getMessage());
                 Thread.currentThread().interrupt();
             }
         }).thenCompose(v -> action.get())

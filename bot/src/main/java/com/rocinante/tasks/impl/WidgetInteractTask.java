@@ -162,7 +162,8 @@ public class WidgetInteractTask extends AbstractTask {
         CLICK,
         RIGHT_CLICK,
         HOVER,
-        DOUBLE_CLICK
+        DOUBLE_CLICK,
+        DRAG
     }
 
     // ========================================================================
@@ -258,6 +259,27 @@ public class WidgetInteractTask extends AbstractTask {
     @Getter
     @Setter
     private int tabIndex = -1;
+
+    /**
+     * Target widget group ID for DRAG action.
+     */
+    @Getter
+    @Setter
+    private int dragTargetGroupId = -1;
+
+    /**
+     * Target widget child ID for DRAG action.
+     */
+    @Getter
+    @Setter
+    private int dragTargetChildId = -1;
+
+    /**
+     * Target dynamic child index for DRAG action.
+     */
+    @Getter
+    @Setter
+    private int dragTargetDynamicChildIndex = -1;
 
     // ========================================================================
     // Execution State
@@ -591,6 +613,38 @@ public class WidgetInteractTask extends AbstractTask {
         return this;
     }
 
+    /**
+     * Set drag target widget (builder-style).
+     * Required for DRAG action.
+     *
+     * @param groupId target widget group ID
+     * @param childId target widget child ID
+     * @return this task for chaining
+     */
+    public WidgetInteractTask withDragTarget(int groupId, int childId) {
+        this.dragTargetGroupId = groupId;
+        this.dragTargetChildId = childId;
+        this.action = WidgetAction.DRAG;
+        return this;
+    }
+
+    /**
+     * Set drag target widget with dynamic child (builder-style).
+     * Required for DRAG action on dynamic children.
+     *
+     * @param groupId target widget group ID
+     * @param childId target widget child ID
+     * @param dynamicChildIndex target dynamic child index
+     * @return this task for chaining
+     */
+    public WidgetInteractTask withDragTarget(int groupId, int childId, int dynamicChildIndex) {
+        this.dragTargetGroupId = groupId;
+        this.dragTargetChildId = childId;
+        this.dragTargetDynamicChildIndex = dynamicChildIndex;
+        this.action = WidgetAction.DRAG;
+        return this;
+    }
+
     // ========================================================================
     // Task Implementation
     // ========================================================================
@@ -876,6 +930,8 @@ public class WidgetInteractTask extends AbstractTask {
                             .thenCompose(v2 -> ctx.getMouseController().click());
                 case HOVER:
                     return CompletableFuture.completedFuture(null);
+                case DRAG:
+                    return performDrag(ctx, bounds);
                 default:
                     return ctx.getMouseController().click();
             }
@@ -893,6 +949,49 @@ public class WidgetInteractTask extends AbstractTask {
             fail("Click failed: " + e.getMessage());
             return null;
         });
+    }
+
+    /**
+     * Perform a drag operation from current widget to target widget.
+     */
+    private CompletableFuture<Void> performDrag(TaskContext ctx, Rectangle sourceBounds) {
+        // Find target widget
+        if (dragTargetGroupId < 0) {
+            log.error("DRAG action requires dragTargetGroupId to be set");
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException("DRAG action requires drag target widget"));
+        }
+
+        Client client = ctx.getClient();
+        Widget targetWidget = client.getWidget(dragTargetGroupId, dragTargetChildId);
+
+        // Handle dynamic children for target
+        if (targetWidget != null && dragTargetDynamicChildIndex >= 0) {
+            Widget[] children = targetWidget.getDynamicChildren();
+            if (children != null && dragTargetDynamicChildIndex < children.length) {
+                targetWidget = children[dragTargetDynamicChildIndex];
+            }
+        }
+
+        if (targetWidget == null || targetWidget.isHidden()) {
+            log.error("Drag target widget {}:{} not found or hidden", 
+                    dragTargetGroupId, dragTargetChildId);
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException("Drag target widget not found"));
+        }
+
+        Rectangle targetBounds = targetWidget.getBounds();
+        if (targetBounds == null || targetBounds.width == 0 || targetBounds.height == 0) {
+            log.error("Drag target widget has invalid bounds");
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException("Drag target has no bounds"));
+        }
+
+        log.debug("Performing drag from {}:{} to {}:{}", 
+                widgetGroupId, widgetChildId, dragTargetGroupId, dragTargetChildId);
+
+        // Use the drag method from RobotMouseController
+        return ctx.getMouseController().drag(sourceBounds, targetBounds);
     }
 
     private void performKeyPress(TaskContext ctx) {

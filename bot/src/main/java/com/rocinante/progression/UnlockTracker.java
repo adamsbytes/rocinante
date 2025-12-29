@@ -924,9 +924,9 @@ public class UnlockTracker {
             return true;
         }
 
-        // GE access - requires completion of tutorial
+        // GE access - requires completion of Tutorial Island
         if (upper.equals("GRAND_EXCHANGE")) {
-            return true; // Would need to check tutorial completion
+            return isTutorialComplete();
         }
 
         // Blast furnace - requires 60 Smithing or payment
@@ -1224,6 +1224,68 @@ public class UnlockTracker {
     // ========================================================================
     // Respawn Point (Home Teleport Destination) Tracking
     // ========================================================================
+
+    // ========================================================================
+    // Tutorial Island Completion
+    // ========================================================================
+
+    // Tutorial Island region IDs for fallback check
+    private static final Set<Integer> TUTORIAL_ISLAND_REGIONS = Set.of(
+            12336, 12335, 12592, 12080, 12079, 12436
+    );
+
+    /**
+     * Check if Tutorial Island has been completed.
+     * 
+     * <p>Uses Quest.TUTORIAL_ISLAND state to check completion.
+     * Falls back to checking if player is NOT on Tutorial Island if 
+     * quest state check fails.
+     *
+     * @return true if tutorial is complete (not a new account)
+     */
+    public boolean isTutorialComplete() {
+        try {
+            // Primary method: Check Quest.TUTORIAL_ISLAND state
+            QuestState tutorialState = Quest.TUTORIAL_ISLAND.getState(client);
+            if (tutorialState == QuestState.FINISHED) {
+                return true;
+            }
+            
+            // If quest state is IN_PROGRESS, tutorial is not complete
+            if (tutorialState == QuestState.IN_PROGRESS) {
+                return false;
+            }
+            
+            // NOT_STARTED could mean either:
+            // 1. Old account created before tutorial was tracked as a quest
+            // 2. Account that somehow skipped tutorial
+            // Fall back to region check
+            return !isOnTutorialIsland();
+        } catch (Exception e) {
+            log.debug("Error checking tutorial completion via quest: {}", e.getMessage());
+            // Fall back to region check - if not on Tutorial Island, assume complete
+            return !isOnTutorialIsland();
+        }
+    }
+
+    /**
+     * Check if the player is currently on Tutorial Island.
+     *
+     * @return true if player is on Tutorial Island
+     */
+    public boolean isOnTutorialIsland() {
+        try {
+            net.runelite.api.Player player = client.getLocalPlayer();
+            if (player == null || player.getWorldLocation() == null) {
+                return false;
+            }
+            int regionId = player.getWorldLocation().getRegionID();
+            return TUTORIAL_ISLAND_REGIONS.contains(regionId);
+        } catch (Exception e) {
+            log.debug("Error checking Tutorial Island region: {}", e.getMessage());
+            return false;
+        }
+    }
 
     /**
      * Get the player's currently active respawn point.

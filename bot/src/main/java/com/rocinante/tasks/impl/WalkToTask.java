@@ -1260,7 +1260,9 @@ public class WalkToTask extends AbstractTask {
                         executeWalkEdge(edge, playerPos);
                         return;
                     }
-                } catch (IllegalArgumentException ignored) {}
+                } catch (IllegalArgumentException e) {
+                    log.debug("Unknown quest enum for free toll passage: {} - {}", freeQuest, e.getMessage());
+                }
             }
         }
 

@@ -205,7 +205,10 @@ public class UnifiedNavigationGraph {
                 if (metaObjectId != null) {
                     try {
                         objectId = Integer.parseInt(metaObjectId);
-                    } catch (NumberFormatException ignored) {}
+                    } catch (NumberFormatException e) {
+                        log.debug("Invalid stair_object_id metadata '{}' for node {}: {}", 
+                                metaObjectId, node.getId(), e.getMessage());
+                    }
                 }
 
                 NavigationEdge transitionEdge = NavigationEdge.builder()

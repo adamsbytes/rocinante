@@ -320,15 +320,37 @@ public class CombatState {
 
     /**
      * Check if a combat stat is drained (below base level).
-     * Would need base level to determine this accurately.
+     * 
+     * <p>Note: This method only checks the boosted stats stored in CombatState.
+     * For accurate comparison against base levels, use 
+     * {@link PlayerState#isSkillDrained(Skill)} instead, which compares 
+     * boosted levels against base (real) skill levels.
      *
      * @param skill the skill to check
-     * @return true if the stat appears drained
+     * @param baseLevel the base (real) level to compare against
+     * @return true if the boosted level is below the base level
      */
-    public boolean isStatDrained(Skill skill) {
-        // This is a rough check - we'd need base level for accuracy
+    public boolean isStatDrained(Skill skill, int baseLevel) {
         int boosted = getBoostedLevel(skill);
-        return boosted >= 0 && boosted < 10; // Very rough heuristic
+        return boosted >= 0 && boosted < baseLevel;
+    }
+
+    /**
+     * Check if a combat stat is drained.
+     * 
+     * @deprecated Use {@link #isStatDrained(Skill, int)} with base level, 
+     *             or use {@link PlayerState#isSkillDrained(Skill)} for accurate checks.
+     * @param skill the skill to check
+     * @return true if the boosted level is significantly below normal
+     */
+    @Deprecated
+    public boolean isStatDrained(Skill skill) {
+        // Legacy fallback - compare against stored boosted level only
+        // This is unreliable; callers should use PlayerState.isSkillDrained() instead
+        int boosted = getBoostedLevel(skill);
+        // Estimate: if boosted is below 90% of a reasonable minimum, consider drained
+        // This is a heuristic for backwards compatibility only
+        return boosted >= 0 && boosted < 10; 
     }
 
     // ========================================================================

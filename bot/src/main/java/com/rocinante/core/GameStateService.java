@@ -1431,6 +1431,16 @@ public class GameStateService {
         int homeTeleportCooldown = calculateTeleportCooldown(VARP_LAST_HOME_TELEPORT, HOME_TELEPORT_COOLDOWN_MINUTES);
         int minigameTeleportCooldown = calculateTeleportCooldown(VARP_LAST_MINIGAME_TELEPORT, MINIGAME_TELEPORT_COOLDOWN_MINUTES);
 
+        // Skill levels - build maps for all skills
+        java.util.Map<Skill, Integer> baseSkillLevels = new java.util.EnumMap<>(Skill.class);
+        java.util.Map<Skill, Integer> boostedSkillLevels = new java.util.EnumMap<>(Skill.class);
+        for (Skill skill : Skill.values()) {
+            if (skill != Skill.OVERALL) { // Skip the aggregate "Overall" skill
+                baseSkillLevels.put(skill, client.getRealSkillLevel(skill));
+                boostedSkillLevels.put(skill, client.getBoostedSkillLevel(skill));
+            }
+        }
+
         return PlayerState.builder()
                 .worldPosition(worldPos)
                 .localPosition(localPos)
@@ -1450,6 +1460,8 @@ public class GameStateService {
                 .spellbook(spellbook)
                 .homeTeleportCooldownSeconds(homeTeleportCooldown)
                 .minigameTeleportCooldownSeconds(minigameTeleportCooldown)
+                .baseSkillLevels(java.util.Collections.unmodifiableMap(baseSkillLevels))
+                .boostedSkillLevels(java.util.Collections.unmodifiableMap(boostedSkillLevels))
                 .build();
     }
 

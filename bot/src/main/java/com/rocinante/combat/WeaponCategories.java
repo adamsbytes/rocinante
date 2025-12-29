@@ -144,5 +144,66 @@ public final class WeaponCategories {
     public static boolean isAmmo(int itemId) {
         return itemId > 0 && AMMO_IDS.contains(itemId);
     }
+
+    /**
+     * Check if an item is any type of weapon (melee, ranged, or magic).
+     *
+     * @param itemId the item ID to check
+     * @return true if it's a weapon
+     */
+    public static boolean isWeapon(int itemId) {
+        return isRangedWeapon(itemId) || isMagicWeapon(itemId) || isMeleeWeapon(itemId);
+    }
+
+    /**
+     * Check if an item ID is a melee weapon.
+     * This is a subset of known melee weapons - not exhaustive.
+     *
+     * @param itemId the item ID to check
+     * @return true if it's a melee weapon
+     */
+    public static boolean isMeleeWeapon(int itemId) {
+        return itemId > 0 && MELEE_WEAPONS.contains(itemId);
+    }
+
+    /**
+     * Common melee weapons by item ID.
+     * This covers popular melee weapons but is not exhaustive.
+     */
+    public static final Set<Integer> MELEE_WEAPONS = Set.of(
+            // Swords
+            net.runelite.api.ItemID.BRONZE_SWORD, net.runelite.api.ItemID.IRON_SWORD,
+            net.runelite.api.ItemID.STEEL_SWORD, net.runelite.api.ItemID.BLACK_SWORD,
+            net.runelite.api.ItemID.MITHRIL_SWORD, net.runelite.api.ItemID.ADAMANT_SWORD,
+            net.runelite.api.ItemID.RUNE_SWORD, net.runelite.api.ItemID.DRAGON_SWORD,
+            
+            // Scimitars
+            net.runelite.api.ItemID.BRONZE_SCIMITAR, net.runelite.api.ItemID.IRON_SCIMITAR,
+            net.runelite.api.ItemID.STEEL_SCIMITAR, net.runelite.api.ItemID.BLACK_SCIMITAR,
+            net.runelite.api.ItemID.MITHRIL_SCIMITAR, net.runelite.api.ItemID.ADAMANT_SCIMITAR,
+            net.runelite.api.ItemID.RUNE_SCIMITAR, net.runelite.api.ItemID.DRAGON_SCIMITAR,
+            
+            // Longswords
+            net.runelite.api.ItemID.BRONZE_LONGSWORD, net.runelite.api.ItemID.IRON_LONGSWORD,
+            net.runelite.api.ItemID.STEEL_LONGSWORD, net.runelite.api.ItemID.BLACK_LONGSWORD,
+            net.runelite.api.ItemID.MITHRIL_LONGSWORD, net.runelite.api.ItemID.ADAMANT_LONGSWORD,
+            net.runelite.api.ItemID.RUNE_LONGSWORD, net.runelite.api.ItemID.DRAGON_LONGSWORD,
+            
+            // 2H swords
+            net.runelite.api.ItemID.BRONZE_2H_SWORD, net.runelite.api.ItemID.IRON_2H_SWORD,
+            net.runelite.api.ItemID.STEEL_2H_SWORD, net.runelite.api.ItemID.BLACK_2H_SWORD,
+            net.runelite.api.ItemID.MITHRIL_2H_SWORD, net.runelite.api.ItemID.ADAMANT_2H_SWORD,
+            net.runelite.api.ItemID.RUNE_2H_SWORD, net.runelite.api.ItemID.DRAGON_2H_SWORD,
+            
+            // Special weapons
+            net.runelite.api.ItemID.ABYSSAL_WHIP, net.runelite.api.ItemID.ABYSSAL_TENTACLE,
+            net.runelite.api.ItemID.BLADE_OF_SAELDOR, net.runelite.api.ItemID.GHRAZI_RAPIER,
+            net.runelite.api.ItemID.INQUISITORS_MACE, net.runelite.api.ItemID.OSMUMTENS_FANG,
+            net.runelite.api.ItemID.DRAGON_DAGGER, net.runelite.api.ItemID.DRAGON_DAGGERP,
+            net.runelite.api.ItemID.DRAGON_CLAWS, net.runelite.api.ItemID.DRAGON_MACE,
+            net.runelite.api.ItemID.SARADOMIN_SWORD, net.runelite.api.ItemID.ZAMORAKIAN_SPEAR,
+            net.runelite.api.ItemID.GUTHANS_WARSPEAR, net.runelite.api.ItemID.TORAGS_HAMMERS,
+            net.runelite.api.ItemID.DHAROKS_GREATAXE, net.runelite.api.ItemID.VERACS_FLAIL
+    );
 }
 

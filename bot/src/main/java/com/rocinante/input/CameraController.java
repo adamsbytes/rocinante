@@ -482,7 +482,9 @@ public class CameraController {
                 try {
                     // Ensure key is released on error
                     robot.keyRelease(direction.getKeyCode());
-                } catch (Exception ignored) {}
+                } catch (Exception releaseEx) {
+                    log.debug("Failed to release key during camera hold error cleanup: {}", releaseEx.getMessage());
+                }
                 log.error("Camera hold failed", e);
                 future.completeExceptionally(e);
             }
@@ -532,7 +534,9 @@ public class CameraController {
             if (preference != null) {
                 try {
                     return HoldSpeed.valueOf(preference);
-                } catch (IllegalArgumentException ignored) {}
+                } catch (IllegalArgumentException e) {
+                    log.debug("Invalid camera hold speed preference '{}': {}", preference, e.getMessage());
+                }
             }
         }
         // Default to medium
@@ -588,7 +592,9 @@ public class CameraController {
                 // ALWAYS release the key even on exception to prevent stuck keys
                 try {
                     robot.keyRelease(direction.getKeyCode());
-                } catch (Exception ignored) {}
+                } catch (Exception releaseEx) {
+                    log.debug("Failed to release camera key in cleanup: {}", releaseEx.getMessage());
+                }
                 rotating = false;
             }
         });
@@ -662,7 +668,9 @@ public class CameraController {
                 try {
                     robot.keyRelease(KeyEvent.VK_LEFT);
                     robot.keyRelease(KeyEvent.VK_RIGHT);
-                } catch (Exception ignored) {}
+                } catch (Exception releaseEx) {
+                    log.debug("Failed to release camera keys during 360 look-around error cleanup: {}", releaseEx.getMessage());
+                }
                 log.error("360 look-around failed", e);
                 future.completeExceptionally(e);
             }
@@ -799,19 +807,27 @@ public class CameraController {
     public void releaseAllKeys() {
         try {
             robot.keyRelease(KeyEvent.VK_LEFT);
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            log.debug("Failed to release VK_LEFT: {}", e.getMessage());
+        }
         try {
             robot.keyRelease(KeyEvent.VK_RIGHT);
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            log.debug("Failed to release VK_RIGHT: {}", e.getMessage());
+        }
         try {
             robot.keyRelease(KeyEvent.VK_UP);
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            log.debug("Failed to release VK_UP: {}", e.getMessage());
+        }
         try {
             robot.keyRelease(KeyEvent.VK_DOWN);
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            log.debug("Failed to release VK_DOWN: {}", e.getMessage());
+        }
         
         rotating = false;
-        log.trace("Released all camera control keys");
+        log.debug("Released all camera control keys");
     }
 
     /**

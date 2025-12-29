@@ -161,8 +161,9 @@ public class WidgetQuestStep extends QuestStep {
                 widgetTask.withAction(WidgetInteractTask.WidgetAction.HOVER);
                 break;
             case DRAG:
-                // Drag not yet implemented in WidgetInteractTask
-                widgetTask.withAction(WidgetInteractTask.WidgetAction.CLICK);
+                widgetTask.withAction(WidgetInteractTask.WidgetAction.DRAG);
+                // Note: Drag target must be set via setDragTargetGroupId/setDragTargetChildId
+                // If not set, the task will fail with a clear error message
                 break;
             case TYPE:
                 // Typing handled separately

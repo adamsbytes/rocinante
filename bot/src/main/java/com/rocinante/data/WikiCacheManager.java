@@ -464,7 +464,8 @@ public class WikiCacheManager {
             // Delete corrupted file
             try {
                 Files.deleteIfExists(filePath);
-            } catch (IOException ignored) {
+            } catch (IOException deleteEx) {
+                log.debug("Failed to delete corrupted cache file {}: {}", filePath, deleteEx.getMessage());
             }
             return Optional.empty();
         }

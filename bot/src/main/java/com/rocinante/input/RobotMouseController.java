@@ -1015,6 +1015,303 @@ public class RobotMouseController {
     }
 
     // ========================================================================
+    // Scroll Methods
+    // ========================================================================
+
+    // Scroll timing constants - humanized scroll behavior
+    private static final int MIN_SCROLL_DELAY_MS = 30;
+    private static final int MAX_SCROLL_DELAY_MS = 80;
+    private static final double SCROLL_SPEED_VARIANCE = 0.3; // ±30% speed variance
+    private static final double SCROLL_PAUSE_PROBABILITY = 0.15; // 15% chance of brief pause mid-scroll
+    private static final int MIN_SCROLL_PAUSE_MS = 50;
+    private static final int MAX_SCROLL_PAUSE_MS = 150;
+
+    /**
+     * Scroll the mouse wheel with humanized timing.
+     * Positive amount scrolls down, negative scrolls up.
+     *
+     * <p>Humanization features:
+     * <ul>
+     *   <li>Variable delay between scroll ticks (30-80ms)</li>
+     *   <li>Speed variance per scroll session (±30%)</li>
+     *   <li>Occasional brief pauses mid-scroll (15% chance)</li>
+     *   <li>Slight acceleration/deceleration pattern</li>
+     * </ul>
+     *
+     * @param amount number of scroll notches (positive = down, negative = up)
+     * @return CompletableFuture that completes when scroll is done
+     */
+    public CompletableFuture<Void> scroll(int amount) {
+        if (amount == 0) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        CompletableFuture<Void> future = new CompletableFuture<>();
+
+        executor.execute(() -> {
+            try {
+                executeScroll(amount);
+                future.complete(null);
+            } catch (Exception e) {
+                log.error("Scroll failed", e);
+                future.completeExceptionally(e);
+            }
+        });
+
+        return future;
+    }
+
+    /**
+     * Execute humanized scroll with variable timing.
+     */
+    private void executeScroll(int amount) throws InterruptedException {
+        int direction = amount > 0 ? 1 : -1;
+        int remaining = Math.abs(amount);
+
+        // Generate session-specific speed multiplier for consistency
+        double speedMultiplier = 1.0 + randomization.uniformRandom(-SCROLL_SPEED_VARIANCE, SCROLL_SPEED_VARIANCE);
+
+        log.trace("Scrolling {} notches with speed multiplier {}", amount, speedMultiplier);
+
+        int scrolled = 0;
+        while (scrolled < remaining) {
+            // Calculate delay with acceleration curve (faster in middle)
+            double progress = (double) scrolled / remaining;
+            double accelerationFactor = 1.0 - 0.3 * Math.sin(progress * Math.PI); // Slower at start/end
+
+            int baseDelay = randomization.uniformRandomInt(MIN_SCROLL_DELAY_MS, MAX_SCROLL_DELAY_MS);
+            int delay = (int) (baseDelay * speedMultiplier * accelerationFactor);
+
+            // Perform single scroll tick
+            robot.mouseWheel(direction);
+            scrolled++;
+
+            // Apply delay between ticks (not after last one)
+            if (scrolled < remaining) {
+                Thread.sleep(delay);
+
+                // Occasional pause mid-scroll (simulates human hesitation)
+                if (randomization.chance(SCROLL_PAUSE_PROBABILITY)) {
+                    int pauseDuration = randomization.uniformRandomInt(MIN_SCROLL_PAUSE_MS, MAX_SCROLL_PAUSE_MS);
+                    log.trace("Scroll pause for {}ms at notch {}/{}", pauseDuration, scrolled, remaining);
+                    Thread.sleep(pauseDuration);
+                }
+            }
+        }
+
+        log.trace("Scroll completed: {} notches", amount);
+    }
+
+    /**
+     * Scroll to make an element visible (convenience method).
+     * Scrolls in the specified direction until condition is met or max scrolls reached.
+     *
+     * @param direction positive = down, negative = up
+     * @param maxScrolls maximum scroll attempts
+     * @return CompletableFuture with number of scrolls performed
+     */
+    public CompletableFuture<Integer> scrollUntil(int direction, int maxScrolls, java.util.function.BooleanSupplier condition) {
+        CompletableFuture<Integer> future = new CompletableFuture<>();
+
+        executor.execute(() -> {
+            try {
+                int scrolled = 0;
+                int scrollDir = direction > 0 ? 1 : -1;
+
+                while (scrolled < maxScrolls && !condition.getAsBoolean()) {
+                    executeScroll(scrollDir);
+                    scrolled++;
+                    // Brief delay to let UI update
+                    Thread.sleep(100);
+                }
+
+                future.complete(scrolled);
+            } catch (Exception e) {
+                future.completeExceptionally(e);
+            }
+        });
+
+        return future;
+    }
+
+    // ========================================================================
+    // Drag Methods
+    // ========================================================================
+
+    // Drag timing constants
+    private static final long MIN_DRAG_HOLD_BEFORE_MOVE_MS = 50;
+    private static final long MAX_DRAG_HOLD_BEFORE_MOVE_MS = 120;
+    private static final long MIN_DRAG_HOLD_AFTER_MOVE_MS = 30;
+    private static final long MAX_DRAG_HOLD_AFTER_MOVE_MS = 80;
+    private static final double DRAG_WOBBLE_AMPLITUDE = 2.0; // Slight wobble during drag
+
+    /**
+     * Perform a humanized drag operation from current position to target.
+     *
+     * <p>Humanization features:
+     * <ul>
+     *   <li>Brief hold after mouse down before moving (50-120ms)</li>
+     *   <li>Bezier curve movement with slight wobble</li>
+     *   <li>Slower movement than regular moves (more deliberate)</li>
+     *   <li>Brief hold before mouse up (30-80ms)</li>
+     * </ul>
+     *
+     * @param targetX target X in canvas coordinates
+     * @param targetY target Y in canvas coordinates
+     * @return CompletableFuture that completes when drag is done
+     */
+    public CompletableFuture<Void> dragToCanvas(int targetX, int targetY) {
+        ScreenPoint screen = canvasToScreen(new CanvasPoint(targetX, targetY));
+        return dragToScreen(screen.getX(), screen.getY());
+    }
+
+    /**
+     * Perform a humanized drag from one point to another.
+     *
+     * @param from starting point (canvas coordinates)
+     * @param to ending point (canvas coordinates)
+     * @return CompletableFuture that completes when drag is done
+     */
+    public CompletableFuture<Void> drag(Point from, Point to) {
+        // First move to start position, then drag
+        return moveToCanvas(from.x, from.y)
+                .thenCompose(v -> dragToCanvas(to.x, to.y));
+    }
+
+    /**
+     * Perform a humanized drag from one rectangle center to another.
+     *
+     * @param fromHitbox source hitbox (canvas coordinates)
+     * @param toHitbox destination hitbox (canvas coordinates)
+     * @return CompletableFuture that completes when drag is done
+     */
+    public CompletableFuture<Void> drag(Rectangle fromHitbox, Rectangle toHitbox) {
+        // Generate humanized click positions within hitboxes
+        int[] fromPos = generateClickPosition(canvasToScreen(fromHitbox));
+        int[] toPos = generateClickPosition(canvasToScreen(toHitbox));
+
+        return moveToScreen(fromPos[0], fromPos[1])
+                .thenCompose(v -> dragToScreen(toPos[0], toPos[1]));
+    }
+
+    /**
+     * Perform drag to screen coordinates from current position.
+     */
+    private CompletableFuture<Void> dragToScreen(int screenX, int screenY) {
+        // Validate target is within viewport
+        if (!isPointInViewport(screenX, screenY)) {
+            log.error("Drag target ({}, {}) is outside viewport", screenX, screenY);
+            return CompletableFuture.failedFuture(
+                    new IllegalArgumentException("Drag target outside viewport"));
+        }
+
+        CompletableFuture<Void> future = new CompletableFuture<>();
+
+        executor.execute(() -> {
+            try {
+                executeDrag(screenX, screenY);
+                future.complete(null);
+            } catch (Exception e) {
+                log.error("Drag failed", e);
+                future.completeExceptionally(e);
+            }
+        });
+
+        return future;
+    }
+
+    /**
+     * Execute the humanized drag operation.
+     */
+    private void executeDrag(int targetX, int targetY) throws InterruptedException {
+        Point start = currentPosition;
+        Point target = new Point(targetX, targetY);
+        double distance = start.distance(target);
+
+        log.trace("Executing drag from ({}, {}) to ({}, {}), distance={}", 
+                start.x, start.y, targetX, targetY, distance);
+
+        // Press mouse button
+        robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
+
+        // Brief hold before moving (human hesitation)
+        long holdBeforeMove = randomization.uniformRandomLong(
+                MIN_DRAG_HOLD_BEFORE_MOVE_MS, MAX_DRAG_HOLD_BEFORE_MOVE_MS);
+        Thread.sleep(holdBeforeMove);
+
+        // Execute drag movement (slower than normal movement)
+        executeDragMovement(target, distance);
+
+        // Brief hold before releasing (human confirmation)
+        long holdAfterMove = randomization.uniformRandomLong(
+                MIN_DRAG_HOLD_AFTER_MOVE_MS, MAX_DRAG_HOLD_AFTER_MOVE_MS);
+        Thread.sleep(holdAfterMove);
+
+        // Release mouse button
+        robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
+
+        log.trace("Drag completed");
+    }
+
+    /**
+     * Execute the movement portion of a drag (slower, with wobble).
+     */
+    private void executeDragMovement(Point target, double distance) throws InterruptedException {
+        isMoving = true;
+        movementSeed = System.nanoTime();
+
+        Point start = currentPosition;
+
+        if (distance < 1) {
+            isMoving = false;
+            return;
+        }
+
+        // Generate control points (same as normal movement)
+        List<Point> controlPoints = generateControlPoints(start, target, distance);
+
+        // Drag movement is slower (1.5x duration)
+        long baseDuration = calculateMovementDuration(distance);
+        long duration = (long) (baseDuration * 1.5);
+        duration = Math.min(duration, MAX_DURATION_MS * 2); // Allow longer for drags
+
+        // Execute movement with slight wobble
+        long startTime = System.currentTimeMillis();
+        long elapsed = 0;
+
+        while (elapsed < duration) {
+            double t = (double) elapsed / duration;
+            double adjustedT = sigmoidProgress(t);
+
+            // Calculate point on curve
+            Point bezierPoint = evaluateBezier(controlPoints, adjustedT);
+
+            // Add slight wobble (less than normal noise, simulates hand tremor during drag)
+            double wobbleX = Math.sin(t * Math.PI * 4) * DRAG_WOBBLE_AMPLITUDE;
+            double wobbleY = Math.cos(t * Math.PI * 3) * DRAG_WOBBLE_AMPLITUDE * 0.7;
+
+            int x = bezierPoint.x + (int) Math.round(wobbleX);
+            int y = bezierPoint.y + (int) Math.round(wobbleY);
+
+            // Clamp to viewport
+            Point clamped = clampToViewport(x, y);
+
+            robot.mouseMove(clamped.x, clamped.y);
+            currentPosition = clamped;
+
+            Thread.sleep(NOISE_SAMPLE_INTERVAL_MS);
+            elapsed = System.currentTimeMillis() - startTime;
+        }
+
+        // Final position
+        robot.mouseMove(target.x, target.y);
+        currentPosition = target;
+
+        lastMovementTime = System.currentTimeMillis();
+        isMoving = false;
+    }
+
+    // ========================================================================
     // Idle Behavior Methods
     // ========================================================================
 
