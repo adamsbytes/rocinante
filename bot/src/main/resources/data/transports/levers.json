@@ -1,0 +1,151 @@
+{
+  "_comment": "Lever transportation system - Ardougne, Edgeville, and Wilderness Deserted Keep",
+  "_notes": "All levers teleport instantly, one-way unless pulled again. Wilderness lever is dangerous.",
+  "nodes": [
+    {
+      "id": "lever_ardougne",
+      "name": "Lever - Ardougne (West)",
+      "x": 2561,
+      "y": 3311,
+      "plane": 0,
+      "type": "TRANSPORT",
+      "tags": ["kandarin", "ardougne", "lever", "members", "safe"],
+      "metadata": {"travel_type": "lever", "object_id": "1814"}
+    },
+    {
+      "id": "lever_edgeville",
+      "name": "Lever - Edgeville (Ruins)",
+      "x": 3090,
+      "y": 3475,
+      "plane": 0,
+      "type": "TRANSPORT",
+      "tags": ["misthalin", "edgeville", "lever", "members", "safe"],
+      "metadata": {"travel_type": "lever", "object_id": "1816"}
+    },
+    {
+      "id": "lever_wilderness",
+      "name": "Lever - Deserted Keep (Wilderness)",
+      "x": 3153,
+      "y": 3923,
+      "plane": 0,
+      "type": "TRANSPORT",
+      "tags": ["wilderness", "lever", "members", "dangerous"],
+      "metadata": {"travel_type": "lever", "object_id": "1815", "wilderness": "true", "wilderness_level": "52"}
+    },
+    {
+      "id": "lever_kbd_entrance",
+      "name": "Lever - KBD Lair Entrance (Wilderness)",
+      "x": 3067,
+      "y": 10253,
+      "plane": 0,
+      "type": "TRANSPORT",
+      "tags": ["wilderness", "lever", "members", "dangerous"],
+      "metadata": {"travel_type": "lever", "object_id": "1816", "wilderness": "true", "wilderness_level": "42"}
+    },
+    {
+      "id": "lever_kbd_lair",
+      "name": "Lever - KBD Lair (Inside)",
+      "x": 2273,
+      "y": 4681,
+      "plane": 0,
+      "type": "TRANSPORT",
+      "tags": ["kbd", "lever", "members", "safe"],
+      "metadata": {"travel_type": "lever", "object_id": "1817", "instance": "true"}
+    },
+    {
+      "id": "lever_mage_arena_entrance",
+      "name": "Lever - Mage Arena Entrance (Wilderness)",
+      "x": 3104,
+      "y": 3956,
+      "plane": 0,
+      "type": "TRANSPORT",
+      "tags": ["wilderness", "lever", "members", "dangerous"],
+      "metadata": {"travel_type": "lever", "object_id": "5959", "wilderness": "true", "wilderness_level": "55"}
+    },
+    {
+      "id": "lever_mage_arena_inside",
+      "name": "Lever - Mage Arena (Inside)",
+      "x": 3105,
+      "y": 3951,
+      "plane": 0,
+      "type": "TRANSPORT",
+      "tags": ["mage_arena", "lever", "members", "safe"],
+      "metadata": {"travel_type": "lever", "instance": "true"}
+    }
+  ],
+  "edges": [
+    {
+      "from": "lever_ardougne",
+      "to": "lever_wilderness",
+      "type": "TRANSPORT",
+      "cost_ticks": 4,
+      "bidirectional": false,
+      "requirements": [],
+      "metadata": {"travel_type": "lever", "action": "Pull", "warning": "Teleports to level 52 Wilderness"}
+    },
+    {
+      "from": "lever_edgeville",
+      "to": "lever_wilderness",
+      "type": "TRANSPORT",
+      "cost_ticks": 4,
+      "bidirectional": false,
+      "requirements": [],
+      "metadata": {"travel_type": "lever", "action": "Pull", "warning": "Teleports to level 52 Wilderness"}
+    },
+    {
+      "from": "lever_wilderness",
+      "to": "lever_ardougne",
+      "type": "TRANSPORT",
+      "cost_ticks": 4,
+      "bidirectional": false,
+      "requirements": [],
+      "metadata": {"travel_type": "lever", "action": "Pull"}
+    },
+    {
+      "from": "lever_wilderness",
+      "to": "lever_edgeville",
+      "type": "TRANSPORT",
+      "cost_ticks": 4,
+      "bidirectional": false,
+      "requirements": [],
+      "metadata": {"travel_type": "lever", "action": "Pull"}
+    },
+    {
+      "from": "lever_kbd_entrance",
+      "to": "lever_kbd_lair",
+      "type": "TRANSPORT",
+      "cost_ticks": 4,
+      "bidirectional": false,
+      "requirements": [],
+      "metadata": {"travel_type": "lever", "action": "Pull"}
+    },
+    {
+      "from": "lever_kbd_lair",
+      "to": "lever_kbd_entrance",
+      "type": "TRANSPORT",
+      "cost_ticks": 4,
+      "bidirectional": false,
+      "requirements": [],
+      "metadata": {"travel_type": "lever", "action": "Pull", "warning": "Exits to level 42 Wilderness"}
+    },
+    {
+      "from": "lever_mage_arena_entrance",
+      "to": "lever_mage_arena_inside",
+      "type": "TRANSPORT",
+      "cost_ticks": 4,
+      "bidirectional": false,
+      "requirements": [],
+      "metadata": {"travel_type": "lever", "action": "Pull"}
+    },
+    {
+      "from": "lever_mage_arena_inside",
+      "to": "lever_mage_arena_entrance",
+      "type": "TRANSPORT",
+      "cost_ticks": 4,
+      "bidirectional": false,
+      "requirements": [],
+      "metadata": {"travel_type": "lever", "action": "Pull", "warning": "Exits to level 55 Wilderness"}
+    }
+  ]
+}
+

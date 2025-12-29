@@ -286,7 +286,7 @@
     {
       "from": "tut_mining_entrance",
       "to": "tut_mining_area",
-      "type": "CLIMB",
+      "type": "STAIRS",
       "costTicks": 5,
       "bidirectional": true,
       "metadata": {"action": "climb-down ladder"}
@@ -308,7 +308,7 @@
     {
       "from": "tut_combat_area",
       "to": "tut_prayer_outside",
-      "type": "CLIMB",
+      "type": "STAIRS",
       "costTicks": 5,
       "bidirectional": true,
       "metadata": {"action": "climb-up ladder"}

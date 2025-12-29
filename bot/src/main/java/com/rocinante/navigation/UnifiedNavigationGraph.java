@@ -20,6 +20,7 @@ import java.util.stream.Collectors;
  *   <li>Agility shortcuts from web.json edge definitions</li>
  *   <li>Toll gates from web.json edge definitions</li>
  *   <li>Teleports and transports from web.json</li>
+ *   <li>FREE_TELEPORT edges (home teleports, grouping teleports) available from any location</li>
  * </ul>
  *
  * <p>Key features:
@@ -28,11 +29,25 @@ import java.util.stream.Collectors;
  *   <li>Requirement filtering - edges filtered by player skills, quests, items</li>
  *   <li>Risk-aware routing - avoids shortcuts with high failure rates</li>
  *   <li>Dynamic cost adjustment based on player state</li>
+ *   <li>Virtual "any_location" node for teleports usable from anywhere</li>
  * </ul>
+ * 
+ * <h3>Architecture Note: "any_location" Virtual Node</h3>
+ * <p>Some edges (like home teleports and grouping teleports) can be used from any location.
+ * These are represented as edges from the virtual node ID "any_location". Since there's no
+ * physical node for "any_location", these edges are stored separately and injected into
+ * every {@link #getTraversableEdges} query. This allows Dijkstra's algorithm to consider
+ * these teleports as potential paths from any node in the graph.
  */
 @Slf4j
 @Singleton
 public class UnifiedNavigationGraph {
+
+    /**
+     * Virtual node ID representing "any location" for FREE_TELEPORT edges.
+     * Edges from this node can be traversed from anywhere in the game world.
+     */
+    public static final String ANY_LOCATION_NODE_ID = "any_location";
 
     /**
      * The underlying web data.
@@ -60,6 +75,12 @@ public class UnifiedNavigationGraph {
      */
     @Getter
     private final List<NavigationEdge> allEdges = new ArrayList<>();
+
+    /**
+     * Edges from the virtual "any_location" node (FREE_TELEPORT edges).
+     * These edges are available from any node in the graph.
+     */
+    private final List<NavigationEdge> anyLocationEdges = new ArrayList<>();
 
     /**
      * Dynamic nodes created for plane transitions (not in web.json).
@@ -111,21 +132,44 @@ public class UnifiedNavigationGraph {
             addPlaneTransitionEdges();
         }
 
-        log.info("UnifiedNavigationGraph built: {} nodes, {} edges",
-                allNodes.size(), allEdges.size());
+        log.info("UnifiedNavigationGraph built: {} nodes, {} edges ({} any_location edges for FREE_TELEPORT)",
+                allNodes.size(), allEdges.size(), anyLocationEdges.size());
     }
 
     /**
      * Convert a WebEdge to a NavigationEdge.
+     * 
+     * <p>Handles special cases:
+     * <ul>
+     *   <li>"any_location" as from node - creates edge with null fromLocation (FREE_TELEPORT)</li>
+     *   <li>Unknown nodes - logs warning and returns null</li>
+     * </ul>
      */
     @Nullable
     private NavigationEdge convertWebEdge(WebEdge webEdge) {
-        WebNode fromNode = webData.getNode(webEdge.getFrom());
-        WebNode toNode = webData.getNode(webEdge.getTo());
+        String fromId = webEdge.getFrom();
+        String toId = webEdge.getTo();
+        
+        // Handle "any_location" edges (FREE_TELEPORT - home teleports, grouping teleports)
+        // These edges can be traversed from anywhere, so fromNode doesn't need to exist
+        if (ANY_LOCATION_NODE_ID.equals(fromId)) {
+            WebNode toNode = webData.getNode(toId);
+            if (toNode == null) {
+                log.warn("FREE_TELEPORT edge references unknown destination node: {} -> {}",
+                        fromId, toId);
+                return null;
+            }
+            WorldPoint toLoc = toNode.getWorldPoint();
+            // fromLocation is null because this edge can be used from anywhere
+            return NavigationEdge.fromWebEdge(webEdge, null, toLoc);
+        }
+        
+        WebNode fromNode = webData.getNode(fromId);
+        WebNode toNode = webData.getNode(toId);
 
         if (fromNode == null || toNode == null) {
-            log.warn("WebEdge references unknown node: {} -> {}",
-                    webEdge.getFrom(), webEdge.getTo());
+            log.warn("WebEdge references unknown node: {} -> {} (from={}, to={})",
+                    fromId, toId, fromNode != null, toNode != null);
             return null;
         }
 
@@ -429,10 +473,22 @@ public class UnifiedNavigationGraph {
 
     /**
      * Add an edge to the graph.
+     * 
+     * <p>Edges from "any_location" are stored separately in {@link #anyLocationEdges}
+     * and are included in every {@link #getTraversableEdges} query.
      */
     private void addEdge(NavigationEdge edge) {
         allEdges.add(edge);
+        
+        // Store "any_location" edges separately - they're available from any node
+        if (ANY_LOCATION_NODE_ID.equals(edge.getFromNodeId())) {
+            anyLocationEdges.add(edge);
+            log.debug("Added any_location edge: {} -> {} ({})", 
+                    edge.getFromNodeId(), edge.getToNodeId(), edge.getType());
+        } else {
         edgesBySource.computeIfAbsent(edge.getFromNodeId(), k -> new ArrayList<>()).add(edge);
+        }
+        
         edgesByDestination.computeIfAbsent(edge.getToNodeId(), k -> new ArrayList<>()).add(edge);
     }
 
@@ -571,6 +627,12 @@ public class UnifiedNavigationGraph {
 
     /**
      * Get traversable edges from a node based on player requirements.
+     * 
+     * <p>This includes:
+     * <ul>
+     *   <li>Direct edges from the source node</li>
+     *   <li>"any_location" edges (FREE_TELEPORT) that can be used from anywhere</li>
+     * </ul>
      *
      * @param sourceNodeId       the source node ID
      * @param playerRequirements the player's current requirements state
@@ -578,9 +640,50 @@ public class UnifiedNavigationGraph {
      */
     public List<NavigationEdge> getTraversableEdges(String sourceNodeId, 
                                                       PlayerRequirements playerRequirements) {
-        return getEdgesFrom(sourceNodeId).stream()
-                .filter(edge -> playerRequirements.canTraverseEdge(edge))
-                .collect(Collectors.toList());
+        List<NavigationEdge> result = new ArrayList<>();
+        
+        // Add edges directly from this node
+        for (NavigationEdge edge : getEdgesFrom(sourceNodeId)) {
+            if (playerRequirements.canTraverseEdge(edge)) {
+                result.add(edge);
+            }
+        }
+        
+        // Add "any_location" edges (FREE_TELEPORT) - these can be used from anywhere
+        // Note: Don't add them if we're querying from "any_location" itself (prevents loops)
+        if (!ANY_LOCATION_NODE_ID.equals(sourceNodeId)) {
+            for (NavigationEdge edge : anyLocationEdges) {
+                if (playerRequirements.canTraverseEdge(edge)) {
+                    result.add(edge);
+                }
+            }
+        }
+        
+        return result;
+    }
+    
+    /**
+     * Get all "any_location" edges (FREE_TELEPORT edges).
+     * 
+     * <p>These edges represent teleports that can be used from anywhere:
+     * <ul>
+     *   <li>Home teleport (based on player's respawn point)</li>
+     *   <li>Grouping teleports (minigame teleports)</li>
+     * </ul>
+     *
+     * @return list of all "any_location" edges
+     */
+    public List<NavigationEdge> getAnyLocationEdges() {
+        return Collections.unmodifiableList(anyLocationEdges);
+    }
+    
+    /**
+     * Get count of "any_location" edges.
+     *
+     * @return number of FREE_TELEPORT edges
+     */
+    public int getAnyLocationEdgeCount() {
+        return anyLocationEdges.size();
     }
 
     /**

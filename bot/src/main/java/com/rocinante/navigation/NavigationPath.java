@@ -75,6 +75,32 @@ public class NavigationPath {
     }
 
     /**
+     * Get the starting node ID.
+     *
+     * @return the first node ID, or null if path is empty
+     */
+    @Nullable
+    public String getStartNodeId() {
+        if (isEmpty()) {
+            return null;
+        }
+        return edges.get(0).getFromNodeId();
+    }
+
+    /**
+     * Get the ending node ID.
+     *
+     * @return the last node ID, or null if path is empty
+     */
+    @Nullable
+    public String getEndNodeId() {
+        if (isEmpty()) {
+            return null;
+        }
+        return edges.get(edges.size() - 1).getToNodeId();
+    }
+
+    /**
      * Check if the path requires any plane changes.
      */
     public boolean requiresPlaneChange() {

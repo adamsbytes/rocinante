@@ -425,12 +425,12 @@
   "edges": [
     {
       "from": "lumbridge_castle",
-      "to": "lumbridge_bank",
+      "to": "lumbridge_castle_ground",
       "type": "WALK",
-      "cost_ticks": 25,
+      "cost_ticks": 5,
       "bidirectional": true,
       "requirements": [],
-      "metadata": {"notes": "Climb stairs to 2nd floor"}
+      "metadata": {"notes": "Walk to stairs"}
     },
     {
       "from": "lumbridge_castle",

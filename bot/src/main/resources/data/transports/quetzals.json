@@ -1,160 +1,288 @@
 {
-  "_comment": "Quetzal locations - validated from RuneLite source (TransportationPointLocation.java)",
+  "_comment": "Quetzal transport network - Varrock to Varlamore and within Varlamore",
   "_source": "/tmp/runelite-src/runelite-client/src/main/java/net/runelite/client/plugins/worldmap/TransportationPointLocation.java",
   "_npc_ids": {
     "QUETZAL": 12876,
-    "QUETZAL_ALT": 13133,
-    "_note": "From RuneLite NpcID.java"
+    "QUETZAL_ALT": 13133
   },
-  "_widget_group": 874,
-  "varrock_entry": {
-    "id": "quetzal_varrock",
-    "name": "Varrock (to Varlamore)",
-    "x": 3279,
-    "y": 3413,
-    "plane": 0,
-    "destination_x": 1699,
-    "destination_y": 3142,
-    "tags": ["misthalin", "varrock"],
-    "requirements": {
-      "quest": "Twilight's Promise"
+  "nodes": [
+    {
+      "id": "quetzal_varrock",
+      "name": "Quetzal - Varrock",
+      "x": 3279,
+      "y": 3413,
+      "plane": 0,
+      "type": "TRANSPORT",
+      "tags": ["misthalin", "varrock", "quetzal", "members"],
+      "metadata": {"travel_type": "quetzal"}
     },
-    "_note": "Entry point to Varlamore network"
-  },
-  "varlamore_exit": {
-    "id": "quetzal_varlamore_varrock",
-    "name": "Varlamore (to Varrock)",
-    "x": 1699,
-    "y": 3142,
-    "plane": 0,
-    "destination_x": 3279,
-    "destination_y": 3413,
-    "tags": ["varlamore"],
-    "_note": "Exit from Varlamore to Varrock"
-  },
-  "varlamore_network": [
+    {
+      "id": "quetzal_varlamore_hub",
+      "name": "Quetzal - Varlamore Hub",
+      "x": 1699,
+      "y": 3142,
+      "plane": 0,
+      "type": "TRANSPORT",
+      "tags": ["varlamore", "quetzal", "members"],
+      "metadata": {"travel_type": "quetzal"}
+    },
     {
       "id": "quetzal_aldarin",
-      "name": "Aldarin",
+      "name": "Quetzal - Aldarin",
       "x": 1388,
       "y": 2899,
       "plane": 0,
-      "tags": ["varlamore"]
+      "type": "TRANSPORT",
+      "tags": ["varlamore", "quetzal", "members"],
+      "metadata": {"travel_type": "quetzal"}
     },
     {
       "id": "quetzal_auburnvale",
-      "name": "Auburnvale",
+      "name": "Quetzal - Auburnvale",
       "x": 1410,
       "y": 3363,
       "plane": 0,
-      "tags": ["varlamore"]
+      "type": "TRANSPORT",
+      "tags": ["varlamore", "quetzal", "members"],
+      "metadata": {"travel_type": "quetzal"}
     },
     {
       "id": "quetzal_avium_savannah_ne",
-      "name": "Avium Savannah (North East)",
+      "name": "Quetzal - Avium Savannah (NE)",
       "x": 1701,
       "y": 3037,
       "plane": 0,
-      "tags": ["varlamore"]
+      "type": "TRANSPORT",
+      "tags": ["varlamore", "quetzal", "members"],
+      "metadata": {"travel_type": "quetzal"}
     },
     {
       "id": "quetzal_avium_savannah_south",
-      "name": "Avium Savannah (South)",
+      "name": "Quetzal - Avium Savannah (South)",
       "x": 1671,
       "y": 2933,
       "plane": 0,
-      "tags": ["varlamore"]
+      "type": "TRANSPORT",
+      "tags": ["varlamore", "quetzal", "members"],
+      "metadata": {"travel_type": "quetzal"}
     },
     {
       "id": "quetzal_cam_torum",
-      "name": "Cam Torum",
+      "name": "Quetzal - Cam Torum",
       "x": 1447,
       "y": 3108,
       "plane": 0,
-      "tags": ["varlamore"]
+      "type": "TRANSPORT",
+      "tags": ["varlamore", "quetzal", "members"],
+      "metadata": {"travel_type": "quetzal"}
     },
     {
       "id": "quetzal_civitas",
-      "name": "East Civitas illa Fortis",
+      "name": "Quetzal - East Civitas illa Fortis",
       "x": 1776,
       "y": 3111,
       "plane": 0,
-      "tags": ["varlamore"]
+      "type": "TRANSPORT",
+      "tags": ["varlamore", "quetzal", "members"],
+      "metadata": {"travel_type": "quetzal"}
     },
     {
       "id": "quetzal_hunter_guild",
-      "name": "Hunter Guild",
+      "name": "Quetzal - Hunter Guild",
       "x": 1584,
       "y": 3055,
       "plane": 0,
-      "tags": ["varlamore", "hunter"]
+      "type": "TRANSPORT",
+      "tags": ["varlamore", "quetzal", "hunter", "members"],
+      "metadata": {"travel_type": "quetzal"}
     },
     {
       "id": "quetzal_kastori",
-      "name": "Kastori",
+      "name": "Quetzal - Kastori",
       "x": 1343,
       "y": 3020,
       "plane": 0,
-      "tags": ["varlamore"]
+      "type": "TRANSPORT",
+      "tags": ["varlamore", "quetzal", "members"],
+      "metadata": {"travel_type": "quetzal"}
     },
     {
       "id": "quetzal_quetzacalli_gorge",
-      "name": "Quetzacalli Gorge",
+      "name": "Quetzal - Quetzacalli Gorge",
       "x": 1511,
       "y": 3222,
       "plane": 0,
-      "tags": ["varlamore"]
+      "type": "TRANSPORT",
+      "tags": ["varlamore", "quetzal", "members"],
+      "metadata": {"travel_type": "quetzal"}
     },
     {
       "id": "quetzal_salvager_overlook",
-      "name": "Salvager Overlook",
+      "name": "Quetzal - Salvager Overlook",
       "x": 1612,
       "y": 3302,
       "plane": 0,
-      "tags": ["varlamore"]
+      "type": "TRANSPORT",
+      "tags": ["varlamore", "quetzal", "members"],
+      "metadata": {"travel_type": "quetzal"}
     },
     {
       "id": "quetzal_sunset_coast",
-      "name": "Sunset Coast",
+      "name": "Quetzal - Sunset Coast",
       "x": 1547,
       "y": 2997,
       "plane": 0,
-      "tags": ["varlamore"]
+      "type": "TRANSPORT",
+      "tags": ["varlamore", "quetzal", "members"],
+      "metadata": {"travel_type": "quetzal"}
     },
     {
       "id": "quetzal_ralos_rise",
-      "name": "Ralos Rise",
+      "name": "Quetzal - Ralos Rise",
       "x": 1436,
       "y": 3169,
       "plane": 0,
-      "tags": ["varlamore"]
+      "type": "TRANSPORT",
+      "tags": ["varlamore", "quetzal", "members"],
+      "metadata": {"travel_type": "quetzal"}
     },
     {
       "id": "quetzal_tal_teklan",
-      "name": "Tal Teklan",
+      "name": "Quetzal - Tal Teklan",
       "x": 1225,
       "y": 3089,
       "plane": 0,
-      "tags": ["varlamore"]
+      "type": "TRANSPORT",
+      "tags": ["varlamore", "quetzal", "members"],
+      "metadata": {"travel_type": "quetzal"}
     }
   ],
-  "requirements": {
-    "quest": "Twilight's Promise"
-  },
-  "unlocks": {
-    "_comment": "Hunter Guild quetzal whistles for personal quetzal transport",
-    "basic_whistle": {
-      "item_id": 29271,
-      "hunter_level": 55
+  "edges": [
+    {
+      "from": "quetzal_varrock",
+      "to": "quetzal_varlamore_hub",
+      "type": "TRANSPORT",
+      "cost_ticks": 10,
+      "bidirectional": true,
+      "requirements": [{"type": "QUEST", "identifier": "Twilight's Promise"}],
+      "metadata": {"travel_type": "quetzal"}
     },
-    "enhanced_whistle": {
-      "item_id": 29273,
-      "hunter_level": 70
+    {
+      "from": "quetzal_varlamore_hub",
+      "to": "quetzal_aldarin",
+      "type": "TRANSPORT",
+      "cost_ticks": 8,
+      "bidirectional": true,
+      "requirements": [{"type": "QUEST", "identifier": "Twilight's Promise"}],
+      "metadata": {"travel_type": "quetzal"}
     },
-    "perfected_whistle": {
-      "item_id": 29275,
-      "hunter_level": 85
+    {
+      "from": "quetzal_varlamore_hub",
+      "to": "quetzal_auburnvale",
+      "type": "TRANSPORT",
+      "cost_ticks": 8,
+      "bidirectional": true,
+      "requirements": [{"type": "QUEST", "identifier": "Twilight's Promise"}],
+      "metadata": {"travel_type": "quetzal"}
+    },
+    {
+      "from": "quetzal_varlamore_hub",
+      "to": "quetzal_avium_savannah_ne",
+      "type": "TRANSPORT",
+      "cost_ticks": 8,
+      "bidirectional": true,
+      "requirements": [{"type": "QUEST", "identifier": "Twilight's Promise"}],
+      "metadata": {"travel_type": "quetzal"}
+    },
+    {
+      "from": "quetzal_varlamore_hub",
+      "to": "quetzal_avium_savannah_south",
+      "type": "TRANSPORT",
+      "cost_ticks": 8,
+      "bidirectional": true,
+      "requirements": [{"type": "QUEST", "identifier": "Twilight's Promise"}],
+      "metadata": {"travel_type": "quetzal"}
+    },
+    {
+      "from": "quetzal_varlamore_hub",
+      "to": "quetzal_cam_torum",
+      "type": "TRANSPORT",
+      "cost_ticks": 8,
+      "bidirectional": true,
+      "requirements": [{"type": "QUEST", "identifier": "Twilight's Promise"}],
+      "metadata": {"travel_type": "quetzal"}
+    },
+    {
+      "from": "quetzal_varlamore_hub",
+      "to": "quetzal_civitas",
+      "type": "TRANSPORT",
+      "cost_ticks": 8,
+      "bidirectional": true,
+      "requirements": [{"type": "QUEST", "identifier": "Twilight's Promise"}],
+      "metadata": {"travel_type": "quetzal"}
+    },
+    {
+      "from": "quetzal_varlamore_hub",
+      "to": "quetzal_hunter_guild",
+      "type": "TRANSPORT",
+      "cost_ticks": 8,
+      "bidirectional": true,
+      "requirements": [{"type": "QUEST", "identifier": "Twilight's Promise"}],
+      "metadata": {"travel_type": "quetzal"}
+    },
+    {
+      "from": "quetzal_varlamore_hub",
+      "to": "quetzal_kastori",
+      "type": "TRANSPORT",
+      "cost_ticks": 8,
+      "bidirectional": true,
+      "requirements": [{"type": "QUEST", "identifier": "Twilight's Promise"}],
+      "metadata": {"travel_type": "quetzal"}
+    },
+    {
+      "from": "quetzal_varlamore_hub",
+      "to": "quetzal_quetzacalli_gorge",
+      "type": "TRANSPORT",
+      "cost_ticks": 8,
+      "bidirectional": true,
+      "requirements": [{"type": "QUEST", "identifier": "Twilight's Promise"}],
+      "metadata": {"travel_type": "quetzal"}
+    },
+    {
+      "from": "quetzal_varlamore_hub",
+      "to": "quetzal_salvager_overlook",
+      "type": "TRANSPORT",
+      "cost_ticks": 8,
+      "bidirectional": true,
+      "requirements": [{"type": "QUEST", "identifier": "Twilight's Promise"}],
+      "metadata": {"travel_type": "quetzal"}
+    },
+    {
+      "from": "quetzal_varlamore_hub",
+      "to": "quetzal_sunset_coast",
+      "type": "TRANSPORT",
+      "cost_ticks": 8,
+      "bidirectional": true,
+      "requirements": [{"type": "QUEST", "identifier": "Twilight's Promise"}],
+      "metadata": {"travel_type": "quetzal"}
+    },
+    {
+      "from": "quetzal_varlamore_hub",
+      "to": "quetzal_ralos_rise",
+      "type": "TRANSPORT",
+      "cost_ticks": 8,
+      "bidirectional": true,
+      "requirements": [{"type": "QUEST", "identifier": "Twilight's Promise"}],
+      "metadata": {"travel_type": "quetzal"}
+    },
+    {
+      "from": "quetzal_varlamore_hub",
+      "to": "quetzal_tal_teklan",
+      "type": "TRANSPORT",
+      "cost_ticks": 8,
+      "bidirectional": true,
+      "requirements": [{"type": "QUEST", "identifier": "Twilight's Promise"}],
+      "metadata": {"travel_type": "quetzal"}
     }
-  }
+  ]
 }
-

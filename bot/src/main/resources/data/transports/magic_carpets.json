@@ -1,115 +1,266 @@
 {
-  "_comment": "Magic Carpet locations - validated from RuneLite source (TransportationPointLocation.java)",
-  "_source": "/tmp/runelite-src/runelite-client/src/main/java/net/runelite/client/plugins/worldmap/TransportationPointLocation.java",
-  "locations": [
+  "_comment": "Magic Carpet network - Kharidian Desert transport",
+  "nodes": [
     {
       "id": "carpet_shantay",
-      "name": "Shantay Pass (Al Kharid)",
+      "name": "Magic Carpet - Shantay Pass (Al Kharid)",
       "x": 3311,
       "y": 3107,
       "plane": 0,
-      "npc_name": "Rug Merchant",
-      "tags": ["kharidian"],
-      "hub": true,
-      "_note": "Main hub connecting to all desert locations"
+      "type": "TRANSPORT",
+      "tags": [
+        "kharidian",
+        "magic_carpet",
+        "members"
+      ],
+      "metadata": {
+        "travel_type": "magic_carpet"
+      }
     },
     {
       "id": "carpet_bedabin",
-      "name": "Bedabin Camp",
+      "name": "Magic Carpet - Bedabin Camp",
       "x": 3183,
       "y": 3042,
       "plane": 0,
-      "npc_name": "Rug Merchant",
-      "tags": ["kharidian"],
-      "destination_x": 3311,
-      "destination_y": 3107,
-      "_note": "Returns to Shantay Pass"
+      "type": "TRANSPORT",
+      "tags": [
+        "kharidian",
+        "magic_carpet",
+        "members"
+      ],
+      "metadata": {
+        "travel_type": "magic_carpet"
+      }
     },
     {
       "id": "carpet_pollnivneach_north",
-      "name": "Pollnivneach (North)",
+      "name": "Magic Carpet - Pollnivneach (North)",
       "x": 3351,
       "y": 3001,
       "plane": 0,
-      "npc_name": "Rug Merchant",
-      "tags": ["kharidian"],
-      "destination_x": 3311,
-      "destination_y": 3107,
-      "_note": "Returns to Shantay Pass"
+      "type": "TRANSPORT",
+      "tags": [
+        "kharidian",
+        "magic_carpet",
+        "members"
+      ],
+      "metadata": {
+        "travel_type": "magic_carpet"
+      }
     },
     {
       "id": "carpet_pollnivneach_south",
-      "name": "Pollnivneach (South)",
+      "name": "Magic Carpet - Pollnivneach (South)",
       "x": 3345,
       "y": 2943,
       "plane": 0,
-      "npc_name": "Rug Merchant",
-      "tags": ["kharidian"],
-      "hub": true,
-      "_note": "Hub connecting to Nardah/Sophanem/Menaphos"
+      "type": "TRANSPORT",
+      "tags": [
+        "kharidian",
+        "magic_carpet",
+        "members"
+      ],
+      "metadata": {
+        "travel_type": "magic_carpet"
+      }
     },
     {
       "id": "carpet_nardah",
-      "name": "Nardah",
+      "name": "Magic Carpet - Nardah",
       "x": 3399,
       "y": 2916,
       "plane": 0,
-      "npc_name": "Rug Merchant",
-      "tags": ["kharidian"],
-      "destination_x": 3345,
-      "destination_y": 2943,
-      "_note": "Returns to Pollnivneach South"
+      "type": "TRANSPORT",
+      "tags": [
+        "kharidian",
+        "magic_carpet",
+        "members"
+      ],
+      "metadata": {
+        "travel_type": "magic_carpet"
+      }
     },
     {
       "id": "carpet_sophanem",
-      "name": "Sophanem",
+      "name": "Magic Carpet - Sophanem",
       "x": 3288,
       "y": 2814,
       "plane": 0,
-      "npc_name": "Rug Merchant",
-      "tags": ["kharidian"],
-      "destination_x": 3345,
-      "destination_y": 2943,
-      "requirements": {
-        "quest": "Icthlarin's Little Helper"
-      },
-      "_note": "Returns to Pollnivneach South"
+      "type": "TRANSPORT",
+      "tags": [
+        "kharidian",
+        "magic_carpet",
+        "members"
+      ],
+      "metadata": {
+        "travel_type": "magic_carpet"
+      }
     },
     {
       "id": "carpet_menaphos",
-      "name": "Menaphos",
+      "name": "Magic Carpet - Menaphos",
       "x": 3244,
       "y": 2812,
       "plane": 0,
-      "npc_name": "Rug Merchant",
-      "tags": ["kharidian"],
-      "destination_x": 3345,
-      "destination_y": 2943,
-      "requirements": {
-        "quest": "Contact!"
-      },
-      "_note": "Returns to Pollnivneach South"
+      "type": "TRANSPORT",
+      "tags": [
+        "kharidian",
+        "magic_carpet",
+        "members"
+      ],
+      "metadata": {
+        "travel_type": "magic_carpet"
+      }
     },
     {
       "id": "carpet_uzer",
-      "name": "Uzer",
+      "name": "Magic Carpet - Uzer",
       "x": 3468,
       "y": 3111,
       "plane": 0,
-      "npc_name": "Rug Merchant",
-      "tags": ["kharidian"],
-      "destination_x": 3311,
-      "destination_y": 3107,
-      "requirements": {
-        "quest": "The Golem"
-      },
-      "_note": "Returns to Shantay Pass"
+      "type": "TRANSPORT",
+      "tags": [
+        "kharidian",
+        "magic_carpet",
+        "members"
+      ],
+      "metadata": {
+        "travel_type": "magic_carpet"
+      }
     }
   ],
-  "fares": {
-    "base": 200,
-    "ring_of_charos_discount": 0,
-    "_note": "Ardougne cloak reduces fare. Karamja gloves eliminate fare to Shantay."
-  }
+  "edges": [
+    {
+      "from": "carpet_shantay",
+      "to": "carpet_bedabin",
+      "type": "TRANSPORT",
+      "cost_ticks": 8,
+      "bidirectional": true,
+      "requirements": [
+        {
+          "type": "GOLD",
+          "amount": 200
+        }
+      ],
+      "metadata": {
+        "travel_type": "magic_carpet",
+        "fare": "200"
+      }
+    },
+    {
+      "from": "carpet_shantay",
+      "to": "carpet_pollnivneach_north",
+      "type": "TRANSPORT",
+      "cost_ticks": 8,
+      "bidirectional": true,
+      "requirements": [
+        {
+          "type": "GOLD",
+          "amount": 200
+        }
+      ],
+      "metadata": {
+        "travel_type": "magic_carpet",
+        "fare": "200"
+      }
+    },
+    {
+      "from": "carpet_shantay",
+      "to": "carpet_uzer",
+      "type": "TRANSPORT",
+      "cost_ticks": 8,
+      "bidirectional": true,
+      "requirements": [
+        {
+          "type": "GOLD",
+          "amount": 200
+        },
+        {
+          "type": "QUEST",
+          "identifier": "The Golem"
+        }
+      ],
+      "metadata": {
+        "travel_type": "magic_carpet",
+        "fare": "200"
+      }
+    },
+    {
+      "from": "carpet_shantay",
+      "to": "carpet_pollnivneach_south",
+      "type": "TRANSPORT",
+      "cost_ticks": 8,
+      "bidirectional": true,
+      "requirements": [
+        {
+          "type": "GOLD",
+          "amount": 200
+        }
+      ],
+      "metadata": {
+        "travel_type": "magic_carpet",
+        "fare": "200"
+      }
+    },
+    {
+      "from": "carpet_pollnivneach_south",
+      "to": "carpet_nardah",
+      "type": "TRANSPORT",
+      "cost_ticks": 8,
+      "bidirectional": true,
+      "requirements": [
+        {
+          "type": "GOLD",
+          "amount": 200
+        }
+      ],
+      "metadata": {
+        "travel_type": "magic_carpet",
+        "fare": "200"
+      }
+    },
+    {
+      "from": "carpet_pollnivneach_south",
+      "to": "carpet_sophanem",
+      "type": "TRANSPORT",
+      "cost_ticks": 8,
+      "bidirectional": true,
+      "requirements": [
+        {
+          "type": "GOLD",
+          "amount": 200
+        },
+        {
+          "type": "QUEST",
+          "identifier": "Icthlarin's Little Helper"
+        }
+      ],
+      "metadata": {
+        "travel_type": "magic_carpet",
+        "fare": "200"
+      }
+    },
+    {
+      "from": "carpet_pollnivneach_south",
+      "to": "carpet_menaphos",
+      "type": "TRANSPORT",
+      "cost_ticks": 8,
+      "bidirectional": true,
+      "requirements": [
+        {
+          "type": "GOLD",
+          "amount": 200
+        },
+        {
+          "type": "QUEST",
+          "identifier": "Contact!"
+        }
+      ],
+      "metadata": {
+        "travel_type": "magic_carpet",
+        "fare": "200"
+      }
+    }
+  ]
 }
-

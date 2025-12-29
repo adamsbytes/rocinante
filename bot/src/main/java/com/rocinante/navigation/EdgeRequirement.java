@@ -1,5 +1,6 @@
 package com.rocinante.navigation;
 
+import com.google.gson.annotations.SerializedName;
 import lombok.Builder;
 import lombok.Value;
 
@@ -31,18 +32,23 @@ public class EdgeRequirement {
     /**
      * Numeric value (level, quantity, etc.).
      * Used by: MAGIC_LEVEL, AGILITY_LEVEL, SKILL, COMBAT_LEVEL, ITEM
+     * Aliases: "level" in JSON
      */
+    @SerializedName(value = "value", alternate = {"level"})
     int value;
 
     /**
      * String identifier (skill name, quest ID, item name, ironman type).
      * Used by: SKILL (skill name), QUEST (quest_id), IRONMAN_RESTRICTION (type)
+     * Aliases: "skill" in JSON for SKILL requirements
      */
+    @SerializedName(value = "identifier", alternate = {"skill"})
     String identifier;
 
     /**
      * Item ID for ITEM requirements.
      */
+    @SerializedName("item_id")
     int itemId;
 
     /**
@@ -55,12 +61,14 @@ public class EdgeRequirement {
      * Rune items for RUNES requirement.
      * List of {id, quantity} pairs.
      */
+    @SerializedName("rune_costs")
     List<RuneCost> runeCosts;
 
     /**
      * Quest state required (for partial quest completion).
      * Used by: QUEST
      */
+    @SerializedName("quest_state")
     String questState;
 
     /**
@@ -69,6 +77,7 @@ public class EdgeRequirement {
     @Value
     @Builder
     public static class RuneCost {
+        @SerializedName("item_id")
         int itemId;
         int quantity;
     }

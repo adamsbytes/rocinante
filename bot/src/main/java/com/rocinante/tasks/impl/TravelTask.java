@@ -1139,22 +1139,28 @@ public class TravelTask extends AbstractTask {
 
             case "grouping":
             case "grouping_teleport":
-                // Support both teleport_id (enum name) and destination (display name)
+                // Support teleport_id (edge ID like "castle_wars"), enum name, and destination display name
                 String teleportId = metadata.get("teleport_id");
                 if (teleportId != null) {
+                    // First try as edge ID (lowercase like "castle_wars") - this is the expected format from navigation data
+                    GroupingTeleport teleport = GroupingTeleport.fromEdgeId(teleportId);
+                    if (teleport != null) {
+                        return groupingTeleport(teleport);
+                    }
+                    // Fall back to enum name lookup (uppercase like "CASTLE_WARS") for backwards compatibility
                     try {
-                        GroupingTeleport teleport = GroupingTeleport.valueOf(teleportId);
+                        teleport = GroupingTeleport.valueOf(teleportId.toUpperCase());
                         return groupingTeleport(teleport);
                     } catch (IllegalArgumentException e) {
-                        // Fall through to try edge_id
+                        // Not a valid enum name either
                     }
                 }
-                // Try edge_id
+                // Try edge_id metadata key as fallback
                 String edgeId = metadata.get("edge_id");
                 if (edgeId != null) {
                     return groupingTeleportByEdgeId(edgeId);
                 }
-                // Try destination as display name
+                // Try destination as display name (case-insensitive)
                 String groupDest = metadata.get("destination");
                 if (groupDest != null) {
                     return groupingTeleportByName(groupDest);

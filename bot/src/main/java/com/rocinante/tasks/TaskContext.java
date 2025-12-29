@@ -1,5 +1,6 @@
 package com.rocinante.tasks;
 
+import com.rocinante.behavior.AccountType;
 import com.rocinante.behavior.ActionSequencer;
 import com.rocinante.behavior.BreakScheduler;
 import com.rocinante.behavior.InefficiencyInjector;
@@ -19,6 +20,7 @@ import com.rocinante.input.RobotKeyboardController;
 import com.rocinante.input.RobotMouseController;
 import com.rocinante.input.SafeClickExecutor;
 import com.rocinante.input.WidgetClickHelper;
+import com.rocinante.navigation.ResourceAwareness;
 import com.rocinante.agility.AgilityCourseRepository;
 import com.rocinante.progression.UnlockTracker;
 import com.rocinante.puzzle.PuzzleSolverRegistry;
@@ -440,6 +442,90 @@ public class TaskContext {
      */
     public SlayerState getSlayerState() {
         return gameStateServiceProvider.get().getSlayerState();
+    }
+
+    // ========================================================================
+    // Navigation Resource Awareness
+    // ========================================================================
+
+    /**
+     * Get resource awareness for navigation cost calculations.
+     * 
+     * <p>ResourceAwareness models the player's current resource state for pathfinding:
+     * <ul>
+     *   <li>Account type affects teleport cost penalties (HCIM never uses law runes)</li>
+     *   <li>Law rune count affects teleport willingness</li>
+     *   <li>Gold amount affects charter ship/toll gate preferences</li>
+     *   <li>Fairy ring/spirit tree access enables free travel bonuses</li>
+     * </ul>
+     * 
+     * <p>This is computed fresh each call from current game state, ensuring navigation
+     * decisions reflect the player's actual resources.
+     *
+     * @return ResourceAwareness computed from current state, or null if state unavailable
+     */
+    @Nullable
+    public ResourceAwareness getResourceAwareness() {
+        // Get account type
+        AccountType accountType = AccountType.NORMAL;
+        com.rocinante.state.IronmanState ironmanState = getIronmanState();
+        if (ironmanState != null) {
+            accountType = ironmanState.getEffectiveType();
+        }
+        
+        // Get inventory and equipment state
+        InventoryState inventory = getInventoryState();
+        EquipmentState equipment = getEquipmentState();
+        
+        if (inventory == null) {
+            // Return default for account type if inventory unavailable
+            return ResourceAwareness.forAccountType(accountType);
+        }
+        
+        // Check for fairy ring access
+        boolean hasFairyRingAccess = checkFairyRingAccess(inventory, equipment);
+        
+        // Check for spirit tree access (simplified - assumes available if unlockTracker exists)
+        boolean hasSpiritTreeAccess = unlockTracker != null;
+        
+        return ResourceAwareness.fromGameState(
+                accountType,
+                inventory,
+                equipment,
+                hasFairyRingAccess,
+                hasSpiritTreeAccess
+        );
+    }
+    
+    /**
+     * Check if player has fairy ring access based on having a dramen/lunar staff.
+     * 
+     * <p>Full fairy ring access also requires Fairytale II - Cure a Queen started,
+     * but we simplify to just checking for the staff since the quest check would
+     * be done by the edge requirements in the navigation graph.
+     *
+     * @param inventory the player's inventory
+     * @param equipment the player's equipment
+     * @return true if player has staff required for fairy rings
+     */
+    private boolean checkFairyRingAccess(InventoryState inventory, @Nullable EquipmentState equipment) {
+        // Dramen staff and Lunar staff item IDs
+        final int DRAMEN_STAFF = 772;
+        final int LUNAR_STAFF = 9084;
+        
+        // Check inventory
+        if (inventory.hasItem(DRAMEN_STAFF) || inventory.hasItem(LUNAR_STAFF)) {
+            return true;
+        }
+        
+        // Check equipment
+        if (equipment != null) {
+            if (equipment.hasEquipped(DRAMEN_STAFF) || equipment.hasEquipped(LUNAR_STAFF)) {
+                return true;
+            }
+        }
+        
+        return false;
     }
 
     /**

@@ -1,99 +1,99 @@
 {
-  "_comment": "Spirit Tree locations - validated from RuneLite source (TransportationPointLocation.java)",
+  "_comment": "Spirit Tree network - fully connected transport system",
   "_source": "/tmp/runelite-src/runelite-client/src/main/java/net/runelite/client/plugins/worldmap/TransportationPointLocation.java",
-  "locations": [
+  "nodes": [
     {
       "id": "spirittree_gnomestronghold",
-      "name": "Tree Gnome Stronghold",
+      "name": "Spirit Tree - Tree Gnome Stronghold",
       "x": 2459,
       "y": 3446,
       "plane": 0,
-      "tags": ["kandarin", "gnome"],
-      "requirements": null,
-      "_note": "Always accessible once Spirit Tree network unlocked"
+      "type": "TRANSPORT",
+      "tags": ["kandarin", "gnome", "spirit_tree", "members"],
+      "metadata": {"travel_type": "spirit_tree"}
     },
     {
       "id": "spirittree_gnomevillage",
-      "name": "Tree Gnome Village",
+      "name": "Spirit Tree - Tree Gnome Village",
       "x": 2538,
       "y": 3166,
       "plane": 0,
-      "tags": ["kandarin", "gnome"],
-      "requirements": {
-        "quest": "Tree Gnome Village"
-      }
+      "type": "TRANSPORT",
+      "tags": ["kandarin", "gnome", "spirit_tree", "members"],
+      "metadata": {"travel_type": "spirit_tree"}
     },
     {
       "id": "spirittree_grandexchange",
-      "name": "Grand Exchange",
+      "name": "Spirit Tree - Grand Exchange",
       "x": 3184,
       "y": 3510,
       "plane": 0,
-      "tags": ["misthalin", "varrock"],
-      "requirements": null
+      "type": "TRANSPORT",
+      "tags": ["misthalin", "varrock", "spirit_tree", "members"],
+      "metadata": {"travel_type": "spirit_tree"}
     },
     {
       "id": "spirittree_ardougne",
-      "name": "Battlefield of Khazard",
+      "name": "Spirit Tree - Battlefield of Khazard",
       "x": 2554,
       "y": 3259,
       "plane": 0,
-      "tags": ["kandarin"],
-      "requirements": {
-        "quest": "Tree Gnome Village"
-      }
+      "type": "TRANSPORT",
+      "tags": ["kandarin", "spirit_tree", "members"],
+      "metadata": {"travel_type": "spirit_tree"}
     },
     {
       "id": "spirittree_corsair",
-      "name": "Corsair Cove",
+      "name": "Spirit Tree - Corsair Cove",
       "x": 2485,
       "y": 2850,
       "plane": 0,
-      "tags": ["feldip"],
-      "requirements": {
-        "quest": "The Corsair Curse"
-      }
+      "type": "TRANSPORT",
+      "tags": ["feldip", "spirit_tree", "members"],
+      "metadata": {"travel_type": "spirit_tree"}
     },
     {
       "id": "spirittree_laguna_aurorae",
-      "name": "Laguna Aurorae",
+      "name": "Spirit Tree - Laguna Aurorae",
       "x": 1202,
       "y": 2787,
       "plane": 0,
-      "tags": ["varlamore"],
-      "requirements": {
-        "quest": "Children of the Sun"
-      }
+      "type": "TRANSPORT",
+      "tags": ["varlamore", "spirit_tree", "members"],
+      "metadata": {"travel_type": "spirit_tree"}
     },
     {
       "id": "spirittree_prifddinas",
-      "name": "Prifddinas",
+      "name": "Spirit Tree - Prifddinas",
       "x": 3274,
       "y": 6124,
       "plane": 0,
-      "tags": ["tirannwn", "prifddinas"],
-      "requirements": {
-        "quest": "Song of the Elves"
-      }
+      "type": "TRANSPORT",
+      "tags": ["tirannwn", "prifddinas", "spirit_tree", "members"],
+      "metadata": {"travel_type": "spirit_tree"}
     }
   ],
-  "poh_spirit_tree": {
-    "_comment": "Players can grow spirit trees in their POH garden",
-    "farming_level": 83,
-    "max_poh_trees": 1,
-    "_note": "With 91 Farming, can have 2 POH trees. At 99, can have infinite."
-  },
-  "planted_spirit_trees": {
-    "_comment": "Players can plant spirit trees at these farming patches",
-    "max_planted": 1,
-    "patches": [
-      {"name": "Etceteria", "x": 2613, "y": 3855, "plane": 0},
-      {"name": "Brimhaven", "x": 2800, "y": 3202, "plane": 0},
-      {"name": "Hosidius", "x": 1693, "y": 3540, "plane": 0},
-      {"name": "Port Sarim", "x": 3058, "y": 3257, "plane": 0},
-      {"name": "Farming Guild", "x": 1256, "y": 3750, "plane": 0}
-    ],
-    "_note": "With 91 Farming, can have 2 planted. At 99, can have infinite."
-  }
+  "edges": [
+    {"from": "spirittree_gnomestronghold", "to": "spirittree_gnomevillage", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}], "metadata": {"travel_type": "spirit_tree"}},
+    {"from": "spirittree_gnomestronghold", "to": "spirittree_grandexchange", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}], "metadata": {"travel_type": "spirit_tree"}},
+    {"from": "spirittree_gnomestronghold", "to": "spirittree_ardougne", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}], "metadata": {"travel_type": "spirit_tree"}},
+    {"from": "spirittree_gnomestronghold", "to": "spirittree_corsair", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}, {"type": "QUEST", "identifier": "The Corsair Curse"}], "metadata": {"travel_type": "spirit_tree"}},
+    {"from": "spirittree_gnomestronghold", "to": "spirittree_laguna_aurorae", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}, {"type": "QUEST", "identifier": "Children of the Sun"}], "metadata": {"travel_type": "spirit_tree"}},
+    {"from": "spirittree_gnomestronghold", "to": "spirittree_prifddinas", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}, {"type": "QUEST", "identifier": "Song of the Elves"}], "metadata": {"travel_type": "spirit_tree"}},
+    {"from": "spirittree_gnomevillage", "to": "spirittree_grandexchange", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}], "metadata": {"travel_type": "spirit_tree"}},
+    {"from": "spirittree_gnomevillage", "to": "spirittree_ardougne", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}], "metadata": {"travel_type": "spirit_tree"}},
+    {"from": "spirittree_gnomevillage", "to": "spirittree_corsair", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}, {"type": "QUEST", "identifier": "The Corsair Curse"}], "metadata": {"travel_type": "spirit_tree"}},
+    {"from": "spirittree_gnomevillage", "to": "spirittree_laguna_aurorae", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}, {"type": "QUEST", "identifier": "Children of the Sun"}], "metadata": {"travel_type": "spirit_tree"}},
+    {"from": "spirittree_gnomevillage", "to": "spirittree_prifddinas", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}, {"type": "QUEST", "identifier": "Song of the Elves"}], "metadata": {"travel_type": "spirit_tree"}},
+    {"from": "spirittree_grandexchange", "to": "spirittree_ardougne", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}], "metadata": {"travel_type": "spirit_tree"}},
+    {"from": "spirittree_grandexchange", "to": "spirittree_corsair", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}, {"type": "QUEST", "identifier": "The Corsair Curse"}], "metadata": {"travel_type": "spirit_tree"}},
+    {"from": "spirittree_grandexchange", "to": "spirittree_laguna_aurorae", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}, {"type": "QUEST", "identifier": "Children of the Sun"}], "metadata": {"travel_type": "spirit_tree"}},
+    {"from": "spirittree_grandexchange", "to": "spirittree_prifddinas", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}, {"type": "QUEST", "identifier": "Song of the Elves"}], "metadata": {"travel_type": "spirit_tree"}},
+    {"from": "spirittree_ardougne", "to": "spirittree_corsair", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}, {"type": "QUEST", "identifier": "The Corsair Curse"}], "metadata": {"travel_type": "spirit_tree"}},
+    {"from": "spirittree_ardougne", "to": "spirittree_laguna_aurorae", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}, {"type": "QUEST", "identifier": "Children of the Sun"}], "metadata": {"travel_type": "spirit_tree"}},
+    {"from": "spirittree_ardougne", "to": "spirittree_prifddinas", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}, {"type": "QUEST", "identifier": "Song of the Elves"}], "metadata": {"travel_type": "spirit_tree"}},
+    {"from": "spirittree_corsair", "to": "spirittree_laguna_aurorae", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}, {"type": "QUEST", "identifier": "The Corsair Curse"}, {"type": "QUEST", "identifier": "Children of the Sun"}], "metadata": {"travel_type": "spirit_tree"}},
+    {"from": "spirittree_corsair", "to": "spirittree_prifddinas", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}, {"type": "QUEST", "identifier": "The Corsair Curse"}, {"type": "QUEST", "identifier": "Song of the Elves"}], "metadata": {"travel_type": "spirit_tree"}},
+    {"from": "spirittree_laguna_aurorae", "to": "spirittree_prifddinas", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}, {"type": "QUEST", "identifier": "Children of the Sun"}, {"type": "QUEST", "identifier": "Song of the Elves"}], "metadata": {"travel_type": "spirit_tree"}}
+  ]
 }
-

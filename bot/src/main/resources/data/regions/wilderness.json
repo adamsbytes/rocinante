@@ -1,0 +1,200 @@
+{
+  "_comment": "Wilderness region - dangerous PvP area north of Edgeville",
+  "_source": "Wilderness coordinates from OSRS Wiki and RuneLite",
+  "region": {
+    "id": "wilderness",
+    "name": "Wilderness"
+  },
+  "nodes": [
+    {
+      "id": "wild_chaos_temple",
+      "name": "Chaos Temple (Wilderness)",
+      "x": 3234,
+      "y": 3636,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["wilderness", "pvp", "dangerous", "level_13"],
+      "metadata": {
+        "wilderness_level": "13",
+        "dangerous": "true"
+      }
+    },
+    {
+      "id": "wild_ferox_enclave",
+      "name": "Ferox Enclave",
+      "x": 3149,
+      "y": 3635,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["wilderness", "safe_zone", "bank"],
+      "metadata": {
+        "wilderness_level": "13",
+        "safe_zone": "true",
+        "has_bank": "true"
+      }
+    },
+    {
+      "id": "wild_mage_bank",
+      "name": "Mage Bank",
+      "x": 2538,
+      "y": 4716,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["wilderness", "safe_zone", "bank", "mage_arena"],
+      "metadata": {
+        "wilderness_level": "56",
+        "safe_zone": "true",
+        "has_bank": "true",
+        "notes": "Inside Mage Arena, accessed via lever"
+      }
+    },
+    {
+      "id": "wild_revenant_cave_entrance",
+      "name": "Revenant Caves Entrance",
+      "x": 3126,
+      "y": 3832,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["wilderness", "pvp", "dangerous", "level_40", "dungeon"],
+      "metadata": {
+        "wilderness_level": "40",
+        "dangerous": "true"
+      }
+    },
+    {
+      "id": "wild_lava_maze",
+      "name": "Lava Maze",
+      "x": 3029,
+      "y": 3843,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["wilderness", "pvp", "dangerous", "level_42"],
+      "metadata": {
+        "wilderness_level": "42",
+        "dangerous": "true"
+      }
+    },
+    {
+      "id": "wild_kbd_lair_entrance",
+      "name": "KBD Lair Entrance",
+      "x": 3016,
+      "y": 3848,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["wilderness", "pvp", "dangerous", "kbd", "level_43", "dungeon"],
+      "metadata": {
+        "wilderness_level": "43",
+        "dangerous": "true",
+        "notes": "Pull lever to enter KBD lair (safe once inside)"
+      }
+    },
+    {
+      "id": "wild_green_dragons",
+      "name": "Green Dragons (Wilderness)",
+      "x": 3342,
+      "y": 3670,
+      "plane": 0,
+      "type": "TRAINING",
+      "tags": ["wilderness", "pvp", "dangerous", "level_17", "slayer"],
+      "metadata": {
+        "wilderness_level": "17",
+        "dangerous": "true",
+        "monster": "green_dragon"
+      }
+    },
+    {
+      "id": "wild_edgeville_dungeon_entrance",
+      "name": "Edgeville Dungeon (Wilderness Entrance)",
+      "x": 3094,
+      "y": 3545,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["wilderness", "level_3", "dungeon"],
+      "metadata": {
+        "wilderness_level": "3",
+        "notes": "Low-level wilderness entry, connects to Edgeville Dungeon"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "wilderness_ditch",
+      "to": "wild_edgeville_dungeon_entrance",
+      "type": "WALK",
+      "cost_ticks": 20,
+      "bidirectional": true,
+      "requirements": [],
+      "metadata": {
+        "wilderness": "true",
+        "warning": "Entering dangerous wilderness area"
+      }
+    },
+    {
+      "from": "wild_edgeville_dungeon_entrance",
+      "to": "wild_ferox_enclave",
+      "type": "WALK",
+      "cost_ticks": 90,
+      "bidirectional": true,
+      "requirements": [],
+      "metadata": {
+        "wilderness": "true"
+      }
+    },
+    {
+      "from": "wild_ferox_enclave",
+      "to": "wild_chaos_temple",
+      "type": "WALK",
+      "cost_ticks": 80,
+      "bidirectional": true,
+      "requirements": [],
+      "metadata": {
+        "wilderness": "true"
+      }
+    },
+    {
+      "from": "wild_ferox_enclave",
+      "to": "wild_green_dragons",
+      "type": "WALK",
+      "cost_ticks": 150,
+      "bidirectional": true,
+      "requirements": [],
+      "metadata": {
+        "wilderness": "true"
+      }
+    },
+    {
+      "from": "wild_chaos_temple",
+      "to": "wild_revenant_cave_entrance",
+      "type": "WALK",
+      "cost_ticks": 200,
+      "bidirectional": true,
+      "requirements": [],
+      "metadata": {
+        "wilderness": "true"
+      }
+    },
+    {
+      "from": "wild_revenant_cave_entrance",
+      "to": "wild_lava_maze",
+      "type": "WALK",
+      "cost_ticks": 50,
+      "bidirectional": true,
+      "requirements": [],
+      "metadata": {
+        "wilderness": "true"
+      }
+    },
+    {
+      "from": "wild_lava_maze",
+      "to": "wild_kbd_lair_entrance",
+      "type": "WALK",
+      "cost_ticks": 30,
+      "bidirectional": true,
+      "requirements": [],
+      "metadata": {
+        "wilderness": "true"
+      }
+    }
+  ]
+}
+

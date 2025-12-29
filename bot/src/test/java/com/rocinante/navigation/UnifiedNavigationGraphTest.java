@@ -20,11 +20,16 @@ public class UnifiedNavigationGraphTest {
 
     @Before
     public void setUp() throws IOException {
-        webData = NavigationWeb.loadFromResources();
+        // Use loadComplete() to load full navigation data including home/grouping teleports
+        webData = NavigationWebLoader.loadComplete();
         assertNotNull("Navigation web should load successfully", webData);
         
         // Create graph without PlaneTransitionHandler (testing standalone)
         graph = new UnifiedNavigationGraph(webData);
+        
+        // Verify FREE_TELEPORT edges were loaded
+        assertTrue("Graph should have any_location edges for FREE_TELEPORT",
+                graph.getAnyLocationEdgeCount() > 0);
     }
 
     @Test

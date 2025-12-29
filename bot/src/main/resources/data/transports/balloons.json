@@ -1,95 +1,29 @@
 {
-  "_comment": "Hot Air Balloon locations - validated from RuneLite source (TransportationPointLocation.java)",
+  "_comment": "Hot Air Balloon network - requires Enlightened Journey quest and logs",
   "_source": "/tmp/runelite-src/runelite-client/src/main/java/net/runelite/client/plugins/worldmap/TransportationPointLocation.java",
-  "locations": [
-    {
-      "id": "balloon_entrana",
-      "name": "Entrana",
-      "x": 2810,
-      "y": 3356,
-      "plane": 0,
-      "npc_name": "Auguste",
-      "tags": ["asgarnia"],
-      "requirements": {
-        "quest": "Enlightened Journey",
-        "firemaking_level": 20
-      },
-      "_note": "Starting point, unlocked during quest"
-    },
-    {
-      "id": "balloon_taverley",
-      "name": "Taverley",
-      "x": 2936,
-      "y": 3422,
-      "plane": 0,
-      "tags": ["asgarnia"],
-      "requirements": {
-        "quest": "Enlightened Journey",
-        "firemaking_level": 20,
-        "logs": 10
-      }
-    },
-    {
-      "id": "balloon_falador",
-      "name": "Crafting Guild (Falador)",
-      "x": 2921,
-      "y": 3301,
-      "plane": 0,
-      "tags": ["asgarnia"],
-      "requirements": {
-        "quest": "Enlightened Journey",
-        "firemaking_level": 20,
-        "logs": 10
-      }
-    },
-    {
-      "id": "balloon_varrock",
-      "name": "Varrock",
-      "x": 3298,
-      "y": 3480,
-      "plane": 0,
-      "tags": ["misthalin"],
-      "requirements": {
-        "quest": "Enlightened Journey",
-        "firemaking_level": 40,
-        "logs": 10
-      }
-    },
-    {
-      "id": "balloon_gnomestronghold",
-      "name": "Tree Gnome Stronghold",
-      "x": 2478,
-      "y": 3459,
-      "plane": 0,
-      "tags": ["kandarin", "gnome"],
-      "requirements": {
-        "quest": "Enlightened Journey",
-        "firemaking_level": 60,
-        "logs": 10
-      }
-    },
-    {
-      "id": "balloon_yanille",
-      "name": "Castle Wars (Yanille)",
-      "x": 2458,
-      "y": 3108,
-      "plane": 0,
-      "tags": ["kandarin"],
-      "requirements": {
-        "quest": "Enlightened Journey",
-        "firemaking_level": 50,
-        "yew_logs": 10
-      }
-    }
+  "nodes": [
+    {"id": "balloon_entrana", "name": "Balloon - Entrana", "x": 2810, "y": 3356, "plane": 0, "type": "TRANSPORT", "tags": ["asgarnia", "balloon", "members"], "metadata": {"travel_type": "balloon"}},
+    {"id": "balloon_taverley", "name": "Balloon - Taverley", "x": 2936, "y": 3422, "plane": 0, "type": "TRANSPORT", "tags": ["asgarnia", "balloon", "members"], "metadata": {"travel_type": "balloon"}},
+    {"id": "balloon_falador", "name": "Balloon - Crafting Guild", "x": 2921, "y": 3301, "plane": 0, "type": "TRANSPORT", "tags": ["asgarnia", "balloon", "members"], "metadata": {"travel_type": "balloon"}},
+    {"id": "balloon_varrock", "name": "Balloon - Varrock", "x": 3298, "y": 3480, "plane": 0, "type": "TRANSPORT", "tags": ["misthalin", "balloon", "members"], "metadata": {"travel_type": "balloon"}},
+    {"id": "balloon_gnomestronghold", "name": "Balloon - Tree Gnome Stronghold", "x": 2478, "y": 3459, "plane": 0, "type": "TRANSPORT", "tags": ["kandarin", "gnome", "balloon", "members"], "metadata": {"travel_type": "balloon"}},
+    {"id": "balloon_yanille", "name": "Balloon - Castle Wars", "x": 2458, "y": 3108, "plane": 0, "type": "TRANSPORT", "tags": ["kandarin", "balloon", "members"], "metadata": {"travel_type": "balloon"}}
   ],
-  "log_costs": {
-    "_comment": "Logs consumed per trip",
-    "entrana": 1,
-    "taverley": 1,
-    "falador": 1,
-    "varrock": 1,
-    "gnomestronghold": 3,
-    "yanille": 1
-  }
+  "edges": [
+    {"from": "balloon_entrana", "to": "balloon_taverley", "type": "TRANSPORT", "cost_ticks": 8, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Enlightened Journey"}, {"type": "SKILL", "skill": "Firemaking", "level": 20}], "metadata": {"travel_type": "balloon", "logs_required": "1"}},
+    {"from": "balloon_entrana", "to": "balloon_falador", "type": "TRANSPORT", "cost_ticks": 8, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Enlightened Journey"}, {"type": "SKILL", "skill": "Firemaking", "level": 20}], "metadata": {"travel_type": "balloon", "logs_required": "1"}},
+    {"from": "balloon_entrana", "to": "balloon_varrock", "type": "TRANSPORT", "cost_ticks": 8, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Enlightened Journey"}, {"type": "SKILL", "skill": "Firemaking", "level": 40}], "metadata": {"travel_type": "balloon", "logs_required": "1"}},
+    {"from": "balloon_entrana", "to": "balloon_gnomestronghold", "type": "TRANSPORT", "cost_ticks": 8, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Enlightened Journey"}, {"type": "SKILL", "skill": "Firemaking", "level": 60}], "metadata": {"travel_type": "balloon", "logs_required": "3"}},
+    {"from": "balloon_entrana", "to": "balloon_yanille", "type": "TRANSPORT", "cost_ticks": 8, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Enlightened Journey"}, {"type": "SKILL", "skill": "Firemaking", "level": 50}], "metadata": {"travel_type": "balloon", "logs_required": "1", "log_type": "yew"}},
+    {"from": "balloon_taverley", "to": "balloon_falador", "type": "TRANSPORT", "cost_ticks": 8, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Enlightened Journey"}, {"type": "SKILL", "skill": "Firemaking", "level": 20}], "metadata": {"travel_type": "balloon", "logs_required": "1"}},
+    {"from": "balloon_taverley", "to": "balloon_varrock", "type": "TRANSPORT", "cost_ticks": 8, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Enlightened Journey"}, {"type": "SKILL", "skill": "Firemaking", "level": 40}], "metadata": {"travel_type": "balloon", "logs_required": "1"}},
+    {"from": "balloon_taverley", "to": "balloon_gnomestronghold", "type": "TRANSPORT", "cost_ticks": 8, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Enlightened Journey"}, {"type": "SKILL", "skill": "Firemaking", "level": 60}], "metadata": {"travel_type": "balloon", "logs_required": "3"}},
+    {"from": "balloon_taverley", "to": "balloon_yanille", "type": "TRANSPORT", "cost_ticks": 8, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Enlightened Journey"}, {"type": "SKILL", "skill": "Firemaking", "level": 50}], "metadata": {"travel_type": "balloon", "logs_required": "1", "log_type": "yew"}},
+    {"from": "balloon_falador", "to": "balloon_varrock", "type": "TRANSPORT", "cost_ticks": 8, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Enlightened Journey"}, {"type": "SKILL", "skill": "Firemaking", "level": 40}], "metadata": {"travel_type": "balloon", "logs_required": "1"}},
+    {"from": "balloon_falador", "to": "balloon_gnomestronghold", "type": "TRANSPORT", "cost_ticks": 8, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Enlightened Journey"}, {"type": "SKILL", "skill": "Firemaking", "level": 60}], "metadata": {"travel_type": "balloon", "logs_required": "3"}},
+    {"from": "balloon_falador", "to": "balloon_yanille", "type": "TRANSPORT", "cost_ticks": 8, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Enlightened Journey"}, {"type": "SKILL", "skill": "Firemaking", "level": 50}], "metadata": {"travel_type": "balloon", "logs_required": "1", "log_type": "yew"}},
+    {"from": "balloon_varrock", "to": "balloon_gnomestronghold", "type": "TRANSPORT", "cost_ticks": 8, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Enlightened Journey"}, {"type": "SKILL", "skill": "Firemaking", "level": 60}], "metadata": {"travel_type": "balloon", "logs_required": "3"}},
+    {"from": "balloon_varrock", "to": "balloon_yanille", "type": "TRANSPORT", "cost_ticks": 8, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Enlightened Journey"}, {"type": "SKILL", "skill": "Firemaking", "level": 50}], "metadata": {"travel_type": "balloon", "logs_required": "1", "log_type": "yew"}},
+    {"from": "balloon_gnomestronghold", "to": "balloon_yanille", "type": "TRANSPORT", "cost_ticks": 8, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Enlightened Journey"}, {"type": "SKILL", "skill": "Firemaking", "level": 60}], "metadata": {"travel_type": "balloon", "logs_required": "3"}}
+  ]
 }
-

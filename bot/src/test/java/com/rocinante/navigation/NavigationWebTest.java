@@ -260,8 +260,9 @@ public class NavigationWebTest {
 
     @Test
     public void testEdgeCost() {
-        WebEdge edge = navigationWeb.getEdge("lumbridge_castle", "lumbridge_bank");
-        assertNotNull(edge);
+        // Test edge cost using the new transition node path
+        WebEdge edge = navigationWeb.getEdge("lumbridge_castle", "lumbridge_castle_ground");
+        assertNotNull("Should have edge from lumbridge_castle to lumbridge_castle_ground", edge);
         assertTrue("Cost should be positive", edge.getCostTicks() > 0);
     }
 

@@ -1,5 +1,6 @@
 package com.rocinante.navigation;
 
+import com.google.gson.FieldNamingPolicy;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonDeserializationContext;
@@ -106,7 +107,9 @@ public class NavigationWebLoader {
                 "varlamore.json",
                 "fremennik.json",
                 "karamja.json",
-                "kharidian.json"
+                "kharidian.json",
+                "wilderness.json",
+                "plane_transitions.json"  // Transition nodes for stairs/ladders
         };
 
         for (String filename : regionFiles) {
@@ -127,60 +130,45 @@ public class NavigationWebLoader {
     }
 
     // ========================================================================
-    // Transport Loading
+    // Transport Loading - Generic Loader
     // ========================================================================
 
+    /**
+     * Transport files to load. All use standard nodes/edges format.
+     */
+    private static final String[] TRANSPORT_FILES = {
+            "quetzals.json",
+            "spirit_trees.json",
+            "gnome_gliders.json",
+            "canoes.json",
+            "charter_ships.json",
+            "balloons.json",
+            "fairy_rings.json",
+            "ships.json",
+            "magic_carpets.json",
+            "minecarts.json",
+            "teleports.json",
+            "levers.json",
+    };
+
     private static void loadTransportFiles(MergedWebData merged) {
-        // Load fairy ring locations and generate nodes/edges
-        try {
-            loadFairyRingTransports(merged);
-        } catch (Exception e) {
-            log.warn("Failed to load fairy ring transports: {}", e.getMessage());
+        // Load all transport files that use standard nodes/edges format
+        for (String filename : TRANSPORT_FILES) {
+            try {
+                loadTransportFile(merged, filename);
+            } catch (Exception e) {
+                log.warn("Failed to load transport file {}: {}", filename, e.getMessage());
+            }
         }
 
-        // Load spirit tree locations
-        try {
-            loadSpiritTreeTransports(merged);
-        } catch (Exception e) {
-            log.warn("Failed to load spirit tree transports: {}", e.getMessage());
-        }
-
-        // Load gnome glider locations
-        try {
-            loadGnomeGliderTransports(merged);
-        } catch (Exception e) {
-            log.warn("Failed to load gnome glider transports: {}", e.getMessage());
-        }
-
-        // Load canoe stations
-        try {
-            loadCanoeTransports(merged);
-        } catch (Exception e) {
-            log.warn("Failed to load canoe transports: {}", e.getMessage());
-        }
-
-        // Load charter ship ports
-        try {
-            loadCharterShipTransports(merged);
-        } catch (Exception e) {
-            log.warn("Failed to load charter ship transports: {}", e.getMessage());
-        }
-
-        // Load quetzal locations
-        try {
-            loadQuetzalTransports(merged);
-        } catch (Exception e) {
-            log.warn("Failed to load quetzal transports: {}", e.getMessage());
-        }
-
-        // Load grouping (minigame) teleports
+        // Load grouping (minigame) teleports - these come from enum, not JSON
         try {
             loadGroupingTeleports(merged);
         } catch (Exception e) {
             log.warn("Failed to load grouping teleports: {}", e.getMessage());
         }
 
-        // Load home teleport edges
+        // Load home teleport edges - these come from enum, not JSON
         try {
             loadHomeTeleportEdges(merged);
         } catch (Exception e) {
@@ -188,365 +176,24 @@ public class NavigationWebLoader {
         }
     }
 
-    private static void loadFairyRingTransports(MergedWebData merged) throws IOException {
-        String resourcePath = TRANSPORTS_PATH + "fairy_rings.json";
+    /**
+     * Load a transport file using the standard nodes/edges format.
+     * Transport files use the exact same format as web.json and region files.
+     */
+    private static void loadTransportFile(MergedWebData merged, String filename) throws IOException {
+        String resourcePath = TRANSPORTS_PATH + filename;
         try (InputStream is = NavigationWebLoader.class.getResourceAsStream(resourcePath)) {
-            if (is == null) return;
-            try (Reader reader = new InputStreamReader(is, StandardCharsets.UTF_8)) {
-                FairyRingData data = GSON.fromJson(reader, FairyRingData.class);
-                if (data != null && data.locations != null) {
-                    // Create nodes for each fairy ring
-                    for (FairyRingLocation loc : data.locations) {
-                        if (loc.x == null || loc.y == null) continue; // Skip unmapped locations
-
-                        WebNode node = WebNode.builder()
-                                .id("fairy_ring_" + loc.code.toLowerCase())
-                                .name("Fairy Ring " + loc.code + " - " + loc.name)
-                                .x(loc.x)
-                                .y(loc.y)
-                                .plane(loc.plane != null ? loc.plane : 0)
-                                .type(WebNodeType.TRANSPORT)
-                                .tags(buildTags(loc.tags, "fairy_ring", "members"))
-                                .metadata(Map.of(
-                                        "fairy_ring_code", loc.code,
-                                        "travel_type", "fairy_ring"
-                                ))
-                                .build();
-                        merged.addNode(node);
-                    }
-
-                    // Create edges between all fairy rings (through BKS - Zanaris hub)
-                    // Each fairy ring connects to all others with a fixed cost
-                    for (FairyRingLocation from : data.locations) {
-                        if (from.x == null || from.y == null) continue;
-                        for (FairyRingLocation to : data.locations) {
-                            if (to.x == null || to.y == null) continue;
-                            if (from.code.equals(to.code)) continue;
-
-                            WebEdge edge = WebEdge.builder()
-                                    .from("fairy_ring_" + from.code.toLowerCase())
-                                    .to("fairy_ring_" + to.code.toLowerCase())
-                                    .type(WebEdgeType.TRANSPORT)
-                                    .costTicks(6) // Fairy ring teleport is ~6 ticks
-                                    .bidirectional(false) // We create both directions explicitly
-                                    .requirements(List.of(
-                                            EdgeRequirement.quest("Fairytale II - Cure a Queen"),
-                                            EdgeRequirement.item(772, 1, false) // Dramen staff
-                                    ))
-                                    .metadata(Map.of(
-                                            "travel_type", "fairy_ring",
-                                            "destination_code", to.code
-                                    ))
-                                    .build();
-                            merged.addEdge(edge);
-                        }
-                    }
-                    log.info("Loaded {} fairy ring locations", data.locations.size());
-                }
+            if (is == null) {
+                log.debug("Transport file not found: {}", resourcePath);
+                return;
             }
-        }
-    }
-
-    private static void loadSpiritTreeTransports(MergedWebData merged) throws IOException {
-        String resourcePath = TRANSPORTS_PATH + "spirit_trees.json";
-        try (InputStream is = NavigationWebLoader.class.getResourceAsStream(resourcePath)) {
-            if (is == null) return;
             try (Reader reader = new InputStreamReader(is, StandardCharsets.UTF_8)) {
-                SpiritTreeData data = GSON.fromJson(reader, SpiritTreeData.class);
-                if (data != null && data.locations != null) {
-                    for (SpiritTreeLocation loc : data.locations) {
-                        WebNode node = WebNode.builder()
-                                .id(loc.id)
-                                .name("Spirit Tree - " + loc.name)
-                                .x(loc.x)
-                                .y(loc.y)
-                                .plane(loc.plane != null ? loc.plane : 0)
-                                .type(WebNodeType.TRANSPORT)
-                                .tags(buildTags(loc.tags, "spirit_tree", "members"))
-                                .metadata(Map.of("travel_type", "spirit_tree"))
-                                .build();
-                        merged.addNode(node);
-                    }
-
-                    // Create edges between all spirit trees
-                    for (SpiritTreeLocation from : data.locations) {
-                        for (SpiritTreeLocation to : data.locations) {
-                            if (from.id.equals(to.id)) continue;
-
-                            List<EdgeRequirement> reqs = new ArrayList<>();
-                            reqs.add(EdgeRequirement.quest("Tree Gnome Village"));
-
-                            if (to.requirements != null && to.requirements.quest != null) {
-                                reqs.add(EdgeRequirement.quest(to.requirements.quest));
-                            }
-
-                            WebEdge edge = WebEdge.builder()
-                                    .from(from.id)
-                                    .to(to.id)
-                                    .type(WebEdgeType.TRANSPORT)
-                                    .costTicks(5)
-                                    .bidirectional(false)
-                                    .requirements(reqs)
-                                    .metadata(Map.of("travel_type", "spirit_tree"))
-                                    .build();
-                            merged.addEdge(edge);
-                        }
-                    }
-                    log.info("Loaded {} spirit tree locations", data.locations.size());
-                }
-            }
-        }
-    }
-
-    private static void loadGnomeGliderTransports(MergedWebData merged) throws IOException {
-        String resourcePath = TRANSPORTS_PATH + "gnome_gliders.json";
-        try (InputStream is = NavigationWebLoader.class.getResourceAsStream(resourcePath)) {
-            if (is == null) return;
-            try (Reader reader = new InputStreamReader(is, StandardCharsets.UTF_8)) {
-                GnomeGliderData data = GSON.fromJson(reader, GnomeGliderData.class);
-                if (data != null && data.locations != null) {
-                    for (GnomeGliderLocation loc : data.locations) {
-                        WebNode node = WebNode.builder()
-                                .id(loc.id)
-                                .name("Gnome Glider - " + loc.name)
-                                .x(loc.x)
-                                .y(loc.y)
-                                .plane(0)
-                                .type(WebNodeType.TRANSPORT)
-                                .tags(buildTags(loc.tags, "gnome_glider", "members"))
-                                .metadata(Map.of(
-                                        "travel_type", "gnome_glider",
-                                        "npc_name", loc.npcName != null ? loc.npcName : ""
-                                ))
-                                .build();
-                        merged.addNode(node);
-                    }
-
-                    // Create edges between all gliders
-                    for (GnomeGliderLocation from : data.locations) {
-                        for (GnomeGliderLocation to : data.locations) {
-                            if (from.id.equals(to.id)) continue;
-
-                            List<EdgeRequirement> reqs = new ArrayList<>();
-                            if (from.requirements != null && from.requirements.quest != null) {
-                                reqs.add(EdgeRequirement.quest(from.requirements.quest));
-                            }
-                            if (to.requirements != null && to.requirements.quest != null) {
-                                reqs.add(EdgeRequirement.quest(to.requirements.quest));
-                            }
-
-                            WebEdge edge = WebEdge.builder()
-                                    .from(from.id)
-                                    .to(to.id)
-                                    .type(WebEdgeType.TRANSPORT)
-                                    .costTicks(8)
-                                    .bidirectional(false)
-                                    .requirements(reqs)
-                                    .metadata(Map.of("travel_type", "gnome_glider"))
-                                    .build();
-                            merged.addEdge(edge);
-                        }
-                    }
-                    log.info("Loaded {} gnome glider locations", data.locations.size());
-                }
-            }
-        }
-    }
-
-    private static void loadCanoeTransports(MergedWebData merged) throws IOException {
-        String resourcePath = TRANSPORTS_PATH + "canoes.json";
-        try (InputStream is = NavigationWebLoader.class.getResourceAsStream(resourcePath)) {
-            if (is == null) return;
-            try (Reader reader = new InputStreamReader(is, StandardCharsets.UTF_8)) {
-                CanoeData data = GSON.fromJson(reader, CanoeData.class);
-                if (data != null && data.stations != null) {
-                    for (CanoeStation station : data.stations) {
-                        WebNode node = WebNode.builder()
-                                .id(station.id)
-                                .name("Canoe Station - " + station.name)
-                                .x(station.x)
-                                .y(station.y)
-                                .plane(0)
-                                .type(WebNodeType.TRANSPORT)
-                                .tags(buildTags(station.tags, "canoe", "f2p"))
-                                .metadata(Map.of(
-                                        "travel_type", "canoe",
-                                        "station_index", String.valueOf(station.stationIndex)
-                                ))
-                                .build();
-                        merged.addNode(node);
-                    }
-
-                    // Create edges between canoe stations (based on station index distance)
-                    for (CanoeStation from : data.stations) {
-                        for (CanoeStation to : data.stations) {
-                            if (from.id.equals(to.id)) continue;
-
-                            int distance = Math.abs(from.stationIndex - to.stationIndex);
-                            // Waka can go anywhere, other canoes limited by distance
-                            int requiredWoodcutting = distance <= 1 ? 12 :
-                                    distance <= 2 ? 27 :
-                                            distance <= 3 ? 42 : 57;
-
-                            WebEdge edge = WebEdge.builder()
-                                    .from(from.id)
-                                    .to(to.id)
-                                    .type(WebEdgeType.TRANSPORT)
-                                    .costTicks(10)
-                                    .bidirectional(false)
-                                    .requirements(List.of(
-                                            EdgeRequirement.skill("Woodcutting", requiredWoodcutting)
-                                    ))
-                                    .metadata(Map.of(
-                                            "travel_type", "canoe",
-                                            "min_woodcutting", String.valueOf(requiredWoodcutting)
-                                    ))
-                                    .build();
-                            merged.addEdge(edge);
-                        }
-                    }
-                    log.info("Loaded {} canoe stations", data.stations.size());
-                }
-            }
-        }
-    }
-
-    private static void loadCharterShipTransports(MergedWebData merged) throws IOException {
-        String resourcePath = TRANSPORTS_PATH + "charter_ships.json";
-        try (InputStream is = NavigationWebLoader.class.getResourceAsStream(resourcePath)) {
-            if (is == null) return;
-            try (Reader reader = new InputStreamReader(is, StandardCharsets.UTF_8)) {
-                CharterShipData data = GSON.fromJson(reader, CharterShipData.class);
-                if (data != null && data.ports != null) {
-                    for (CharterShipPort port : data.ports) {
-                        WebNode node = WebNode.builder()
-                                .id(port.id)
-                                .name("Charter Ship - " + port.name)
-                                .x(port.x)
-                                .y(port.y)
-                                .plane(0)
-                                .type(WebNodeType.TRANSPORT)
-                                .tags(buildTags(port.tags, "charter_ship", "members"))
-                                .metadata(Map.of("travel_type", "charter_ship"))
-                                .build();
-                        merged.addNode(node);
-                    }
-
-                    // Create edges between all charter ship ports (fully connected)
-                    for (CharterShipPort from : data.ports) {
-                        for (CharterShipPort to : data.ports) {
-                            if (from.id.equals(to.id)) continue;
-
-                            List<EdgeRequirement> reqs = new ArrayList<>();
-                            if (to.requirements != null && to.requirements.quest != null) {
-                                reqs.add(EdgeRequirement.quest(to.requirements.quest));
-                            }
-
-                            // Estimate cost based on distance
-                            int distance = (int) Math.sqrt(
-                                    Math.pow(to.x - from.x, 2) + Math.pow(to.y - from.y, 2)
-                            );
-                            int estimatedFare = Math.min(4100, Math.max(480, distance * 2));
-
-                            WebEdge edge = WebEdge.builder()
-                                    .from(from.id)
-                                    .to(to.id)
-                                    .type(WebEdgeType.TRANSPORT)
-                                    .costTicks(15)
-                                    .bidirectional(false)
-                                    .requirements(reqs)
-                                    .metadata(Map.of(
-                                            "travel_type", "charter_ship",
-                                            "estimated_fare", String.valueOf(estimatedFare)
-                                    ))
-                                    .build();
-                            merged.addEdge(edge);
-                        }
-                    }
-                    log.info("Loaded {} charter ship ports", data.ports.size());
-                }
-            }
-        }
-    }
-
-    private static void loadQuetzalTransports(MergedWebData merged) throws IOException {
-        String resourcePath = TRANSPORTS_PATH + "quetzals.json";
-        try (InputStream is = NavigationWebLoader.class.getResourceAsStream(resourcePath)) {
-            if (is == null) return;
-            try (Reader reader = new InputStreamReader(is, StandardCharsets.UTF_8)) {
-                QuetzalData data = GSON.fromJson(reader, QuetzalData.class);
+                WebData data = GSON.fromJson(reader, WebData.class);
                 if (data != null) {
-                    // Add Varrock entry point
-                    if (data.varrockEntry != null) {
-                        QuetzalLocation entry = data.varrockEntry;
-                        WebNode node = WebNode.builder()
-                                .id(entry.id)
-                                .name("Quetzal - " + entry.name)
-                                .x(entry.x)
-                                .y(entry.y)
-                                .plane(0)
-                                .type(WebNodeType.TRANSPORT)
-                                .tags(buildTags(entry.tags, "quetzal", "members"))
-                                .metadata(Map.of("travel_type", "quetzal"))
-                                .build();
-                        merged.addNode(node);
-                    }
-
-                    // Add Varlamore network locations
-                    if (data.varlamoreNetwork != null) {
-                        for (QuetzalLocation loc : data.varlamoreNetwork) {
-                            WebNode node = WebNode.builder()
-                                    .id(loc.id)
-                                    .name("Quetzal - " + loc.name)
-                                    .x(loc.x)
-                                    .y(loc.y)
-                                    .plane(0)
-                                    .type(WebNodeType.TRANSPORT)
-                                    .tags(buildTags(loc.tags, "quetzal", "members"))
-                                    .metadata(Map.of("travel_type", "quetzal"))
-                                    .build();
-                            merged.addNode(node);
-                        }
-                    }
-
-                    // Create edges: Varrock <-> Varlamore entry, and within Varlamore network
-                    EdgeRequirement questReq = EdgeRequirement.quest("Twilight's Promise");
-
-                    // Varrock to Varlamore
-                    if (data.varrockEntry != null && data.varlamoreExit != null) {
-                        merged.addEdge(WebEdge.builder()
-                                .from(data.varrockEntry.id)
-                                .to(data.varlamoreExit.id)
-                                .type(WebEdgeType.TRANSPORT)
-                                .costTicks(10)
-                                .bidirectional(true)
-                                .requirements(List.of(questReq))
-                                .metadata(Map.of("travel_type", "quetzal"))
-                                .build());
-                    }
-
-                    // Within Varlamore network (fully connected)
-                    if (data.varlamoreNetwork != null) {
-                        for (QuetzalLocation from : data.varlamoreNetwork) {
-                            for (QuetzalLocation to : data.varlamoreNetwork) {
-                                if (from.id.equals(to.id)) continue;
-
-                                merged.addEdge(WebEdge.builder()
-                                        .from(from.id)
-                                        .to(to.id)
-                                        .type(WebEdgeType.TRANSPORT)
-                                        .costTicks(8)
-                                        .bidirectional(false)
-                                        .requirements(List.of(questReq))
-                                        .metadata(Map.of("travel_type", "quetzal"))
-                                        .build());
-                            }
-                        }
-                    }
-
-                    int totalLocations = (data.varlamoreNetwork != null ? data.varlamoreNetwork.size() : 0) +
-                            (data.varrockEntry != null ? 1 : 0);
-                    log.info("Loaded {} quetzal locations", totalLocations);
+                    int nodeCount = data.nodes != null ? data.nodes.size() : 0;
+                    int edgeCount = data.edges != null ? data.edges.size() : 0;
+                    merged.merge(data);
+                    log.info("Loaded transport file {}: {} nodes, {} edges", filename, nodeCount, edgeCount);
                 }
             }
         }
@@ -747,6 +394,8 @@ public class NavigationWebLoader {
 
     private static Gson createGson() {
         return new GsonBuilder()
+                // Use snake_case in JSON, camelCase in Java
+                .setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES)
                 .registerTypeAdapter(WebNodeType.class, new EnumIgnoreCaseDeserializer<>(WebNodeType.class))
                 .registerTypeAdapter(WebEdgeType.class, new EnumIgnoreCaseDeserializer<>(WebEdgeType.class))
                 .registerTypeAdapter(EdgeRequirementType.class, new EnumIgnoreCaseDeserializer<>(EdgeRequirementType.class))
@@ -773,91 +422,6 @@ public class NavigationWebLoader {
     private static class RegionInfo {
         String id;
         String name;
-    }
-
-    private static class FairyRingData {
-        List<FairyRingLocation> locations;
-    }
-
-    private static class FairyRingLocation {
-        String code;
-        String name;
-        Integer x;
-        Integer y;
-        Integer plane;
-        List<String> tags;
-    }
-
-    private static class SpiritTreeData {
-        List<SpiritTreeLocation> locations;
-    }
-
-    private static class SpiritTreeLocation {
-        String id;
-        String name;
-        int x;
-        int y;
-        Integer plane;
-        List<String> tags;
-        RequirementInfo requirements;
-    }
-
-    private static class GnomeGliderData {
-        List<GnomeGliderLocation> locations;
-    }
-
-    private static class GnomeGliderLocation {
-        String id;
-        String name;
-        int x;
-        int y;
-        String npcName;
-        List<String> tags;
-        RequirementInfo requirements;
-    }
-
-    private static class CanoeData {
-        List<CanoeStation> stations;
-    }
-
-    private static class CanoeStation {
-        String id;
-        String name;
-        int x;
-        int y;
-        List<String> tags;
-        int stationIndex;
-    }
-
-    private static class CharterShipData {
-        List<CharterShipPort> ports;
-    }
-
-    private static class CharterShipPort {
-        String id;
-        String name;
-        int x;
-        int y;
-        List<String> tags;
-        RequirementInfo requirements;
-    }
-
-    private static class QuetzalData {
-        QuetzalLocation varrockEntry;
-        QuetzalLocation varlamoreExit;
-        List<QuetzalLocation> varlamoreNetwork;
-    }
-
-    private static class QuetzalLocation {
-        String id;
-        String name;
-        int x;
-        int y;
-        List<String> tags;
-    }
-
-    private static class RequirementInfo {
-        String quest;
     }
 
     // ========================================================================

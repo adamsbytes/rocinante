@@ -1,0 +1,212 @@
+{
+  "_comment": "Plane transition nodes - locations where stairs/ladders exist",
+  "_philosophy": "Nodes define WHERE transitions exist (global knowledge for planning). PlaneTransitionHandler defines HOW to use them (object IDs, actions). This separation allows global pathfinding with dynamic execution.",
+  "nodes": [
+    {
+      "id": "lumbridge_castle_ground",
+      "name": "Lumbridge Castle (Ground Floor)",
+      "x": 3206,
+      "y": 3228,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["lumbridge", "transition_point"],
+      "metadata": {"has_stairs": "true", "connects_to_plane": "1"}
+    },
+    {
+      "id": "lumbridge_castle_floor1",
+      "name": "Lumbridge Castle (First Floor)",
+      "x": 3206,
+      "y": 3228,
+      "plane": 1,
+      "type": "GENERIC",
+      "tags": ["lumbridge", "transition_point"],
+      "metadata": {"has_stairs": "true", "connects_to_plane": "0,2"}
+    },
+    {
+      "id": "varrock_west_bank_basement",
+      "name": "Varrock West Bank (Basement)",
+      "x": 3187,
+      "y": 9825,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["varrock", "bank", "transition_point", "underground"],
+      "metadata": {"has_stairs": "true", "connects_to_plane": "surface", "surface_x": "3185", "surface_y": "3436"}
+    },
+    {
+      "id": "falador_west_bank_ground",
+      "name": "Falador West Bank (Ground Floor)",
+      "x": 2946,
+      "y": 3368,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["falador", "bank"],
+      "metadata": {}
+    },
+    {
+      "id": "draynor_bank_ground",
+      "name": "Draynor Bank",
+      "x": 3092,
+      "y": 3243,
+      "plane": 0,
+      "type": "BANK",
+      "tags": ["draynor", "bank"],
+      "metadata": {}
+    },
+    {
+      "id": "edgeville_dungeon_entrance",
+      "name": "Edgeville Dungeon Entrance",
+      "x": 3096,
+      "y": 3468,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["edgeville", "dungeon", "transition_point"],
+      "metadata": {"has_trapdoor": "true", "connects_to": "edgeville_dungeon"}
+    },
+    {
+      "id": "edgeville_dungeon",
+      "name": "Edgeville Dungeon",
+      "x": 3096,
+      "y": 9868,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["edgeville", "dungeon", "underground"],
+      "metadata": {"has_ladder": "true", "connects_to": "edgeville_dungeon_entrance"}
+    },
+    {
+      "id": "varrock_sewers_entrance",
+      "name": "Varrock Sewers Entrance",
+      "x": 3237,
+      "y": 3457,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["varrock", "dungeon", "transition_point"],
+      "metadata": {"has_manhole": "true"}
+    },
+    {
+      "id": "varrock_sewers",
+      "name": "Varrock Sewers",
+      "x": 3237,
+      "y": 9857,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["varrock", "dungeon", "underground"],
+      "metadata": {}
+    },
+    {
+      "id": "varrock_palace_ground",
+      "name": "Varrock Palace (Ground Floor)",
+      "x": 3212,
+      "y": 3474,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["varrock", "transition_point"],
+      "metadata": {"has_stairs": "true"}
+    },
+    {
+      "id": "varrock_palace_floor1",
+      "name": "Varrock Palace (First Floor)",
+      "x": 3212,
+      "y": 3474,
+      "plane": 1,
+      "type": "GENERIC",
+      "tags": ["varrock", "transition_point"],
+      "metadata": {"has_stairs": "true"}
+    },
+    {
+      "id": "al_kharid_mine_entrance",
+      "name": "Al Kharid Mine (Surface)",
+      "x": 3300,
+      "y": 3310,
+      "plane": 0,
+      "type": "TRAINING",
+      "tags": ["al_kharid", "mining"],
+      "metadata": {}
+    },
+    {
+      "id": "dwarven_mine_surface",
+      "name": "Dwarven Mine Entrance",
+      "x": 3018,
+      "y": 3450,
+      "plane": 0,
+      "type": "GENERIC",
+      "tags": ["ice_mountain", "mining", "transition_point"],
+      "metadata": {"has_ladder": "true"}
+    },
+    {
+      "id": "dwarven_mine",
+      "name": "Dwarven Mine",
+      "x": 3018,
+      "y": 9850,
+      "plane": 0,
+      "type": "TRAINING",
+      "tags": ["mining", "underground"],
+      "metadata": {}
+    }
+  ],
+  "edges": [
+    {
+      "from": "lumbridge_castle_ground",
+      "to": "lumbridge_castle_floor1",
+      "type": "STAIRS",
+      "cost_ticks": 5,
+      "bidirectional": true,
+      "requirements": [],
+      "metadata": {"transition_type": "stairs", "object_action": "Climb-up"}
+    },
+    {
+      "from": "lumbridge_castle_floor1",
+      "to": "lumbridge_bank",
+      "type": "STAIRS",
+      "cost_ticks": 5,
+      "bidirectional": true,
+      "requirements": [],
+      "metadata": {"transition_type": "stairs", "object_action": "Climb-up"}
+    },
+    {
+      "from": "varrock_west_bank",
+      "to": "varrock_west_bank_basement",
+      "type": "STAIRS",
+      "cost_ticks": 8,
+      "bidirectional": true,
+      "requirements": [],
+      "metadata": {"transition_type": "stairs", "object_action": "Climb-down"}
+    },
+    {
+      "from": "edgeville_dungeon_entrance",
+      "to": "edgeville_dungeon",
+      "type": "STAIRS",
+      "cost_ticks": 8,
+      "bidirectional": true,
+      "requirements": [],
+      "metadata": {"transition_type": "trapdoor", "object_action": "Climb-down"}
+    },
+    {
+      "from": "varrock_sewers_entrance",
+      "to": "varrock_sewers",
+      "type": "STAIRS",
+      "cost_ticks": 8,
+      "bidirectional": true,
+      "requirements": [],
+      "metadata": {"transition_type": "manhole", "object_action": "Climb-down"}
+    },
+    {
+      "from": "varrock_palace_ground",
+      "to": "varrock_palace_floor1",
+      "type": "STAIRS",
+      "cost_ticks": 5,
+      "bidirectional": true,
+      "requirements": [],
+      "metadata": {"transition_type": "stairs"}
+    },
+    {
+      "from": "dwarven_mine_surface",
+      "to": "dwarven_mine",
+      "type": "STAIRS",
+      "cost_ticks": 8,
+      "bidirectional": true,
+      "requirements": [],
+      "metadata": {"transition_type": "ladder", "object_action": "Climb-down"}
+    }
+  ]
+}
+

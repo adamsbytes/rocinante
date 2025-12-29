@@ -90,13 +90,21 @@ public class WalkToTask extends AbstractTask {
 
     /**
      * Probability of adding humanized path deviation.
+     * REQUIREMENTS.md 5.4.3: "occasional 2-10 tile detours (10% of walks)"
      */
     private static final double PATH_DEVIATION_CHANCE = 0.10;
 
     /**
-     * Maximum deviation distance in tiles.
+     * Minimum deviation distance in tiles for humanized path deviations.
+     * REQUIREMENTS.md 5.4.3: "occasional 2-10 tile detours"
      */
-    private static final int MAX_DEVIATION_TILES = 2;
+    private static final int MIN_DEVIATION_TILES = 2;
+    
+    /**
+     * Maximum deviation distance in tiles for humanized path deviations.
+     * REQUIREMENTS.md 5.4.3: "occasional 2-10 tile detours"
+     */
+    private static final int MAX_DEVIATION_TILES = 10;
 
     /**
      * Maximum tiles to click ahead on minimap.
@@ -966,14 +974,35 @@ public class WalkToTask extends AbstractTask {
     }
 
     /**
-     * Apply small random deviation to path for humanization.
+     * Apply random deviation to path for humanization.
+     * Implements REQUIREMENTS.md 5.4.3: "occasional 2-10 tile detours (10% of walks)"
+     * 
+     * <p>Generates a random deviation of 2-10 tiles in a random direction,
+     * ensuring the deviated point is walkable.
      */
     private void applyPathDeviation(Randomization rand) {
         int deviationPoint = 1 + rand.uniformRandomInt(0, currentPath.size() - 3);
         WorldPoint original = currentPath.get(deviationPoint);
 
-        int dx = rand.uniformRandomInt(-MAX_DEVIATION_TILES, MAX_DEVIATION_TILES);
-        int dy = rand.uniformRandomInt(-MAX_DEVIATION_TILES, MAX_DEVIATION_TILES);
+        // Generate random distance between MIN_DEVIATION_TILES and MAX_DEVIATION_TILES
+        int distance = rand.uniformRandomInt(MIN_DEVIATION_TILES, MAX_DEVIATION_TILES);
+        
+        // Generate random direction (angle in radians)
+        double angle = rand.uniformRandom(0, 2 * Math.PI);
+        
+        // Calculate dx and dy from polar coordinates
+        int dx = (int) Math.round(distance * Math.cos(angle));
+        int dy = (int) Math.round(distance * Math.sin(angle));
+        
+        // Ensure at least MIN_DEVIATION_TILES distance (rounding might reduce it)
+        if (Math.abs(dx) + Math.abs(dy) < MIN_DEVIATION_TILES) {
+            // Fallback: just push in a cardinal direction
+            if (Math.abs(dx) >= Math.abs(dy)) {
+                dx = dx >= 0 ? MIN_DEVIATION_TILES : -MIN_DEVIATION_TILES;
+            } else {
+                dy = dy >= 0 ? MIN_DEVIATION_TILES : -MIN_DEVIATION_TILES;
+            }
+        }
 
         WorldPoint deviated = new WorldPoint(
                 original.getX() + dx,
@@ -984,7 +1013,8 @@ public class WalkToTask extends AbstractTask {
         // Only apply if deviation is walkable
         if (pathFinder.isWalkable(deviated)) {
             currentPath.set(deviationPoint, deviated);
-            log.trace("Applied path deviation at index {}: {} -> {}", deviationPoint, original, deviated);
+            log.trace("Applied path deviation at index {}: {} -> {} (distance={})", 
+                    deviationPoint, original, deviated, distance);
         }
     }
 
@@ -2289,14 +2319,24 @@ public class WalkToTask extends AbstractTask {
             webWalker = new WebWalker(ctx.getClient(), ctx.getUnlockTracker(), planeTransitionHandler);
         }
 
-        // Set ironman state on WebWalker if available
-        if (webWalker != null && ctx.getIronmanState() != null) {
+        // Configure WebWalker with account state from centralized TaskContext
+        if (webWalker != null) {
+            // Set ironman state if available
+            if (ctx.getIronmanState() != null) {
             webWalker.setIronman(ctx.getIronmanState().isIronman());
             webWalker.setHardcoreIronman(ctx.getIronmanState().isHardcore());
             webWalker.setUltimateIronman(ctx.getIronmanState().isUltimate());
             log.debug("WebWalker configured for ironman mode: {}, hardcore: {}, ultimate: {}",
                     ctx.getIronmanState().isIronman(), ctx.getIronmanState().isHardcore(),
                     ctx.getIronmanState().isUltimate());
+            }
+            
+            // Set ResourceAwareness from TaskContext (centralized computation)
+            ResourceAwareness resourceAwareness = ctx.getResourceAwareness();
+            if (resourceAwareness != null) {
+                webWalker.setResourceAwareness(resourceAwareness);
+                log.debug("WebWalker configured with ResourceAwareness from TaskContext");
+            }
         }
 
         servicesInitialized = true;

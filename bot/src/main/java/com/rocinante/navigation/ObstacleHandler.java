@@ -322,12 +322,24 @@ public class ObstacleHandler {
      */
     private void registerMiscObstacles() {
         // ====================================================================
-        // Wilderness Ditch
+        // Wilderness Ditch - spans multiple tiles along the border
+        // Object IDs from RuneLite gameval/ObjectID.java:
+        //   DITCH_WILDERNESS1_GROUND = 23261, DITCH_WILDERNESS1A_GROUND = 23262
+        //   DITCH_WILDERNESS3_GROUND = 23263, DITCH_WILDERNESS3A_GROUND = 23264
+        //   DITCH_WILDERNESS4_GROUND = 23265, DITCH_WILDERNESS4A_GROUND = 23266
+        //   DITCH_WILDERNESSE_GROUND = 23267, DITCH_WILDERNESSEA_GROUND = 23268
+        //   DITCH_WILDERNESS_END_NORTH = 23269, DITCH_WILDERNESS_END_SOUTH = 23270
+        //   DITCH_WILDERNESS_COVER = 23271 (main clickable)
+        //   DITCH_WILDERNESS_COVER_MEMBERS = 50652
         // ====================================================================
+        // Wilderness ditch spans multiple tiles - use findClosestWildernessDitch() for interaction
         registerObstacle(ObstacleDefinition.builder()
                 .name("Wilderness Ditch")
                 .type(ObstacleDefinition.ObstacleType.OTHER)
-                .objectIds(List.of(23271))
+                .objectIds(List.of(
+                        23271,  // DITCH_WILDERNESS_COVER (main)
+                        50652,  // DITCH_WILDERNESS_COVER_MEMBERS
+                        23261, 23262, 23263, 23264, 23265, 23266, 23267, 23268, 23269, 23270))
                 .blockedStateId(23271)
                 .passableStateId(-1)
                 .action("Cross")
@@ -511,6 +523,122 @@ public class ObstacleHandler {
         }
 
         return obstacles;
+    }
+
+    /**
+     * Find the closest obstacle instance by name within search radius.
+     * 
+     * <p>This is particularly useful for obstacles that span multiple tiles like the
+     * wilderness ditch, where the player should interact with the nearest clickable segment.
+     *
+     * @param playerLocation the player's current location
+     * @param obstacleName   the obstacle name to search for
+     * @param searchRadius   maximum search radius in tiles
+     * @return the closest detected obstacle, or empty if none found
+     */
+    public Optional<DetectedObstacle> findClosestObstacleByName(WorldPoint playerLocation, 
+                                                                  String obstacleName, 
+                                                                  int searchRadius) {
+        List<DetectedObstacle> nearby = findObstaclesNearby(playerLocation, searchRadius);
+        
+        return nearby.stream()
+                .filter(obs -> obs.getDefinition().getName().equalsIgnoreCase(obstacleName))
+                .min(Comparator.comparingInt(obs -> {
+                    int dx = obs.getLocation().getX() - playerLocation.getX();
+                    int dy = obs.getLocation().getY() - playerLocation.getY();
+                    return dx * dx + dy * dy; // Squared distance (avoids sqrt)
+                }));
+    }
+
+    /**
+     * Find the closest obstacle instance by object ID within search radius.
+     * 
+     * <p>For obstacles with multiple valid object IDs (like wilderness ditch segments),
+     * this finds any matching instance and returns the closest one.
+     *
+     * @param playerLocation the player's current location
+     * @param objectIds      set of valid object IDs
+     * @param searchRadius   maximum search radius in tiles
+     * @return the closest detected obstacle, or empty if none found
+     */
+    public Optional<DetectedObstacle> findClosestObstacleByIds(WorldPoint playerLocation, 
+                                                                 Set<Integer> objectIds, 
+                                                                 int searchRadius) {
+        Scene scene = client.getScene();
+        if (scene == null) {
+            return Optional.empty();
+        }
+
+        Tile[][][] tiles = scene.getTiles();
+        int plane = playerLocation.getPlane();
+
+        LocalPoint centerLocal = LocalPoint.fromWorld(client, playerLocation);
+        if (centerLocal == null) {
+            return Optional.empty();
+        }
+
+        int centerSceneX = centerLocal.getSceneX();
+        int centerSceneY = centerLocal.getSceneY();
+
+        DetectedObstacle closest = null;
+        int closestDistSq = Integer.MAX_VALUE;
+
+        for (int dx = -searchRadius; dx <= searchRadius; dx++) {
+            for (int dy = -searchRadius; dy <= searchRadius; dy++) {
+                int sceneX = centerSceneX + dx;
+                int sceneY = centerSceneY + dy;
+
+                if (sceneX < 0 || sceneX >= Constants.SCENE_SIZE ||
+                        sceneY < 0 || sceneY >= Constants.SCENE_SIZE) {
+                    continue;
+                }
+
+                Tile tile = tiles[plane][sceneX][sceneY];
+                if (tile == null) {
+                    continue;
+                }
+
+                // Check game objects
+                for (GameObject gameObject : tile.getGameObjects()) {
+                    if (gameObject == null) {
+                        continue;
+                    }
+                    if (objectIds.contains(gameObject.getId())) {
+                        WorldPoint loc = tile.getWorldLocation();
+                        int distSq = dx * dx + dy * dy;
+                        if (distSq < closestDistSq) {
+                            ObstacleDefinition def = getObstacleDefinition(gameObject.getId());
+                            if (def != null) {
+                                closest = new DetectedObstacle(def, gameObject, loc, true);
+                                closestDistSq = distSq;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return Optional.ofNullable(closest);
+    }
+
+    /**
+     * Find the closest wilderness ditch segment to cross.
+     * 
+     * <p>The wilderness ditch spans the entire northern border. This method finds
+     * the nearest clickable ditch segment so the player takes the shortest path
+     * to cross into or out of the wilderness.
+     *
+     * @param playerLocation the player's current location
+     * @return the closest ditch segment, or empty if none visible
+     */
+    public Optional<DetectedObstacle> findClosestWildernessDitch(WorldPoint playerLocation) {
+        // Wilderness ditch object IDs
+        Set<Integer> ditchIds = Set.of(
+                23271,  // DITCH_WILDERNESS_COVER (main clickable)
+                50652   // DITCH_WILDERNESS_COVER_MEMBERS
+        );
+        // Search within 20 tiles - ditch should always be visible when nearby
+        return findClosestObstacleByIds(playerLocation, ditchIds, 20);
     }
 
     /**
