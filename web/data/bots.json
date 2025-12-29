@@ -15,10 +15,14 @@
         "cpuLimit": "1.0",
         "memoryLimit": "2G"
       },
-      "vncPort": 32577,
       "totpSecret": "ANSSXZB4HFGYVC74NVI6R3MAXDGNP4X4",
       "characterName": "67silverdev",
-      "preferredWorld": 418
+      "preferredWorld": 418,
+      "machineId": "a9bec447f36e351401a00e870af52452",
+      "screenResolution": "1280x720",
+      "displayDpi": 144,
+      "additionalFonts": ["hack", "ubuntu", "cantarell", "jetbrains-mono", "inconsolata"],
+      "timezone": "America/New_York"
     }
   ]
 }

@@ -112,6 +112,12 @@ public class WalkToTask extends AbstractTask {
     private static final int MINIMAP_CLICK_DISTANCE = 15;
 
     /**
+     * Minimum ticks between walk clicks while moving.
+     * Real players don't spam-click every tick - they click ahead and wait.
+     */
+    private static final int MIN_TICKS_BETWEEN_CLICKS = 4;  // ~2.4 seconds
+
+    /**
      * Minimap widget group IDs for different interface modes.
      * These are the actual minimap drawing area widgets.
      */
@@ -267,6 +273,11 @@ public class WalkToTask extends AbstractTask {
      * Ticks since last position change.
      */
     private int ticksSinceMove = 0;
+
+    /**
+     * Ticks since last walk click - prevents spam clicking while moving.
+     */
+    private int ticksSinceLastClick = 0;
 
     /**
      * Whether we're waiting for a click action.
@@ -1027,6 +1038,9 @@ public class WalkToTask extends AbstractTask {
             return; // Wait for click to complete
         }
 
+        // Track time since last click
+        ticksSinceLastClick++;
+
         PlayerState player = ctx.getPlayerState();
         WorldPoint playerPos = player.getWorldPosition();
 
@@ -1093,8 +1107,13 @@ public class WalkToTask extends AbstractTask {
             return;
         }
 
-        // Click on next path point
-        if (!currentPath.isEmpty()) {
+        // Click on next path point - but don't spam clicks while moving
+        // Only click if: enough time has passed, OR player stopped, OR player reached click destination
+        boolean shouldClick = ticksSinceLastClick >= MIN_TICKS_BETWEEN_CLICKS 
+                || !player.isMoving() 
+                || ticksSinceMove > 2;  // Player stopped for a bit
+        
+        if (!currentPath.isEmpty() && shouldClick) {
             clickNextPathPoint(ctx, playerPos);
         }
     }
@@ -1432,8 +1451,12 @@ public class WalkToTask extends AbstractTask {
     }
 
     private void clickNextPathPoint(TaskContext ctx, WorldPoint playerPos) {
-        // Determine click target (skip ahead on path)
-        WorldPoint clickTarget = determineClickTarget(playerPos);
+        // Predict where player will be when click lands (~500ms for mouse move + click)
+        // Player moves ~1 tile per 600ms when running, so predict ~0.8 tiles ahead
+        WorldPoint predictedPos = predictPlayerPosition(ctx, playerPos);
+        
+        // Determine click target based on predicted position (skip ahead on path)
+        WorldPoint clickTarget = determineClickTarget(predictedPos);
 
         if (clickTarget == null) {
             log.warn("No valid click target found");
@@ -1508,6 +1531,7 @@ public class WalkToTask extends AbstractTask {
 
         // Perform the click (minimap and viewport points are canvas-relative)
         clickPending = true;
+        ticksSinceLastClick = 0;  // Reset click cooldown
         CompletableFuture<Void> moveFuture = ctx.getMouseController().moveToCanvas(screenPoint.x, screenPoint.y);
 
         moveFuture.thenCompose(v -> ctx.getMouseController().click())
@@ -1520,6 +1544,40 @@ public class WalkToTask extends AbstractTask {
                     log.error("Walk click failed", e);
                     return null;
                 });
+    }
+
+    /**
+     * Predict where the player will be when the click lands.
+     * Accounts for movement during mouse travel time (~500ms).
+     */
+    private WorldPoint predictPlayerPosition(TaskContext ctx, WorldPoint currentPos) {
+        PlayerState player = ctx.getPlayerState();
+        if (!player.isMoving() || currentPath.isEmpty()) {
+            return currentPos;
+        }
+        
+        // Find current position in path and look ahead
+        // Running speed is ~1 tile per 600ms, walking ~1 tile per 900ms
+        // Mouse move + click takes ~400-600ms, so predict ~0.7 tiles ahead
+        boolean isRunning = ctx.getClient().getVarpValue(173) == 1;
+        int lookAheadTiles = isRunning ? 1 : 0;
+        
+        // Find the closest point in path to current position
+        int closestIndex = pathIndex;
+        for (int i = pathIndex; i < Math.min(pathIndex + 3, currentPath.size()); i++) {
+            if (currentPos.distanceTo(currentPath.get(i)) <= 2) {
+                closestIndex = i;
+                break;
+            }
+        }
+        
+        // Look ahead on the path
+        int predictedIndex = Math.min(closestIndex + lookAheadTiles, currentPath.size() - 1);
+        if (predictedIndex >= 0 && predictedIndex < currentPath.size()) {
+            return currentPath.get(predictedIndex);
+        }
+        
+        return currentPos;
     }
 
     /**
@@ -2112,17 +2170,23 @@ public class WalkToTask extends AbstractTask {
         double rotatedY = dy * Math.cos(angle) - dx * Math.sin(angle);
 
         // Scale to minimap (4 pixels per tile approximately)
-        int minimapX = minimapCenterX + (int) (rotatedX * 4);
-        int minimapY = minimapCenterY - (int) (rotatedY * 4);
+        double scaledX = rotatedX * 4;
+        double scaledY = rotatedY * 4;
+        
+        // Calculate distance from center in pixels
+        double distFromCenter = Math.sqrt(scaledX * scaledX + scaledY * scaledY);
 
-        // Verify within minimap bounds
-        int distFromCenter = (int) Math.sqrt(
-                Math.pow(minimapX - minimapCenterX, 2) +
-                Math.pow(minimapY - minimapCenterY, 2));
-
-        if (distFromCenter > minimapRadius - 5) {
-            return null;
+        // Clamp to minimap boundary (with small margin for safety)
+        int maxDist = minimapRadius - 3;
+        if (distFromCenter > maxDist && distFromCenter > 0) {
+            // Scale down to fit within boundary instead of rejecting
+            double scale = maxDist / distFromCenter;
+            scaledX *= scale;
+            scaledY *= scale;
         }
+        
+        int minimapX = minimapCenterX + (int) scaledX;
+        int minimapY = minimapCenterY - (int) scaledY;
 
         // Add slight randomization
         minimapX += Randomization.gaussianInt(0, 2);

@@ -1,70 +1,61 @@
 # Rocinante
 
-RuneLite automation framework. See `REQUIREMENTS.md` for full spec.
+Full automation system for Old School RuneScape via RuneLite plugin. Includes a web management UI with live VNC streaming, bot status monitoring, and task queuing.
 
 ## Requirements
 
-- Docker
+- Docker & Docker Compose
+- Bun (for web UI development)
 
-## Build
-
-```bash
-cd bot && docker build -f build.Dockerfile -o build/libs .
-```
-
-Output: `bot/build/libs/rocinante-<version>.jar`
-
-## Run
+## Quick Start
 
 ```bash
-# Build plugin first, then:
-docker-compose up -d
+# Build and run everything
+docker compose up -d
+
+# Web UI available at http://localhost:3000
 ```
 
 ## Project Structure
 
 ```
 .
-├── bot/                    # RuneLite plugin and bot logic
+├── bot/                      # RuneLite plugin + container runtime
 │   ├── src/main/java/com/rocinante/
-│   │   ├── core/           # Plugin entry, task executor
-│   │   ├── config/         # RuneLite config interface
-│   │   ├── input/          # Mouse/keyboard controllers
-│   │   ├── timing/         # Delays, fatigue, breaks
-│   │   ├── tasks/          # Task system
-│   │   ├── state/          # Game state tracking
-│   │   ├── navigation/     # Pathfinding, web walker
-│   │   ├── integration/    # Quest Helper bridge, Claude API
-│   │   ├── combat/         # Combat loop, prayer, gear
-│   │   ├── slayer/         # Slayer task management
-│   │   ├── progression/    # Account goals, skill planning
-│   │   ├── ironman/        # Ironman restrictions, HCIM safety
-│   │   ├── data/           # Wiki service, teleport data
-│   │   └── util/           # Helpers
-│   ├── Dockerfile          # RuneLite runtime container
-│   ├── build.Dockerfile    # Build-only container
-│   ├── DOCKER.md           # Docker deployment guide
-│   └── build.gradle        # Gradle build config
-├── docker-compose.yml      # Multi-account orchestration
-├── REQUIREMENTS.md         # Full specification
-├── PHASES.md               # Implementation roadmap
-└── README.md               # This file
+│   │   ├── core/             # Plugin entry, task executor
+│   │   ├── behavior/         # Player profiles, humanization
+│   │   ├── input/            # Mouse/keyboard simulation
+│   │   ├── navigation/       # Pathfinding, web walker
+│   │   ├── tasks/            # Task system and implementations
+│   │   ├── combat/           # Combat loop, prayer, gear
+│   │   ├── quest/            # Quest automation
+│   │   ├── slayer/           # Slayer task management
+│   │   ├── progression/      # Account goals, skill planning
+│   │   ├── ironman/          # Ironman restrictions, HCIM safety
+│   │   ├── data/             # Wiki API, teleport data
+│   │   ├── status/           # Bot-to-web status reporting
+│   │   └── ...
+│   ├── Dockerfile            # Bot container (Xvfb, VNC, Bolt launcher)
+│   └── entrypoint.sh         # Container startup script
+│
+├── web/                      # Management web UI
+│   ├── src/
+│   │   ├── api/              # Bun server (Docker control, VNC proxy)
+│   │   ├── client/           # SolidJS frontend
+│   │   └── shared/           # Shared types
+│   └── data/                 # Bot configs, runtime status
+│
+├── docker-compose.yml        # Service orchestration
+├── REQUIREMENTS.md           # Full specification
+└── PHASES.md                 # Implementation roadmap
 ```
 
-## Local Gradle (optional)
+## Features
 
-If you want IDE support without Docker:
-
-```bash
-cd bot
-
-# Clone and build Quest Helper locally
-git clone --depth 1 https://github.com/Zoinkwiz/quest-helper.git /tmp/qh
-cd /tmp/qh && ./gradlew jar
-mkdir -p libs && cp /tmp/qh/build/libs/quest-helper-*.jar libs/
-
-# Then update build.gradle to use libs/quest-helper.jar
-./gradlew build
-```
-
-Or just use Docker for everything—it's simpler.
+- **Web UI**: Create/manage bots, view live VNC, monitor status, queue tasks
+- **Humanization**: Per-account behavioral profiles (mouse patterns, timing, breaks)
+- **Anti-fingerprint**: Unique machine IDs, display configs, fonts per bot
+- **Quest Helper Integration**: Automated quest completion via reflection bridge
+- **Navigation**: Full web walker with realistic pathing
+- **Combat**: Prayer flicking, gear switching, safe-spotting
+- **Ironman Support**: Resource tracking, HCIM death prevention

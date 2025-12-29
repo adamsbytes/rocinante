@@ -239,6 +239,7 @@ public class SlayerTaskConfig {
                 .stopWhenOutOfFood(true)
                 .enableResupply(true)
                 .returnToSameSpot(true)
+                .combatLocation(location.getCenter()) // Where combat happens
                 .build();
 
         return SlayerTaskConfig.builder()

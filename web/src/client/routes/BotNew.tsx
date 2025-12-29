@@ -8,7 +8,7 @@ export const BotNew: Component = () => {
   const navigate = useNavigate();
   const createMutation = useCreateBotMutation();
 
-  const handleSubmit = async (data: Omit<BotConfig, 'id' | 'vncPort'>) => {
+  const handleSubmit = async (data: Omit<BotConfig, 'id' | 'machineId' | 'screenResolution' | 'displayDpi' | 'additionalFonts'>) => {
     try {
       await createMutation.mutateAsync(data);
       navigate({ to: '/' });

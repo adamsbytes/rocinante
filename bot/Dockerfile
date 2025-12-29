@@ -89,11 +89,25 @@ RUN apt-get update && apt-get install -y \
     locales \
     tzdata \
     # Font rendering (anti-fingerprint: diverse fonts like real desktop)
+    # Base fonts (always enabled)
     fonts-liberation \
     fonts-dejavu-core \
     fonts-freefont-ttf \
     fonts-noto-core \
     fontconfig \
+    # Optional fonts (selectively enabled per profile via fontconfig in entrypoint)
+    fonts-firacode \
+    fonts-roboto \
+    fonts-ubuntu \
+    fonts-inconsolata \
+    fonts-lato \
+    fonts-open-sans \
+    fonts-cascadia-code \
+    fonts-hack \
+    fonts-jetbrains-mono \
+    fonts-droid-fallback \
+    fonts-wine \
+    fonts-cantarell \
     # Bolt dependencies (CEF/Chromium based)
     libnss3 \
     libatk1.0-0 \
@@ -122,14 +136,20 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # =============================================================================
-# Anti-fingerprint: Generate locale and machine-id (must be done as root)
+# Anti-fingerprint: Generate locale (must be done as root)
 # =============================================================================
 # Generate en_US.UTF-8 locale for consistent locale fingerprint
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
 
-# Generate machine-id (many apps check this for identification)
-RUN dbus-uuidgen > /etc/machine-id 2>/dev/null || \
-    (cat /proc/sys/kernel/random/uuid | tr -d '-' > /etc/machine-id)
+# Disable optional fonts by default - entrypoint enables per profile
+# This creates per-account font fingerprints
+RUN for font in firacode roboto ubuntu inconsolata lato open-sans cascadia-code hack jetbrains-mono droid wine cantarell; do \
+        rm -f /etc/fonts/conf.d/*${font}* 2>/dev/null || true; \
+    done && fc-cache -f
+
+# NOTE: machine-id is NOT generated here - it MUST be bind-mounted from host
+# per-profile. Container will fail to start properly without it, which is
+# the intended behavior to catch configuration errors early.
 
 # Create runelite user (non-root for security)
 RUN useradd -m -s /bin/bash runelite

@@ -56,7 +56,12 @@ public class QuestExecutor {
      * Set to 15 tiles (roughly render/interaction range) - if the target is within
      * this range, the step's own logic should be able to handle finding/interacting.
      */
-    private static final int AUTO_WALK_THRESHOLD_TILES = 15;
+    /**
+     * Distance threshold for auto-walking to step locations.
+     * If player is further than this from the step's target location, we walk first.
+     * Keep this tight - we want to be close to combat locations for reliable targeting.
+     */
+    private static final int AUTO_WALK_THRESHOLD_TILES = 3;
 
     private final Client client;
     private final TaskExecutor taskExecutor;

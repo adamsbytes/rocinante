@@ -27,7 +27,19 @@ export interface BotConfig {
   proxy: ProxyConfig | null;
   ironman: IronmanConfig;
   resources: ResourceConfig;
-  vncPort: number;
+  
+  // Environment fingerprint fields (from Java PlayerProfile)
+  // These MUST be set before starting a bot - no defaults allowed
+  /** Machine ID - 32 hex chars, stable per account */
+  machineId: string;
+  /** Screen resolution - e.g., "1280x720" */
+  screenResolution: string;
+  /** Display DPI - one of 96, 110, 120, 144 */
+  displayDpi: number;
+  /** Additional fonts enabled for this profile */
+  additionalFonts: string[];
+  /** Timezone matching proxy location - e.g., "America/New_York" */
+  timezone: string;
 }
 
 export interface BotStatus {

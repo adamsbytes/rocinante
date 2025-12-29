@@ -494,7 +494,8 @@ public class DialogueTask extends AbstractTask {
         }
 
         // Priority 3: Fall back to specified index
-        if (selectedIndex < 0 && optionIndex > 0 && optionIndex <= children.length) {
+        // optionIndex is 1-based option number; widget 0 is title, so max valid is children.length - 1
+        if (selectedIndex < 0 && optionIndex > 0 && optionIndex < children.length) {
             selectedIndex = optionIndex;
             log.debug("Using specified index: {}", selectedIndex);
         }
@@ -601,10 +602,12 @@ public class DialogueTask extends AbstractTask {
      * Try to match a single resolver against available options.
      */
     private int tryResolver(TaskContext ctx, Widget[] children, DialogueOptionResolver resolver) {
-        // Handle index-based resolver
+        // Handle index-based resolver (already 1-based, maps directly to key press)
         if (resolver.getType() == DialogueOptionResolver.ResolverType.INDEX) {
             int idx = resolver.getOptionIndex();
-            if (idx > 0 && idx <= children.length) {
+            // Index is 1-based option number (not widget index)
+            // Widget 0 is title, Widget 1+ are options
+            if (idx > 0 && idx < children.length) {
                 log.debug("Resolver matched by index: {}", idx);
                 return idx;
             }
@@ -612,13 +615,17 @@ public class DialogueTask extends AbstractTask {
         }
 
         // Search through options for a match
-        for (int i = 0; i < children.length; i++) {
+        // Start from index 1 - index 0 is the question/title text
+        int optionNumber = 0;
+        for (int i = 1; i < children.length; i++) {
             Widget child = children[i];
             if (child == null) continue;
             String text = child.getText();
-            if (text != null && resolver.matches(text, ctx)) {
-                log.debug("Resolver {} matched option at index {}: '{}'", resolver, i + 1, text);
-                return i + 1; // 1-based
+            if (text == null || text.isEmpty()) continue;
+            optionNumber++; // This is a valid selectable option
+            if (resolver.matches(text, ctx)) {
+                log.debug("Resolver {} matched option '{}' at position {}", resolver, text, optionNumber);
+                return optionNumber; // 1-based option number for key press
             }
         }
 
@@ -629,13 +636,18 @@ public class DialogueTask extends AbstractTask {
      * Find option by simple text matching.
      */
     private int findOptionByText(Widget[] children, String targetOption) {
-        for (int i = 0; i < children.length; i++) {
+        // Start from index 1 - index 0 is the question/title text, not a selectable option
+        // Option indices are 1-based for key press mapping (key '1' = first option, etc.)
+        int optionNumber = 0;
+        for (int i = 1; i < children.length; i++) {
             Widget child = children[i];
             if (child == null) continue;
             String text = child.getText();
-            if (text != null && text.toLowerCase().contains(targetOption.toLowerCase())) {
-                log.debug("Found matching option at index {}: '{}'", i + 1, text);
-                return i + 1; // 1-based
+            if (text == null || text.isEmpty()) continue;
+            optionNumber++; // This is a valid selectable option
+            if (text.toLowerCase().contains(targetOption.toLowerCase())) {
+                log.debug("Found matching option '{}' at position {} (widget index {})", text, optionNumber, i);
+                return optionNumber; // 1-based option number for key press
             }
         }
         return -1;

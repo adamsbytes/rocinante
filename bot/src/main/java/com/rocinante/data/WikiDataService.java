@@ -70,9 +70,29 @@ public class WikiDataService {
 
     /**
      * CRITICAL: Wiki returns HTTP 403 without proper User-Agent.
-     * Format: ApplicationName/Version (contact info)
+     * We match RuneLite's actual format to blend in: RuneLite/{version}-{commit}
+     * Dynamically resolved at runtime, with compile-time fallback.
      */
-    private static final String USER_AGENT = "RuneLite-Rocinante/1.0 (github.com/rocinante-bot)";
+    private static final String USER_AGENT = resolveUserAgent();
+    
+    /**
+     * Resolve User-Agent string to match RuneLite's official format.
+     * Prefers runtime values from RuneLiteProperties, falls back to compile-time version.
+     */
+    private static String resolveUserAgent() {
+        try {
+            String version = net.runelite.client.RuneLiteProperties.getVersion();
+            String commit = net.runelite.client.RuneLiteProperties.getCommit();
+            if (version != null && !version.isEmpty() && commit != null && !commit.isEmpty()) {
+                // Match exact RuneLite format: RuneLite/{version}-{commit}
+                return "RuneLite/" + version + "-" + commit;
+            }
+        } catch (Exception e) {
+            // RuneLiteProperties not available - this shouldn't happen in normal operation
+        }
+        // Fallback: realistic recent version (update periodically)
+        return "RuneLite/1.10.44-SNAPSHOT";
+    }
 
     /**
      * Wiki API base URL.

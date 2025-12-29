@@ -74,28 +74,3 @@ export async function deleteBot(id: string): Promise<boolean> {
   return true;
 }
 
-const VNC_PORT_MIN = 32400;
-const VNC_PORT_MAX = 33400;
-
-export async function getNextVncPort(): Promise<number> {
-  const config = await readConfig();
-  const usedPorts = new Set(config.bots.map((b) => b.vncPort));
-  
-  // Try random ports first for better distribution
-  for (let attempts = 0; attempts < 100; attempts++) {
-    const port = VNC_PORT_MIN + Math.floor(Math.random() * (VNC_PORT_MAX - VNC_PORT_MIN + 1));
-    if (!usedPorts.has(port)) {
-      return port;
-    }
-  }
-  
-  // Fallback: find first available port sequentially
-  for (let port = VNC_PORT_MIN; port <= VNC_PORT_MAX; port++) {
-    if (!usedPorts.has(port)) {
-      return port;
-    }
-  }
-  
-  throw new Error('No available VNC ports in range');
-}
-

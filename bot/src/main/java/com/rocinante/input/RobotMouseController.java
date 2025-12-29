@@ -112,12 +112,9 @@ public class RobotMouseController {
     private final ScheduledExecutorService executor;
 
     /**
-     * FatigueModel for fatigue-based click variance adjustment.
-     * When set, click variance is multiplied by fatigue factor.
+     * FatigueModel for fatigue-based click variance and action recording.
      */
-    @Setter
-    @Nullable
-    private FatigueModel fatigueModel;
+    private final FatigueModel fatigueModel;
 
     /**
      * Flag indicating a click operation is currently in progress.
@@ -161,13 +158,15 @@ public class RobotMouseController {
     private static final long CANVAS_OFFSET_UPDATE_INTERVAL_MS = 30_000;
 
     @Inject
-    public RobotMouseController(Client client, Randomization randomization, PerlinNoise perlinNoise, PlayerProfile playerProfile) throws AWTException {
+    public RobotMouseController(Client client, Randomization randomization, PerlinNoise perlinNoise, 
+                                PlayerProfile playerProfile, FatigueModel fatigueModel) throws AWTException {
         this.robot = new Robot();
         this.robot.setAutoDelay(0); // We handle delays ourselves
         this.client = client;
         this.randomization = randomization;
         this.perlinNoise = perlinNoise;
         this.playerProfile = playerProfile;
+        this.fatigueModel = fatigueModel;
         this.executor = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "RobotMouseController");
             t.setDaemon(true);
@@ -881,6 +880,9 @@ public class RobotMouseController {
         robot.mousePress(buttonMask);
         Thread.sleep(holdDuration);
         robot.mouseRelease(buttonMask);
+        
+        // Record action for fatigue/break tracking (only on actual clicks)
+        fatigueModel.recordAction();
     }
 
     /**
@@ -937,19 +939,7 @@ public class RobotMouseController {
      * Get the effective click variance multiplier combining FatigueModel and session click count.
      */
     private double getEffectiveClickVarianceMultiplier() {
-        double multiplier = 1.0;
-
-        // Apply FatigueModel multiplier if available
-        if (fatigueModel != null) {
-            multiplier = fatigueModel.getClickVarianceMultiplier();
-        }
-        // Fallback: apply session click count fatigue
-        else if (sessionClickCount > CLICK_FATIGUE_THRESHOLD) {
-            multiplier = randomization.uniformRandom(
-                    MIN_FATIGUE_VARIANCE_MULTIPLIER, MAX_FATIGUE_VARIANCE_MULTIPLIER);
-        }
-
-        return multiplier;
+        return fatigueModel.getClickVarianceMultiplier();
     }
 
     /**
@@ -981,10 +971,7 @@ public class RobotMouseController {
      * Get the misclick probability multiplier from FatigueModel.
      */
     private double getEffectiveMisclickMultiplier() {
-        if (fatigueModel != null) {
-            return fatigueModel.getMisclickMultiplier();
-        }
-        return 1.0;
+        return fatigueModel.getMisclickMultiplier();
     }
 
     /**

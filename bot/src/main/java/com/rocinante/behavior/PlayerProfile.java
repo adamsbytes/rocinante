@@ -268,6 +268,39 @@ public class PlayerProfile {
         profileData.sessionCount = 0;
         profileData.totalPlaytimeHours = 0;
 
+        // === Environment fingerprinting (anti-detection) ===
+        // Machine ID: 32 hex characters, deterministic per account
+        byte[] machineIdBytes = new byte[16];
+        seededRandom.nextBytes(machineIdBytes);
+        StringBuilder machineIdBuilder = new StringBuilder();
+        for (byte b : machineIdBytes) {
+            machineIdBuilder.append(String.format("%02x", b));
+        }
+        profileData.machineId = machineIdBuilder.toString();
+
+        // Screen resolution: Fixed to 720p for now
+        profileData.screenResolution = "1280x720";
+
+        // Display DPI: Random from common values
+        int[] COMMON_DPIS = {96, 110, 120, 144};
+        profileData.displayDpi = COMMON_DPIS[seededRandom.nextInt(COMMON_DPIS.length)];
+
+        // Additional fonts: 2-5 random from pool
+        String[] OPTIONAL_FONTS = {
+            "firacode", "roboto", "ubuntu", "inconsolata",
+            "lato", "open-sans", "cascadia-code", "hack",
+            "jetbrains-mono", "droid", "wine", "cantarell"
+        };
+        int numFonts = 2 + seededRandom.nextInt(4); // 2-5 fonts
+        List<String> availableFonts = new ArrayList<>(Arrays.asList(OPTIONAL_FONTS));
+        Collections.shuffle(availableFonts, seededRandom);
+        profileData.additionalFonts = new CopyOnWriteArrayList<>(
+            availableFonts.subList(0, Math.min(numFonts, availableFonts.size()))
+        );
+
+        // Timezone: Default, user sets per account to match proxy
+        profileData.timezone = "America/New_York";
+
         log.info("Generated new profile: mouseSpeed={}, clickVar={}, breakThreshold={}, rituals={}",
                 String.format("%.2f", profileData.mouseSpeedMultiplier),
                 String.format("%.2f", profileData.clickVarianceModifier),
@@ -1020,6 +1053,48 @@ public class PlayerProfile {
     }
 
     // ========================================================================
+    // Environment Fingerprint Accessors
+    // ========================================================================
+
+    /**
+     * Get the machine ID for this profile (32 hex chars).
+     * Used to report consistent hardware identity across sessions.
+     */
+    public String getMachineId() {
+        return profileData.machineId;
+    }
+
+    /**
+     * Get the screen resolution for this profile (e.g., "1280x720").
+     */
+    public String getScreenResolution() {
+        return profileData.screenResolution;
+    }
+
+    /**
+     * Get the display DPI for this profile (e.g., 96, 110, 120, 144).
+     */
+    public int getDisplayDpi() {
+        return profileData.displayDpi;
+    }
+
+    /**
+     * Get the additional fonts enabled for this profile.
+     * Returns unmodifiable list of font names (without "fonts-" prefix).
+     */
+    public List<String> getAdditionalFonts() {
+        return Collections.unmodifiableList(profileData.additionalFonts);
+    }
+
+    /**
+     * Get the timezone for this profile (e.g., "America/New_York").
+     * Should match proxy geolocation.
+     */
+    public String getTimezone() {
+        return profileData.timezone;
+    }
+
+    // ========================================================================
     // Lifecycle
     // ========================================================================
 
@@ -1162,6 +1237,37 @@ public class PlayerProfile {
         // === Metrics ===
         volatile int sessionCount = 0;
         volatile double totalPlaytimeHours = 0;
+
+        // === Environment fingerprinting (anti-detection) ===
+        /**
+         * Machine ID - 32 hex chars, stable per account.
+         * Used to report consistent hardware identity to the game client.
+         */
+        String machineId;
+
+        /**
+         * Screen resolution - e.g., "1280x720".
+         * Fixed to 720p for now but stored for future flexibility.
+         */
+        String screenResolution = "1280x720";
+
+        /**
+         * Display DPI - one of 96, 110, 120, 144.
+         * Randomized per profile to vary display fingerprint.
+         */
+        int displayDpi = 96;
+
+        /**
+         * Additional fonts enabled for this profile.
+         * Subset of optional fonts installed in container, selectively enabled per profile.
+         */
+        List<String> additionalFonts = new CopyOnWriteArrayList<>();
+
+        /**
+         * Timezone matching proxy location - e.g., "America/New_York".
+         * Should be set per-account to match proxy geolocation.
+         */
+        String timezone = "America/New_York";
 
         /**
          * Validate profile data is within expected bounds.

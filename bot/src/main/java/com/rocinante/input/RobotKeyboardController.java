@@ -1,5 +1,6 @@
 package com.rocinante.input;
 
+import com.rocinante.behavior.FatigueModel;
 import com.rocinante.behavior.PlayerProfile;
 import com.rocinante.util.Randomization;
 import lombok.Getter;
@@ -148,6 +149,7 @@ public class RobotKeyboardController {
     private final Randomization randomization;
     private final PlayerProfile playerProfile;
     private final ScheduledExecutorService executor;
+    private final FatigueModel fatigueModel;
 
     // F-key learning tracking
     @Getter
@@ -157,11 +159,13 @@ public class RobotKeyboardController {
     private final Map<Integer, Long> fKeyLastUsedTime = new ConcurrentHashMap<>();
 
     @Inject
-    public RobotKeyboardController(Randomization randomization, PlayerProfile playerProfile) throws AWTException {
+    public RobotKeyboardController(Randomization randomization, PlayerProfile playerProfile,
+                                   FatigueModel fatigueModel) throws AWTException {
         this.robot = new Robot();
         this.robot.setAutoDelay(0);
         this.randomization = randomization;
         this.playerProfile = playerProfile;
+        this.fatigueModel = fatigueModel;
         this.executor = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "RobotKeyboardController");
             t.setDaemon(true);
@@ -367,8 +371,8 @@ public class RobotKeyboardController {
                 MIN_TYPO_CORRECTION_DELAY_MS, MAX_TYPO_CORRECTION_DELAY_MS);
         Thread.sleep(correctionDelay);
 
-        // Backspace to delete typo
-        pressKeyInternal(KeyEvent.VK_BACK_SPACE);
+        // Backspace to delete typo (don't record as separate action - part of typing)
+        pressKeyInternalNoRecord(KeyEvent.VK_BACK_SPACE);
 
         // Small pause before typing correct character
         Thread.sleep(randomization.uniformRandomLong(30, 80));
@@ -420,9 +424,7 @@ public class RobotKeyboardController {
 
         executor.execute(() -> {
             try {
-                robot.keyPress(keyCode);
-                Thread.sleep(holdDuration);
-                robot.keyRelease(keyCode);
+                pressKeyInternal(keyCode, holdDuration, true);
                 future.complete(null);
             } catch (Exception e) {
                 log.error("Key press failed", e);
@@ -434,13 +436,29 @@ public class RobotKeyboardController {
     }
 
     /**
-     * Internal key press without async wrapper.
+     * Core key press implementation.
+     * 
+     * @param keyCode the AWT key code
+     * @param holdDuration how long to hold the key
+     * @param recordAction whether to record this as an action for fatigue tracking
      */
-    private void pressKeyInternal(int keyCode) throws InterruptedException {
-        long holdDuration = randomization.uniformRandomLong(MIN_KEY_HOLD_MS, MAX_KEY_HOLD_MS);
+    private void pressKeyInternal(int keyCode, long holdDuration, boolean recordAction) throws InterruptedException {
         robot.keyPress(keyCode);
         Thread.sleep(holdDuration);
         robot.keyRelease(keyCode);
+        
+        if (recordAction) {
+            fatigueModel.recordAction();
+        }
+    }
+
+    /**
+     * Internal key press with default duration, no action recording.
+     * Used for typo correction backspace (part of typing action, not separate).
+     */
+    private void pressKeyInternalNoRecord(int keyCode) throws InterruptedException {
+        long holdDuration = randomization.uniformRandomLong(MIN_KEY_HOLD_MS, MAX_KEY_HOLD_MS);
+        pressKeyInternal(keyCode, holdDuration, false);
     }
 
     /**

@@ -478,9 +478,9 @@ public class TaskExecutor {
             // Execute the task
             currentTask.execute(taskContext);
             
-            // Record action for fatigue/break tracking
-            // Each task tick counts as an action for behavioral modeling
-            recordActionIfNeeded();
+            // NOTE: Actions are now recorded by input controllers (mouse/keyboard) when
+            // clicks/keypresses actually happen, not every tick. This makes the action
+            // count a meaningful metric for fatigue and break scheduling.
 
             // Check if task is now complete or failed
             TaskState state = currentTask.getState();
@@ -497,19 +497,6 @@ public class TaskExecutor {
             currentTask.onFail(taskContext, e);
             handleTaskFailure();
         }
-    }
-    
-    /**
-     * Record action for fatigue and break tracking.
-     * Called each task tick. Behavioral tasks don't count as actions.
-     */
-    private void recordActionIfNeeded() {
-        // Don't record actions for behavioral tasks (breaks, rituals, etc.)
-        if (currentTask != null && currentTask.getPriority() == TaskPriority.BEHAVIORAL) {
-            return;
-        }
-        
-        taskContext.recordAction();
     }
 
     // ========================================================================

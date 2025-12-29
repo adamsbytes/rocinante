@@ -319,9 +319,17 @@ public class TargetSelector {
 
         switch (priority) {
             case TARGETING_PLAYER:
-                // Get all NPCs targeting the player
+                // Get NPCs that are ACTUALLY ATTACKING us (not just interacting/talking)
+                // CombatState.aggressiveNpcs only contains NPCs that have attacked us
+                var combatState = gameStateService.getCombatState();
+                Set<Integer> actualAttackerIndices = combatState.getAggressiveNpcs().stream()
+                        .map(a -> a.getNpcIndex())
+                        .collect(Collectors.toSet());
+                
+                // Filter to NPCs that are both targeting us AND have actually attacked
                 List<NpcSnapshot> attackingUs = filtered.stream()
                         .filter(NpcSnapshot::isTargetingPlayer)
+                        .filter(npc -> actualAttackerIndices.contains(npc.getIndex()))
                         .collect(Collectors.toList());
                 
                 if (attackingUs.isEmpty()) {

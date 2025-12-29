@@ -115,12 +115,12 @@ public class MouseCameraCoupler {
      * The default game range is roughly 128-896 without RuneLite expansion.
      * Value ~128-200 is max zoomed out, ~800-1400 is max zoomed in.
      */
-    private static final int PREFERRED_ZOOM_LEVEL = 200;
+    private static final int PREFERRED_ZOOM_LEVEL = 128;
     
     /**
      * If zoom is above this threshold, we're "too zoomed in" and should zoom out.
      */
-    private static final int ZOOM_TOO_CLOSE_THRESHOLD = 400;
+    private static final int ZOOM_TOO_CLOSE_THRESHOLD = 300;
     
     /**
      * Minimum interval between zoom checks (ms).

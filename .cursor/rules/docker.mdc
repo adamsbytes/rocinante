@@ -1,0 +1,4 @@
+---
+alwaysApply: true
+---
+Docker: Read-only commands (logs, ps, inspect) are allowed. NEVER run start/stop/restart/build/compose up/down without explicit user instruction.

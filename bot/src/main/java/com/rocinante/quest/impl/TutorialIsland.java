@@ -17,6 +17,7 @@ import com.rocinante.tasks.impl.SettingsTask;
 import com.rocinante.util.ItemCollections;
 import com.rocinante.util.ObjectCollections;
 import net.runelite.api.ItemID;
+import net.runelite.api.NpcID;
 import net.runelite.api.ObjectID;
 import net.runelite.api.coords.WorldPoint;
 
@@ -102,23 +103,21 @@ public class TutorialIsland implements Quest {
     public static final int TUTORIAL_COMPLETE_VALUE = 1000;
 
     // ========================================================================
-    // Constants - NPC IDs
+    // Constants - NPC Spawn Locations (for auto-walk navigation)
     // ========================================================================
 
-    // Using original IDs - game client reports these, not the TUT2_ variants
-    public static final int NPC_GIELINOR_GUIDE = 3308;
-    public static final int NPC_SURVIVAL_EXPERT = 8503;
-    public static final int NPC_MASTER_CHEF = 3305;
-    public static final int NPC_QUEST_GUIDE = 3312;
-    public static final int NPC_MINING_INSTRUCTOR = 3311;
-    public static final int NPC_COMBAT_INSTRUCTOR = 3307;
-    public static final int NPC_ACCOUNT_GUIDE = 3310;
-    public static final int NPC_BROTHER_BRACE = 3319;
-    public static final int NPC_IRONMAN_TUTOR = 9486;  // Paul - between Prayer and Magic
-    public static final int NPC_MAGIC_INSTRUCTOR = 3309;
-    public static final int NPC_GIANT_RAT = 3313;
-    public static final int NPC_CHICKEN = 3316;
-    public static final int NPC_FISHING_SPOT = 3317;
+    // These are the spawn/standing locations for Tutorial Island NPCs
+    // Used by QuestExecutor's auto-walk logic when player is far from target
+    private static final WorldPoint LOC_GIELINOR_GUIDE = new WorldPoint(3093, 3107, 0);
+    private static final WorldPoint LOC_SURVIVAL_EXPERT = new WorldPoint(3103, 3095, 0);
+    private static final WorldPoint LOC_MASTER_CHEF = new WorldPoint(3076, 3085, 0);
+    private static final WorldPoint LOC_QUEST_GUIDE = new WorldPoint(3086, 3122, 0);
+    private static final WorldPoint LOC_MINING_INSTRUCTOR = new WorldPoint(3081, 9504, 0);
+    private static final WorldPoint LOC_COMBAT_INSTRUCTOR = new WorldPoint(3106, 9508, 0);
+    private static final WorldPoint LOC_ACCOUNT_GUIDE = new WorldPoint(3124, 3124, 0);
+    private static final WorldPoint LOC_BROTHER_BRACE = new WorldPoint(3127, 3107, 0);
+    private static final WorldPoint LOC_IRONMAN_TUTOR = new WorldPoint(3127, 3088, 0);
+    private static final WorldPoint LOC_MAGIC_INSTRUCTOR = new WorldPoint(3141, 3089, 0);
 
 
     // ========================================================================
@@ -183,7 +182,7 @@ public class TutorialIsland implements Quest {
         // ====================================================================
 
         // var 2: Talk to Gielinor Guide
-        steps.put(2, new NpcQuestStep(NPC_GIELINOR_GUIDE, "Talk to the Gielinor Guide")
+        steps.put(2, new NpcQuestStep(NpcID.GIELINOR_GUIDE, "Talk to the Gielinor Guide")
                 .withMenuAction("Talk-to")
                 .withDialogueExpected(true));
 
@@ -192,7 +191,7 @@ public class TutorialIsland implements Quest {
         steps.put(3, createOpenSettingsAndSetFixedModeStep());
 
         // var 7: Talk to Gielinor Guide after opening settings
-        steps.put(7, new NpcQuestStep(NPC_GIELINOR_GUIDE, "Talk to the Gielinor Guide again")
+        steps.put(7, new NpcQuestStep(NpcID.GIELINOR_GUIDE, "Talk to the Gielinor Guide again")
                 .withDialogueExpected(true));
 
         // var 10: Exit Gielinor Guide's house
@@ -203,14 +202,14 @@ public class TutorialIsland implements Quest {
         // ====================================================================
 
         // var 20: Talk to Survival Expert
-        steps.put(20, new NpcQuestStep(NPC_SURVIVAL_EXPERT, "Talk to the Survival Expert")
+        steps.put(20, new NpcQuestStep(NpcID.SURVIVAL_EXPERT, "Talk to the Survival Expert")
                 .withDialogueExpected(true));
 
         // var 30: Open inventory (Tutorial Island teaches clicking tabs, not hotkeys)
         steps.put(30, WidgetQuestStep.openInventoryByClick("Open your inventory"));
 
         // var 40: Fish at fishing spot
-        steps.put(40, new NpcQuestStep(NPC_FISHING_SPOT, "Net fish at the fishing spot")
+        steps.put(40, new NpcQuestStep(NpcID.FISHING_SPOT_3317, "Net fish at the fishing spot")
                 .withMenuAction("Net")
                 .withDialogueExpected(false));
 
@@ -218,7 +217,7 @@ public class TutorialIsland implements Quest {
         steps.put(50, WidgetQuestStep.openSkillsByClick("Open the skills tab"));
 
         // var 60: Talk to Survival Expert again
-        steps.put(60, new NpcQuestStep(NPC_SURVIVAL_EXPERT, "Talk to the Survival Expert again")
+        steps.put(60, new NpcQuestStep(NpcID.SURVIVAL_EXPERT, "Talk to the Survival Expert again")
                 .withDialogueExpected(true));
 
         // var 70: Cut tree
@@ -246,7 +245,7 @@ public class TutorialIsland implements Quest {
         steps.put(130, new ObjectQuestStep(ObjectID.DOOR_9709, "Open", "Enter the cook's building"));
 
         // var 140: Talk to Master Chef
-        steps.put(140, new NpcQuestStep(NPC_MASTER_CHEF, "Talk to the Master Chef")
+        steps.put(140, new NpcQuestStep(NpcID.MASTER_CHEF, "Talk to the Master Chef")
                 .withDialogueExpected(true));
 
         // var 150: Make bread dough
@@ -272,14 +271,14 @@ public class TutorialIsland implements Quest {
                 .withSearchRadius(20));
 
         // var 220: Talk to Quest Guide
-        steps.put(220, new NpcQuestStep(NPC_QUEST_GUIDE, "Talk to the Quest Guide")
+        steps.put(220, new NpcQuestStep(NpcID.QUEST_GUIDE, "Talk to the Quest Guide")
                 .withDialogueExpected(true));
 
         // var 230: Open quest tab (Tutorial Island teaches clicking tabs, not hotkeys)
         steps.put(230, WidgetQuestStep.openQuestsByClick("Open the quest journal"));
 
         // var 240: Talk to Quest Guide again
-        steps.put(240, new NpcQuestStep(NPC_QUEST_GUIDE, "Talk to the Quest Guide again")
+        steps.put(240, new NpcQuestStep(NpcID.QUEST_GUIDE, "Talk to the Quest Guide again")
                 .withDialogueExpected(true));
 
         // var 250: Go down ladder (NEWBIELADDER1 - actually 9726 in game)
@@ -292,7 +291,7 @@ public class TutorialIsland implements Quest {
         // ====================================================================
 
         // var 260: Talk to Mining Instructor
-        steps.put(260, new NpcQuestStep(NPC_MINING_INSTRUCTOR, "Talk to the Mining Instructor")
+        steps.put(260, new NpcQuestStep(NpcID.MINING_INSTRUCTOR, "Talk to the Mining Instructor")
                 .withDialogueExpected(true));
 
         // Note: Varp gap 260→300 is intentional. The dialogue with Mining Instructor
@@ -309,7 +308,7 @@ public class TutorialIsland implements Quest {
         steps.put(320, new ObjectQuestStep(ObjectCollections.FURNACES, "Use", "Smelt a bronze bar"));
 
         // var 330: Talk to Mining Instructor
-        steps.put(330, new NpcQuestStep(NPC_MINING_INSTRUCTOR, "Talk to the Mining Instructor")
+        steps.put(330, new NpcQuestStep(NpcID.MINING_INSTRUCTOR, "Talk to the Mining Instructor")
                 .withDialogueExpected(true));
 
         // var 340: Click anvil
@@ -327,7 +326,7 @@ public class TutorialIsland implements Quest {
         // ====================================================================
 
         // var 370: Talk to Combat Instructor
-        steps.put(370, new NpcQuestStep(NPC_COMBAT_INSTRUCTOR, "Talk to the Combat Instructor")
+        steps.put(370, new NpcQuestStep(NpcID.COMBAT_INSTRUCTOR, "Talk to the Combat Instructor")
                 .withDialogueExpected(true));
 
         // var 390: Open equipment tab (Tutorial Island teaches clicking tabs, not hotkeys)
@@ -341,7 +340,7 @@ public class TutorialIsland implements Quest {
         steps.put(405, createEquipDaggerAndCloseStep());
 
         // var 410: Talk to Combat Instructor
-        steps.put(410, new NpcQuestStep(NPC_COMBAT_INSTRUCTOR, "Talk to the Combat Instructor again")
+        steps.put(410, new NpcQuestStep(NpcID.COMBAT_INSTRUCTOR, "Talk to the Combat Instructor again")
                 .withDialogueExpected(true));
 
         // var 420: Equip sword and shield
@@ -355,7 +354,7 @@ public class TutorialIsland implements Quest {
         steps.put(440, new ObjectQuestStep(Arrays.asList(ObjectID.GATE_9719, ObjectID.GATE_9720), "Open", "Enter the rat cage"));
 
         // var 450: Attack rat (melee)
-        steps.put(450, new CombatQuestStep(NPC_GIANT_RAT, "Attack the giant rat")
+        steps.put(450, new CombatQuestStep(NpcID.GIANT_RAT_3313, "Attack the giant rat")
                 .withAttackStyle(AttackStyle.MELEE));
 
         // var 460: Wait for rat to die - combat initiated by step 450 handles the fight
@@ -366,7 +365,7 @@ public class TutorialIsland implements Quest {
         steps.put(470, createExitRatCageAndTalkStep());
 
         // var 480: Equip bow and arrows, attack rat with ranged
-        steps.put(480, new CombatQuestStep(NPC_GIANT_RAT, "Equip bow and arrows, attack the rat")
+        steps.put(480, new CombatQuestStep(NpcID.GIANT_RAT_3313, "Equip bow and arrows, attack the rat")
                 .withAttackStyle(AttackStyle.RANGED));
 
         // var 490: Wait for rat to die - combat initiated by step 480 handles the fight
@@ -391,14 +390,14 @@ public class TutorialIsland implements Quest {
         steps.put(525, new ObjectQuestStep(ObjectID.DOOR_9721, "Open", "Go through the door to the Account Guide"));
 
         // var 530: Talk to Account Guide
-        steps.put(530, new NpcQuestStep(NPC_ACCOUNT_GUIDE, "Talk to the Account Guide")
+        steps.put(530, new NpcQuestStep(NpcID.ACCOUNT_GUIDE, "Talk to the Account Guide")
                 .withDialogueExpected(true));
 
         // var 531: Open account management tab (Tutorial Island teaches clicking tabs, not hotkeys)
         steps.put(531, WidgetQuestStep.openAccountManagementByClick("Open the account management tab"));
 
         // var 532: Talk to Account Guide again
-        steps.put(532, new NpcQuestStep(NPC_ACCOUNT_GUIDE, "Talk to the Account Guide again")
+        steps.put(532, new NpcQuestStep(NpcID.ACCOUNT_GUIDE, "Talk to the Account Guide again")
                 .withDialogueExpected(true));
 
         // var 540: Exit account guide's room (NEWBIE_DOOR7)
@@ -410,7 +409,7 @@ public class TutorialIsland implements Quest {
 
         // var 550: Talk to Brother Brace (in the chapel south of the bank)
         // Need to walk there first since he's outside render range from the Account Guide area
-        steps.put(550, new NpcQuestStep(NPC_BROTHER_BRACE, "Talk to Brother Brace")
+        steps.put(550, new NpcQuestStep(NpcID.BROTHER_BRACE, "Talk to Brother Brace")
                 .withWalkTo(new WorldPoint(3127, 3107, 0))
                 .withDialogueExpected(true));
 
@@ -418,14 +417,14 @@ public class TutorialIsland implements Quest {
         steps.put(560, WidgetQuestStep.openPrayerByClick("Open the prayer tab"));
 
         // var 570: Talk to Brother Brace again
-        steps.put(570, new NpcQuestStep(NPC_BROTHER_BRACE, "Talk to Brother Brace again")
+        steps.put(570, new NpcQuestStep(NpcID.BROTHER_BRACE, "Talk to Brother Brace again")
                 .withDialogueExpected(true));
 
         // var 580: Open friends list (Tutorial Island teaches clicking tabs, not hotkeys)
         steps.put(580, WidgetQuestStep.openFriendsListByClick("Open your friends list"));
 
         // var 600: Talk to Brother Brace again
-        steps.put(600, new NpcQuestStep(NPC_BROTHER_BRACE, "Talk to Brother Brace")
+        steps.put(600, new NpcQuestStep(NpcID.BROTHER_BRACE, "Talk to Brother Brace")
                 .withDialogueExpected(true));
 
         // var 610: Exit chapel (and optionally select ironman mode)
@@ -439,23 +438,28 @@ public class TutorialIsland implements Quest {
         // ====================================================================
 
         // var 620: Talk to Magic Instructor
-        steps.put(620, new NpcQuestStep(NPC_MAGIC_INSTRUCTOR, "Talk to the Magic Instructor")
+        steps.put(620, new NpcQuestStep(NpcID.MAGIC_INSTRUCTOR, "Talk to the Magic Instructor")
+                .withWalkTo(LOC_MAGIC_INSTRUCTOR)
                 .withDialogueExpected(true));
 
         // var 630: Open spellbook (Tutorial Island teaches clicking tabs, not hotkeys)
         steps.put(630, WidgetQuestStep.openSpellbookByClick("Open your spellbook"));
 
         // var 640: Talk to Magic Instructor again
-        steps.put(640, new NpcQuestStep(NPC_MAGIC_INSTRUCTOR, "Talk to the Magic Instructor again")
+        steps.put(640, new NpcQuestStep(NpcID.MAGIC_INSTRUCTOR, "Talk to the Magic Instructor again")
+                .withWalkTo(LOC_MAGIC_INSTRUCTOR)
                 .withDialogueExpected(true));
 
-        // var 650: Kill chicken with Wind Strike
-        steps.put(650, new CombatQuestStep(NPC_CHICKEN, "Cast Wind Strike on the chicken")
+        // var 650: Cast Wind Strike on chicken (just need to cast once, not kill)
+        steps.put(650, new CombatQuestStep(NpcID.CHICKEN_3316, "Cast Wind Strike on the chicken")
                 .withSpells(StandardSpell.WIND_STRIKE)
-                .withAutocast(false));
+                .withAutocast(false)
+                .withAttackCount(1)  // Just cast once, don't need to kill
+                .withCombatLocation(LOC_MAGIC_INSTRUCTOR));
 
         // var 670: Talk to Magic Instructor to teleport off island
-        steps.put(670, new NpcQuestStep(NPC_MAGIC_INSTRUCTOR, "Talk to the Magic Instructor to leave")
+        steps.put(670, new NpcQuestStep(NpcID.MAGIC_INSTRUCTOR, "Talk to the Magic Instructor to leave")
+                .withWalkTo(LOC_MAGIC_INSTRUCTOR)
                 .withDialogueExpected(true)
                 .withDialogueOptions("Yes", "No, I'm not ready"));
         
@@ -636,7 +640,7 @@ public class TutorialIsland implements Quest {
 
         // Step 2: Talk to Combat Instructor
         // Note: withDialogueExpected adds a DialogueTask as a 3rd child
-        composite.addStep(new NpcQuestStep(NPC_COMBAT_INSTRUCTOR, "Talk to the Combat Instructor")
+        composite.addStep(new NpcQuestStep(NpcID.COMBAT_INSTRUCTOR, "Talk to the Combat Instructor")
                 .withDialogueExpected(true));
 
         // Partial retry is correct here: if gate succeeds but NPC talk fails,
@@ -663,7 +667,7 @@ public class TutorialIsland implements Quest {
      * 7. Interface closes and varbit 1777 updates with ironman status
      */
     private QuestStep createExitChapelStep() {
-        QuestStep exitChapel = new ObjectQuestStep(ObjectID.DOOR_9724, "Open", "Exit the chapel");
+        QuestStep exitChapel = new ObjectQuestStep(ObjectID.DOOR_9723, "Open", "Exit the chapel");
         
         if (!shouldSelectIronmanMode()) {
             // Normal account - just exit chapel
@@ -678,7 +682,7 @@ public class TutorialIsland implements Quest {
         withIronman.addStep(exitChapel);
         
         // Step 2: Talk to Paul (Ironman tutor)
-        withIronman.addStep(new NpcQuestStep(NPC_IRONMAN_TUTOR, "Talk to Paul, the Ironman tutor")
+        withIronman.addStep(new NpcQuestStep(NpcID.IRONMAN_TUTOR_9486, "Talk to Paul, the Ironman tutor")
                 .withDialogueExpected(true));
         
         // Step 3: Select "Tell me about Ironman" dialogue option

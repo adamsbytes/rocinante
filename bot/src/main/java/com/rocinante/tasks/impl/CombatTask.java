@@ -113,6 +113,13 @@ public class CombatTask extends AbstractTask {
     private int killsCompleted = 0;
 
     /**
+     * Number of attacks/casts completed.
+     * Used when attackCount is set (e.g., Tutorial Island: cast spell once).
+     */
+    @Getter
+    private int attacksCompleted = 0;
+
+    /**
      * Time when task started.
      */
     private Instant taskStartTime;
@@ -405,6 +412,15 @@ public class CombatTask extends AbstractTask {
             phase = CombatPhase.SETUP_AUTOCAST;
         }
 
+        // Check for "I can't reach that" message - need to return to home position
+        if (phase != CombatPhase.RETURN_HOME && ctx.getGameStateService().wasCantReachRecent(5)) {
+            log.info("Detected 'can't reach' - returning to home position");
+            ctx.getGameStateService().clearCantReachFlag();
+            currentTarget = null;
+            spellSelected = false;
+            phase = CombatPhase.RETURN_HOME;
+        }
+
         // Execute current phase
         switch (phase) {
             case SETUP_AUTOCAST:
@@ -433,6 +449,9 @@ public class CombatTask extends AbstractTask {
                 break;
             case RESUPPLY:
                 executeResupply(ctx);
+                break;
+            case RETURN_HOME:
+                executeReturnHome(ctx);
                 break;
         }
     }
@@ -1002,6 +1021,9 @@ public class CombatTask extends AbstractTask {
                     phaseWaitTicks = 0;
                     // Reset spell selection after attack (next attack needs new spell click)
                     spellSelected = false;
+                    // Count this attack (for attackCount-based completion)
+                    attacksCompleted++;
+                    log.debug("Attack {} completed", attacksCompleted);
                     phase = CombatPhase.MONITOR_COMBAT;
                 })
                 .exceptionally(e -> {
@@ -1304,8 +1326,15 @@ public class CombatTask extends AbstractTask {
     // ========================================================================
 
     private boolean isCompleted(TaskContext ctx) {
-        // Check kill count
-        if (config.hasKillCountLimit() && killsCompleted >= config.getKillCount()) {
+        // Check attack count first (takes priority - e.g., "cast spell once")
+        if (config.hasAttackCountLimit() && attacksCompleted >= config.getAttackCount()) {
+            log.info("Attack count reached: {}/{}", attacksCompleted, config.getAttackCount());
+            return true;
+        }
+
+        // Check kill count (only if attackCount not set)
+        if (!config.hasAttackCountLimit() && config.hasKillCountLimit() 
+                && killsCompleted >= config.getKillCount()) {
             log.info("Kill count reached: {}/{}", killsCompleted, config.getKillCount());
             return true;
         }
@@ -1444,6 +1473,41 @@ public class CombatTask extends AbstractTask {
         }
     }
 
+    // ========================================================================
+    // Phase: Return Home
+    // ========================================================================
+
+    /**
+     * Execute return home phase - walk back to combat location after "can't reach" failure.
+     * Once back at combat location, resume finding targets.
+     */
+    private void executeReturnHome(TaskContext ctx) {
+        WorldPoint combatLoc = config.getCombatLocation();
+        if (combatLoc == null) {
+            log.error("RETURN_HOME phase without combat location configured - cannot recover");
+            fail("No combat location configured for recovery");
+            return;
+        }
+
+        PlayerState player = ctx.getPlayerState();
+        WorldPoint playerPos = player.getWorldPosition();
+
+        // Check if we've arrived at combat location
+        int distanceToCombat = playerPos.distanceTo(combatLoc);
+        if (distanceToCombat <= 2) {
+            log.info("Returned to combat location, resuming combat");
+            phase = CombatPhase.FIND_TARGET;
+            phaseWaitTicks = 0;
+            return;
+        }
+
+        // Need to walk back - use WalkToTask
+        if (activeSubTask == null && !player.isMoving()) {
+            log.debug("Walking back to combat location: {} (distance={})", combatLoc, distanceToCombat);
+            activeSubTask = new WalkToTask(combatLoc);
+        }
+    }
+
     /**
      * Complete the task and clean up resources.
      * This is called when the task completes normally (not via external abort).
@@ -1577,7 +1641,12 @@ public class CombatTask extends AbstractTask {
         /**
          * Banking for resupply.
          */
-        RESUPPLY
+        RESUPPLY,
+
+        /**
+         * Returning to home position after "I can't reach that" failure.
+         */
+        RETURN_HOME
     }
 }
 

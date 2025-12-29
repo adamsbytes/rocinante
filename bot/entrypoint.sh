@@ -9,9 +9,35 @@ echo "================================================="
 # Export display for GUI tools
 export DISPLAY=:99
 
-# Set timezone (allow override, default to NY which matches common bot profiles)
-# This affects Java, Python, and system calls via glibc
-export TZ="${TZ:-America/New_York}"
+# =============================================================================
+# Environment Fingerprint: Read from profile-specific env vars
+# These MUST be set by docker.ts - no fallbacks, fail if missing
+# =============================================================================
+
+# Timezone from profile (should match proxy geolocation)
+# Prefer TIMEZONE from profile, fall back to TZ if set by docker
+if [ -n "$TIMEZONE" ]; then
+    export TZ="$TIMEZONE"
+fi
+echo "Timezone: $TZ"
+
+# Screen resolution from profile (required)
+if [ -z "$SCREEN_RESOLUTION" ]; then
+    echo "ERROR: SCREEN_RESOLUTION env var not set - profile configuration error"
+    exit 1
+fi
+SCREEN_RES="$SCREEN_RESOLUTION"
+echo "Screen resolution: $SCREEN_RES"
+
+# Display DPI from profile (required)
+if [ -z "$DISPLAY_DPI" ]; then
+    echo "ERROR: DISPLAY_DPI env var not set - profile configuration error"
+    exit 1
+fi
+echo "Display DPI: $DISPLAY_DPI"
+
+# Additional fonts from profile (optional, can be empty)
+echo "Additional fonts: ${ADDITIONAL_FONTS:-none}"
 
 # Clean up stale Xvfb processes and lock files from previous runs
 # This is necessary when container is restarted (not recreated)
@@ -32,10 +58,9 @@ rm -rf "$BOLT_DATA/CefCache/SingletonSocket" 2>/dev/null || true
 rm -rf "$BOLT_DATA/CefCache/SingletonCookie" 2>/dev/null || true
 sleep 1
 
-# Start Xvfb virtual display
-# Using 960x540 (qHD) - scales exactly 2x to 1080p, minimal wasted space
-echo "Starting Xvfb on display :99..."
-Xvfb :99 -screen 0 960x540x24 -ac +extension GLX +render -noreset &
+# Start Xvfb virtual display with profile-specific resolution
+echo "Starting Xvfb on display :99 with resolution ${SCREEN_RES}..."
+Xvfb :99 -screen 0 ${SCREEN_RES}x24 -ac +extension GLX +render -noreset &
 XVFB_PID=$!
 sleep 2
 
@@ -56,10 +81,35 @@ xsetroot -solid "#1a1a2e"
 # =============================================================================
 # Anti-fingerprint: Configure display and fonts to look like real desktop
 # =============================================================================
-# Set standard DPI (96 is the universal default)
-xrandr --dpi 96 2>/dev/null || true
 
-# Rebuild font cache (ensures all fonts are properly indexed)
+# Set DPI from profile (anti-fingerprint: varies per account)
+echo "Setting display DPI to ${DISPLAY_DPI}..."
+xrandr --dpi $DISPLAY_DPI 2>/dev/null || true
+
+# Add fake monitor name for more realistic display fingerprint
+# Extract width and height from SCREEN_RES (format: WIDTHxHEIGHT)
+SCREEN_WIDTH=$(echo $SCREEN_RES | cut -d'x' -f1)
+SCREEN_HEIGHT=$(echo $SCREEN_RES | cut -d'x' -f2)
+echo "Configuring virtual monitor ${SCREEN_RES}..."
+# Create a mode for the resolution (modeline values are approximate but functional)
+xrandr --newmode "${SCREEN_RES}_60.00" 74.50 $SCREEN_WIDTH $((SCREEN_WIDTH+64)) $((SCREEN_WIDTH+128)) $((SCREEN_WIDTH+384)) $SCREEN_HEIGHT $((SCREEN_HEIGHT+3)) $((SCREEN_HEIGHT+8)) $((SCREEN_HEIGHT+28)) -hsync +vsync 2>/dev/null || true
+xrandr --addmode screen "${SCREEN_RES}_60.00" 2>/dev/null || true
+
+# Enable profile-specific fonts via fontconfig
+if [ -n "$ADDITIONAL_FONTS" ]; then
+    echo "Enabling profile-specific fonts: $ADDITIONAL_FONTS"
+    mkdir -p ~/.config/fontconfig/conf.d
+    for font in $ADDITIONAL_FONTS; do
+        # Find and symlink the font config (font names don't have fonts- prefix)
+        font_conf=$(ls /usr/share/fontconfig/conf.avail/*${font}* 2>/dev/null | head -1)
+        if [ -n "$font_conf" ]; then
+            ln -sf "$font_conf" ~/.config/fontconfig/conf.d/ 2>/dev/null || true
+            echo "  Enabled font: $font"
+        fi
+    done
+fi
+
+# Rebuild font cache with profile-specific fonts
 fc-cache -f 2>/dev/null || true
 
 # Hide container indicators from environment
@@ -69,9 +119,12 @@ unset container 2>/dev/null || true
 echo "Starting PulseAudio..."
 pulseaudio --start --exit-idle-time=-1 2>/dev/null || true
 
-# Start VNC server for remote access (always enabled)
-echo "Starting VNC server on port 5900..."
-x11vnc -display :99 -bg -nopw -listen 0.0.0.0 -xkb -forever -shared
+# Start VNC server on Unix socket (not TCP - reduces fingerprint)
+# Socket path is in the bind-mounted status directory for web server access
+VNC_SOCKET_PATH="$HOME/.local/share/bolt-launcher/.runelite/rocinante/vnc.sock"
+echo "Starting VNC server on Unix socket: $VNC_SOCKET_PATH"
+rm -f "$VNC_SOCKET_PATH" 2>/dev/null || true
+x11vnc -display :99 -bg -nopw -unixsock "$VNC_SOCKET_PATH" -xkb -forever -shared
 sleep 1
 
 # Verify x11vnc started
@@ -79,7 +132,10 @@ if ! pgrep -x x11vnc > /dev/null; then
     echo "ERROR: x11vnc failed to start"
     exit 1
 fi
-echo "VNC server started - connect to port 5900"
+
+# Make socket accessible from host (web server runs as different user)
+chmod 777 "$VNC_SOCKET_PATH"
+echo "VNC server started on socket: $VNC_SOCKET_PATH"
 
 # Ensure Quest Helper is configured for Plugin Hub install
 # Write to BOTH settings locations (HOME and BOLT) to cover all launch modes

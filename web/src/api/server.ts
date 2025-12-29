@@ -6,7 +6,6 @@ import {
   createBot,
   updateBot,
   deleteBot,
-  getNextVncPort,
 } from './config';
 import {
   getContainerStatus,
@@ -25,6 +24,7 @@ import {
   sendBotCommand,
   cleanup as cleanupStatus,
   watchBotStatus,
+  getVncSocketPath,
 } from './status';
 import {
   getTrainingMethods,
@@ -42,7 +42,6 @@ const PORT = parseInt(process.env.PORT || '3000');
 type VncWebSocketData = {
   type: 'vnc';
   botId: string;
-  vncPort: number;
   tcpSocket: Socket<{ ws: ServerWebSocket<VncWebSocketData> }> | null;
 };
 
@@ -68,6 +67,70 @@ function success<T>(data: T): Response {
 
 function error(message: string, status = 400): Response {
   return json<ApiResponse<never>>({ success: false, error: message }, status);
+}
+
+// =============================================================================
+// Environment Fingerprint Generation
+// Matches Java's PlayerProfile.generateNewProfile() algorithm
+// =============================================================================
+
+const COMMON_DPIS = [96, 110, 120, 144];
+const OPTIONAL_FONTS = [
+  'firacode', 'roboto', 'ubuntu', 'inconsolata',
+  'lato', 'open-sans', 'cascadia-code', 'hack',
+  'jetbrains-mono', 'droid', 'wine', 'cantarell'
+];
+
+/** Simple seeded random number generator (matches Java's behavior) */
+function seededRandom(seed: number): () => number {
+  return () => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return seed / 0x7fffffff;
+  };
+}
+
+/** Generate a deterministic seed from a string (matches Java hashCode) */
+function generateSeed(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+/** Generate environment fingerprint data for a bot */
+function generateEnvironmentFingerprint(botId: string): {
+  machineId: string;
+  screenResolution: string;
+  displayDpi: number;
+  additionalFonts: string[];
+  timezone: string;
+} {
+  const seed = generateSeed(botId);
+  const random = seededRandom(seed);
+
+  // Machine ID: 32 hex characters
+  let machineId = '';
+  for (let i = 0; i < 32; i++) {
+    machineId += Math.floor(random() * 16).toString(16);
+  }
+
+  // Screen resolution: Fixed to 720p for now
+  const screenResolution = '1280x720';
+
+  // Display DPI: Random from common values
+  const displayDpi = COMMON_DPIS[Math.floor(random() * COMMON_DPIS.length)];
+
+  // Additional fonts: 2-5 random from pool
+  const numFonts = 2 + Math.floor(random() * 4);
+  const shuffledFonts = [...OPTIONAL_FONTS].sort(() => random() - 0.5);
+  const additionalFonts = shuffledFonts.slice(0, numFonts);
+
+  // Timezone: Default, user sets per account to match proxy
+  const timezone = 'America/New_York';
+
+  return { machineId, screenResolution, displayDpi, additionalFonts, timezone };
 }
 
 async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>): Promise<Response | undefined> {
@@ -96,7 +159,6 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
       data: {
         type: 'vnc',
         botId,
-        vncPort: bot.vncPort,
         tcpSocket: null,
       } as VncWebSocketData,
     });
@@ -193,19 +255,28 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
   if (path === '/api/bots' && method === 'POST') {
     try {
       const body = await req.json();
-      const nextVncPort = await getNextVncPort();
+      const botId = randomUUIDv7();
+      
+      // Generate environment fingerprint data (deterministic from bot ID)
+      const fingerprint = generateEnvironmentFingerprint(botId);
 
       const newBot: BotConfig = {
-        id: randomUUIDv7(),
+        id: botId,
         name: body.name,
         username: body.username,
         password: body.password,
         totpSecret: body.totpSecret || undefined,
         characterName: body.characterName || undefined,
+        preferredWorld: body.preferredWorld || undefined,
         proxy: body.proxy || null,
         ironman: body.ironman || { enabled: false, type: null, hcimSafetyLevel: null },
         resources: body.resources || { cpuLimit: '1.0', memoryLimit: '2G' },
-        vncPort: nextVncPort, // Auto-assigned, not configurable
+        // Environment fingerprint (auto-generated, deterministic per bot)
+        machineId: fingerprint.machineId,
+        screenResolution: fingerprint.screenResolution,
+        displayDpi: fingerprint.displayDpi,
+        additionalFonts: fingerprint.additionalFonts,
+        timezone: fingerprint.timezone,
       };
 
       await createBot(newBot);
@@ -237,8 +308,8 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
     if (method === 'PUT') {
       try {
         const body = await req.json();
-        // Prevent updating vncPort (auto-assigned)
-        const { vncPort: _, ...updates } = body;
+        // Prevent updating auto-generated fingerprint fields
+        const { machineId: _, screenResolution: __, displayDpi: ___, additionalFonts: ____, ...updates } = body;
         const updated = await updateBot(botId, updates);
         if (!updated) {
           return error('Bot not found', 404);
@@ -439,14 +510,15 @@ const bunServer = Bun.serve({
     async open(ws: ServerWebSocket<WebSocketData>) {
       if (ws.data.type === 'vnc') {
         const vncData = ws.data as VncWebSocketData;
-        const { vncPort } = vncData;
-        console.log(`VNC WebSocket opened for port ${vncPort}`);
+        const { botId } = vncData;
+        
+        // Get VNC socket path from status directory
+        const vncSocketPath = getVncSocketPath(botId);
 
         try {
-          // Connect to VNC server via TCP
+          // Connect to VNC server via Unix socket (not TCP)
           const tcpSocket = await Bun.connect({
-            hostname: 'localhost',
-            port: vncPort,
+            unix: vncSocketPath,
             socket: {
               data(socket, data) {
                 // Forward VNC server data to WebSocket client
@@ -456,17 +528,17 @@ const bunServer = Bun.serve({
                 }
               },
               open(socket) {
-                console.log(`TCP connection to VNC port ${vncPort} established`);
+                console.log(`Unix socket connection to VNC established: ${vncSocketPath}`);
               },
               close(socket) {
-                console.log(`TCP connection to VNC port ${vncPort} closed`);
+                console.log(`Unix socket connection to VNC closed: ${vncSocketPath}`);
                 const wsConn = socket.data.ws;
                 if (wsConn.readyState === 1) {
                   wsConn.close(1000, 'VNC server disconnected');
                 }
               },
               error(socket, err) {
-                console.error(`TCP error for VNC port ${vncPort}:`, err);
+                console.error(`Unix socket error for VNC ${vncSocketPath}:`, err);
                 const wsConn = socket.data.ws;
                 if (wsConn.readyState === 1) {
                   wsConn.close(1011, 'VNC connection error');
@@ -477,9 +549,17 @@ const bunServer = Bun.serve({
           });
 
           vncData.tcpSocket = tcpSocket;
-        } catch (err) {
-          console.error(`Failed to connect to VNC port ${vncPort}:`, err);
+        } catch (err: any) {
+          // ENOENT = socket doesn't exist yet (container starting)
+          // ECONNREFUSED = socket exists but nothing listening
+          // EACCES = permission denied
+          if (err?.code === 'ENOENT' || err?.code === 'ECONNREFUSED') {
+            // Container still starting - close gracefully, client will retry
+            ws.close(1000, 'VNC server not ready');
+          } else {
+            console.error(`Failed to connect to VNC socket ${vncSocketPath}:`, err);
           ws.close(1011, 'Failed to connect to VNC server');
+          }
         }
       } else if (ws.data.type === 'status') {
         const statusData = ws.data as StatusWebSocketData;

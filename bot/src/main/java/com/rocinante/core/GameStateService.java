@@ -50,6 +50,8 @@ import net.runelite.api.events.NpcDespawned;
 import net.runelite.api.events.ProjectileMoved;
 import net.runelite.api.events.AnimationChanged;
 import net.runelite.api.events.StatChanged;
+import net.runelite.api.events.ChatMessage;
+import net.runelite.api.ChatMessageType;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.game.ItemManager;
 import net.runelite.api.gameval.DBTableID;
@@ -202,6 +204,16 @@ public class GameStateService {
     // This set contains all widget groups we've found visible during this session
     private final Set<Integer> cachedWidgetGroups = new HashSet<>();
     private volatile boolean widgetCacheInitialized = false;
+    
+    // ========================================================================
+    // Combat Message Tracking
+    // ========================================================================
+    
+    /**
+     * Tick when "I can't reach that" message was last received.
+     * Used by CombatTask to detect unreachable targets and return to home position.
+     */
+    private volatile int lastCantReachTick = -1;
     
     /**
      * Interface mode enum - determines which widget IDs to use for tabs, etc.
@@ -709,6 +721,44 @@ public class GameStateService {
     public void onGraphicsObjectCreated(GraphicsObjectCreated event) {
         worldStateDirty = true;
         log.trace("WorldState marked dirty: GraphicsObject created");
+    }
+
+    /**
+     * Handle chat messages - track combat-relevant messages.
+     */
+    @Subscribe
+    public void onChatMessage(ChatMessage event) {
+        // Check both ENGINE and GAMEMESSAGE - "I can't reach that" comes as ENGINE
+        ChatMessageType type = event.getType();
+        if (type != ChatMessageType.GAMEMESSAGE && type != ChatMessageType.ENGINE) {
+            return;
+        }
+        
+        String message = event.getMessage();
+        
+        // "I can't reach that!" - player tried to attack unreachable target
+        if (message.contains("can't reach that")) {
+            lastCantReachTick = currentTick;
+            log.info("Detected 'can't reach that' message at tick {}", currentTick);
+        }
+    }
+
+    /**
+     * Check if "I can't reach that" message was received recently.
+     * CombatTask uses this to detect when it needs to return to home position.
+     *
+     * @param withinTicks how many ticks ago to check (e.g., 5 = last 5 ticks)
+     * @return true if message was received within the specified tick window
+     */
+    public boolean wasCantReachRecent(int withinTicks) {
+        return lastCantReachTick >= 0 && (currentTick - lastCantReachTick) <= withinTicks;
+    }
+
+    /**
+     * Clear the "can't reach" flag. Called after handling the condition.
+     */
+    public void clearCantReachFlag() {
+        lastCantReachTick = -1;
     }
 
     // ========================================================================
@@ -1700,6 +1750,12 @@ public class GameStateService {
     /**
      * Build list of NPCs currently targeting and attacking the player.
      * Per REQUIREMENTS.md Section 6.2.6 and 10.6.5.
+     * 
+     * IMPORTANT: Only includes NPCs that have ACTUALLY ATTACKED the player,
+     * not just NPCs that are "interacting" (which includes dialogue/talking).
+     * An NPC is considered attacking if:
+     * - It has a recorded attack tick (we've seen it attack us before), OR
+     * - It's currently playing an attack animation targeting us
      */
     private List<AggressorInfo> buildAggressorList(Player localPlayer) {
         List<AggressorInfo> aggressors = new ArrayList<>();
@@ -1709,7 +1765,7 @@ public class GameStateService {
                 continue;
             }
 
-            // This NPC is targeting the player
+            // This NPC is targeting the player - but is it actually ATTACKING?
             int npcIndex = npc.getIndex();
             int npcId = npc.getId();
             Integer lastAttackTick = npcLastAttackTicks.get(npcIndex);
@@ -1748,6 +1804,14 @@ public class GameStateService {
             // Update last attack tick if attacking
             if (isAttacking && (lastAttackTick == null || currentTick - lastAttackTick > 2)) {
                 npcLastAttackTicks.put(npcIndex, currentTick);
+                lastAttackTick = currentTick; // Use updated value
+            }
+
+            // ONLY add to aggressors if they've actually attacked us
+            // Just "interacting" (dialogue, teaching, etc.) is NOT an attack
+            boolean hasAttackedUs = lastAttackTick != null;
+            if (!hasAttackedUs) {
+                continue; // Skip NPCs that are just talking to us
             }
 
             aggressors.add(AggressorInfo.builder()

@@ -81,8 +81,16 @@ public class CombatQuestStep extends QuestStep {
 
     /**
      * Number of NPCs to kill (default: 1).
+     * Ignored if attackCount is set.
      */
     private int killCount = 1;
+
+    /**
+     * Number of attacks/casts to perform (default: -1 = use killCount).
+     * When set, completes after N successful attacks without needing to kill.
+     * Example: Tutorial Island magic - cast Wind Strike once on chicken.
+     */
+    private int attackCount = -1;
 
     /**
      * Search radius for finding the target (default: 15 tiles).
@@ -118,6 +126,13 @@ public class CombatQuestStep extends QuestStep {
      * Safe-spot position for ranged/magic combat.
      */
     private WorldPoint safeSpotPosition;
+
+    /**
+     * Combat location - where the player should be fighting.
+     * Used as the "home position" for recovery when "I can't reach that" occurs.
+     * REQUIRED for combat steps to enable automatic recovery.
+     */
+    private WorldPoint combatLocation;
 
     /**
      * Attack range (1 = melee, 7+ = ranged/magic).
@@ -205,6 +220,11 @@ public class CombatQuestStep extends QuestStep {
     }
 
     @Override
+    public WorldPoint getTargetLocation() {
+        return combatLocation;
+    }
+
+    @Override
     public List<Task> toTasks(TaskContext ctx) {
         TargetSelector targetSelector = ctx.getTargetSelector();
         CombatManager combatManager = ctx.getCombatManager();
@@ -271,11 +291,13 @@ public class CombatQuestStep extends QuestStep {
         CombatTaskConfig.CombatTaskConfigBuilder configBuilder = CombatTaskConfig.builder()
                 .targetConfig(targetConfig)
                 .killCount(killCount)
+                .attackCount(attackCount)
                 .maxDuration(maxDuration)
                 .lootEnabled(lootEnabled)
                 .lootMinValue(lootMinValue)
                 .stopWhenOutOfFood(eatEnabled) // Only stop for food if we care about eating
-                .stopWhenLowResources(false);
+                .stopWhenLowResources(false)
+                .combatLocation(combatLocation);
 
         // Safe-spotting
         if (safeSpotPosition != null) {
@@ -375,12 +397,26 @@ public class CombatQuestStep extends QuestStep {
 
     /**
      * Set number of kills required (builder-style).
+     * Ignored if attackCount is set.
      *
      * @param count the kill count
      * @return this step for chaining
      */
     public CombatQuestStep withKillCount(int count) {
         this.killCount = count;
+        return this;
+    }
+
+    /**
+     * Set number of attacks/casts required (builder-style).
+     * When set, completes after N successful attacks without needing to kill.
+     * Example: Tutorial Island magic - cast Wind Strike once on chicken.
+     *
+     * @param count the attack count
+     * @return this step for chaining
+     */
+    public CombatQuestStep withAttackCount(int count) {
+        this.attackCount = count;
         return this;
     }
 
@@ -458,6 +494,18 @@ public class CombatQuestStep extends QuestStep {
      */
     public CombatQuestStep withSafeSpot(WorldPoint position) {
         this.safeSpotPosition = position;
+        return this;
+    }
+
+    /**
+     * Set combat location - where the fight takes place (builder-style).
+     * The bot will stay in this area and return here if it leaves.
+     *
+     * @param location the combat area center point
+     * @return this step for chaining
+     */
+    public CombatQuestStep withCombatLocation(WorldPoint location) {
+        this.combatLocation = location;
         return this;
     }
 

@@ -112,11 +112,35 @@ public class CombatTaskConfig {
     int killCount = -1;
 
     /**
+     * Number of successful attacks/casts before task completes.
+     * Used when you just need to hit something N times without killing it.
+     * For example, Tutorial Island magic: cast Wind Strike once on chicken.
+     * -1 means use killCount instead.
+     */
+    @Builder.Default
+    int attackCount = -1;
+
+    /**
      * Maximum duration before task completes.
      * Null means no time limit.
      */
     @Builder.Default
     Duration maxDuration = Duration.ofMinutes(30);
+
+    // ========================================================================
+    // Combat Location
+    // ========================================================================
+
+    /**
+     * Where combat happens. The bot will stay in this area and return here
+     * if it accidentally leaves (e.g., "I can't reach that").
+     * 
+     * REQUIRED for all combat tasks. Used for:
+     * - Quest combat steps: where the fight takes place
+     * - Slayer tasks: center of the task area
+     * - General combat: where the player should be fighting
+     */
+    WorldPoint combatLocation;
 
     // ========================================================================
     // Safe-Spotting (Section 5.4.9)
@@ -442,12 +466,31 @@ public class CombatTaskConfig {
     }
 
     /**
+     * Check if an attack count limit is set.
+     * When true, task completes after N attacks instead of N kills.
+     *
+     * @return true if attack count completion is enabled
+     */
+    public boolean hasAttackCountLimit() {
+        return attackCount > 0;
+    }
+
+    /**
      * Check if a duration limit is set.
      *
      * @return true if duration completion is enabled
      */
     public boolean hasDurationLimit() {
         return maxDuration != null && !maxDuration.isZero();
+    }
+
+    /**
+     * Check if a combat location is configured.
+     *
+     * @return true if combat location is set
+     */
+    public boolean hasCombatLocation() {
+        return combatLocation != null;
     }
 
     /**

@@ -38,6 +38,23 @@ export function getCommandsFilePath(botId: string): string {
 }
 
 /**
+ * Get the VNC socket path for a bot.
+ * The container creates vnc.sock in /home/runelite/.local/share/bolt-launcher/.runelite/rocinante/
+ * which is bind-mounted to data/status/<botId>/ on the host.
+ */
+export function getVncSocketPath(botId: string): string {
+  return join(getStatusDir(botId), 'vnc.sock');
+}
+
+/**
+ * Get the machine-id file path for a bot.
+ * This file is created by docker.ts and bind-mounted into the container at /etc/machine-id.
+ */
+export function getMachineIdPath(botId: string): string {
+  return join(getStatusDir(botId), 'machine-id');
+}
+
+/**
  * Ensure status directory exists for a bot with proper permissions.
  * The directory must be writable by the container's runelite user (UID 1000).
  */

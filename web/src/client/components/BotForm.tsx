@@ -3,7 +3,7 @@ import type { BotConfig } from '../../shared/types';
 
 interface BotFormProps {
   initialData?: BotConfig;
-  onSubmit: (data: Omit<BotConfig, 'id' | 'vncPort'>) => void;
+  onSubmit: (data: Omit<BotConfig, 'id' | 'machineId' | 'screenResolution' | 'displayDpi' | 'additionalFonts'>) => void;
   isLoading?: boolean;
   submitLabel?: string;
 }
