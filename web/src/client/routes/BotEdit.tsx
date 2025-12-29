@@ -10,7 +10,7 @@ export const BotEdit: Component = () => {
   const botQuery = useBotQuery(() => params().id);
   const updateMutation = useUpdateBotMutation();
 
-  const handleSubmit = async (data: Omit<BotConfig, 'id' | 'machineId' | 'screenResolution' | 'displayDpi' | 'additionalFonts'>) => {
+  const handleSubmit = async (data: Omit<BotConfig, 'id' | 'environment'>) => {
     try {
       await updateMutation.mutateAsync({ id: params().id, ...data });
       navigate({ to: '/bots/$id', params: { id: params().id } });

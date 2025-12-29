@@ -108,6 +108,20 @@ RUN apt-get update && apt-get install -y \
     fonts-droid-fallback \
     fonts-wine \
     fonts-cantarell \
+    fonts-dejavu-extra \
+    fonts-noto-mono \
+    fonts-noto-ui-core \
+    fonts-liberation-sans-narrow \
+    fonts-font-awesome \
+    fonts-opensymbol \
+    fonts-liberation2 \
+    fonts-croscore \
+    fonts-crosextra-carlito \
+    fonts-crosextra-caladea \
+    fonts-noto-color-emoji \
+    fonts-freefont-otf \
+    fonts-urw-base35 \
+    fonts-texgyre \
     # Bolt dependencies (CEF/Chromium based)
     libnss3 \
     libatk1.0-0 \
@@ -143,7 +157,7 @@ RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
 
 # Disable optional fonts by default - entrypoint enables per profile
 # This creates per-account font fingerprints
-RUN for font in firacode roboto ubuntu inconsolata lato open-sans cascadia-code hack jetbrains-mono droid wine cantarell; do \
+RUN for font in firacode roboto ubuntu inconsolata lato open-sans cascadia-code hack jetbrains-mono droid wine cantarell dejavu-extra noto-mono noto-ui-core liberation-sans-narrow font-awesome opensymbol liberation2 croscore crosextra-carlito crosextra-caladea noto-color-emoji freefont-otf urw-base35 texgyre; do \
         rm -f /etc/fonts/conf.d/*${font}* 2>/dev/null || true; \
     done && fc-cache -f
 

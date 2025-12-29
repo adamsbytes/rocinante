@@ -18,11 +18,16 @@
       "totpSecret": "ANSSXZB4HFGYVC74NVI6R3MAXDGNP4X4",
       "characterName": "67silverdev",
       "preferredWorld": 418,
-      "machineId": "a9bec447f36e351401a00e870af52452",
-      "screenResolution": "1280x720",
-      "displayDpi": 144,
-      "additionalFonts": ["hack", "ubuntu", "cantarell", "jetbrains-mono", "inconsolata"],
-      "timezone": "America/New_York"
+      "environment": {
+        "machineId": "a9bec447f36e351401a00e870af52452",
+        "displayNumber": 1,
+        "screenResolution": "1280x720",
+        "screenDepth": 24,
+        "displayDpi": 144,
+        "timezone": "America/New_York",
+        "additionalFonts": ["hack", "ubuntu", "cantarell", "jetbrains-mono", "inconsolata", "roboto", "firacode", "lato", "open-sans", "dejavu-extra", "noto-mono", "croscore"],
+        "gcAlgorithm": "G1GC"
+      }
     }
   ]
 }

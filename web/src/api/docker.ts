@@ -11,7 +11,14 @@ const CONTAINER_PREFIX = 'rocinante_';
 
 // Anti-fingerprint: Generate realistic desktop-like hostnames
 // Real Linux hostnames often follow patterns like: desktop-abc123, user-pc, hostname-randomsuffix
-const HOSTNAME_PREFIXES = ['desktop', 'pc', 'linux', 'home', 'workstation', 'main'];
+const HOSTNAME_PREFIXES = [
+  // Generic patterns
+  'desktop', 'pc', 'linux', 'home', 'workstation', 'main',
+  // OEM patterns
+  'hp', 'dell', 'lenovo', 'asus', 'acer',
+  // Distro patterns
+  'ubuntu', 'pop', 'fedora', 'arch',
+];
 
 function generateHostname(botId: string): string {
   // Use a deterministic but realistic hostname based on bot ID
@@ -231,30 +238,50 @@ export async function startBot(bot: BotConfig): Promise<void> {
   // Environment Fingerprint: Pass profile values to container
   // These MUST be set - entrypoint will fail if missing (intentional)
   // =============================================================================
-  if (!bot.screenResolution) {
-    throw new Error(`Bot ${bot.id} missing screenResolution in profile`);
+  if (!bot.environment) {
+    throw new Error(`Bot ${bot.id} missing environment config`);
   }
-  if (!bot.displayDpi) {
-    throw new Error(`Bot ${bot.id} missing displayDpi in profile`);
+  if (!bot.environment.machineId) {
+    throw new Error(`Bot ${bot.id} missing environment.machineId`);
   }
-  if (!bot.machineId) {
-    throw new Error(`Bot ${bot.id} missing machineId in profile`);
+  if (!bot.environment.screenResolution) {
+    throw new Error(`Bot ${bot.id} missing environment.screenResolution`);
   }
-  if (!bot.timezone) {
-    throw new Error(`Bot ${bot.id} missing timezone in profile`);
+  if (!bot.environment.displayDpi) {
+    throw new Error(`Bot ${bot.id} missing environment.displayDpi`);
+  }
+  if (!bot.environment.timezone) {
+    throw new Error(`Bot ${bot.id} missing environment.timezone`);
+  }
+  if (bot.environment.displayNumber === undefined) {
+    throw new Error(`Bot ${bot.id} missing environment.displayNumber`);
+  }
+  if (!bot.environment.screenDepth) {
+    throw new Error(`Bot ${bot.id} missing environment.screenDepth`);
+  }
+  if (!bot.environment.gcAlgorithm) {
+    throw new Error(`Bot ${bot.id} missing environment.gcAlgorithm`);
   }
 
-  env.push(`SCREEN_RESOLUTION=${bot.screenResolution}`);
-  env.push(`DISPLAY_DPI=${bot.displayDpi}`);
-  env.push(`TIMEZONE=${bot.timezone}`);
+  // Display configuration
+  env.push(`DISPLAY_NUMBER=${bot.environment.displayNumber}`);
+  env.push(`SCREEN_RESOLUTION=${bot.environment.screenResolution}`);
+  env.push(`SCREEN_DEPTH=${bot.environment.screenDepth}`);
+  env.push(`DISPLAY_DPI=${bot.environment.displayDpi}`);
+  
+  // Locale/timezone
+  env.push(`TIMEZONE=${bot.environment.timezone}`);
+  
+  // JVM configuration
+  env.push(`GC_ALGORITHM=${bot.environment.gcAlgorithm}`);
   
   // Additional fonts are optional (can be empty array)
-  if (bot.additionalFonts && bot.additionalFonts.length > 0) {
-    env.push(`ADDITIONAL_FONTS=${bot.additionalFonts.join(' ')}`);
+  if (bot.environment.additionalFonts && bot.environment.additionalFonts.length > 0) {
+    env.push(`ADDITIONAL_FONTS=${bot.environment.additionalFonts.join(' ')}`);
   }
 
   // Write machine-id file for bind mount
-  const machineIdPath = writeMachineIdFile(bot.id, bot.machineId);
+  const machineIdPath = writeMachineIdFile(bot.id, bot.environment.machineId);
 
   // Create and start container
   // Anti-fingerprint: Use realistic hostname instead of Docker's random hex ID

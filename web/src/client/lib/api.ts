@@ -42,7 +42,7 @@ export function useBotQuery(id: () => string) {
 
 // Mutations
 /** Type for bot creation/update data - excludes server-managed fields */
-type BotFormData = Omit<BotConfig, 'id' | 'machineId' | 'screenResolution' | 'displayDpi' | 'additionalFonts'>;
+type BotFormData = Omit<BotConfig, 'id' | 'environment'>;
 
 export function useCreateBotMutation() {
   const queryClient = useQueryClient();

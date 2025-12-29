@@ -34,7 +34,7 @@ import {
   getQuests,
   getQuestsFiltered,
 } from './data';
-import type { ApiResponse, BotConfig, BotWithStatus, BotRuntimeStatus, LocationInfo } from '../shared/types';
+import type { ApiResponse, BotConfig, BotWithStatus, BotRuntimeStatus, LocationInfo, EnvironmentConfig } from '../shared/types';
 
 const PORT = parseInt(process.env.PORT || '3000');
 
@@ -71,15 +71,24 @@ function error(message: string, status = 400): Response {
 
 // =============================================================================
 // Environment Fingerprint Generation
-// Matches Java's PlayerProfile.generateNewProfile() algorithm
+// Deterministically generates anti-fingerprint settings from bot ID
 // =============================================================================
 
 const COMMON_DPIS = [96, 110, 120, 144];
+
+// Optional fonts pool - installed in Dockerfile but disabled by default
+// Entrypoint enables selected fonts per bot
 const OPTIONAL_FONTS = [
   'firacode', 'roboto', 'ubuntu', 'inconsolata',
   'lato', 'open-sans', 'cascadia-code', 'hack',
-  'jetbrains-mono', 'droid', 'wine', 'cantarell'
+  'jetbrains-mono', 'droid', 'wine', 'cantarell',
+  'dejavu-extra', 'noto-mono', 'noto-ui-core',
+  'liberation-sans-narrow', 'font-awesome', 'opensymbol',
+  'liberation2', 'croscore', 'crosextra-carlito', 'crosextra-caladea',
+  'noto-color-emoji', 'freefont-otf', 'urw-base35', 'texgyre',
 ];
+
+const GC_ALGORITHMS: Array<'G1GC' | 'ParallelGC' | 'ZGC'> = ['G1GC', 'ParallelGC', 'ZGC'];
 
 /** Simple seeded random number generator (matches Java's behavior) */
 function seededRandom(seed: number): () => number {
@@ -100,13 +109,7 @@ function generateSeed(str: string): number {
 }
 
 /** Generate environment fingerprint data for a bot */
-function generateEnvironmentFingerprint(botId: string): {
-  machineId: string;
-  screenResolution: string;
-  displayDpi: number;
-  additionalFonts: string[];
-  timezone: string;
-} {
+function generateEnvironmentFingerprint(botId: string): EnvironmentConfig {
   const seed = generateSeed(botId);
   const random = seededRandom(seed);
 
@@ -116,21 +119,39 @@ function generateEnvironmentFingerprint(botId: string): {
     machineId += Math.floor(random() * 16).toString(16);
   }
 
-  // Screen resolution: Fixed to 720p for now
+  // Display number: 0-9 (X11 display)
+  const displayNumber = Math.floor(random() * 10);
+
+  // Screen resolution: Fixed to 720p for now (TODO: vary later)
   const screenResolution = '1280x720';
+
+  // Screen depth: 24 or 32 (70% use 24-bit)
+  const screenDepth = random() < 0.7 ? 24 : 32;
 
   // Display DPI: Random from common values
   const displayDpi = COMMON_DPIS[Math.floor(random() * COMMON_DPIS.length)];
 
-  // Additional fonts: 2-5 random from pool
-  const numFonts = 2 + Math.floor(random() * 4);
-  const shuffledFonts = [...OPTIONAL_FONTS].sort(() => random() - 0.5);
-  const additionalFonts = shuffledFonts.slice(0, numFonts);
-
   // Timezone: Default, user sets per account to match proxy
   const timezone = 'America/New_York';
 
-  return { machineId, screenResolution, displayDpi, additionalFonts, timezone };
+  // Additional fonts: 10-20 from expanded pool
+  const numFonts = 10 + Math.floor(random() * 11);
+  const shuffledFonts = [...OPTIONAL_FONTS].sort(() => random() - 0.5);
+  const additionalFonts = shuffledFonts.slice(0, numFonts);
+
+  // GC algorithm: Random from available options
+  const gcAlgorithm = GC_ALGORITHMS[Math.floor(random() * GC_ALGORITHMS.length)];
+
+  return {
+    machineId,
+    displayNumber,
+    screenResolution,
+    screenDepth,
+    displayDpi,
+    timezone,
+    additionalFonts,
+    gcAlgorithm,
+  };
 }
 
 async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>): Promise<Response | undefined> {
@@ -258,7 +279,7 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
       const botId = randomUUIDv7();
       
       // Generate environment fingerprint data (deterministic from bot ID)
-      const fingerprint = generateEnvironmentFingerprint(botId);
+      const environment = generateEnvironmentFingerprint(botId);
 
       const newBot: BotConfig = {
         id: botId,
@@ -272,11 +293,7 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
         ironman: body.ironman || { enabled: false, type: null, hcimSafetyLevel: null },
         resources: body.resources || { cpuLimit: '1.0', memoryLimit: '2G' },
         // Environment fingerprint (auto-generated, deterministic per bot)
-        machineId: fingerprint.machineId,
-        screenResolution: fingerprint.screenResolution,
-        displayDpi: fingerprint.displayDpi,
-        additionalFonts: fingerprint.additionalFonts,
-        timezone: fingerprint.timezone,
+        environment,
       };
 
       await createBot(newBot);
@@ -308,8 +325,8 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
     if (method === 'PUT') {
       try {
         const body = await req.json();
-        // Prevent updating auto-generated fingerprint fields
-        const { machineId: _, screenResolution: __, displayDpi: ___, additionalFonts: ____, ...updates } = body;
+        // Prevent updating auto-generated environment config
+        const { environment: _, ...updates } = body;
         const updated = await updateBot(botId, updates);
         if (!updated) {
           return error('Bot not found', 404);

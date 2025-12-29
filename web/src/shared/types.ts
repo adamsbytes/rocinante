@@ -16,6 +16,29 @@ export interface ResourceConfig {
   memoryLimit: string;
 }
 
+export interface EnvironmentConfig {
+  /** Machine ID - 32 hex chars, stable per account */
+  machineId: string;
+  
+  /** X11 display number (0-9) */
+  displayNumber: number;
+  /** Screen resolution - e.g., "1280x720" */
+  screenResolution: string;
+  /** Screen color depth - 24 or 32 */
+  screenDepth: number;
+  /** Display DPI - one of 96, 110, 120, 144 */
+  displayDpi: number;
+  
+  /** Timezone matching proxy location - e.g., "America/New_York" */
+  timezone: string;
+  
+  /** Additional fonts enabled for this profile (10-20 from optional pool) */
+  additionalFonts: string[];
+  
+  /** JVM garbage collector algorithm */
+  gcAlgorithm: 'G1GC' | 'ParallelGC' | 'ZGC';
+}
+
 export interface BotConfig {
   id: string;
   name: string;
@@ -28,18 +51,8 @@ export interface BotConfig {
   ironman: IronmanConfig;
   resources: ResourceConfig;
   
-  // Environment fingerprint fields (from Java PlayerProfile)
-  // These MUST be set before starting a bot - no defaults allowed
-  /** Machine ID - 32 hex chars, stable per account */
-  machineId: string;
-  /** Screen resolution - e.g., "1280x720" */
-  screenResolution: string;
-  /** Display DPI - one of 96, 110, 120, 144 */
-  displayDpi: number;
-  /** Additional fonts enabled for this profile */
-  additionalFonts: string[];
-  /** Timezone matching proxy location - e.g., "America/New_York" */
-  timezone: string;
+  /** Environment fingerprint settings - auto-generated, deterministic per bot */
+  environment: EnvironmentConfig;
 }
 
 export interface BotStatus {

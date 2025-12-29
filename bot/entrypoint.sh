@@ -6,8 +6,13 @@ echo "================================================="
 echo "Launcher: Bolt (native Linux launcher)"
 echo "================================================="
 
-# Export display for GUI tools
-export DISPLAY=:99
+# Display number from profile (required)
+if [ -z "$DISPLAY_NUMBER" ]; then
+    echo "ERROR: DISPLAY_NUMBER env var not set - profile configuration error"
+    exit 1
+fi
+DISPLAY_NUM="$DISPLAY_NUMBER"
+export DISPLAY=:${DISPLAY_NUM}
 
 # =============================================================================
 # Environment Fingerprint: Read from profile-specific env vars
@@ -29,12 +34,20 @@ fi
 SCREEN_RES="$SCREEN_RESOLUTION"
 echo "Screen resolution: $SCREEN_RES"
 
+# Screen depth from profile (required)
+if [ -z "$SCREEN_DEPTH" ]; then
+    echo "ERROR: SCREEN_DEPTH env var not set - profile configuration error"
+    exit 1
+fi
+echo "Screen depth: $SCREEN_DEPTH"
+
 # Display DPI from profile (required)
 if [ -z "$DISPLAY_DPI" ]; then
     echo "ERROR: DISPLAY_DPI env var not set - profile configuration error"
     exit 1
 fi
 echo "Display DPI: $DISPLAY_DPI"
+echo "Display number: $DISPLAY_NUM"
 
 # Additional fonts from profile (optional, can be empty)
 echo "Additional fonts: ${ADDITIONAL_FONTS:-none}"
@@ -43,8 +56,8 @@ echo "Additional fonts: ${ADDITIONAL_FONTS:-none}"
 # This is necessary when container is restarted (not recreated)
 echo "Cleaning up previous display state..."
 pkill -9 Xvfb 2>/dev/null || true
-rm -f /tmp/.X99-lock 2>/dev/null || true
-rm -f /tmp/.X11-unix/X99 2>/dev/null || true
+rm -f /tmp/.X${DISPLAY_NUM}-lock 2>/dev/null || true
+rm -f /tmp/.X11-unix/X${DISPLAY_NUM} 2>/dev/null || true
 
 # Clean up stale Chromium/CEF lock files from previous container runs
 # These persist in the mounted volume and block Bolt from starting
@@ -59,8 +72,8 @@ rm -rf "$BOLT_DATA/CefCache/SingletonCookie" 2>/dev/null || true
 sleep 1
 
 # Start Xvfb virtual display with profile-specific resolution
-echo "Starting Xvfb on display :99 with resolution ${SCREEN_RES}..."
-Xvfb :99 -screen 0 ${SCREEN_RES}x24 -ac +extension GLX +render -noreset &
+echo "Starting Xvfb on display :${DISPLAY_NUM} with resolution ${SCREEN_RES}x${SCREEN_DEPTH}..."
+Xvfb :${DISPLAY_NUM} -screen 0 ${SCREEN_RES}x${SCREEN_DEPTH} -ac +extension GLX +render -noreset &
 XVFB_PID=$!
 sleep 2
 
@@ -112,6 +125,58 @@ fi
 # Rebuild font cache with profile-specific fonts
 fc-cache -f 2>/dev/null || true
 
+# =============================================================================
+# Anti-fingerprint: Generate deterministic junk files
+# =============================================================================
+generate_junk_files() {
+    local seed_str="${HOSTNAME:-unknown}"
+    local seed=0
+    
+    for (( i=0; i<${#seed_str}; i++ )); do
+        local char="${seed_str:$i:1}"
+        local val=$(printf '%d' "'$char")
+        seed=$(( (seed * 31 + val) % 1000000 ))
+    done
+    
+    local num_files=$(( (seed % 6) + 3 ))
+    
+    local files=(
+        "Downloads/ubuntu-22.04.3-desktop-amd64.iso"
+        "Documents/notes.txt"
+        "Desktop/.directory"
+        "Downloads/install.sh"
+        "Documents/todo.md"
+        "Pictures/screenshot-2024.png"
+        "Downloads/package.deb"
+        "Documents/readme.txt"
+        "Desktop/bookmarks.html"
+        "Music/.nomedia"
+        "Videos/.gitkeep"
+        "Downloads/archive.zip"
+    )
+    
+    echo "Generating $num_files deterministic junk files..."
+    for (( i=0; i<num_files; i++ )); do
+        local idx=$(( (seed + i * 17) % ${#files[@]} ))
+        local file="${files[$idx]}"
+        local path="$HOME/$file"
+        
+        mkdir -p "$(dirname "$path")"
+        
+        if [[ "$file" == *.iso ]] || [[ "$file" == *.zip ]] || [[ "$file" == *.deb ]]; then
+            touch "$path"
+        else
+            echo "# Placeholder" > "$path"
+        fi
+        
+        local days_ago=$(( (seed + i * 7) % 90 + 1 ))
+        touch -d "$days_ago days ago" "$path" 2>/dev/null || true
+        
+        echo "  Created: $file"
+    done
+}
+generate_junk_files
+
 # Hide container indicators from environment
 unset container 2>/dev/null || true
 
@@ -124,7 +189,7 @@ pulseaudio --start --exit-idle-time=-1 2>/dev/null || true
 VNC_SOCKET_PATH="$HOME/.local/share/bolt-launcher/.runelite/rocinante/vnc.sock"
 echo "Starting VNC server on Unix socket: $VNC_SOCKET_PATH"
 rm -f "$VNC_SOCKET_PATH" 2>/dev/null || true
-x11vnc -display :99 -bg -nopw -unixsock "$VNC_SOCKET_PATH" -xkb -forever -shared
+x11vnc -display :${DISPLAY_NUM} -bg -nopw -unixsock "$VNC_SOCKET_PATH" -xkb -forever -shared
 sleep 1
 
 # Verify x11vnc started
@@ -170,6 +235,28 @@ export RUNELITE_JVM_ARGS="-Djava.awt.headless=false"
 RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS --add-opens=java.desktop/sun.awt=ALL-UNNAMED"
 RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -Xmx${JVM_HEAP_MAX:-2G}"
 RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -Xms${JVM_HEAP_MIN:-1G}"
+
+# GC algorithm from profile (required)
+if [ -z "$GC_ALGORITHM" ]; then
+    echo "ERROR: GC_ALGORITHM env var not set - profile configuration error"
+    exit 1
+fi
+case "$GC_ALGORITHM" in
+    G1GC)
+        RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -XX:+UseG1GC"
+        ;;
+    ParallelGC)
+        RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -XX:+UseParallelGC"
+        ;;
+    ZGC)
+        RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -XX:+UseZGC"
+        ;;
+    *)
+        echo "ERROR: Unknown GC_ALGORITHM '$GC_ALGORITHM'"
+        exit 1
+        ;;
+esac
+echo "GC Algorithm: $GC_ALGORITHM"
 
 # Configure Rocinante via environment variables
 if [ -n "$IRONMAN_MODE" ]; then
