@@ -43,6 +43,22 @@ public enum WebEdgeType {
     /**
      * Requires toll payment or item (may be free after quest).
      */
-    TOLL
+    TOLL,
+
+    /**
+     * Free teleport with cooldown (home teleport, grouping/minigame teleports).
+     * No item cost but time-gated. Filtered by cooldown status during pathfinding.
+     * 
+     * <p>Home teleport: 30-minute cooldown, destination varies by respawn point.
+     * <p>Grouping teleport: 20-minute shared cooldown, teleports to minigame locations.
+     * 
+     * <p>Edge metadata should include:
+     * <ul>
+     *   <li>teleport_type: "home" or "grouping"</li>
+     *   <li>teleport_id: GroupingTeleport enum name (for grouping type)</li>
+     *   <li>respawn_point: RespawnPoint enum name (for home type)</li>
+     * </ul>
+     */
+    FREE_TELEPORT
 }
 

@@ -301,6 +301,32 @@ public class GameStateService {
      */
     private static final int VARBIT_RESIZABLE_STONE_ARRANGEMENT = 4607;
 
+    /**
+     * VarPlayer for last home teleport usage.
+     * Stores minutes since epoch when home teleport was last used.
+     * Per RuneLite VarPlayer.LAST_HOME_TELEPORT.
+     */
+    private static final int VARP_LAST_HOME_TELEPORT = 892;
+
+    /**
+     * VarPlayer for last minigame teleport usage.
+     * Stores minutes since epoch when minigame/grouping teleport was last used.
+     * Per RuneLite VarPlayer.LAST_MINIGAME_TELEPORT.
+     */
+    private static final int VARP_LAST_MINIGAME_TELEPORT = 888;
+
+    /**
+     * Home teleport cooldown duration in minutes.
+     * Per RuneLite GameTimer.HOME_TELEPORT.
+     */
+    private static final int HOME_TELEPORT_COOLDOWN_MINUTES = 30;
+
+    /**
+     * Minigame teleport cooldown duration in minutes.
+     * Per RuneLite GameTimer.MINIGAME_TELEPORT.
+     */
+    private static final int MINIGAME_TELEPORT_COOLDOWN_MINUTES = 20;
+
     @Inject
     public GameStateService(Client client, 
                            ItemManager itemManager, 
@@ -1401,6 +1427,10 @@ public class GameStateService {
         // Spellbook
         int spellbook = client.getVarbitValue(VARBIT_SPELLBOOK);
 
+        // Teleport cooldowns
+        int homeTeleportCooldown = calculateTeleportCooldown(VARP_LAST_HOME_TELEPORT, HOME_TELEPORT_COOLDOWN_MINUTES);
+        int minigameTeleportCooldown = calculateTeleportCooldown(VARP_LAST_MINIGAME_TELEPORT, MINIGAME_TELEPORT_COOLDOWN_MINUTES);
+
         return PlayerState.builder()
                 .worldPosition(worldPos)
                 .localPosition(localPos)
@@ -1418,7 +1448,45 @@ public class GameStateService {
                 .isPoisoned(isPoisoned)
                 .isVenomed(isVenomed)
                 .spellbook(spellbook)
+                .homeTeleportCooldownSeconds(homeTeleportCooldown)
+                .minigameTeleportCooldownSeconds(minigameTeleportCooldown)
                 .build();
+    }
+
+    /**
+     * Calculate remaining teleport cooldown in seconds.
+     * 
+     * The varplayer stores the "minutes since epoch" when the teleport was last used.
+     * We calculate the remaining cooldown as:
+     * remaining = (lastUseMinutes + cooldownMinutes) * 60 - currentEpochSeconds
+     *
+     * @param varplayerId the varplayer ID storing last teleport time
+     * @param cooldownMinutes the cooldown duration in minutes
+     * @return remaining cooldown in seconds, or 0 if available
+     */
+    private int calculateTeleportCooldown(int varplayerId, int cooldownMinutes) {
+        try {
+            int lastUseMinutes = client.getVarpValue(varplayerId);
+            if (lastUseMinutes <= 0) {
+                // Never used or invalid value - no cooldown
+                return 0;
+            }
+            
+            // Calculate when cooldown ends (in seconds since epoch)
+            long cooldownEndsSeconds = (long) (lastUseMinutes + cooldownMinutes) * 60;
+            
+            // Get current time in seconds since epoch
+            long currentSeconds = System.currentTimeMillis() / 1000;
+            
+            // Calculate remaining seconds
+            long remainingSeconds = cooldownEndsSeconds - currentSeconds;
+            
+            // Return remaining, clamped to 0 if negative (cooldown has expired)
+            return (int) Math.max(0, remainingSeconds);
+        } catch (Exception e) {
+            log.trace("Error calculating teleport cooldown for varp {}: {}", varplayerId, e.getMessage());
+            return 0; // Assume available on error
+        }
     }
 
     /**

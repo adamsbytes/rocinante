@@ -38,6 +38,8 @@ public class PlayerState {
             .isPoisoned(false)
             .isVenomed(false)
             .spellbook(0)
+            .homeTeleportCooldownSeconds(0)
+            .minigameTeleportCooldownSeconds(0)
             .build();
 
     // ========================================================================
@@ -155,6 +157,24 @@ public class PlayerState {
      * 0 = Standard, 1 = Ancient, 2 = Lunar, 3 = Arceuus.
      */
     int spellbook;
+
+    // ========================================================================
+    // Teleport Cooldowns
+    // ========================================================================
+
+    /**
+     * Seconds remaining on home teleport cooldown.
+     * 0 or negative means home teleport is available.
+     * Calculated from VarPlayer.LAST_HOME_TELEPORT (892).
+     */
+    int homeTeleportCooldownSeconds;
+
+    /**
+     * Seconds remaining on minigame/grouping teleport cooldown.
+     * 0 or negative means minigame teleport is available.
+     * Calculated from VarPlayer.LAST_MINIGAME_TELEPORT (888).
+     */
+    int minigameTeleportCooldownSeconds;
 
     // ========================================================================
     // Convenience Methods
@@ -341,6 +361,58 @@ public class PlayerState {
             return -1;
         }
         return worldPosition.distanceTo(target);
+    }
+
+    // ========================================================================
+    // Teleport Availability
+    // ========================================================================
+
+    /**
+     * Check if home teleport is available (not on cooldown).
+     * Home teleport has a 30-minute cooldown.
+     *
+     * @return true if home teleport can be used
+     */
+    public boolean isHomeTeleportAvailable() {
+        return homeTeleportCooldownSeconds <= 0;
+    }
+
+    /**
+     * Check if minigame/grouping teleport is available (not on cooldown).
+     * Minigame teleport has a 20-minute cooldown shared across all destinations.
+     *
+     * @return true if minigame teleport can be used
+     */
+    public boolean isMinigameTeleportAvailable() {
+        return minigameTeleportCooldownSeconds <= 0;
+    }
+
+    /**
+     * Get formatted home teleport cooldown string.
+     *
+     * @return formatted time string (e.g., "12:34") or "Ready" if available
+     */
+    public String getHomeTeleportCooldownFormatted() {
+        if (isHomeTeleportAvailable()) {
+            return "Ready";
+        }
+        int minutes = homeTeleportCooldownSeconds / 60;
+        int seconds = homeTeleportCooldownSeconds % 60;
+        return String.format("%d:%02d", minutes, seconds);
+    }
+
+    /**
+     * Get formatted minigame teleport cooldown string.
+     *
+     * @return formatted time string (e.g., "12:34") or "Ready" if available
+     */
+    public String getMinigameTeleportCooldownFormatted() {
+        if (isMinigameTeleportAvailable()) {
+            return "Ready";
+        }
+        int minutes = minigameTeleportCooldownSeconds / 60;
+        int seconds = minigameTeleportCooldownSeconds % 60;
+        return String.format("%d:%02d", minutes, seconds);
     }
 }
 

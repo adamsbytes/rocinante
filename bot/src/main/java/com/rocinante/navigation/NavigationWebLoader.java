@@ -172,6 +172,20 @@ public class NavigationWebLoader {
         } catch (Exception e) {
             log.warn("Failed to load quetzal transports: {}", e.getMessage());
         }
+
+        // Load grouping (minigame) teleports
+        try {
+            loadGroupingTeleports(merged);
+        } catch (Exception e) {
+            log.warn("Failed to load grouping teleports: {}", e.getMessage());
+        }
+
+        // Load home teleport edges
+        try {
+            loadHomeTeleportEdges(merged);
+        } catch (Exception e) {
+            log.warn("Failed to load home teleport edges: {}", e.getMessage());
+        }
     }
 
     private static void loadFairyRingTransports(MergedWebData merged) throws IOException {
@@ -536,6 +550,166 @@ public class NavigationWebLoader {
                 }
             }
         }
+    }
+
+    /**
+     * Load grouping (minigame) teleport nodes and edges from GroupingTeleport enum.
+     * Creates nodes at each destination and edges from a virtual "any_location" source.
+     */
+    private static void loadGroupingTeleports(MergedWebData merged) {
+        int nodesCreated = 0;
+        int edgesCreated = 0;
+
+        for (GroupingTeleport teleport : GroupingTeleport.values()) {
+            // Create a node at the destination (if one doesn't already exist)
+            String nodeId = "grouping_" + teleport.getEdgeId();
+            WorldPoint dest = teleport.getDestination();
+            
+            WebNode node = WebNode.builder()
+                    .id(nodeId)
+                    .name(teleport.getDisplayName() + " (Grouping Teleport)")
+                    .x(dest.getX())
+                    .y(dest.getY())
+                    .plane(dest.getPlane())
+                    .type(WebNodeType.TELEPORT)
+                    .tags(buildTags(null, "grouping_teleport", "minigame", "free_teleport"))
+                    .metadata(Map.of(
+                            "teleport_type", "grouping",
+                            "teleport_id", teleport.getEdgeId(),
+                            "minigame", teleport.getDisplayName()
+                    ))
+                    .build();
+            merged.addNode(node);
+            nodesCreated++;
+
+            // Create requirements list
+            List<EdgeRequirement> reqs = new ArrayList<>();
+            
+            // Quest requirement
+            if (teleport.requiresQuest()) {
+                String questName = teleport.getRequiredQuest().getName();
+                // Some teleports only need quest started (not completed)
+                if (teleport == GroupingTeleport.BLAST_FURNACE || teleport == GroupingTeleport.RAT_PITS) {
+                    reqs.add(EdgeRequirement.builder()
+                            .type(EdgeRequirementType.QUEST)
+                            .identifier(teleport.getRequiredQuest().name())
+                            .questState("STARTED")
+                            .build());
+                } else {
+                    reqs.add(EdgeRequirement.quest(questName));
+                }
+            }
+            
+            // Combat level requirement
+            if (teleport.requiresCombatLevel()) {
+                reqs.add(EdgeRequirement.combatLevel(teleport.getRequiredCombatLevel()));
+            }
+            
+            // Skill level requirement
+            if (teleport.requiresSkillLevel()) {
+                reqs.add(EdgeRequirement.skill(
+                        teleport.getRequiredSkill().name(),
+                        teleport.getRequiredSkillLevel()));
+            }
+            
+            // Favour requirement
+            if (teleport.requiresFavour()) {
+                reqs.add(EdgeRequirement.favour(
+                        teleport.getRequiredFavourHouse(),
+                        teleport.getRequiredFavourPercent()));
+            }
+
+            // Create edge from "any_location" to this teleport destination
+            // This edge is special - it represents teleporting from anywhere
+            // The pathfinding system handles this as a "from anywhere" edge
+            WebEdge edge = WebEdge.builder()
+                    .from("any_location")
+                    .to(nodeId)
+                    .type(WebEdgeType.FREE_TELEPORT)
+                    .costTicks(20) // Grouping teleport takes ~12 seconds = 20 ticks
+                    .bidirectional(false)
+                    .requirements(reqs)
+                    .metadata(Map.of(
+                            "teleport_type", "grouping",
+                            "teleport_id", teleport.getEdgeId(),
+                            "cooldown_minutes", "20"
+                    ))
+                    .build();
+            merged.addEdge(edge);
+            edgesCreated++;
+        }
+
+        log.info("Loaded {} grouping teleport destinations, {} edges", nodesCreated, edgesCreated);
+    }
+
+    /**
+     * Load home teleport edges for each respawn point.
+     * Home teleport destination depends on player's active respawn point.
+     */
+    private static void loadHomeTeleportEdges(MergedWebData merged) {
+        int edgesCreated = 0;
+
+        for (RespawnPoint respawn : RespawnPoint.values()) {
+            WorldPoint dest = respawn.getDestination();
+            
+            // Check if a node exists near this destination, otherwise create one
+            String nodeId = respawn.getEdgeId();
+            
+            // Create a node if it doesn't already exist
+            WebNode node = WebNode.builder()
+                    .id(nodeId)
+                    .name(respawn.getDisplayName() + " Spawn")
+                    .x(dest.getX())
+                    .y(dest.getY())
+                    .plane(dest.getPlane())
+                    .type(WebNodeType.TELEPORT)
+                    .tags(buildTags(null, "home_teleport", "spawn_point", "free_teleport"))
+                    .metadata(Map.of(
+                            "teleport_type", "home",
+                            "respawn_point", respawn.name()
+                    ))
+                    .build();
+            merged.addNode(node);
+
+            // Create requirements - none for Lumbridge, quest for others
+            List<EdgeRequirement> reqs = new ArrayList<>();
+            if (respawn.requiresQuest()) {
+                // Map unlock requirement to quest if possible
+                String requirement = respawn.getUnlockRequirement();
+                if (requirement != null) {
+                    // Try to map to a quest enum
+                    try {
+                        String questEnumName = requirement.toUpperCase()
+                                .replace(" ", "_")
+                                .replace("'", "")
+                                .replace("-", "_");
+                        reqs.add(EdgeRequirement.quest(requirement));
+                    } catch (Exception e) {
+                        // Not a direct quest mapping - respawn might use other unlock methods
+                    }
+                }
+            }
+
+            // Create edge from "any_location" to this respawn point
+            // Only one of these edges will be valid at a time (based on active respawn)
+            WebEdge edge = WebEdge.builder()
+                    .from("any_location")
+                    .to(nodeId)
+                    .type(WebEdgeType.FREE_TELEPORT)
+                    .costTicks(RespawnPoint.HOME_TELEPORT_ANIMATION_TICKS) // ~16 seconds
+                    .bidirectional(false)
+                    .requirements(reqs)
+                    .metadata(Map.of(
+                            "teleport_type", "home",
+                            "respawn_point", respawn.name(),
+                            "cooldown_minutes", String.valueOf(RespawnPoint.HOME_TELEPORT_COOLDOWN_MINUTES)
+                    ))
+                    .build();
+            merged.addEdge(edge);
+            edgesCreated++;
+        }
+
+        log.info("Loaded {} home teleport edges", edgesCreated);
     }
 
     // ========================================================================

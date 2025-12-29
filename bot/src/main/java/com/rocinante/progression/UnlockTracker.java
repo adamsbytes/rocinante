@@ -3,6 +3,8 @@ package com.rocinante.progression;
 import com.rocinante.core.GameStateService;
 import com.rocinante.navigation.EdgeRequirement;
 import com.rocinante.navigation.EdgeRequirementType;
+import com.rocinante.navigation.GroupingTeleport;
+import com.rocinante.navigation.RespawnPoint;
 import com.rocinante.state.InventoryState;
 import com.rocinante.state.PlayerState;
 import lombok.extern.slf4j.Slf4j;
@@ -11,6 +13,7 @@ import net.runelite.api.Prayer;
 import net.runelite.api.Quest;
 import net.runelite.api.QuestState;
 import net.runelite.api.Skill;
+import net.runelite.api.coords.WorldPoint;
 
 import javax.annotation.Nullable;
 import javax.inject.Inject;
@@ -400,10 +403,36 @@ public class UnlockTracker {
                 // based on account type, not by UnlockTracker
                 return true;
 
+            case FAVOUR:
+                return checkFavourRequirement(requirement);
+
             default:
                 log.warn("Unknown EdgeRequirementType: {}", type);
                 return false;
         }
+    }
+
+    /**
+     * Check a FAVOUR type requirement (Kourend house favour).
+     */
+    private boolean checkFavourRequirement(EdgeRequirement requirement) {
+        String houseName = requirement.getIdentifier();
+        int requiredPercent = requirement.getValue();
+        
+        if (houseName == null || houseName.isEmpty()) {
+            log.warn("FAVOUR requirement missing house name");
+            return false;
+        }
+        
+        int currentFavour = getKourendFavour(houseName);
+        boolean met = currentFavour >= requiredPercent;
+        
+        if (!met) {
+            log.trace("Favour requirement not met: {} requires {}%, player has {}%", 
+                    houseName, requiredPercent, currentFavour);
+        }
+        
+        return met;
     }
 
     /**
@@ -959,6 +988,365 @@ public class UnlockTracker {
         log.info("Best Ranged Offensive: {}", getBestOffensivePrayer(com.rocinante.state.AttackStyle.RANGED));
         log.info("Best Magic Offensive: {}", getBestOffensivePrayer(com.rocinante.state.AttackStyle.MAGIC));
         log.info("====================");
+    }
+
+    // ========================================================================
+    // Free Teleport (Home/Grouping) Availability
+    // ========================================================================
+
+    /**
+     * Varbit IDs for respawn point unlock checks.
+     * From RuneLite VarbitID.java.
+     */
+    private static final int VARBIT_EDGEVILLE_SPAWN = 621;
+    private static final int VARBIT_FALADOR_SPAWN = 668;
+    private static final int VARBIT_CAMELOT_SPAWN = 3910;
+    private static final int VARBIT_KOUREND_SPAWN = 12310;
+    private static final int VARBIT_WILDERNESS_SPAWN = 10528;
+    private static final int VARBIT_CIVITAS_SPAWN = 9805;
+
+    /**
+     * Varbit for Nightmare Zone boss count (used to check NMZ eligibility).
+     * NMZ requires 5+ quest bosses defeated.
+     */
+    private static final int VARBIT_NMZ_BOSS_COUNT = 3946;
+
+    /**
+     * Kourend favour varbits by house index.
+     */
+    private static final int[] KOUREND_FAVOUR_VARBITS = {
+            4896, // Arceuus
+            4897, // Hosidius
+            4898, // Lovakengj
+            4899, // Piscarilius
+            4900  // Shayzien
+    };
+    private static final String[] KOUREND_HOUSE_NAMES = {
+            "Arceuus", "Hosidius", "Lovakengj", "Piscarilius", "Shayzien"
+    };
+
+    /**
+     * Check if home teleport is currently available (not on cooldown).
+     *
+     * @return true if home teleport can be used
+     */
+    public boolean isHomeTeleportAvailable() {
+        PlayerState playerState = gameStateServiceProvider.get().getPlayerState();
+        return playerState.isHomeTeleportAvailable();
+    }
+
+    /**
+     * Check if minigame/grouping teleport is currently available (not on cooldown).
+     *
+     * @return true if minigame teleport can be used
+     */
+    public boolean isMinigameTeleportAvailable() {
+        PlayerState playerState = gameStateServiceProvider.get().getPlayerState();
+        return playerState.isMinigameTeleportAvailable();
+    }
+
+    /**
+     * Get remaining home teleport cooldown in seconds.
+     *
+     * @return seconds remaining, or 0 if available
+     */
+    public int getHomeTeleportCooldownSeconds() {
+        PlayerState playerState = gameStateServiceProvider.get().getPlayerState();
+        return playerState.getHomeTeleportCooldownSeconds();
+    }
+
+    /**
+     * Get remaining minigame teleport cooldown in seconds.
+     *
+     * @return seconds remaining, or 0 if available
+     */
+    public int getMinigameTeleportCooldownSeconds() {
+        PlayerState playerState = gameStateServiceProvider.get().getPlayerState();
+        return playerState.getMinigameTeleportCooldownSeconds();
+    }
+
+    /**
+     * Check if a specific grouping teleport is unlocked.
+     * Checks all requirements: quests, skills, combat level, favour.
+     *
+     * @param teleport the grouping teleport to check
+     * @return true if all unlock requirements are met
+     */
+    public boolean isGroupingTeleportUnlocked(GroupingTeleport teleport) {
+        if (teleport == null) {
+            return false;
+        }
+
+        // Check quest requirement
+        if (teleport.requiresQuest()) {
+            Quest requiredQuest = teleport.getRequiredQuest();
+            // For some teleports (e.g., Blast Furnace, Rat Pits), quest only needs to be started
+            if (teleport == GroupingTeleport.BLAST_FURNACE || teleport == GroupingTeleport.RAT_PITS) {
+                if (!isQuestStarted(requiredQuest)) {
+                    log.trace("Grouping teleport {} requires quest {} to be started", 
+                            teleport.name(), requiredQuest.getName());
+                    return false;
+                }
+            } else {
+                // Others require completion
+                if (!isQuestCompleted(requiredQuest)) {
+                    log.trace("Grouping teleport {} requires quest {} to be completed", 
+                            teleport.name(), requiredQuest.getName());
+                    return false;
+                }
+            }
+        }
+
+        // Check combat level requirement
+        if (teleport.requiresCombatLevel()) {
+            int combatLevel = getCombatLevel();
+            if (combatLevel < teleport.getRequiredCombatLevel()) {
+                log.trace("Grouping teleport {} requires combat level {}, player has {}", 
+                        teleport.name(), teleport.getRequiredCombatLevel(), combatLevel);
+                return false;
+            }
+        }
+
+        // Check skill level requirement
+        if (teleport.requiresSkillLevel()) {
+            Skill skill = teleport.getRequiredSkill();
+            int level = getSkillLevel(skill);
+            if (level < teleport.getRequiredSkillLevel()) {
+                log.trace("Grouping teleport {} requires {} level {}, player has {}", 
+                        teleport.name(), skill.name(), teleport.getRequiredSkillLevel(), level);
+                return false;
+            }
+        }
+
+        // Check favour requirement
+        if (teleport.requiresFavour()) {
+            int favour = getKourendFavour(teleport.getRequiredFavourHouse());
+            if (favour < teleport.getRequiredFavourPercent()) {
+                log.trace("Grouping teleport {} requires {} favour {}%, player has {}%", 
+                        teleport.name(), teleport.getRequiredFavourHouse(), 
+                        teleport.getRequiredFavourPercent(), favour);
+                return false;
+            }
+        }
+
+        // Special case: Nightmare Zone requires 5 quest bosses defeated
+        if (teleport == GroupingTeleport.NIGHTMARE_ZONE && !isNightmareZoneUnlocked()) {
+            log.trace("Nightmare Zone requires 5+ quest bosses defeated");
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Check if a grouping teleport is both unlocked AND available (not on cooldown).
+     *
+     * @param teleport the grouping teleport to check
+     * @return true if the teleport can be used right now
+     */
+    public boolean isGroupingTeleportAvailable(GroupingTeleport teleport) {
+        return isGroupingTeleportUnlocked(teleport) && isMinigameTeleportAvailable();
+    }
+
+    /**
+     * Get all unlocked grouping teleports.
+     *
+     * @return set of unlocked grouping teleports
+     */
+    public Set<GroupingTeleport> getUnlockedGroupingTeleports() {
+        Set<GroupingTeleport> unlocked = EnumSet.noneOf(GroupingTeleport.class);
+        for (GroupingTeleport teleport : GroupingTeleport.values()) {
+            if (isGroupingTeleportUnlocked(teleport)) {
+                unlocked.add(teleport);
+            }
+        }
+        return unlocked;
+    }
+
+    /**
+     * Get all available grouping teleports (unlocked and not on cooldown).
+     *
+     * @return set of available grouping teleports
+     */
+    public Set<GroupingTeleport> getAvailableGroupingTeleports() {
+        if (!isMinigameTeleportAvailable()) {
+            return EnumSet.noneOf(GroupingTeleport.class);
+        }
+        return getUnlockedGroupingTeleports();
+    }
+
+    /**
+     * Check if Nightmare Zone is unlocked for the player.
+     * Requires defeating 5 quest bosses (checked via varbit).
+     *
+     * @return true if NMZ is accessible
+     */
+    private boolean isNightmareZoneUnlocked() {
+        try {
+            int bossCount = client.getVarbitValue(VARBIT_NMZ_BOSS_COUNT);
+            return bossCount >= 5;
+        } catch (Exception e) {
+            log.trace("Error checking NMZ boss count: {}", e.getMessage());
+            // Fall back to checking some common quest completions
+            return isQuestCompleted(Quest.VAMPYRE_SLAYER) 
+                    || isQuestCompleted(Quest.TREE_GNOME_VILLAGE)
+                    || isQuestCompleted(Quest.FIGHT_ARENA);
+        }
+    }
+
+    /**
+     * Get Kourend favour percentage for a house.
+     *
+     * @param houseName the house name (e.g., "Hosidius")
+     * @return favour percentage (0-100)
+     */
+    private int getKourendFavour(String houseName) {
+        if (houseName == null) {
+            return 0;
+        }
+        
+        for (int i = 0; i < KOUREND_HOUSE_NAMES.length; i++) {
+            if (KOUREND_HOUSE_NAMES[i].equalsIgnoreCase(houseName)) {
+                try {
+                    // Favour is stored as 0-1000, divide by 10 to get percentage
+                    return client.getVarbitValue(KOUREND_FAVOUR_VARBITS[i]) / 10;
+                } catch (Exception e) {
+                    log.trace("Error checking {} favour: {}", houseName, e.getMessage());
+                    return 0;
+                }
+            }
+        }
+        
+        log.warn("Unknown Kourend house: {}", houseName);
+        return 0;
+    }
+
+    // ========================================================================
+    // Respawn Point (Home Teleport Destination) Tracking
+    // ========================================================================
+
+    /**
+     * Get the player's currently active respawn point.
+     * This is where home teleport will take them.
+     *
+     * @return the active respawn point
+     */
+    public RespawnPoint getActiveRespawnPoint() {
+        // Check each respawn point's varbit to see which is active
+        // The varbits store whether the spawn is currently selected (1) or not (0)
+        
+        try {
+            // Check in order of most common usage
+            if (client.getVarbitValue(VARBIT_EDGEVILLE_SPAWN) == 1) {
+                return RespawnPoint.EDGEVILLE;
+            }
+            if (client.getVarbitValue(VARBIT_FALADOR_SPAWN) == 1) {
+                return RespawnPoint.FALADOR;
+            }
+            if (client.getVarbitValue(VARBIT_CAMELOT_SPAWN) == 1) {
+                return RespawnPoint.CAMELOT;
+            }
+            if (client.getVarbitValue(VARBIT_KOUREND_SPAWN) == 1) {
+                return RespawnPoint.KOUREND;
+            }
+            if (client.getVarbitValue(VARBIT_WILDERNESS_SPAWN) == 1) {
+                return RespawnPoint.FEROX_ENCLAVE;
+            }
+            if (client.getVarbitValue(VARBIT_CIVITAS_SPAWN) == 1) {
+                return RespawnPoint.CIVITAS_ILLA_FORTIS;
+            }
+        } catch (Exception e) {
+            log.trace("Error checking respawn point varbits: {}", e.getMessage());
+        }
+        
+        // Default is Lumbridge
+        return RespawnPoint.LUMBRIDGE;
+    }
+
+    /**
+     * Get the WorldPoint destination for home teleport.
+     *
+     * @return the home teleport destination
+     */
+    public WorldPoint getHomeTeleportDestination() {
+        return getActiveRespawnPoint().getDestination();
+    }
+
+    /**
+     * Check if a specific respawn point is unlocked.
+     *
+     * @param respawnPoint the respawn point to check
+     * @return true if the player can set this as their spawn
+     */
+    public boolean isRespawnPointUnlocked(RespawnPoint respawnPoint) {
+        if (respawnPoint == RespawnPoint.LUMBRIDGE) {
+            return true; // Always available
+        }
+
+        // Check associated quest/unlock if applicable
+        String requirement = respawnPoint.getUnlockRequirement();
+        if (requirement != null && !requirement.isEmpty()) {
+            // Try to map the requirement to a quest
+            Quest quest = mapRequirementToQuest(requirement);
+            if (quest != null && !isQuestCompleted(quest)) {
+                return false;
+            }
+        }
+
+        // Check if the varbit indicates it's been unlocked
+        int varbitId = respawnPoint.getVarbitId();
+        if (varbitId > 0) {
+            try {
+                // For most spawn points, varbit > 0 means unlocked
+                return client.getVarbitValue(varbitId) > 0;
+            } catch (Exception e) {
+                log.trace("Error checking respawn point unlock varbit {}: {}", varbitId, e.getMessage());
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Map an unlock requirement string to a Quest enum.
+     */
+    @Nullable
+    private Quest mapRequirementToQuest(String requirement) {
+        if (requirement == null) {
+            return null;
+        }
+        
+        switch (requirement) {
+            case "Recruitment Drive":
+                return Quest.RECRUITMENT_DRIVE;
+            case "Desert Treasure":
+                return Quest.DESERT_TREASURE_I;
+            case "Knight Waves Training Grounds":
+                // This is a miniquest, not in Quest enum - check diary instead
+                return null;
+            case "Architectural Alliance":
+                // This is a miniquest, not in Quest enum
+                return null;
+            default:
+                // Try to find by name
+                for (Quest quest : Quest.values()) {
+                    if (quest.getName().equalsIgnoreCase(requirement)) {
+                        return quest;
+                    }
+                }
+                return null;
+        }
+    }
+
+    /**
+     * Check if home teleport is available to a specific destination.
+     * This checks both cooldown AND that the destination is the active respawn.
+     *
+     * @param respawnPoint the target respawn point
+     * @return true if home teleport will take the player to this destination
+     */
+    public boolean isHomeTeleportAvailableTo(RespawnPoint respawnPoint) {
+        return isHomeTeleportAvailable() && getActiveRespawnPoint() == respawnPoint;
     }
 }
 

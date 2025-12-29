@@ -334,6 +334,21 @@ public class TaskContext {
                 null, null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
+    /**
+     * Testing constructor with Randomization support.
+     */
+    public TaskContext(
+            Client client,
+            GameStateService gameStateService,
+            RobotMouseController mouseController,
+            RobotKeyboardController keyboardController,
+            HumanTimer humanTimer,
+            Randomization randomization) {
+        this(client, () -> gameStateService, mouseController, keyboardController, humanTimer, 
+                null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, randomization, null, null, null, null);
+    }
+
     // ========================================================================
     // State Accessors (Read-Only Snapshots)
     // ========================================================================

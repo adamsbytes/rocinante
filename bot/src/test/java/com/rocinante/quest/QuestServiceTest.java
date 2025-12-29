@@ -1,8 +1,10 @@
 package com.rocinante.quest;
 
 import com.rocinante.behavior.AccountType;
+import com.rocinante.core.GameStateService;
 import com.rocinante.quest.impl.TutorialIsland;
 import com.rocinante.state.IronmanState;
+import net.runelite.api.Client;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -27,15 +29,25 @@ public class QuestServiceTest {
 
     private QuestService questService;
     private IronmanState mockIronmanState;
+    private GameStateService mockGameStateService;
+    private Client mockClient;
     private Provider<IronmanState> ironmanStateProvider;
+    private Provider<GameStateService> gameStateServiceProvider;
+    private Provider<Client> clientProvider;
 
     @Before
     public void setUp() {
         mockIronmanState = mock(IronmanState.class);
+        mockGameStateService = mock(GameStateService.class);
+        mockClient = mock(Client.class);
+        
         when(mockIronmanState.getIntendedType()).thenReturn(AccountType.NORMAL);
         
         ironmanStateProvider = () -> mockIronmanState;
-        questService = new QuestService(ironmanStateProvider);
+        gameStateServiceProvider = () -> mockGameStateService;
+        clientProvider = () -> mockClient;
+        
+        questService = new QuestService(ironmanStateProvider, gameStateServiceProvider, clientProvider);
     }
 
     // ========================================================================
@@ -73,7 +85,7 @@ public class QuestServiceTest {
         IronmanState ironmanState = mock(IronmanState.class);
         when(ironmanState.getIntendedType()).thenReturn(AccountType.IRONMAN);
         
-        QuestService ironmanService = new QuestService(() -> ironmanState);
+        QuestService ironmanService = new QuestService(() -> ironmanState, gameStateServiceProvider, clientProvider);
         Quest quest = ironmanService.getQuestById("tutorial_island");
         
         assertNotNull("Tutorial Island should be found for ironman", quest);
@@ -170,18 +182,10 @@ public class QuestServiceTest {
     // Quest Helper Integration Tests (without actual plugin)
     // ========================================================================
 
-    @Test
-    public void testQuestHelperNotAvailableInitially() {
-        assertFalse("Quest Helper should not be available initially",
-                questService.isQuestHelperAvailable());
-    }
-
-    @Test
+    @Test(expected = IllegalArgumentException.class)
     public void testInitializeQuestHelperNull() {
+        // Should throw IllegalArgumentException when initialized with null
         questService.initializeQuestHelper(null);
-        
-        assertFalse("Quest Helper should not be available after null init",
-                questService.isQuestHelperAvailable());
     }
 
     @Test

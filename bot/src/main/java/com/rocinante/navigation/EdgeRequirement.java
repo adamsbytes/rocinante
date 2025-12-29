@@ -170,5 +170,19 @@ public class EdgeRequirement {
                 .identifier(restrictionType)
                 .build();
     }
+
+    /**
+     * Create a Kourend favour requirement.
+     *
+     * @param houseName the Kourend house name (e.g., "Hosidius")
+     * @param percent the required favour percentage (0-100)
+     */
+    public static EdgeRequirement favour(String houseName, int percent) {
+        return EdgeRequirement.builder()
+                .type(EdgeRequirementType.FAVOUR)
+                .identifier(houseName)
+                .value(percent)
+                .build();
+    }
 }
 

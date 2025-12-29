@@ -116,7 +116,7 @@
 - [ ] `GearProgressionPlanner` - Equipment upgrade paths
 - [ ] `InventoryTask`
 - [X] `UnlockTracker` - Teleports, areas, features (integrated with WebWalker)
-- [X] `TravelTask` with behavioral profile preferences
+- [X] `TravelTask` with behavioral profile preferences, supporting all types of travel (teleports, charter ships, quetzal, balloons, etc.)
 - [X] Full Grand Exchange handling (incl. `GrandExchangeTask`)
 - [X] `BankTask`, `BuryBoneTask`, `DialogueTask`, `PuzzleTask`, `SettingsTask`, `TradeTask`, `WidgetInteractTask`
 

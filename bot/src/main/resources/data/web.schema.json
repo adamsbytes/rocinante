@@ -91,7 +91,7 @@
         },
         "type": {
           "type": "string",
-          "enum": ["WALK", "TELEPORT", "TRANSPORT", "AGILITY", "QUEST_LOCKED", "DOOR", "STAIRS", "TOLL"],
+          "enum": ["WALK", "TELEPORT", "TRANSPORT", "AGILITY", "QUEST_LOCKED", "DOOR", "STAIRS", "TOLL", "FREE_TELEPORT"],
           "description": "Edge type"
         },
         "cost_ticks": {

@@ -18,10 +18,12 @@ import net.runelite.api.TileObject;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.widgets.Widget;
 
+import com.rocinante.navigation.GroupingTeleport;
 import com.rocinante.tasks.impl.travel.CanoeTask;
 import com.rocinante.tasks.impl.travel.CharterShipTask;
 import com.rocinante.tasks.impl.travel.FairyRingTask;
 import com.rocinante.tasks.impl.travel.GnomeGliderTask;
+import com.rocinante.tasks.impl.travel.GroupingTeleportTask;
 import com.rocinante.tasks.impl.travel.QuetzalTask;
 import com.rocinante.tasks.impl.travel.SpiritTreeTask;
 import com.rocinante.tasks.impl.travel.TravelSubTask;
@@ -350,7 +352,14 @@ public class TravelTask extends AbstractTask {
          * Mushtree - Object interaction -> destination selection.
          * Requires: Bone Voyage quest (Fossil Island access).
          */
-        MUSHTREE
+        MUSHTREE,
+
+        /**
+         * Grouping (minigame) teleport - Interface interaction.
+         * Shares 20-minute cooldown with other grouping teleports.
+         * May require specific quests, skills, combat level, or favour.
+         */
+        GROUPING_TELEPORT
     }
 
     // ========================================================================
@@ -403,6 +412,13 @@ public class TravelTask extends AbstractTask {
     @Getter
     @Nullable
     private final String transportDestination;
+
+    /**
+     * Grouping teleport destination (for GROUPING_TELEPORT method).
+     */
+    @Getter
+    @Nullable
+    private final GroupingTeleport groupingTeleport;
 
     /**
      * NPC name to interact with (for NPC-based transports).
@@ -489,7 +505,8 @@ public class TravelTask extends AbstractTask {
                        @Nullable String transportDestination, @Nullable String npcName,
                        int objectId, int goldCost, int requiredItemId,
                        @Nullable WorldPoint expectedDestination,
-                       @Nullable String description) {
+                       @Nullable String description,
+                       @Nullable GroupingTeleport groupingTeleport) {
         this.method = method;
         this.spellName = spellName;
         this.itemId = itemId;
@@ -503,6 +520,7 @@ public class TravelTask extends AbstractTask {
         this.requiredItemId = requiredItemId;
         this.expectedDestination = expectedDestination;
         this.description = description;
+        this.groupingTeleport = groupingTeleport;
         this.timeout = Duration.ofSeconds(60); // Longer timeout for transports
     }
 
@@ -890,6 +908,57 @@ public class TravelTask extends AbstractTask {
     }
 
     /**
+     * Create a task to use a grouping (minigame) teleport.
+     * Shares 20-minute cooldown with other grouping teleports.
+     *
+     * @param teleport the grouping teleport destination
+     * @return travel task
+     */
+    public static TravelTask groupingTeleport(GroupingTeleport teleport) {
+        return TravelTask.builder()
+                .method(TravelMethod.GROUPING_TELEPORT)
+                .groupingTeleport(teleport)
+                .itemId(-1)
+                .objectId(-1)
+                .goldCost(0)
+                .requiredItemId(-1)
+                .expectedDestination(teleport.getDestination())
+                .build();
+    }
+
+    /**
+     * Create a task to use a grouping (minigame) teleport by display name.
+     *
+     * @param displayName the minigame display name (e.g., "Pest Control", "Castle Wars")
+     * @return travel task, or null if name not found
+     */
+    @Nullable
+    public static TravelTask groupingTeleportByName(String displayName) {
+        GroupingTeleport teleport = GroupingTeleport.fromDisplayName(displayName);
+        if (teleport == null) {
+            log.warn("Unknown grouping teleport name: {}", displayName);
+            return null;
+        }
+        return groupingTeleport(teleport);
+    }
+
+    /**
+     * Create a task to use a grouping (minigame) teleport by edge ID.
+     *
+     * @param edgeId the teleport edge ID (e.g., "pest_control", "castle_wars")
+     * @return travel task, or null if ID not found
+     */
+    @Nullable
+    public static TravelTask groupingTeleportByEdgeId(String edgeId) {
+        GroupingTeleport teleport = GroupingTeleport.fromEdgeId(edgeId);
+        if (teleport == null) {
+            log.warn("Unknown grouping teleport edge ID: {}", edgeId);
+            return null;
+        }
+        return groupingTeleport(teleport);
+    }
+
+    /**
      * Create a travel task from navigation edge metadata.
      *
      * @param metadata edge metadata map
@@ -1068,6 +1137,35 @@ public class TravelTask extends AbstractTask {
                 }
                 return mushtree(mushtreeDest, Integer.parseInt(mushtreeObjIdStr));
 
+            case "grouping":
+            case "grouping_teleport":
+                // Support both teleport_id (enum name) and destination (display name)
+                String teleportId = metadata.get("teleport_id");
+                if (teleportId != null) {
+                    try {
+                        GroupingTeleport teleport = GroupingTeleport.valueOf(teleportId);
+                        return groupingTeleport(teleport);
+                    } catch (IllegalArgumentException e) {
+                        // Fall through to try edge_id
+                    }
+                }
+                // Try edge_id
+                String edgeId = metadata.get("edge_id");
+                if (edgeId != null) {
+                    return groupingTeleportByEdgeId(edgeId);
+                }
+                // Try destination as display name
+                String groupDest = metadata.get("destination");
+                if (groupDest != null) {
+                    return groupingTeleportByName(groupDest);
+                }
+                log.warn("No valid identifier in metadata for grouping teleport");
+                return null;
+
+            case "home":
+                // Home teleport from FREE_TELEPORT edges
+                return homeTeleport();
+
             default:
                 log.warn("Unknown travel_type: {}", travelType);
                 return null;
@@ -1151,6 +1249,8 @@ public class TravelTask extends AbstractTask {
                 return transportDestination != null || objectId > 0;
             case WILDERNESS_LEVER:
                 return objectId > 0;
+            case GROUPING_TELEPORT:
+                return groupingTeleport != null;
             default:
                 return true;
         }
@@ -1296,6 +1396,19 @@ public class TravelTask extends AbstractTask {
 
             case CANOE:
                 activeSubTask = CanoeTask.to(transportDestination);
+                if (expectedDestination != null) {
+                    activeSubTask.setExpectedDestination(expectedDestination);
+                }
+                activeSubTask.init(ctx);
+                phase = TravelPhase.EXECUTE_SUBTASK;
+                break;
+
+            case GROUPING_TELEPORT:
+                if (groupingTeleport == null) {
+                    fail("No grouping teleport destination specified");
+                    return;
+                }
+                activeSubTask = GroupingTeleportTask.to(groupingTeleport);
                 if (expectedDestination != null) {
                     activeSubTask.setExpectedDestination(expectedDestination);
                 }
@@ -2180,6 +2293,8 @@ public class TravelTask extends AbstractTask {
                 return "Pull wilderness lever";
             case MUSHTREE:
                 return "Mushtree to " + transportDestination;
+            case GROUPING_TELEPORT:
+                return "Grouping teleport to " + (groupingTeleport != null ? groupingTeleport.getDisplayName() : "unknown");
             default:
                 return "Travel";
         }

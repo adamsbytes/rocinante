@@ -1,6 +1,7 @@
 package com.rocinante.navigation;
 
 import net.runelite.api.Quest;
+import net.runelite.api.coords.WorldPoint;
 
 /**
  * Interface for checking player requirements during pathfinding.
@@ -147,6 +148,88 @@ public interface PlayerRequirements {
      */
     boolean shouldAvoidWilderness();
 
+    /**
+     * Wilderness Y coordinate threshold.
+     * Any location with Y >= 3520 on plane 0 is considered wilderness.
+     */
+    int WILDERNESS_Y_THRESHOLD = 3520;
+
+    /**
+     * Check if an edge leads to or through wilderness.
+     * Wilderness is defined as Y >= 3520 on plane 0.
+     *
+     * @param edge the edge to check
+     * @return true if the edge goes to/through wilderness
+     */
+    default boolean isWildernessEdge(NavigationEdge edge) {
+        if (edge == null) {
+            return false;
+        }
+
+        // Check metadata for explicit wilderness tag
+        if (edge.getMetadata() != null) {
+            if ("true".equals(edge.getMetadata().get("wilderness"))) {
+                return true;
+            }
+        }
+
+        // Check destination location
+        WorldPoint toLocation = edge.getToLocation();
+        if (toLocation != null && toLocation.getPlane() == 0 && toLocation.getY() >= WILDERNESS_Y_THRESHOLD) {
+            return true;
+        }
+
+        // Check node IDs for wilderness keywords
+        String toNodeId = edge.getToNodeId();
+        if (toNodeId != null && toNodeId.toLowerCase().contains("wilderness")) {
+            return true;
+        }
+
+        return false;
+    }
+
+    // ========================================================================
+    // Free Teleport Availability (Home/Grouping)
+    // ========================================================================
+
+    /**
+     * Check if home teleport is available (not on cooldown).
+     *
+     * @return true if home teleport can be used
+     */
+    boolean isHomeTeleportAvailable();
+
+    /**
+     * Check if minigame/grouping teleport is available (not on cooldown).
+     *
+     * @return true if minigame teleport can be used
+     */
+    boolean isMinigameTeleportAvailable();
+
+    /**
+     * Check if a specific grouping teleport is unlocked (requirements met).
+     * Does NOT check cooldown - use {@link #isMinigameTeleportAvailable()} for that.
+     *
+     * @param teleportId the grouping teleport edge ID (e.g., "barbarian_assault")
+     * @return true if the teleport's unlock requirements are met
+     */
+    boolean isGroupingTeleportUnlocked(String teleportId);
+
+    /**
+     * Get the current home teleport destination.
+     * This is the player's active respawn point.
+     *
+     * @return the home teleport destination
+     */
+    WorldPoint getHomeTeleportDestination();
+
+    /**
+     * Get the active respawn point type.
+     *
+     * @return the active respawn point
+     */
+    RespawnPoint getActiveRespawnPoint();
+
     // ========================================================================
     // Edge Requirement Checking
     // ========================================================================
@@ -215,6 +298,16 @@ public interface PlayerRequirements {
             return false;
         }
 
+        // Check wilderness avoidance FIRST - critical for HCIM
+        if (shouldAvoidWilderness() && isWildernessEdge(edge)) {
+            return false;
+        }
+
+        // Check FREE_TELEPORT edges (home/grouping teleports)
+        if (edge.getType() == WebEdgeType.FREE_TELEPORT) {
+            return canTraverseFreeTeleport(edge);
+        }
+
         // Check explicit requirements
         if (edge.hasRequirements()) {
             for (EdgeRequirement req : edge.getRequirements()) {
@@ -253,6 +346,55 @@ public interface PlayerRequirements {
         }
 
         return true;
+    }
+
+    /**
+     * Check if a FREE_TELEPORT edge can be traversed.
+     * This checks both cooldown availability and unlock requirements.
+     *
+     * @param edge the FREE_TELEPORT edge
+     * @return true if the teleport can be used
+     */
+    default boolean canTraverseFreeTeleport(NavigationEdge edge) {
+        if (edge == null || edge.getMetadata() == null) {
+            return false;
+        }
+
+        String teleportType = edge.getMetadata().get("teleport_type");
+        
+        if ("home".equals(teleportType)) {
+            // Home teleport: check cooldown AND correct respawn point
+            if (!isHomeTeleportAvailable()) {
+                return false;
+            }
+            
+            // Check if this edge's respawn point matches the active respawn
+            String respawnPointId = edge.getMetadata().get("respawn_point");
+            if (respawnPointId != null) {
+                RespawnPoint edgeRespawn = RespawnPoint.valueOf(respawnPointId);
+                if (edgeRespawn != getActiveRespawnPoint()) {
+                    // This home teleport edge doesn't match current respawn point
+                    return false;
+                }
+            }
+            
+            return true;
+        } else if ("grouping".equals(teleportType)) {
+            // Grouping teleport: check cooldown AND unlock requirements
+            if (!isMinigameTeleportAvailable()) {
+                return false;
+            }
+            
+            String teleportId = edge.getMetadata().get("teleport_id");
+            if (teleportId != null && !isGroupingTeleportUnlocked(teleportId)) {
+                return false;
+            }
+            
+            return true;
+        }
+
+        // Unknown teleport type
+        return false;
     }
 }
 

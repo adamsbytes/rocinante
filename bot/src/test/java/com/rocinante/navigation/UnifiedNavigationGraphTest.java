@@ -1,5 +1,6 @@
 package com.rocinante.navigation;
 
+import com.rocinante.navigation.RespawnPoint;
 import net.runelite.api.coords.WorldPoint;
 import org.junit.Before;
 import org.junit.Test;
@@ -184,6 +185,11 @@ public class UnifiedNavigationGraphTest {
             @Override public boolean isUltimateIronman() { return false; }
             @Override public double getAcceptableRiskThreshold() { return 0.10; }
             @Override public boolean shouldAvoidWilderness() { return true; }
+            @Override public boolean isHomeTeleportAvailable() { return false; }
+            @Override public boolean isMinigameTeleportAvailable() { return false; }
+            @Override public boolean isGroupingTeleportUnlocked(String teleportId) { return false; }
+            @Override public net.runelite.api.coords.WorldPoint getHomeTeleportDestination() { return RespawnPoint.LUMBRIDGE.getDestination(); }
+            @Override public RespawnPoint getActiveRespawnPoint() { return RespawnPoint.LUMBRIDGE; }
         };
 
         // Get traversable edges with low agility - should filter out high-level shortcuts
@@ -225,6 +231,11 @@ public class UnifiedNavigationGraphTest {
             @Override public boolean isUltimateIronman() { return false; }
             @Override public double getAcceptableRiskThreshold() { return 1.0; }
             @Override public boolean shouldAvoidWilderness() { return false; }
+            @Override public boolean isHomeTeleportAvailable() { return true; }
+            @Override public boolean isMinigameTeleportAvailable() { return true; }
+            @Override public boolean isGroupingTeleportUnlocked(String teleportId) { return true; }
+            @Override public net.runelite.api.coords.WorldPoint getHomeTeleportDestination() { return RespawnPoint.LUMBRIDGE.getDestination(); }
+            @Override public RespawnPoint getActiveRespawnPoint() { return RespawnPoint.LUMBRIDGE; }
         };
     }
 }

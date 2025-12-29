@@ -104,6 +104,7 @@ public class TutorialIslandTest {
             // Section 7: Account Guide / Bank (var 510-540)
             510, // Open Bank
             520, // Close Bank and open Poll Booth
+            525, // Go through door to Account Guide's room
             530, // Talk to Account Guide
             531, // Open account management tab
             532, // Talk to Account Guide (after opening account management tab)
@@ -258,14 +259,14 @@ public class TutorialIslandTest {
         assertEquals(StepType.NPC, steps.get(370).getType());    // Talk to Combat Instructor
         assertEquals(StepType.WIDGET, steps.get(390).getType()); // Open equipment tab
         assertEquals(StepType.WIDGET, steps.get(400).getType()); // Open equipment stats
-        assertEquals(StepType.ITEM, steps.get(405).getType());   // Equip dagger
+        assertEquals(StepType.CUSTOM, steps.get(405).getType()); // Equip dagger + close interface
         assertEquals(StepType.NPC, steps.get(410).getType());    // Talk again
         assertEquals(StepType.COMPOSITE, steps.get(420).getType()); // Equip sword+shield (composite)
         assertEquals(StepType.WIDGET, steps.get(430).getType()); // Open combat tab
         assertEquals(StepType.OBJECT, steps.get(440).getType()); // Enter rat cage
         assertEquals(StepType.COMBAT, steps.get(450).getType()); // Attack rat
         assertEquals(StepType.CUSTOM, steps.get(460).getType()); // Wait for rat to die (WaitQuestStep)
-        assertEquals(StepType.NPC, steps.get(470).getType());    // Talk to Combat Instructor
+        assertEquals(StepType.COMPOSITE, steps.get(470).getType()); // Exit cage + talk to Combat Instructor
         assertEquals(StepType.COMBAT, steps.get(480).getType()); // Equip bow (via AttackStyle) + attack
         assertEquals(StepType.CUSTOM, steps.get(490).getType()); // Wait for rat to die (WaitQuestStep)
         assertEquals(StepType.OBJECT, steps.get(500).getType()); // Exit combat area
@@ -273,12 +274,13 @@ public class TutorialIslandTest {
 
     @Test
     public void testBankStepTypes() {
-        assertEquals(StepType.OBJECT, steps.get(510).getType()); // Open bank
-        assertEquals(StepType.OBJECT, steps.get(520).getType()); // Open poll booth
-        assertEquals(StepType.NPC, steps.get(530).getType());    // Talk to Account Guide
-        assertEquals(StepType.WIDGET, steps.get(531).getType()); // Open account tab
-        assertEquals(StepType.NPC, steps.get(532).getType());    // Talk again
-        assertEquals(StepType.OBJECT, steps.get(540).getType()); // Exit door
+        assertEquals(StepType.COMPOSITE, steps.get(510).getType()); // Open bank + close
+        assertEquals(StepType.COMPOSITE, steps.get(520).getType()); // Use poll booth + dismiss
+        assertEquals(StepType.OBJECT, steps.get(525).getType());    // Enter door to Account Guide
+        assertEquals(StepType.NPC, steps.get(530).getType());       // Talk to Account Guide
+        assertEquals(StepType.WIDGET, steps.get(531).getType());    // Open account tab
+        assertEquals(StepType.NPC, steps.get(532).getType());       // Talk again
+        assertEquals(StepType.OBJECT, steps.get(540).getType());    // Exit door
     }
 
     @Test
@@ -341,32 +343,8 @@ public class TutorialIslandTest {
         assertTrue(TutorialIsland.NPC_FISHING_SPOT > 0);
     }
 
-    // ========================================================================
-    // Object ID Tests
-    // ========================================================================
-
-    @Test
-    public void testObjectIdsPositive() {
-        assertTrue(TutorialIsland.OBJECT_TREE > 0);
-        assertTrue(TutorialIsland.OBJECT_TIN_ROCK > 0);
-        assertTrue(TutorialIsland.OBJECT_COPPER_ROCK > 0);
-        assertTrue(TutorialIsland.OBJECT_FURNACE > 0);
-        assertTrue(TutorialIsland.OBJECT_ANVIL > 0);
-        assertTrue(TutorialIsland.OBJECT_RANGE > 0);
-        assertTrue(TutorialIsland.OBJECT_BANK_BOOTH > 0);
-        assertTrue(TutorialIsland.OBJECT_POLL_BOOTH > 0);
-        assertTrue(TutorialIsland.OBJECT_GUIDE_DOOR > 0);
-        assertTrue(TutorialIsland.OBJECT_SURVIVAL_GATE > 0);
-        assertTrue(TutorialIsland.OBJECT_CHEF_DOOR_ENTER > 0);
-        assertTrue(TutorialIsland.OBJECT_CHEF_DOOR_EXIT > 0);
-        assertTrue(TutorialIsland.OBJECT_QUEST_DOOR > 0);
-        assertTrue(TutorialIsland.OBJECT_QUEST_LADDER > 0);
-        assertTrue(TutorialIsland.OBJECT_MINING_EXIT > 0);
-        assertTrue(TutorialIsland.OBJECT_RAT_GATE > 0);
-        assertTrue(TutorialIsland.OBJECT_COMBAT_LADDER > 0);
-        assertTrue(TutorialIsland.OBJECT_BANK_EXIT > 0);
-        assertTrue(TutorialIsland.OBJECT_PRAYER_EXIT > 0);
-    }
+    // Note: Object ID tests removed - TutorialIsland uses quest step-based
+    // object interactions via ObjectInteraction commands, not static constants
 
     // ========================================================================
     // Step Text Tests

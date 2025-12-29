@@ -13,6 +13,7 @@ import com.rocinante.state.*;
 import com.rocinante.tasks.TaskContext;
 import com.rocinante.tasks.TaskState;
 import com.rocinante.timing.HumanTimer;
+import com.rocinante.util.Randomization;
 import net.runelite.api.Client;
 import net.runelite.api.Item;
 import net.runelite.api.NPC;
@@ -35,6 +36,7 @@ import java.util.concurrent.CompletableFuture;
 
 import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -64,6 +66,9 @@ public class CombatTaskTest {
     private HumanTimer humanTimer;
 
     @Mock
+    private Randomization randomization;
+
+    @Mock
     private CombatManager combatManager;
 
     @Mock
@@ -86,9 +91,9 @@ public class CombatTaskTest {
         // Create real TargetSelector with mocked dependencies
         targetSelector = new TargetSelector(client, gameStateService, pathFinder);
 
-        // Set up TaskContext
+        // Set up TaskContext with Randomization for tasks that need it
         taskContext = new TaskContext(client, gameStateService, mouseController, 
-                keyboardController, humanTimer);
+                keyboardController, humanTimer, randomization);
 
         playerPos = new WorldPoint(3200, 3200, 0);
         validPlayerState = PlayerState.builder()
@@ -125,6 +130,12 @@ public class CombatTaskTest {
         when(mouseController.moveToCanvas(anyInt(), anyInt()))
                 .thenReturn(CompletableFuture.completedFuture(null));
         when(mouseController.click()).thenReturn(CompletableFuture.completedFuture(null));
+
+        // Mock randomization for tasks that need it
+        when(randomization.gaussianRandom(anyDouble(), anyDouble())).thenReturn(0.0);
+        when(randomization.uniformRandom(anyDouble(), anyDouble())).thenReturn(0.0);
+        when(randomization.uniformRandomInt(anyInt(), anyInt())).thenReturn(0);
+        when(randomization.chance(anyDouble())).thenReturn(false);
     }
 
     // ========================================================================

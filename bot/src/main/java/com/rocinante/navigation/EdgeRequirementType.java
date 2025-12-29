@@ -43,6 +43,12 @@ public enum EdgeRequirementType {
     /**
      * Ironman-specific restriction.
      */
-    IRONMAN_RESTRICTION
+    IRONMAN_RESTRICTION,
+
+    /**
+     * Kourend house favour requirement.
+     * Identifier is the house name, value is the percentage required.
+     */
+    FAVOUR
 }
 

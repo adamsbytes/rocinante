@@ -1063,6 +1063,49 @@ public class WebWalker {
             public boolean shouldAvoidWilderness() {
                 return avoidWilderness;
             }
+
+            @Override
+            public boolean isHomeTeleportAvailable() {
+                if (unlockTracker != null) {
+                    return unlockTracker.isHomeTeleportAvailable();
+                }
+                return false;
+            }
+
+            @Override
+            public boolean isMinigameTeleportAvailable() {
+                if (unlockTracker != null) {
+                    return unlockTracker.isMinigameTeleportAvailable();
+                }
+                return false;
+            }
+
+            @Override
+            public boolean isGroupingTeleportUnlocked(String teleportId) {
+                if (unlockTracker != null && teleportId != null) {
+                    GroupingTeleport teleport = GroupingTeleport.fromEdgeId(teleportId);
+                    if (teleport != null) {
+                        return unlockTracker.isGroupingTeleportUnlocked(teleport);
+                    }
+                }
+                return false;
+            }
+
+            @Override
+            public net.runelite.api.coords.WorldPoint getHomeTeleportDestination() {
+                if (unlockTracker != null) {
+                    return unlockTracker.getHomeTeleportDestination();
+                }
+                return RespawnPoint.LUMBRIDGE.getDestination();
+            }
+
+            @Override
+            public RespawnPoint getActiveRespawnPoint() {
+                if (unlockTracker != null) {
+                    return unlockTracker.getActiveRespawnPoint();
+                }
+                return RespawnPoint.LUMBRIDGE;
+            }
         };
     }
 
