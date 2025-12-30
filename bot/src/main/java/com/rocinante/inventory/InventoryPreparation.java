@@ -9,6 +9,7 @@ import com.rocinante.tasks.Task;
 import com.rocinante.tasks.TaskContext;
 import com.rocinante.tasks.impl.EquipItemTask;
 import com.rocinante.tasks.impl.ResupplyTask;
+import com.rocinante.tasks.impl.UnequipItemTask;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Item;
 import net.runelite.api.Skill;
@@ -172,6 +173,13 @@ public class InventoryPreparation {
         }
 
         List<Task> tasks = new ArrayList<>();
+
+        // Phase 0: Unequip items to inventory (before banking)
+        if (!plan.itemsToUnequip.isEmpty()) {
+            for (int itemId : plan.itemsToUnequip) {
+                tasks.add(UnequipItemTask.forItem(itemId));
+            }
+        }
 
         // Phase 1: Banking (deposit + withdraw)
         if (plan.needsBanking()) {
@@ -555,8 +563,7 @@ public class InventoryPreparation {
     /**
      * Handle PREFER_INVENTORY preference.
      * 
-     * <p>If item is equipped, we still consider it "in place" since we don't have
-     * an unequip mechanism yet. The item is accessible even if not in ideal location.
+     * <p>If item is equipped, it will be unequipped to inventory via UnequipItemTask.
      */
     private void handlePreferInventory(
             int itemId,
@@ -574,11 +581,9 @@ public class InventoryPreparation {
 
         switch (location) {
             case EQUIPPED:
-                // Item is equipped but we prefer inventory
-                // For now, we accept it as "in place" since it's accessible
-                // TODO: When UnequipItemTask is implemented, add to itemsToUnequip
-                itemsAlreadyEquipped.add(itemId);
-                log.debug("Item {} is equipped but PREFER_INVENTORY specified - accepting as accessible", itemId);
+                // Item is equipped but we prefer inventory - unequip it
+                plan.itemsToUnequip.add(itemId);
+                log.debug("Item {} is equipped but PREFER_INVENTORY specified - will unequip to inventory", itemId);
                 break;
             case INVENTORY:
                 // Perfect - already where we want it
@@ -721,6 +726,7 @@ public class InventoryPreparation {
         boolean depositEquipment = false;
         Map<Integer, Integer> itemsToWithdraw = new HashMap<>();
         Set<Integer> itemsToEquip = new HashSet<>();
+        Set<Integer> itemsToUnequip = new HashSet<>();
         List<String> missingItems = new ArrayList<>();
 
         /**
@@ -731,6 +737,7 @@ public class InventoryPreparation {
                     && !depositEquipment
                     && itemsToWithdraw.isEmpty() 
                     && itemsToEquip.isEmpty()
+                    && itemsToUnequip.isEmpty()
                     && missingItems.isEmpty();
         }
 

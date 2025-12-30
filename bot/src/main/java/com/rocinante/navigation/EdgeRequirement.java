@@ -34,7 +34,7 @@ public class EdgeRequirement {
      * Used by: MAGIC_LEVEL, AGILITY_LEVEL, SKILL, COMBAT_LEVEL, ITEM
      * Aliases: "level" in JSON
      */
-    @SerializedName(value = "value", alternate = {"level"})
+    @SerializedName(value = "value", alternate = {"level", "amount", "quantity"})
     int value;
 
     /**
@@ -167,6 +167,16 @@ public class EdgeRequirement {
         return EdgeRequirement.builder()
                 .type(EdgeRequirementType.COMBAT_LEVEL)
                 .value(level)
+                .build();
+    }
+
+    /**
+     * Create a gold cost requirement (inventory coins).
+     */
+    public static EdgeRequirement gold(int coins) {
+        return EdgeRequirement.builder()
+                .type(EdgeRequirementType.GOLD)
+                .value(coins)
                 .build();
     }
 

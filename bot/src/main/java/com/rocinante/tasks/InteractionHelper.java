@@ -302,6 +302,57 @@ public class InteractionHelper {
         return cameraRotationInProgress.get();
     }
 
+    /**
+     * Execute a coordinated camera+mouse movement where both converge on the target.
+     * 
+     * <p>This is the "meet in the middle" behavior where:
+     * <ol>
+     *   <li>Camera starts rotating toward the target</li>
+     *   <li>Mouse starts moving toward where the target WILL BE after rotation</li>
+     *   <li>Both arrive at approximately the same time</li>
+     * </ol>
+     * 
+     * <p>Use this instead of {@link #startCameraRotation} when you want the mouse
+     * to start moving immediately rather than waiting for camera rotation.
+     * 
+     * @param targetPosition the world point being targeted
+     * @return CompletableFuture that completes when both movements are done
+     */
+    public CompletableFuture<Void> executeCoupledCameraMouseMovement(@Nullable WorldPoint targetPosition) {
+        if (targetPosition == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        MouseCameraCoupler coupler = ctx.getMouseCameraCoupler();
+        if (coupler == null) {
+            log.debug("No camera coupler available for coupled movement");
+            return CompletableFuture.completedFuture(null);
+        }
+
+        com.rocinante.input.RobotMouseController mouseController = ctx.getMouseController();
+        if (mouseController == null) {
+            log.debug("No mouse controller available for coupled movement");
+            return CompletableFuture.completedFuture(null);
+        }
+
+        if (!cameraRotationInProgress.compareAndSet(false, true)) {
+            log.debug("Camera rotation already in progress, skipping coupled movement");
+            return CompletableFuture.completedFuture(null);
+        }
+
+        log.debug("Starting coupled camera+mouse movement toward {}", targetPosition);
+        
+        return coupler.executeCoupledMovement(targetPosition, mouseController)
+                .whenComplete((v, ex) -> {
+                    cameraRotationInProgress.set(false);
+                    if (ex != null) {
+                        log.debug("Coupled movement completed with error: {}", ex.getMessage());
+                    } else {
+                        log.debug("Coupled movement completed successfully");
+                    }
+                });
+    }
+
     // ========================================================================
     // Click Point Resolution for TileObjects
     // ========================================================================

@@ -121,7 +121,8 @@ public class SkillTaskInventoryIntegrationTest {
                 null, // webWalker
                 null, // obstacleHandler
                 null, // planeTransitionHandler
-                inventoryPreparation
+                inventoryPreparation,
+                null  // questService
         );
     }
 

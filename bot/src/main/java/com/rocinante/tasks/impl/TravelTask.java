@@ -12,11 +12,13 @@ import net.runelite.api.Client;
 import net.runelite.api.InventoryID;
 import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
+import net.runelite.api.ItemID;
 import net.runelite.api.NPC;
 import net.runelite.api.Skill;
 import net.runelite.api.TileObject;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.widgets.Widget;
+import net.runelite.api.widgets.WidgetInfo;
 
 import com.rocinante.navigation.GroupingTeleport;
 import com.rocinante.tasks.impl.travel.CanoeTask;
@@ -71,12 +73,12 @@ public class TravelTask extends AbstractTask {
     /**
      * Standard spellbook widget group.
      */
-    public static final int SPELLBOOK_GROUP = 218;
+    public static final int SPELLBOOK_GROUP = WidgetInteractTask.SPELLBOOK_GROUP;
 
     /**
      * Home teleport widget child (standard spellbook).
      */
-    public static final int HOME_TELEPORT_CHILD = 7;
+    public static final int HOME_TELEPORT_CHILD = WidgetInteractTask.SPELL_HOME_TELEPORT;
 
     /**
      * Spell name to widget child ID mapping (standard spellbook).
@@ -84,26 +86,16 @@ public class TravelTask extends AbstractTask {
      */
     private static final Map<String, Integer> SPELL_WIDGET_IDS = new HashMap<>();
     static {
-        SPELL_WIDGET_IDS.put("Varrock Teleport", 23);      // 0x17
-        SPELL_WIDGET_IDS.put("Lumbridge Teleport", 26);    // 0x1a
-        SPELL_WIDGET_IDS.put("Falador Teleport", 29);      // 0x1d
-        SPELL_WIDGET_IDS.put("Camelot Teleport", 37);      // 0x25
-        SPELL_WIDGET_IDS.put("Ardougne Teleport", 51);     // 0x33
-        SPELL_WIDGET_IDS.put("Watchtower Teleport", 56);   // 0x38
-        SPELL_WIDGET_IDS.put("Trollheim Teleport", 64);    // 0x40
-        SPELL_WIDGET_IDS.put("Teleport to Kourend", 79);   // 0x4f
-        SPELL_WIDGET_IDS.put("Teleport to House", 31);     // 0x1f
+        SPELL_WIDGET_IDS.put("Varrock Teleport", WidgetInteractTask.SPELL_VARROCK_TELEPORT);
+        SPELL_WIDGET_IDS.put("Lumbridge Teleport", WidgetInteractTask.SPELL_LUMBRIDGE_TELEPORT);
+        SPELL_WIDGET_IDS.put("Falador Teleport", WidgetInteractTask.SPELL_FALADOR_TELEPORT);
+        SPELL_WIDGET_IDS.put("Camelot Teleport", WidgetInteractTask.SPELL_CAMELOT_TELEPORT);
+        SPELL_WIDGET_IDS.put("Ardougne Teleport", WidgetInteractTask.SPELL_ARDOUGNE_TELEPORT);
+        SPELL_WIDGET_IDS.put("Watchtower Teleport", WidgetInteractTask.SPELL_WATCHTOWER_TELEPORT);
+        SPELL_WIDGET_IDS.put("Trollheim Teleport", WidgetInteractTask.SPELL_TROLLHEIM_TELEPORT);
+        SPELL_WIDGET_IDS.put("Teleport to Kourend", WidgetInteractTask.SPELL_KOUREND_TELEPORT);
+        SPELL_WIDGET_IDS.put("Teleport to House", WidgetInteractTask.SPELL_TELEPORT_TO_HOUSE);
     }
-
-    // ========================================================================
-    // Rune Item IDs (from RuneLite ItemID)
-    // ========================================================================
-    private static final int RUNE_AIR = 556;
-    private static final int RUNE_WATER = 555;
-    private static final int RUNE_EARTH = 557;
-    private static final int RUNE_FIRE = 554;
-    private static final int RUNE_LAW = 563;
-    private static final int RUNE_SOUL = 566;
 
     // ========================================================================
     // Elemental Staves (provide infinite runes of their element)
@@ -116,44 +108,44 @@ public class TravelTask extends AbstractTask {
     private static final Map<Integer, int[]> STAFF_RUNE_PROVIDERS = new HashMap<>();
     static {
         // Basic staves (single element)
-        STAFF_RUNE_PROVIDERS.put(1381, new int[]{RUNE_AIR});   // Staff of air
-        STAFF_RUNE_PROVIDERS.put(1383, new int[]{RUNE_WATER}); // Staff of water
-        STAFF_RUNE_PROVIDERS.put(1385, new int[]{RUNE_EARTH}); // Staff of earth
-        STAFF_RUNE_PROVIDERS.put(1387, new int[]{RUNE_FIRE});  // Staff of fire
+        STAFF_RUNE_PROVIDERS.put(ItemID.STAFF_OF_AIR, new int[]{ItemID.AIR_RUNE});
+        STAFF_RUNE_PROVIDERS.put(ItemID.STAFF_OF_WATER, new int[]{ItemID.WATER_RUNE});
+        STAFF_RUNE_PROVIDERS.put(ItemID.STAFF_OF_EARTH, new int[]{ItemID.EARTH_RUNE});
+        STAFF_RUNE_PROVIDERS.put(ItemID.STAFF_OF_FIRE, new int[]{ItemID.FIRE_RUNE});
 
         // Battlestaves (single element)
-        STAFF_RUNE_PROVIDERS.put(1397, new int[]{RUNE_AIR});   // Air battlestaff
-        STAFF_RUNE_PROVIDERS.put(1395, new int[]{RUNE_WATER}); // Water battlestaff
-        STAFF_RUNE_PROVIDERS.put(1399, new int[]{RUNE_EARTH}); // Earth battlestaff
-        STAFF_RUNE_PROVIDERS.put(1393, new int[]{RUNE_FIRE});  // Fire battlestaff
+        STAFF_RUNE_PROVIDERS.put(ItemID.AIR_BATTLESTAFF, new int[]{ItemID.AIR_RUNE});
+        STAFF_RUNE_PROVIDERS.put(ItemID.WATER_BATTLESTAFF, new int[]{ItemID.WATER_RUNE});
+        STAFF_RUNE_PROVIDERS.put(ItemID.EARTH_BATTLESTAFF, new int[]{ItemID.EARTH_RUNE});
+        STAFF_RUNE_PROVIDERS.put(ItemID.FIRE_BATTLESTAFF, new int[]{ItemID.FIRE_RUNE});
 
         // Mystic staves (single element)
-        STAFF_RUNE_PROVIDERS.put(1405, new int[]{RUNE_AIR});   // Mystic air staff
-        STAFF_RUNE_PROVIDERS.put(1403, new int[]{RUNE_WATER}); // Mystic water staff
-        STAFF_RUNE_PROVIDERS.put(1407, new int[]{RUNE_EARTH}); // Mystic earth staff
-        STAFF_RUNE_PROVIDERS.put(1401, new int[]{RUNE_FIRE});  // Mystic fire staff
+        STAFF_RUNE_PROVIDERS.put(ItemID.MYSTIC_AIR_STAFF, new int[]{ItemID.AIR_RUNE});
+        STAFF_RUNE_PROVIDERS.put(ItemID.MYSTIC_WATER_STAFF, new int[]{ItemID.WATER_RUNE});
+        STAFF_RUNE_PROVIDERS.put(ItemID.MYSTIC_EARTH_STAFF, new int[]{ItemID.EARTH_RUNE});
+        STAFF_RUNE_PROVIDERS.put(ItemID.MYSTIC_FIRE_STAFF, new int[]{ItemID.FIRE_RUNE});
 
         // Combination battlestaves (two elements)
-        STAFF_RUNE_PROVIDERS.put(11998, new int[]{RUNE_AIR, RUNE_FIRE});   // Smoke battlestaff
-        STAFF_RUNE_PROVIDERS.put(12000, new int[]{RUNE_AIR, RUNE_FIRE});   // Mystic smoke staff
-        STAFF_RUNE_PROVIDERS.put(11787, new int[]{RUNE_WATER, RUNE_FIRE}); // Steam battlestaff
-        STAFF_RUNE_PROVIDERS.put(11789, new int[]{RUNE_WATER, RUNE_FIRE}); // Mystic steam staff
-        STAFF_RUNE_PROVIDERS.put(6562, new int[]{RUNE_WATER, RUNE_EARTH}); // Mud battlestaff
-        STAFF_RUNE_PROVIDERS.put(6563, new int[]{RUNE_WATER, RUNE_EARTH}); // Mystic mud staff
-        STAFF_RUNE_PROVIDERS.put(3053, new int[]{RUNE_EARTH, RUNE_FIRE});  // Lava battlestaff
-        STAFF_RUNE_PROVIDERS.put(3054, new int[]{RUNE_EARTH, RUNE_FIRE});  // Mystic lava staff
-        STAFF_RUNE_PROVIDERS.put(20730, new int[]{RUNE_AIR, RUNE_WATER});  // Mist battlestaff
-        STAFF_RUNE_PROVIDERS.put(20733, new int[]{RUNE_AIR, RUNE_WATER});  // Mystic mist staff
-        STAFF_RUNE_PROVIDERS.put(20736, new int[]{RUNE_AIR, RUNE_EARTH});  // Dust battlestaff
-        STAFF_RUNE_PROVIDERS.put(20739, new int[]{RUNE_AIR, RUNE_EARTH});  // Mystic dust staff
+        STAFF_RUNE_PROVIDERS.put(ItemID.SMOKE_BATTLESTAFF, new int[]{ItemID.AIR_RUNE, ItemID.FIRE_RUNE});
+        STAFF_RUNE_PROVIDERS.put(ItemID.MYSTIC_SMOKE_STAFF, new int[]{ItemID.AIR_RUNE, ItemID.FIRE_RUNE});
+        STAFF_RUNE_PROVIDERS.put(ItemID.STEAM_BATTLESTAFF, new int[]{ItemID.WATER_RUNE, ItemID.FIRE_RUNE});
+        STAFF_RUNE_PROVIDERS.put(ItemID.MYSTIC_STEAM_STAFF, new int[]{ItemID.WATER_RUNE, ItemID.FIRE_RUNE});
+        STAFF_RUNE_PROVIDERS.put(ItemID.MUD_BATTLESTAFF, new int[]{ItemID.WATER_RUNE, ItemID.EARTH_RUNE});
+        STAFF_RUNE_PROVIDERS.put(ItemID.MYSTIC_MUD_STAFF, new int[]{ItemID.WATER_RUNE, ItemID.EARTH_RUNE});
+        STAFF_RUNE_PROVIDERS.put(ItemID.LAVA_BATTLESTAFF, new int[]{ItemID.EARTH_RUNE, ItemID.FIRE_RUNE});
+        STAFF_RUNE_PROVIDERS.put(ItemID.MYSTIC_LAVA_STAFF, new int[]{ItemID.EARTH_RUNE, ItemID.FIRE_RUNE});
+        STAFF_RUNE_PROVIDERS.put(ItemID.MIST_BATTLESTAFF, new int[]{ItemID.AIR_RUNE, ItemID.WATER_RUNE});
+        STAFF_RUNE_PROVIDERS.put(ItemID.MYSTIC_MIST_STAFF, new int[]{ItemID.AIR_RUNE, ItemID.WATER_RUNE});
+        STAFF_RUNE_PROVIDERS.put(ItemID.DUST_BATTLESTAFF, new int[]{ItemID.AIR_RUNE, ItemID.EARTH_RUNE});
+        STAFF_RUNE_PROVIDERS.put(ItemID.MYSTIC_DUST_STAFF, new int[]{ItemID.AIR_RUNE, ItemID.EARTH_RUNE});
 
         // Tome of fire (provides fire runes when equipped in shield slot)
-        STAFF_RUNE_PROVIDERS.put(20714, new int[]{RUNE_FIRE}); // Tome of fire
-        STAFF_RUNE_PROVIDERS.put(20716, new int[]{RUNE_FIRE}); // Tome of fire (empty) - still works
+        STAFF_RUNE_PROVIDERS.put(ItemID.TOME_OF_FIRE, new int[]{ItemID.FIRE_RUNE});
+        STAFF_RUNE_PROVIDERS.put(ItemID.TOME_OF_FIRE_EMPTY, new int[]{ItemID.FIRE_RUNE}); // Still counts for some reason? Or maybe check if charged
 
         // Tome of water
-        STAFF_RUNE_PROVIDERS.put(25576, new int[]{RUNE_WATER}); // Tome of water
-        STAFF_RUNE_PROVIDERS.put(25578, new int[]{RUNE_WATER}); // Tome of water (empty)
+        STAFF_RUNE_PROVIDERS.put(ItemID.TOME_OF_WATER, new int[]{ItemID.WATER_RUNE});
+        STAFF_RUNE_PROVIDERS.put(ItemID.TOME_OF_WATER_EMPTY, new int[]{ItemID.WATER_RUNE});
     }
 
     /**
@@ -162,23 +154,23 @@ public class TravelTask extends AbstractTask {
     private static final Map<String, SpellRequirements> SPELL_REQUIREMENTS = new HashMap<>();
     static {
         SPELL_REQUIREMENTS.put("Varrock Teleport", new SpellRequirements(25,
-            Map.of(RUNE_LAW, 1, RUNE_AIR, 3, RUNE_FIRE, 1)));
+            Map.of(ItemID.LAW_RUNE, 1, ItemID.AIR_RUNE, 3, ItemID.FIRE_RUNE, 1)));
         SPELL_REQUIREMENTS.put("Lumbridge Teleport", new SpellRequirements(31,
-            Map.of(RUNE_LAW, 1, RUNE_AIR, 3, RUNE_EARTH, 1)));
+            Map.of(ItemID.LAW_RUNE, 1, ItemID.AIR_RUNE, 3, ItemID.EARTH_RUNE, 1)));
         SPELL_REQUIREMENTS.put("Falador Teleport", new SpellRequirements(37,
-            Map.of(RUNE_LAW, 1, RUNE_AIR, 3, RUNE_WATER, 1)));
+            Map.of(ItemID.LAW_RUNE, 1, ItemID.AIR_RUNE, 3, ItemID.WATER_RUNE, 1)));
         SPELL_REQUIREMENTS.put("Teleport to House", new SpellRequirements(40,
-            Map.of(RUNE_LAW, 1, RUNE_AIR, 1, RUNE_EARTH, 1)));
+            Map.of(ItemID.LAW_RUNE, 1, ItemID.AIR_RUNE, 1, ItemID.EARTH_RUNE, 1)));
         SPELL_REQUIREMENTS.put("Camelot Teleport", new SpellRequirements(45,
-            Map.of(RUNE_LAW, 1, RUNE_AIR, 5)));
+            Map.of(ItemID.LAW_RUNE, 1, ItemID.AIR_RUNE, 5)));
         SPELL_REQUIREMENTS.put("Ardougne Teleport", new SpellRequirements(51,
-            Map.of(RUNE_LAW, 2, RUNE_WATER, 2)));
+            Map.of(ItemID.LAW_RUNE, 2, ItemID.WATER_RUNE, 2)));
         SPELL_REQUIREMENTS.put("Watchtower Teleport", new SpellRequirements(58,
-            Map.of(RUNE_LAW, 2, RUNE_EARTH, 2)));
+            Map.of(ItemID.LAW_RUNE, 2, ItemID.EARTH_RUNE, 2)));
         SPELL_REQUIREMENTS.put("Trollheim Teleport", new SpellRequirements(61,
-            Map.of(RUNE_LAW, 2, RUNE_FIRE, 2)));
+            Map.of(ItemID.LAW_RUNE, 2, ItemID.FIRE_RUNE, 2)));
         SPELL_REQUIREMENTS.put("Teleport to Kourend", new SpellRequirements(69,
-            Map.of(RUNE_LAW, 2, RUNE_SOUL, 2, RUNE_WATER, 2)));
+            Map.of(ItemID.LAW_RUNE, 2, ItemID.SOUL_RUNE, 2, ItemID.WATER_RUNE, 2)));
     }
 
     /**
@@ -197,25 +189,25 @@ public class TravelTask extends AbstractTask {
     /**
      * Equipment widget group.
      */
-    private static final int EQUIPMENT_GROUP = 387;
+    private static final int EQUIPMENT_GROUP = WidgetInteractTask.EQUIPMENT_GROUP;
 
     /**
      * Equipment slot to widget child ID mapping.
      */
     private static final Map<Integer, Integer> EQUIPMENT_SLOT_WIDGETS = new HashMap<>();
     static {
-        EQUIPMENT_SLOT_WIDGETS.put(EquipmentState.SLOT_RING, 13);
-        EQUIPMENT_SLOT_WIDGETS.put(EquipmentState.SLOT_AMULET, 6);
-        EQUIPMENT_SLOT_WIDGETS.put(EquipmentState.SLOT_GLOVES, 12);
-        EQUIPMENT_SLOT_WIDGETS.put(EquipmentState.SLOT_CAPE, 4);
-        EQUIPMENT_SLOT_WIDGETS.put(EquipmentState.SLOT_WEAPON, 8);
+        EQUIPMENT_SLOT_WIDGETS.put(EquipmentState.SLOT_RING, WidgetInteractTask.WIDGET_EQUIPMENT_RING);
+        EQUIPMENT_SLOT_WIDGETS.put(EquipmentState.SLOT_AMULET, WidgetInteractTask.WIDGET_EQUIPMENT_AMULET);
+        EQUIPMENT_SLOT_WIDGETS.put(EquipmentState.SLOT_GLOVES, WidgetInteractTask.WIDGET_EQUIPMENT_GLOVES);
+        EQUIPMENT_SLOT_WIDGETS.put(EquipmentState.SLOT_CAPE, WidgetInteractTask.WIDGET_EQUIPMENT_CAPE);
+        EQUIPMENT_SLOT_WIDGETS.put(EquipmentState.SLOT_WEAPON, WidgetInteractTask.WIDGET_EQUIPMENT_WEAPON);
     }
 
     /**
      * Inventory widget group.
      */
-    private static final int INVENTORY_GROUP = 149;
-    private static final int INVENTORY_CHILD = 0;
+    private static final int INVENTORY_GROUP = WidgetInfo.INVENTORY.getGroupId();
+    private static final int INVENTORY_CHILD = WidgetInfo.INVENTORY.getChildId();
 
     /**
      * Home teleport animation duration (ticks).
@@ -657,7 +649,7 @@ public class TravelTask extends AbstractTask {
                 .fairyRingCode(code.toUpperCase())
                 .objectId(-1)
                 .goldCost(0)
-                .requiredItemId(772) // Dramen staff (or 9084 Lunar staff)
+                .requiredItemId(ItemID.DRAMEN_STAFF) // Dramen staff (or 9084 Lunar staff)
                 .build();
     }
 
@@ -2017,9 +2009,9 @@ public class TravelTask extends AbstractTask {
         // Check spell requirements
         SpellRequirements reqs = SPELL_REQUIREMENTS.get(spellName);
         if (reqs == null) {
-            // Unknown requirements - allow attempt
-            log.debug("No requirements data for spell: {}", spellName);
-            return true;
+            // Missing data is treated as non-castable to avoid unsafe teleports
+            log.warn("Missing requirement data for spell: {} - blocking cast", spellName);
+            return false;
         }
 
         // Check magic level
@@ -2245,7 +2237,7 @@ public class TravelTask extends AbstractTask {
             return false;
         }
         SpellRequirements reqs = SPELL_REQUIREMENTS.get(spellName);
-        return reqs != null && reqs.runeCosts.containsKey(RUNE_LAW);
+        return reqs != null && reqs.runeCosts.containsKey(ItemID.LAW_RUNE);
     }
 
     /**
@@ -2261,7 +2253,7 @@ public class TravelTask extends AbstractTask {
         if (reqs == null) {
             return 0;
         }
-        return reqs.runeCosts.getOrDefault(RUNE_LAW, 0);
+        return reqs.runeCosts.getOrDefault(ItemID.LAW_RUNE, 0);
     }
 
     // ========================================================================
@@ -2347,4 +2339,3 @@ public class TravelTask extends AbstractTask {
         VERIFY_ARRIVAL
     }
 }
-

@@ -130,7 +130,8 @@ public class WebEdge {
         }
         return requirements.stream().anyMatch(r ->
                 r.getType() == EdgeRequirementType.ITEM ||
-                r.getType() == EdgeRequirementType.RUNES);
+                r.getType() == EdgeRequirementType.RUNES ||
+                r.getType() == EdgeRequirementType.GOLD);
     }
 
     /**

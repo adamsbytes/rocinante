@@ -371,6 +371,9 @@ public interface PlayerRequirements {
             
             case ITEM:
                 return hasItem(requirement.getItemId(), Math.max(1, requirement.getValue()));
+
+            case GOLD:
+                return getInventoryGold() >= requirement.getValue();
             
             case RUNES:
                 if (requirement.getRuneCosts() == null) {

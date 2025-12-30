@@ -61,6 +61,48 @@ public class WidgetInteractTask extends AbstractTask {
     
 
     // ========================================================================
+    // Widget Constants
+    // ========================================================================
+
+    // Spellbook (Group 218)
+    public static final int SPELLBOOK_GROUP = 218;
+    public static final int SPELL_VARROCK_TELEPORT = 23;
+    public static final int SPELL_LUMBRIDGE_TELEPORT = 26;
+    public static final int SPELL_FALADOR_TELEPORT = 29;
+    public static final int SPELL_CAMELOT_TELEPORT = 34; // 0x22
+    public static final int SPELL_ARDOUGNE_TELEPORT = 41; // 0x29
+    public static final int SPELL_WATCHTOWER_TELEPORT = 47; // 0x2f
+    public static final int SPELL_TROLLHEIM_TELEPORT = 54; // 0x36
+    public static final int SPELL_KOUREND_TELEPORT = 36; // 0x24
+    public static final int SPELL_TELEPORT_TO_HOUSE = 31; // 0x1f
+    public static final int SPELL_HOME_TELEPORT = 7;
+
+    // Equipment (Group 387)
+    public static final int EQUIPMENT_GROUP = 387;
+    // Slots based on InterfaceID.Wornitems (0x0183_000F = 15, etc.)
+    // Note: Wornitems numbering seems offset from EquipmentInventorySlot
+    // Let's use the explicit child IDs derived from InterfaceID.Wornitems
+    // 0x0F=15 (Head?), 0x10=16 (Cape?), etc.
+    // Actually, let's map these to EquipmentInventorySlot indices more carefully if possible.
+    // Based on my UnequipItemTask array:
+    // Head=6, Cape=7, Amulet=8, Weapon=9, Body=10, Shield=11, Legs=12, Gloves=13, Boots=14, Ring=15, Ammo=16
+    // Checking Wornitems again:
+    // SLOT0 = 15 (0x0F) -> This might be Ring?
+    // Let's rely on the verified values I put in UnequipItemTask which matched WidgetInfo.EQUIPMENT_* naming convention
+    // WidgetInfo.EQUIPMENT_HELMET is 387, 6.
+    public static final int WIDGET_EQUIPMENT_HELMET = 6;
+    public static final int WIDGET_EQUIPMENT_CAPE = 7;
+    public static final int WIDGET_EQUIPMENT_AMULET = 8;
+    public static final int WIDGET_EQUIPMENT_WEAPON = 9;
+    public static final int WIDGET_EQUIPMENT_BODY = 10;
+    public static final int WIDGET_EQUIPMENT_SHIELD = 11;
+    public static final int WIDGET_EQUIPMENT_LEGS = 12;
+    public static final int WIDGET_EQUIPMENT_GLOVES = 13;
+    public static final int WIDGET_EQUIPMENT_BOOTS = 14;
+    public static final int WIDGET_EQUIPMENT_RING = 15;
+    public static final int WIDGET_EQUIPMENT_AMMO = 16;
+
+    // ========================================================================
     // Action Types
     // ========================================================================
 

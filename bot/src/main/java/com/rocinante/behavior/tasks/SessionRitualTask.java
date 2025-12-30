@@ -4,6 +4,7 @@ import com.rocinante.behavior.BreakType;
 import com.rocinante.behavior.PlayerProfile;
 import com.rocinante.tasks.TaskContext;
 import com.rocinante.tasks.TaskState;
+import com.rocinante.tasks.impl.BankTask;
 import com.rocinante.timing.HumanTimer;
 import com.rocinante.util.Randomization;
 import lombok.extern.slf4j.Slf4j;
@@ -26,7 +27,7 @@ import java.util.concurrent.CompletableFuture;
  * - 80% probability to execute each ritual
  * 
  * Common rituals:
- * - BANK_CHECK: Open bank, scan tabs, close (simplified to inventory hover)
+ * - BANK_CHECK: Open bank, scan tabs, close (via BankTask.performIdleBankCheck)
  * - SKILL_TAB_CHECK: Open skills tab, check specific skills, close after 1-3s
  * - FRIENDS_LIST_CHECK: Open friends list, scan for online friends, close
  * - EQUIPMENT_REVIEW: Open equipment tab, hover over worn items, close
@@ -152,11 +153,8 @@ public class SessionRitualTask extends BehavioralTask {
         hoverCount = 0;
         
         // Set ritual-specific parameters
+        // Note: BANK_CHECK is handled entirely by BankTask.performIdleBankCheck() and skips this
         switch (ritual) {
-            case "BANK_CHECK":
-                ritualDuration = randomization.uniformRandomLong(2000, 6000);
-                maxHovers = randomization.uniformRandomInt(2, 4);
-                break;
             case "SKILL_TAB_CHECK":
                 ritualDuration = randomization.uniformRandomLong(1000, 3000);
                 maxHovers = randomization.uniformRandomInt(2, 5);
@@ -223,11 +221,18 @@ public class SessionRitualTask extends BehavioralTask {
                 break;
                 
             case "BANK_CHECK":
-                // Bank check just does inventory hover without opening bank
-                tabWidget = getTabWidget(client, WidgetInfo.FIXED_VIEWPORT_INVENTORY_TAB,
-                                        WidgetInfo.RESIZABLE_VIEWPORT_INVENTORY_TAB);
-                tabName = "Inventory";
-                break;
+                // Bank check uses reusable BankTask method - handles open/hover/close itself
+                log.debug("Executing BANK_CHECK ritual via BankTask.performIdleBankCheck");
+                pendingOperation = BankTask.performIdleBankCheck(ctx, randomization, humanTimer)
+                        .thenAccept(performed -> {
+                            if (performed) {
+                                log.debug("BANK_CHECK ritual completed");
+                            } else {
+                                log.debug("BANK_CHECK ritual skipped (no nearby bank)");
+                            }
+                            phase = RitualPhase.NEXT_RITUAL;
+                        });
+                return; // Skip normal tab flow - bank check handles everything
                 
             default:
                 // Unknown ritual, skip to viewing
@@ -317,7 +322,6 @@ public class SessionRitualTask extends BehavioralTask {
                 break;
                 
             case "INVENTORY_ORGANIZE":
-            case "BANK_CHECK":
                 // Hover over inventory slots
                 Widget inventory = client.getWidget(WidgetInfo.INVENTORY);
                 if (inventory != null && !inventory.isHidden()) {
@@ -363,7 +367,7 @@ public class SessionRitualTask extends BehavioralTask {
                                            WidgetInfo.RESIZABLE_VIEWPORT_INVENTORY_TAB);
         
         if (inventoryTab != null && !inventoryTab.isHidden() && 
-            !ritual.equals("INVENTORY_ORGANIZE") && !ritual.equals("BANK_CHECK")) {
+            !ritual.equals("INVENTORY_ORGANIZE")) {
             log.trace("Returning to inventory tab after {}", ritual);
             pendingOperation = clickWidget(ctx, inventoryTab)
                 .thenCompose(v -> humanTimer.sleep(randomization.uniformRandomLong(200, 500)))

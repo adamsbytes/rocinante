@@ -1165,9 +1165,10 @@ public class UnlockTracker {
             }
         }
 
-        // Special case: Nightmare Zone requires 5 quest bosses defeated
-        if (teleport == GroupingTeleport.NIGHTMARE_ZONE && !isNightmareZoneUnlocked()) {
-            log.trace("Nightmare Zone requires 5+ quest bosses defeated");
+        // Boss-count gate (e.g., NMZ)
+        if (teleport.requiresBossCount() && !hasRequiredBossCount(teleport)) {
+            log.trace("Grouping teleport {} requires {} boss kills", teleport.name(),
+                    teleport.getRequiredBossCount());
             return false;
         }
 
@@ -1228,6 +1229,23 @@ public class UnlockTracker {
                     || isQuestCompleted(Quest.TREE_GNOME_VILLAGE)
                     || isQuestCompleted(Quest.FIGHT_ARENA);
         }
+    }
+
+    /**
+     * Check generic boss-count based unlocks for grouping teleports.
+     */
+    private boolean hasRequiredBossCount(GroupingTeleport teleport) {
+        if (!teleport.requiresBossCount()) {
+            return true;
+        }
+
+        // Currently only Nightmare Zone uses boss count.
+        if (teleport == GroupingTeleport.NIGHTMARE_ZONE) {
+            return isNightmareZoneUnlocked();
+        }
+
+        // Unknown boss-count check - block to avoid unsafe unlocks
+        return false;
     }
 
     /**

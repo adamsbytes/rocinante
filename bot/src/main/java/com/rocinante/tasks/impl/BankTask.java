@@ -1305,6 +1305,304 @@ public class BankTask extends AbstractTask {
         return bankContainer != null && !bankContainer.isHidden();
     }
 
+    // ========================================================================
+    // Idle Bank Check (Reusable for Break/Ritual Tasks)
+    // ========================================================================
+
+    /**
+     * Maximum distance (in tiles) to consider a bank "nearby" for idle checks.
+     * ~30 game ticks of walking time, roughly 20 tiles.
+     */
+    private static final int IDLE_BANK_CHECK_MAX_DISTANCE = 20;
+
+    /**
+     * Perform an idle bank check ritual - find nearby bank, open it briefly, 
+     * hover over a few tabs/items, then close.
+     * 
+     * <p>This is a reusable method for break tasks and session rituals that want
+     * to simulate a player casually checking their bank without performing any
+     * actual banking operations.
+     * 
+     * <p>If no bank is within {@link #IDLE_BANK_CHECK_MAX_DISTANCE} tiles, the
+     * future completes with {@code false} (skipped). Otherwise completes with
+     * {@code true} after the bank check is performed.
+     *
+     * @param ctx the task context
+     * @param randomization randomization for timing variance
+     * @param humanTimer timer for delays
+     * @return CompletableFuture that completes with true if bank check was performed,
+     *         false if skipped due to distance
+     */
+    public static CompletableFuture<Boolean> performIdleBankCheck(
+            TaskContext ctx, 
+            Randomization randomization, 
+            com.rocinante.timing.HumanTimer humanTimer) {
+        
+        Client client = ctx.getClient();
+        WorldPoint playerPos = ctx.getPlayerState().getWorldPosition();
+        
+        if (playerPos == null) {
+            log.debug("Cannot perform idle bank check - player position unknown");
+            return CompletableFuture.completedFuture(false);
+        }
+
+        // Find nearest bank booth or banker within distance limit
+        GameObject booth = findNearestBankBoothStatic(client, playerPos, IDLE_BANK_CHECK_MAX_DISTANCE);
+        NPC banker = findNearestBankerStatic(client, playerPos, IDLE_BANK_CHECK_MAX_DISTANCE);
+
+        if (booth == null && banker == null) {
+            log.debug("No bank within {} tiles for idle check, skipping", IDLE_BANK_CHECK_MAX_DISTANCE);
+            return CompletableFuture.completedFuture(false);
+        }
+
+        // Pick one randomly if both available
+        final boolean useBooth;
+        if (booth != null && banker != null) {
+            useBooth = ThreadLocalRandom.current().nextBoolean();
+        } else {
+            useBooth = booth != null;
+        }
+
+        log.debug("Performing idle bank check at {}", useBooth ? "booth" : "banker");
+
+        // Open bank, hover briefly, close
+        return openBankForIdleCheck(ctx, useBooth ? booth : null, useBooth ? null : banker)
+                .thenCompose(opened -> {
+                    if (!opened) {
+                        return CompletableFuture.completedFuture(false);
+                    }
+                    // Brief pause after opening
+                    return humanTimer.sleep(randomization.uniformRandomLong(300, 600))
+                            .thenApply(v -> true);
+                })
+                .thenCompose(opened -> {
+                    if (!opened) {
+                        return CompletableFuture.completedFuture(false);
+                    }
+                    // Hover over 2-4 bank tabs or items
+                    return performIdleBankHovers(ctx, randomization, humanTimer)
+                            .thenApply(v -> true);
+                })
+                .thenCompose(success -> {
+                    if (!success) {
+                        return CompletableFuture.completedFuture(false);
+                    }
+                    // Close bank with ESC
+                    return ctx.getKeyboardController().pressKey(KeyEvent.VK_ESCAPE)
+                            .thenCompose(v -> humanTimer.sleep(randomization.uniformRandomLong(100, 300)))
+                            .thenApply(v -> true);
+                })
+                .exceptionally(e -> {
+                    log.debug("Idle bank check failed: {}", e.getMessage());
+                    // Try to close bank if it's open
+                    if (isBankOpen(client)) {
+                        ctx.getKeyboardController().pressKey(KeyEvent.VK_ESCAPE);
+                    }
+                    return false;
+                });
+    }
+
+    /**
+     * Find nearest bank booth within radius (static version for idle checks).
+     */
+    private static GameObject findNearestBankBoothStatic(Client client, WorldPoint playerPos, int maxDistance) {
+        Scene scene = client.getScene();
+        Tile[][][] tiles = scene.getTiles();
+        int playerPlane = playerPos.getPlane();
+
+        GameObject nearest = null;
+        int nearestDist = Integer.MAX_VALUE;
+
+        for (int x = 0; x < net.runelite.api.Constants.SCENE_SIZE; x++) {
+            for (int y = 0; y < net.runelite.api.Constants.SCENE_SIZE; y++) {
+                Tile tile = tiles[playerPlane][x][y];
+                if (tile == null) continue;
+
+                GameObject[] gameObjects = tile.getGameObjects();
+                if (gameObjects == null) continue;
+
+                for (GameObject obj : gameObjects) {
+                    if (obj == null) continue;
+
+                    int id = obj.getId();
+                    if (BANK_BOOTH_IDS.contains(id) || isBankBoothByNameStatic(client, id)) {
+                        WorldPoint objPos = obj.getWorldLocation();
+                        if (objPos != null) {
+                            int dist = playerPos.distanceTo(objPos);
+                            if (dist <= maxDistance && dist < nearestDist) {
+                                nearest = obj;
+                                nearestDist = dist;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return nearest;
+    }
+
+    private static boolean isBankBoothByNameStatic(Client client, int objectId) {
+        ObjectComposition def = client.getObjectDefinition(objectId);
+        if (def == null) return false;
+        String name = def.getName();
+        if (name == null) return false;
+        String lowerName = name.toLowerCase();
+        return lowerName.contains("bank booth") || lowerName.contains("bank chest");
+    }
+
+    /**
+     * Find nearest banker NPC within radius (static version for idle checks).
+     */
+    private static NPC findNearestBankerStatic(Client client, WorldPoint playerPos, int maxDistance) {
+        NPC nearest = null;
+        int nearestDist = Integer.MAX_VALUE;
+
+        for (NPC npc : client.getNpcs()) {
+            if (npc == null) continue;
+
+            if (BANKER_NPC_IDS.contains(npc.getId()) || isBankerByNameStatic(npc)) {
+                WorldPoint npcPos = npc.getWorldLocation();
+                if (npcPos != null) {
+                    int dist = playerPos.distanceTo(npcPos);
+                    if (dist <= maxDistance && dist < nearestDist) {
+                        nearest = npc;
+                        nearestDist = dist;
+                    }
+                }
+            }
+        }
+        return nearest;
+    }
+
+    private static boolean isBankerByNameStatic(NPC npc) {
+        String name = npc.getName();
+        if (name == null) return false;
+        String lowerName = name.toLowerCase();
+        return lowerName.contains("banker") || lowerName.equals("bank tutor");
+    }
+
+    /**
+     * Open bank for idle check (no walking, direct click only).
+     */
+    private static CompletableFuture<Boolean> openBankForIdleCheck(
+            TaskContext ctx, GameObject booth, NPC banker) {
+        
+        Client client = ctx.getClient();
+        
+        // Already open?
+        if (isBankOpen(client)) {
+            return CompletableFuture.completedFuture(true);
+        }
+
+        SafeClickExecutor safeClick = ctx.getSafeClickExecutor();
+
+        if (booth != null) {
+            Rectangle bounds = booth.getClickbox() != null ? booth.getClickbox().getBounds() : null;
+            if (bounds == null || bounds.width == 0) {
+                log.debug("Bank booth not visible for idle check");
+                return CompletableFuture.completedFuture(false);
+            }
+            return safeClick.clickObject(booth, "Bank")
+                    .thenCompose(success -> {
+                        if (!success) {
+                            return CompletableFuture.completedFuture(false);
+                        }
+                        // Wait for bank to open (up to ~3 seconds)
+                        return waitForBankOpen(client, 5);
+                    });
+        } else if (banker != null) {
+            Rectangle bounds = banker.getConvexHull() != null ? banker.getConvexHull().getBounds() : null;
+            if (bounds == null || bounds.width == 0) {
+                log.debug("Banker not visible for idle check");
+                return CompletableFuture.completedFuture(false);
+            }
+            return safeClick.clickNpc(banker, "Bank")
+                    .thenCompose(success -> {
+                        if (!success) {
+                            return CompletableFuture.completedFuture(false);
+                        }
+                        return waitForBankOpen(client, 5);
+                    });
+        }
+
+        return CompletableFuture.completedFuture(false);
+    }
+
+    /**
+     * Wait for bank to open with polling.
+     */
+    private static CompletableFuture<Boolean> waitForBankOpen(Client client, int maxAttempts) {
+        CompletableFuture<Boolean> future = new CompletableFuture<>();
+        
+        // Simple polling with CompletableFuture chain
+        checkBankOpenRecursive(client, maxAttempts, 0, future);
+        
+        return future;
+    }
+
+    private static void checkBankOpenRecursive(Client client, int maxAttempts, int attempt, 
+                                                CompletableFuture<Boolean> future) {
+        if (isBankOpen(client)) {
+            future.complete(true);
+            return;
+        }
+        if (attempt >= maxAttempts) {
+            future.complete(false);
+            return;
+        }
+        
+        // Schedule next check after 600ms
+        CompletableFuture.delayedExecutor(600, java.util.concurrent.TimeUnit.MILLISECONDS)
+                .execute(() -> checkBankOpenRecursive(client, maxAttempts, attempt + 1, future));
+    }
+
+    /**
+     * Perform idle hovers over bank content.
+     */
+    private static CompletableFuture<Void> performIdleBankHovers(
+            TaskContext ctx, Randomization randomization, 
+            com.rocinante.timing.HumanTimer humanTimer) {
+        
+        Client client = ctx.getClient();
+        int hoverCount = randomization.uniformRandomInt(2, 4);
+        
+        // Chain hovers sequentially
+        CompletableFuture<Void> chain = CompletableFuture.completedFuture(null);
+        
+        for (int i = 0; i < hoverCount; i++) {
+            chain = chain.thenCompose(v -> {
+                // Try to hover over a bank tab or item
+                Widget bankTabs = client.getWidget(WIDGET_BANK_GROUP, WIDGET_BANK_TABS);
+                Widget target = null;
+                
+                if (bankTabs != null && !bankTabs.isHidden()) {
+                    Widget[] children = bankTabs.getDynamicChildren();
+                    if (children != null && children.length > 0) {
+                        int idx = randomization.uniformRandomInt(0, children.length - 1);
+                        target = children[idx];
+                    }
+                }
+                
+                if (target != null && !target.isHidden()) {
+                    Rectangle bounds = target.getBounds();
+                    if (bounds != null && bounds.width > 0) {
+                        int x = bounds.x + randomization.uniformRandomInt(5, Math.max(6, bounds.width - 5));
+                        int y = bounds.y + randomization.uniformRandomInt(5, Math.max(6, bounds.height - 5));
+                        return ctx.getMouseController().moveToCanvas(x, y)
+                                .thenCompose(v2 -> humanTimer.sleep(
+                                        randomization.uniformRandomLong(400, 1000)));
+                    }
+                }
+                
+                // Fallback: idle behavior
+                return ctx.getMouseController().performIdleBehavior()
+                        .thenCompose(v2 -> humanTimer.sleep(randomization.uniformRandomLong(300, 700)));
+            });
+        }
+        
+        return chain;
+    }
+
     @Override
     public String getDescription() {
         if (description != null) {

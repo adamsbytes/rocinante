@@ -1,5 +1,6 @@
 package com.rocinante.combat;
 
+import net.runelite.api.ItemID;
 import java.util.Set;
 
 /**
@@ -41,23 +42,30 @@ public final class WeaponCategories {
      */
     public static final Set<Integer> RANGED_WEAPONS = Set.of(
             // Shortbows (normal through dark bow)
-            841, 843, 845, 847, 849, 851, 853,
+            ItemID.SHORTBOW, ItemID.OAK_SHORTBOW, ItemID.WILLOW_SHORTBOW, ItemID.MAPLE_SHORTBOW, 
+            ItemID.YEW_SHORTBOW, ItemID.MAGIC_SHORTBOW, ItemID.DARK_BOW,
             // Longbows (normal longbow)
-            839,
+            ItemID.LONGBOW, ItemID.OAK_LONGBOW, ItemID.WILLOW_LONGBOW, ItemID.MAPLE_LONGBOW,
+            ItemID.YEW_LONGBOW, ItemID.MAGIC_LONGBOW,
             // Crossbows (bronze through dragon, armadyl)
-            767, 837, 9174, 9176, 9177, 9179, 9181, 9183, 9185,
-            // Thrown weapons (knives - bronze through dragon)
-            800, 802, 804, 806, 807, 809, 811, 813,
+            ItemID.PHOENIX_CROSSBOW, ItemID.CROSSBOW, ItemID.BRONZE_CROSSBOW, ItemID.BLURITE_CROSSBOW,
+            ItemID.IRON_CROSSBOW, ItemID.STEEL_CROSSBOW, ItemID.MITHRIL_CROSSBOW, ItemID.ADAMANT_CROSSBOW,
+            ItemID.RUNE_CROSSBOW, ItemID.DRAGON_CROSSBOW, ItemID.ARMADYL_CROSSBOW, ItemID.DRAGON_HUNTER_CROSSBOW,
+            // Thrown weapons (knives)
+            ItemID.BRONZE_KNIFE, ItemID.IRON_KNIFE, ItemID.STEEL_KNIFE, ItemID.BLACK_KNIFE,
+            ItemID.MITHRIL_KNIFE, ItemID.ADAMANT_KNIFE, ItemID.RUNE_KNIFE, ItemID.DRAGON_KNIFE,
+            // Thrown weapons (darts)
+            ItemID.BRONZE_DART, ItemID.IRON_DART, ItemID.STEEL_DART, ItemID.BLACK_DART,
+            ItemID.MITHRIL_DART, ItemID.ADAMANT_DART, ItemID.RUNE_DART, ItemID.DRAGON_DART,
             // Thrown weapons (javelins)
-            863, 864, 865, 866, 867, 868, 869,
+            ItemID.BRONZE_JAVELIN, ItemID.IRON_JAVELIN, ItemID.STEEL_JAVELIN, ItemID.MITHRIL_JAVELIN,
+            ItemID.ADAMANT_JAVELIN, ItemID.RUNE_JAVELIN, ItemID.DRAGON_JAVELIN,
             // Special ranged weapons
-            11785,  // Armadyl crossbow
-            12926,  // Toxic blowpipe
-            19481,  // Heavy ballista
-            20997,  // Twisted bow
-            21902,  // Dragon hunter crossbow
-            22550,  // Craws bow
-            23987   // Bow of faerdhinen
+            ItemID.TOXIC_BLOWPIPE,
+            ItemID.HEAVY_BALLISTA,
+            ItemID.TWISTED_BOW,
+            ItemID.CRAWS_BOW,
+            ItemID.BOW_OF_FAERDHINEN
     );
 
     // ========================================================================
@@ -75,17 +83,27 @@ public final class WeaponCategories {
      * </ul>
      */
     public static final Set<Integer> MAGIC_WEAPONS = Set.of(
-            // Basic staves (staff, air staff, water staff, earth staff, fire staff)
-            1379, 1381, 1383, 1385, 1387, 1389, 1391, 1393, 1395, 1397, 1399, 1401, 1403, 1405,
+            // Basic staves
+            ItemID.STAFF, ItemID.STAFF_OF_AIR, ItemID.STAFF_OF_WATER, ItemID.STAFF_OF_EARTH, ItemID.STAFF_OF_FIRE,
+            ItemID.MAGIC_STAFF,
+            // Battlestaves
+            ItemID.BATTLESTAFF, ItemID.AIR_BATTLESTAFF, ItemID.WATER_BATTLESTAFF, ItemID.EARTH_BATTLESTAFF, ItemID.FIRE_BATTLESTAFF,
+            // Mystic staves
+            ItemID.MYSTIC_AIR_STAFF, ItemID.MYSTIC_WATER_STAFF, ItemID.MYSTIC_EARTH_STAFF, ItemID.MYSTIC_FIRE_STAFF,
             // Special staves and wands
-            4675,   // Ancient staff
-            4710,   // Slayer's staff
-            6563,   // Mud battlestaff
-            11791,  // Staff of the dead
-            12899,  // Toxic staff of the dead
-            21006,  // Kodai wand
-            22296,  // Harmonised nightmare staff
-            22323   // Volatile nightmare staff
+            ItemID.ANCIENT_STAFF,
+            ItemID.AHRIMS_STAFF,   // Slayer's staff is 4170, Ahrim's is 4710
+            ItemID.SLAYERS_STAFF,
+            ItemID.MYSTIC_MUD_STAFF,
+            ItemID.STAFF_OF_THE_DEAD,
+            ItemID.TOXIC_STAFF_OF_THE_DEAD,
+            ItemID.KODAI_WAND,
+            ItemID.HARMONISED_NIGHTMARE_STAFF,
+            ItemID.VOLATILE_NIGHTMARE_STAFF,
+            ItemID.ELDRITCH_NIGHTMARE_STAFF,
+            ItemID.TRIDENT_OF_THE_SEAS,
+            ItemID.TRIDENT_OF_THE_SWAMP,
+            ItemID.SANGUINESTI_STAFF
     );
 
     // ========================================================================
@@ -103,12 +121,18 @@ public final class WeaponCategories {
      * </ul>
      */
     public static final Set<Integer> AMMO_IDS = Set.of(
-            // Arrows (bronze through dragon)
-            882, 884, 886, 888, 890, 892,
-            // Bolts (bronze through dragon)
-            877, 9140, 9141, 9142, 9143, 9144, 9145,
+            // Arrows
+            ItemID.BRONZE_ARROW, ItemID.IRON_ARROW, ItemID.STEEL_ARROW, ItemID.MITHRIL_ARROW,
+            ItemID.ADAMANT_ARROW, ItemID.RUNE_ARROW, ItemID.AMETHYST_ARROW, ItemID.DRAGON_ARROW,
+            // Bolts
+            ItemID.BRONZE_BOLTS, ItemID.IRON_BOLTS, ItemID.STEEL_BOLTS, ItemID.MITHRIL_BOLTS,
+            ItemID.ADAMANT_BOLTS, ItemID.RUNITE_BOLTS, ItemID.DRAGON_BOLTS,
             // Gem-tipped bolts (enchanted)
-            4740, 9236, 9237, 9238, 9239, 9240, 9241, 9242, 9243, 9244, 9245
+            ItemID.OPAL_BOLTS_E, ItemID.JADE_BOLTS_E, ItemID.PEARL_BOLTS_E, ItemID.TOPAZ_BOLTS_E,
+            ItemID.SAPPHIRE_BOLTS_E, ItemID.EMERALD_BOLTS_E, ItemID.RUBY_BOLTS_E, ItemID.DIAMOND_BOLTS_E,
+            ItemID.DRAGONSTONE_BOLTS_E, ItemID.ONYX_BOLTS_E,
+            // Other
+            ItemID.BOLT_RACK
     );
 
     // ========================================================================

@@ -242,15 +242,58 @@ public class MouseCameraCoupler {
     }
 
     /**
-     * Called during mouse movement for concurrent camera rotation ("meet in the middle").
-     * This is called asynchronously while mouse is moving.
+     * Execute a coordinated mouse+camera movement where both converge on target.
      * 
-     * @param progress movement progress (0.0 to 1.0)
-     * @param targetWorldPoint optional world point being targeted
+     * <p>This is the "meet in the middle" behavior where:
+     * <ol>
+     *   <li>Camera starts rotating toward the target</li>
+     *   <li>Mouse starts moving toward where the target WILL BE after rotation</li>
+     *   <li>Both arrive at approximately the same time</li>
+     * </ol>
+     * 
+     * @param targetWorldPoint the world point being targeted
+     * @param mouseController the mouse controller to use
+     * @return CompletableFuture that completes when both movements are done
      */
-    public void onDuringMouseMove(double progress, @Nullable WorldPoint targetWorldPoint) {
-        // During movement, we could do subtle camera adjustments
-        // For now, this is a placeholder for future "meet in the middle" logic
+    public CompletableFuture<Void> executeCoupledMovement(WorldPoint targetWorldPoint, 
+                                                           RobotMouseController mouseController) {
+        if (!enabled || targetWorldPoint == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+        
+        // Get current mouse position
+        java.awt.Point currentPos = java.awt.MouseInfo.getPointerInfo().getLocation();
+        CoupledMovementPlan plan = planCoupledMovement(targetWorldPoint, currentPos.x, currentPos.y);
+        
+        if (plan == null) {
+            // No coupling needed - target already on screen
+            return CompletableFuture.completedFuture(null);
+        }
+        
+        // Don't couple if rotation is already in progress
+        if (cameraController.isRotating()) {
+            return CompletableFuture.completedFuture(null);
+        }
+        
+        log.debug("Executing coupled movement: rotating {}° while moving mouse to estimated ({},{})", 
+                (int) plan.getCameraRotationDegrees(), plan.getEstimatedTargetX(), plan.getEstimatedTargetY());
+        
+        // Calculate where center of screen will be after rotation
+        // The target should end up roughly centered after rotation
+        Canvas canvas = client.getCanvas();
+        int centerX = canvas != null ? canvas.getWidth() / 2 : 400;
+        int centerY = canvas != null ? canvas.getHeight() / 2 : 300;
+        
+        // Apply some randomization to not always target dead center
+        int targetX = centerX + randomization.uniformRandomInt(-50, 50);
+        int targetY = centerY + randomization.uniformRandomInt(-50, 50);
+        
+        // Start both movements in parallel
+        CompletableFuture<Void> cameraFuture = cameraController.rotateBy(plan.getCameraRotationDegrees(), 0);
+        CompletableFuture<Void> mouseFuture = mouseController.moveToCanvas(targetX, targetY);
+        
+        // Wait for both to complete
+        return CompletableFuture.allOf(cameraFuture, mouseFuture);
     }
 
     // ========================================================================

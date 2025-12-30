@@ -26,6 +26,11 @@ public enum EdgeRequirementType {
     ITEM,
 
     /**
+     * Gold cost (inventory coins).
+     */
+    GOLD,
+
+    /**
      * Rune cost for spell.
      */
     RUNES,

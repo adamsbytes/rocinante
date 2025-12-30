@@ -188,6 +188,20 @@
     {"from": "charter_deepfin", "to": "charter_pandemonium", "type": "TRANSPORT", "cost_ticks": 15, "bidirectional": true, "requirements": [{"type": "GOLD", "amount": 3700}, {"type": "QUEST", "identifier": "Pandemonium"}], "metadata": {"travel_type": "charter_ship", "fare": 3700}},
 
     {"_comment": "=== Summer Shore connections ==="},
-    {"from": "charter_summer_shore", "to": "charter_pandemonium", "type": "TRANSPORT", "cost_ticks": 15, "bidirectional": true, "requirements": [{"type": "GOLD", "amount": 2200}, {"type": "QUEST", "identifier": "Pandemonium"}], "metadata": {"travel_type": "charter_ship", "fare": 2200}}
+    {"from": "charter_summer_shore", "to": "charter_pandemonium", "type": "TRANSPORT", "cost_ticks": 15, "bidirectional": true, "requirements": [{"type": "GOLD", "amount": 2200}, {"type": "QUEST", "identifier": "Pandemonium"}], "metadata": {"travel_type": "charter_ship", "fare": 2200}},
+
+    {"_comment": "=== Walk edges to connect charter network to base web ==="},
+    {"from": "charter_portsarim", "to": "port_sarim_docks", "type": "WALK", "cost_ticks": 8, "bidirectional": true, "requirements": [], "metadata": {"notes": "Walk from charter dock to main Port Sarim docks"}},
+    {"from": "charter_karamja_north", "to": "musa_point", "type": "WALK", "cost_ticks": 70, "bidirectional": true, "requirements": [], "metadata": {"notes": "Walk from Musa Point charter to village center"}},
+    {"from": "charter_brimhaven", "to": "brimhaven", "type": "WALK", "cost_ticks": 60, "bidirectional": true, "requirements": [], "metadata": {"notes": "Walk from Brimhaven docks to town"}},
+    {"from": "charter_catherby", "to": "catherby", "type": "WALK", "cost_ticks": 45, "bidirectional": true, "requirements": [], "metadata": {"notes": "Walk from Catherby docks to bank"}},
+    {"from": "charter_khazard", "to": "khazard", "type": "WALK", "cost_ticks": 50, "bidirectional": true, "requirements": [], "metadata": {"notes": "Walk from charter dock to Port Khazard"}},
+    {"from": "charter_phasmatys", "to": "port_phasmatys", "type": "WALK", "cost_ticks": 55, "bidirectional": true, "requirements": [], "metadata": {"notes": "Walk from charter dock to Port Phasmatys bank"}},
+    {"from": "charter_harmless", "to": "mos_leharmless", "type": "WALK", "cost_ticks": 90, "bidirectional": true, "requirements": [], "metadata": {"notes": "Walk from charter dock to Mos Le'Harmless town"}},
+    {"from": "charter_corsair", "to": "corsair_cove", "type": "WALK", "cost_ticks": 20, "bidirectional": true, "requirements": [], "metadata": {"notes": "Walk from charter dock to Corsair Cove bank"}},
+    {"from": "charter_aldarin", "to": "aldarin_dock", "type": "WALK", "cost_ticks": 5, "bidirectional": true, "requirements": [], "metadata": {"notes": "Walk from charter to sailing dock"}},
+    {"from": "charter_civitas", "to": "civitas_dock", "type": "WALK", "cost_ticks": 40, "bidirectional": true, "requirements": [], "metadata": {"notes": "Walk from charter to sailing dock"}},
+    {"from": "charter_sunset_coast", "to": "sunset_coast_dock", "type": "WALK", "cost_ticks": 8, "bidirectional": true, "requirements": [], "metadata": {"notes": "Walk from charter to sailing dock"}},
+    {"from": "charter_deepfin", "to": "deepfin_point", "type": "WALK", "cost_ticks": 25, "bidirectional": true, "requirements": [], "metadata": {"notes": "Walk from charter to deepfin point"}}
   ]
 }

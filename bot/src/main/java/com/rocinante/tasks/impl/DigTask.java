@@ -2,6 +2,7 @@ package com.rocinante.tasks.impl;
 
 import com.rocinante.tasks.AbstractTask;
 import com.rocinante.tasks.TaskContext;
+import com.rocinante.tasks.TaskState;
 import com.rocinante.timing.DelayProfile;
 import com.rocinante.util.Randomization;
 import lombok.Getter;
@@ -138,6 +139,11 @@ public class DigTask extends AbstractTask {
     private boolean actionPending = false;
     private int waitTicks = 0;
     private int spadeSlot = -1;
+    
+    /**
+     * Sub-task for walking to dig location.
+     */
+    private WalkToTask walkSubTask;
 
     // ========================================================================
     // Constructors
@@ -255,6 +261,12 @@ public class DigTask extends AbstractTask {
             return;
         }
 
+        // Handle walk sub-task execution
+        if (walkSubTask != null) {
+            executeWalkSubTask(ctx);
+            return;
+        }
+
         switch (phase) {
             case CHECK_LOCATION:
                 executeCheckLocation(ctx);
@@ -271,6 +283,21 @@ public class DigTask extends AbstractTask {
             case WAIT_ANIMATION:
                 executeWaitAnimation(ctx);
                 break;
+        }
+    }
+
+    private void executeWalkSubTask(TaskContext ctx) {
+        walkSubTask.execute(ctx);
+
+        if (walkSubTask.getState().isTerminal()) {
+            if (walkSubTask.getState() == TaskState.COMPLETED) {
+                log.debug("Arrived at dig location");
+                phase = DigPhase.FIND_SPADE;
+            } else {
+                log.warn("Failed to walk to dig location: {}", walkSubTask.getFailureReason());
+                fail("Failed to walk to dig location");
+            }
+            walkSubTask = null;
         }
     }
 
@@ -302,44 +329,10 @@ public class DigTask extends AbstractTask {
     // ========================================================================
 
     private void executeWalkToLocation(TaskContext ctx) {
-        Client client = ctx.getClient();
-        WorldPoint playerLocation = client.getLocalPlayer().getWorldLocation();
-
-        if (playerLocation.distanceTo(digLocation) <= AT_LOCATION_DISTANCE) {
-            log.debug("Arrived at dig location");
-            phase = DigPhase.FIND_SPADE;
-            return;
-        }
-
-        // Check if we're already moving toward the location
-        if (client.getLocalDestinationLocation() != null) {
-            // Player is moving, wait
-            waitTicks++;
-            if (waitTicks > 30) {
-                // Stuck, try clicking again
-                waitTicks = 0;
-                initiateWalk(ctx);
-            }
-            return;
-        }
-
-        initiateWalk(ctx);
-    }
-
-    private void initiateWalk(TaskContext ctx) {
-        // Walking is handled by the WalkToTask queued before DigTask
-        // If we get here, it means we need to wait for the walk to complete
-        // Check if player is moving
-        Client client = ctx.getClient();
-        if (client.getLocalDestinationLocation() != null) {
-            // Player is moving, wait
-            return;
-        }
-
-        // Player is idle but not at location - this shouldn't happen if WalkToTask was used
-        // Fall back to clicking on minimap (simplified)
-        log.debug("Waiting to arrive at dig location: {}", digLocation);
-        waitTicks++;
+        // Create walk sub-task to handle walking
+        walkSubTask = new WalkToTask(digLocation)
+                .withDescription("Walk to dig location");
+        log.debug("Starting walk to dig location: {}", digLocation);
     }
 
     // ========================================================================

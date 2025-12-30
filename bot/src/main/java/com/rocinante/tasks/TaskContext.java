@@ -24,6 +24,7 @@ import com.rocinante.navigation.ResourceAwareness;
 import com.rocinante.agility.AgilityCourseRepository;
 import com.rocinante.progression.UnlockTracker;
 import com.rocinante.puzzle.PuzzleSolverRegistry;
+import com.rocinante.quest.QuestService;
 import com.rocinante.state.SlayerState;
 import com.rocinante.state.BankState;
 import com.rocinante.state.CombatState;
@@ -55,9 +56,8 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>Access to HumanTimer for delay scheduling</li>
  *   <li>Mutable taskVariables map for passing data between subtasks</li>
  *   <li>abortTask() method for immediate task termination</li>
+ *   <li>QuestService for quest data, requirements, and Quest Helper integration</li>
  * </ul>
- *
- * <p>Note: QuestState will be added in later phases as that state class is implemented.
  */
 @Slf4j
 public class TaskContext {
@@ -225,6 +225,18 @@ public class TaskContext {
     private final com.rocinante.inventory.InventoryPreparation inventoryPreparation;
 
     // ========================================================================
+    // Quest System
+    // ========================================================================
+
+    /**
+     * Service for quest data, Quest Helper bridge, and player requirement checks.
+     * Provides access to quest steps, requirements, and completion status.
+     */
+    @Getter
+    @Nullable
+    private final QuestService questService;
+
+    // ========================================================================
     // RuneLite Plugin References
     // ========================================================================
 
@@ -289,7 +301,8 @@ public class TaskContext {
             @Nullable com.rocinante.navigation.WebWalker webWalker,
             @Nullable com.rocinante.navigation.ObstacleHandler obstacleHandler,
             @Nullable com.rocinante.navigation.PlaneTransitionHandler planeTransitionHandler,
-            @Nullable com.rocinante.inventory.InventoryPreparation inventoryPreparation) {
+            @Nullable com.rocinante.inventory.InventoryPreparation inventoryPreparation,
+            @Nullable QuestService questService) {
         this.client = client;
         this.gameStateServiceProvider = gameStateServiceProvider;
         this.mouseController = mouseController;
@@ -321,6 +334,7 @@ public class TaskContext {
         this.obstacleHandler = obstacleHandler;
         this.planeTransitionHandler = planeTransitionHandler;
         this.inventoryPreparation = inventoryPreparation;
+        this.questService = questService;
         log.debug("TaskContext created");
     }
 
@@ -338,7 +352,7 @@ public class TaskContext {
             @Nullable CombatManager combatManager) {
         this(client, () -> gameStateService, mouseController, keyboardController, humanTimer, 
                 targetSelector, combatManager, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     /**
@@ -353,7 +367,7 @@ public class TaskContext {
             HumanTimer humanTimer) {
         this(client, () -> gameStateService, mouseController, keyboardController, humanTimer, 
                 null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     /**
@@ -368,7 +382,7 @@ public class TaskContext {
             Randomization randomization) {
         this(client, () -> gameStateService, mouseController, keyboardController, humanTimer, 
                 null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null, randomization, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, randomization, null, null, null, null, null, null);
     }
 
     // ========================================================================

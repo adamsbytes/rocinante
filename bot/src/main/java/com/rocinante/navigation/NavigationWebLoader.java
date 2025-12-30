@@ -212,6 +212,14 @@ public class NavigationWebLoader {
             String nodeId = "grouping_" + teleport.getEdgeId();
             WorldPoint dest = teleport.getDestination();
             
+            Map<String, String> nodeMetadata = new HashMap<>();
+            nodeMetadata.put("teleport_type", "grouping");
+            nodeMetadata.put("teleport_id", teleport.getEdgeId());
+            nodeMetadata.put("minigame", teleport.getDisplayName());
+            if (teleport.requiresBossCount()) {
+                nodeMetadata.put("required_boss_count", String.valueOf(teleport.getRequiredBossCount()));
+            }
+
             WebNode node = WebNode.builder()
                     .id(nodeId)
                     .name(teleport.getDisplayName() + " (Grouping Teleport)")
@@ -220,11 +228,7 @@ public class NavigationWebLoader {
                     .plane(dest.getPlane())
                     .type(WebNodeType.TELEPORT)
                     .tags(buildTags(null, "grouping_teleport", "minigame", "free_teleport"))
-                    .metadata(Map.of(
-                            "teleport_type", "grouping",
-                            "teleport_id", teleport.getEdgeId(),
-                            "minigame", teleport.getDisplayName()
-                    ))
+                    .metadata(nodeMetadata)
                     .build();
             merged.addNode(node);
             nodesCreated++;
@@ -269,6 +273,14 @@ public class NavigationWebLoader {
             // Create edge from "any_location" to this teleport destination
             // This edge is special - it represents teleporting from anywhere
             // The pathfinding system handles this as a "from anywhere" edge
+            Map<String, String> edgeMetadata = new HashMap<>();
+            edgeMetadata.put("teleport_type", "grouping");
+            edgeMetadata.put("teleport_id", teleport.getEdgeId());
+            edgeMetadata.put("cooldown_minutes", "20");
+            if (teleport.requiresBossCount()) {
+                edgeMetadata.put("required_boss_count", String.valueOf(teleport.getRequiredBossCount()));
+            }
+
             WebEdge edge = WebEdge.builder()
                     .from("any_location")
                     .to(nodeId)
@@ -276,11 +288,7 @@ public class NavigationWebLoader {
                     .costTicks(20) // Grouping teleport takes ~12 seconds = 20 ticks
                     .bidirectional(false)
                     .requirements(reqs)
-                    .metadata(Map.of(
-                            "teleport_type", "grouping",
-                            "teleport_id", teleport.getEdgeId(),
-                            "cooldown_minutes", "20"
-                    ))
+                    .metadata(edgeMetadata)
                     .build();
             merged.addEdge(edge);
             edgesCreated++;

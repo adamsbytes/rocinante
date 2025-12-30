@@ -117,7 +117,8 @@ public class CombatTaskInventoryIntegrationTest {
                 null, // webWalker
                 null, // obstacleHandler
                 null, // planeTransitionHandler
-                inventoryPreparation
+                inventoryPreparation,
+                null  // questService
         );
     }
 

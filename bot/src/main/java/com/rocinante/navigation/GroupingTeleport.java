@@ -169,18 +169,18 @@ public enum GroupingTeleport {
     /**
      * Nightmare Zone - Practice combat minigame.
      * Requires: 5 quest bosses defeated (any of the qualifying quests).
-     * We use a placeholder - actual check is via varbit NIGHTMARE_ZONE_POINTS or similar.
      */
     NIGHTMARE_ZONE(
             "Nightmare Zone",
             new WorldPoint(2606, 3115, 0),
             "nightmare_zone",
-            null, // Complex requirement - checked separately via NMZ varbit
+            null, // Checked via NMZ boss count varbit
             0,
             null,
             0,
             null,
-            0
+            0,
+            5 // Minimum quest bosses defeated
     ),
 
     /**
@@ -376,6 +376,11 @@ public enum GroupingTeleport {
     private final int requiredFavourPercent;
 
     /**
+     * Minimum number of quest bosses defeated required to unlock (NMZ only).
+     */
+    private final int requiredBossCount;
+
+    /**
      * Widget group ID for the Grouping interface.
      * From RuneLite InterfaceID.GROUPING = 76.
      */
@@ -397,6 +402,15 @@ public enum GroupingTeleport {
                      @Nullable Quest requiredQuest, int requiredCombatLevel,
                      @Nullable Skill requiredSkill, int requiredSkillLevel,
                      @Nullable String requiredFavourHouse, int requiredFavourPercent) {
+        this(displayName, destination, edgeId, requiredQuest, requiredCombatLevel,
+                requiredSkill, requiredSkillLevel, requiredFavourHouse, requiredFavourPercent, 0);
+    }
+
+    GroupingTeleport(String displayName, WorldPoint destination, String edgeId,
+                     @Nullable Quest requiredQuest, int requiredCombatLevel,
+                     @Nullable Skill requiredSkill, int requiredSkillLevel,
+                     @Nullable String requiredFavourHouse, int requiredFavourPercent,
+                     int requiredBossCount) {
         this.displayName = displayName;
         this.destination = destination;
         this.edgeId = edgeId;
@@ -406,6 +420,7 @@ public enum GroupingTeleport {
         this.requiredSkillLevel = requiredSkillLevel;
         this.requiredFavourHouse = requiredFavourHouse;
         this.requiredFavourPercent = requiredFavourPercent;
+        this.requiredBossCount = requiredBossCount;
     }
 
     /**
@@ -417,7 +432,8 @@ public enum GroupingTeleport {
         return requiredQuest != null 
                 || requiredCombatLevel > 0 
                 || requiredSkill != null 
-                || requiredFavourHouse != null;
+                || requiredFavourHouse != null
+                || requiredBossCount > 0;
     }
 
     /**
@@ -454,6 +470,22 @@ public enum GroupingTeleport {
      */
     public boolean requiresFavour() {
         return requiredFavourHouse != null && requiredFavourPercent > 0;
+    }
+
+    /**
+     * Check if this teleport requires a minimum quest boss count (NMZ).
+     *
+     * @return true if a boss count requirement exists
+     */
+    public boolean requiresBossCount() {
+        return requiredBossCount > 0;
+    }
+
+    /**
+     * Get the required quest boss count (0 if none).
+     */
+    public int getRequiredBossCount() {
+        return requiredBossCount;
     }
 
     /**

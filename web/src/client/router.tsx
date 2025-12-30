@@ -20,20 +20,20 @@ interface RouterContext {
 
 // Icons as components for cleaner JSX
 const DashboardIcon = () => (
-  <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+  <svg class="w-7 h-7 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
   </svg>
 );
 
 const AddBotIcon = () => (
-  <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+  <svg class="w-7 h-7 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
   </svg>
 );
 
 const CollapseIcon = (props: { collapsed: boolean }) => (
   <svg 
-    class="w-5 h-5 transition-transform duration-200" 
+    class="w-7 h-7 transition-transform duration-200" 
     classList={{ 'rotate-180': props.collapsed }}
     fill="none" 
     stroke="currentColor" 
@@ -44,7 +44,7 @@ const CollapseIcon = (props: { collapsed: boolean }) => (
 );
 
 const LogoIcon = () => (
-  <svg class="w-6 h-6 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+  <svg class="w-7 h-7 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
     <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
   </svg>
 );
@@ -57,17 +57,29 @@ function RootLayout() {
   const viewingBotId = getViewingLogsForBot();
   const [collapsed, setCollapsed] = createPersistedSignal('sidebar-collapsed', false);
 
+  // Shared styles for nav items
+  const navItemBase = "flex items-center rounded-lg hover:bg-[var(--bg-tertiary)] transition-colors";
+
   return (
     <>
       <div class="min-h-screen flex">
         {/* Sidebar - fixed height, no scroll */}
         <aside 
-          class="bg-[var(--bg-secondary)] border-r border-[var(--border)] p-4 flex flex-col h-screen sticky top-0 transition-all duration-200"
-          classList={{ 'w-64': !collapsed(), 'w-16': collapsed() }}
+          class="bg-[var(--bg-secondary)] border-r border-[var(--border)] flex flex-col h-screen sticky top-0 transition-all duration-200"
+          classList={{ 
+            'w-64 p-4': !collapsed(), 
+            'w-16 py-4 items-center': collapsed() 
+          }}
         >
           {/* Header with logo */}
-          <div class="flex items-center gap-2 mb-8 overflow-hidden" classList={{ 'justify-center': collapsed() }}>
-            <span class="text-[var(--accent)]">
+          <div 
+            class="flex items-center flex-shrink-0"
+            classList={{ 
+              'gap-2 mb-6 px-2 h-12': !collapsed(), 
+              'justify-center mb-6 w-12 h-12': collapsed() 
+            }}
+          >
+            <span class="text-[var(--accent)] flex items-center justify-center">
               <LogoIcon />
             </span>
             <Show when={!collapsed()}>
@@ -76,11 +88,16 @@ function RootLayout() {
           </div>
 
           {/* Navigation */}
-          <nav class="flex flex-col gap-2">
+          <nav 
+            class="flex flex-col w-full" 
+            classList={{ 
+              'gap-2': !collapsed(),
+              'gap-4 items-center': collapsed() 
+            }}
+          >
             <Link
               to="/"
-              class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--bg-tertiary)] transition-colors"
-              classList={{ 'justify-center': collapsed() }}
+              class={`${navItemBase} ${collapsed() ? 'w-12 h-12 justify-center' : 'gap-3 px-3 w-full h-12'}`}
               activeProps={{ class: 'bg-[var(--bg-tertiary)] text-[var(--accent)]' }}
               title="Dashboard"
             >
@@ -91,8 +108,7 @@ function RootLayout() {
             </Link>
             <Link
               to="/bots/new"
-              class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--bg-tertiary)] transition-colors"
-              classList={{ 'justify-center': collapsed() }}
+              class={`${navItemBase} ${collapsed() ? 'w-12 h-12 justify-center' : 'gap-3 px-3 w-full h-12'}`}
               activeProps={{ class: 'bg-[var(--bg-tertiary)] text-[var(--accent)]' }}
               title="Add Bot"
             >
@@ -107,21 +123,22 @@ function RootLayout() {
           <div class="flex-1" />
 
           {/* Collapse button at bottom */}
-          <button
-            onClick={() => setCollapsed(!collapsed())}
-            class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-            classList={{ 'justify-center': collapsed() }}
-            title={collapsed() ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            <CollapseIcon collapsed={collapsed()} />
-            <Show when={!collapsed()}>
-              <span class="whitespace-nowrap">Collapse</span>
-            </Show>
-          </button>
+          <div classList={{ 'w-full flex justify-center': collapsed() }}>
+            <button
+              onClick={() => setCollapsed(!collapsed())}
+              class={`${navItemBase} text-[var(--text-secondary)] hover:text-[var(--text-primary)] ${collapsed() ? 'w-12 h-12 justify-center' : 'gap-3 px-3 w-full h-12'}`}
+              title={collapsed() ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              <CollapseIcon collapsed={collapsed()} />
+              <Show when={!collapsed()}>
+                <span class="whitespace-nowrap">Collapse</span>
+              </Show>
+            </button>
+          </div>
         </aside>
 
         {/* Main content */}
-        <main class="flex-1 p-6 overflow-auto">
+        <main class="flex-1 p-6 overflow-auto min-w-0">
           <Outlet />
         </main>
       </div>
@@ -164,4 +181,3 @@ export const routeTree = rootRoute.addChildren([
   botDetailRoute,
   botEditRoute,
 ]);
-

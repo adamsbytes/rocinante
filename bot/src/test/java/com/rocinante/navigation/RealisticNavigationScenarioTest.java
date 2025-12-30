@@ -849,38 +849,68 @@ public class RealisticNavigationScenarioTest {
     /**
      * Test: Charter ship path from Port Sarim to Catherby.
      * Player has coins but no runes - should use charter ships over magic.
-     * 
-     * TODO: Convert charter_ships.json to standard nodes/edges format
      */
     @Test
     public void testTransport_CharterShip_PortSarimToCatherby() {
-        // Charter ships JSON needs conversion to standard format
-        // For now, just verify the base web nodes exist
-        WebNode portSarimDocks = graph.getNode("port_sarim_docks");
-        assertNotNull("Port Sarim docks should exist in base web", portSarimDocks);
-        
-        // TODO: Once charter_ships.json is converted:
-        // - Charter nodes should exist
-        // - Charter edges should exist with costs
-        // - Walk edges should connect charter docks to base web
+        WebNode portSarimCharter = graph.getNode("charter_portsarim");
+        WebNode catherbyCharter = graph.getNode("charter_catherby");
+        assertNotNull("Charter node for Port Sarim should exist", portSarimCharter);
+        assertNotNull("Charter node for Catherby should exist", catherbyCharter);
+
+        // Edge between Port Sarim and Catherby with gold requirement
+        NavigationEdge charterEdge = graph.getEdgesFrom("charter_portsarim").stream()
+                .filter(e -> e.getToNodeId().equals("charter_catherby"))
+                .filter(e -> e.getType() == WebEdgeType.TRANSPORT)
+                .filter(e -> "charter_ship".equals(e.getMetadata("travel_type")))
+                .findFirst()
+                .orElse(null);
+        assertNotNull("Charter edge Port Sarim -> Catherby should exist", charterEdge);
+
+        PlayerRequirements richPlayer = createPlayerWithGold(5000);
+        PlayerRequirements brokePlayer = createPlayerWithGold(0);
+
+        assertTrue("Player with coins should traverse charter edge",
+                richPlayer.canTraverseEdge(charterEdge));
+        assertFalse("Player without coins should fail charter edge",
+                brokePlayer.canTraverseEdge(charterEdge));
+
+        // Walk edge connects charter dock to base web
+        boolean hasWalkConnection = graph.getEdgesFrom("charter_portsarim").stream()
+                .anyMatch(e -> e.getType() == WebEdgeType.WALK && "port_sarim_docks".equals(e.getToNodeId()));
+        assertTrue("Charter dock should connect to base web via walk edge", hasWalkConnection);
     }
     
     /**
      * Test: Spirit tree network is loaded and connected.
-     * 
-     * TODO: Convert spirit_trees.json to standard nodes/edges format
      */
     @Test
     public void testTransport_SpiritTree_NetworkLoaded() {
-        // Spirit trees JSON needs conversion to standard format
-        // For now, verify GE node exists in base web (nearby location)
-        WebNode varrocGE = graph.getNode("varrock_ge");
-        assertNotNull("Varrock GE should exist in base web", varrocGE);
-        
-        // TODO: Once spirit_trees.json is converted:
-        // - Spirit tree nodes should exist at each location
-        // - Spirit tree edges should exist (fully connected network)
-        // - Walk edges should connect trees to nearby base web nodes
+        WebNode strongholdTree = graph.getNode("spirittree_gnomestronghold");
+        WebNode geTree = graph.getNode("spirittree_grandexchange");
+        assertNotNull("Spirit tree - Stronghold should exist", strongholdTree);
+        assertNotNull("Spirit tree - Grand Exchange should exist", geTree);
+
+        NavigationEdge strongholdToGe = graph.getEdgesFrom("spirittree_gnomestronghold").stream()
+                .filter(e -> e.getToNodeId().equals("spirittree_grandexchange"))
+                .filter(e -> e.getType() == WebEdgeType.TRANSPORT)
+                .filter(e -> "spirit_tree".equals(e.getMetadata("travel_type")))
+                .findFirst()
+                .orElse(null);
+
+        assertNotNull("Spirit tree edge Stronghold -> GE should exist", strongholdToGe);
+
+        PlayerRequirements noQuestPlayer = createNewPlayer(); // lacks Tree Gnome Village
+        PlayerRequirements questPlayer = createPlayerWithQuest("Tree Gnome Village");
+
+        assertFalse("Player without quest should not traverse spirit tree edge",
+                noQuestPlayer.canTraverseEdge(strongholdToGe));
+        assertTrue("Player with quest should traverse spirit tree edge",
+                questPlayer.canTraverseEdge(strongholdToGe));
+
+        // Walk connection from GE spirit tree to GE node
+        boolean hasGeWalk = graph.getEdgesFrom("spirittree_grandexchange").stream()
+                .anyMatch(e -> e.getType() == WebEdgeType.WALK && "varrock_ge".equals(e.getToNodeId()));
+        assertTrue("GE spirit tree should connect to base web via walk edge", hasGeWalk);
     }
     
     /**
@@ -1214,6 +1244,39 @@ public class RealisticNavigationScenarioTest {
         }
     }
 
+    /**
+     * Test: Nightmare Zone grouping teleport requires boss count unlock.
+     */
+    @Test
+    public void testTransport_GroupingTeleport_NightmareZoneRequiresBosses() {
+        List<NavigationEdge> groupingEdges = graph.getAllEdges().stream()
+                .filter(e -> e.getType() == WebEdgeType.FREE_TELEPORT)
+                .filter(e -> "grouping".equals(e.getMetadata("teleport_type")))
+                .toList();
+
+        NavigationEdge nmzEdge = groupingEdges.stream()
+                .filter(e -> "nightmare_zone".equals(e.getMetadata("teleport_id")))
+                .findFirst()
+                .orElse(null);
+
+        assertNotNull("Nightmare Zone grouping teleport should exist", nmzEdge);
+        assertEquals("Nightmare Zone grouping teleport should encode required boss count",
+                "5", nmzEdge.getMetadata("required_boss_count"));
+
+        PlayerRequirements locked = createNightmareZonePlayer(false);
+        PlayerRequirements unlocked = createNightmareZonePlayer(true);
+
+        if (locked.isMinigameTeleportAvailable()) {
+            assertFalse("NMZ should be blocked when boss count not met",
+                    locked.canTraverseEdge(nmzEdge));
+        }
+
+        if (unlocked.isMinigameTeleportAvailable()) {
+            assertTrue("NMZ should be traversable when boss count met",
+                    unlocked.canTraverseEdge(nmzEdge));
+        }
+    }
+
     // ========================================================================
     // Helper Methods for Transport Tests
     // ========================================================================
@@ -1319,6 +1382,36 @@ public class RealisticNavigationScenarioTest {
             @Override public boolean isGroupingTeleportUnlocked(String teleportId) { 
                 // New player only has Castle Wars unlocked
                 return "castle_wars".equals(teleportId);
+            }
+            @Override public WorldPoint getHomeTeleportDestination() { return LUMBRIDGE; }
+            @Override public RespawnPoint getActiveRespawnPoint() { return RespawnPoint.LUMBRIDGE; }
+        };
+    }
+
+    private PlayerRequirements createNightmareZonePlayer(boolean unlocked) {
+        return new PlayerRequirements() {
+            @Override public int getAgilityLevel() { return 50; }
+            @Override public int getMagicLevel() { return 50; }
+            @Override public int getCombatLevel() { return 90; }
+            @Override public int getSkillLevel(String skillName) { return 70; }
+            @Override public int getTotalGold() { return 50000; }
+            @Override public int getInventoryGold() { return 50000; }
+            @Override public boolean hasItem(int itemId) { return true; }
+            @Override public boolean hasItem(int itemId, int quantity) { return true; }
+            @Override public boolean isQuestCompleted(Quest quest) { return true; }
+            @Override public boolean isQuestCompleted(String questName) { return true; }
+            @Override public boolean isIronman() { return false; }
+            @Override public boolean isHardcore() { return false; }
+            @Override public boolean isUltimateIronman() { return false; }
+            @Override public double getAcceptableRiskThreshold() { return 0.5; }
+            @Override public boolean shouldAvoidWilderness() { return true; }
+            @Override public boolean isHomeTeleportAvailable() { return true; }
+            @Override public boolean isMinigameTeleportAvailable() { return true; }
+            @Override public boolean isGroupingTeleportUnlocked(String teleportId) {
+                if (!"nightmare_zone".equals(teleportId)) {
+                    return true;
+                }
+                return unlocked;
             }
             @Override public WorldPoint getHomeTeleportDestination() { return LUMBRIDGE; }
             @Override public RespawnPoint getActiveRespawnPoint() { return RespawnPoint.LUMBRIDGE; }

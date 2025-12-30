@@ -8,6 +8,7 @@ import com.rocinante.tasks.TaskContext;
 import com.rocinante.tasks.TaskState;
 import com.rocinante.timing.HumanTimer;
 import com.rocinante.util.Randomization;
+import com.rocinante.util.WidgetInteractionHelpers;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
@@ -170,7 +171,9 @@ public class ShortBreakTask extends BehavioralTask {
     private void performActivity(TaskContext ctx, String activity) throws Exception {
         switch (activity) {
             case "SKILLS_TAB_HOVER":
-                // Would open skills tab and hover - simplified for now
+                // Open skills tab and hover over it
+                WidgetInteractionHelpers.openTabAsync(ctx, WidgetInteractionHelpers.TAB_SKILLS, null).get();
+                humanTimer.sleepSync(randomization.uniformRandomLong(300, 600));
                 ctx.getMouseController().performIdleBehavior().get();
                 humanTimer.sleepSync(randomization.uniformRandomLong(1000, 3000));
                 break;
@@ -181,18 +184,25 @@ public class ShortBreakTask extends BehavioralTask {
                 break;
                 
             case "EQUIPMENT_CHECK":
+                // Open equipment tab and hover over it
+                WidgetInteractionHelpers.openTabAsync(ctx, WidgetInteractionHelpers.TAB_EQUIPMENT, null).get();
+                humanTimer.sleepSync(randomization.uniformRandomLong(300, 600));
                 ctx.getMouseController().performIdleBehavior().get();
                 humanTimer.sleepSync(randomization.uniformRandomLong(1000, 2500));
                 break;
                 
             case "FRIENDS_LIST_CHECK":
+                // Open friends tab and hover over it
+                WidgetInteractionHelpers.openTabAsync(ctx, WidgetInteractionHelpers.TAB_FRIENDS, null).get();
+                humanTimer.sleepSync(randomization.uniformRandomLong(300, 600));
                 ctx.getMouseController().performIdleBehavior().get();
                 humanTimer.sleepSync(randomization.uniformRandomLong(1000, 2000));
                 break;
                 
             case "CAMERA_DRIFT":
-                // Would perform slow camera rotation - simplified
-                humanTimer.sleepSync(randomization.uniformRandomLong(2000, 5000));
+                // Perform slow camera rotation
+                ctx.getCameraController().performIdleDrift().get();
+                humanTimer.sleepSync(randomization.uniformRandomLong(1000, 3000));
                 break;
                 
             case "PURE_AFK":

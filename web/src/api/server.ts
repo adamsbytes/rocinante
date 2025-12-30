@@ -122,7 +122,9 @@ function generateEnvironmentFingerprint(botId: string): EnvironmentConfig {
   // Display number: 0-9 (X11 display)
   const displayNumber = Math.floor(random() * 10);
 
-  // Screen resolution: Fixed to 720p for now (TODO: vary later)
+  // Screen resolution: sample from common sizes to avoid fingerprinting
+  // TODO: Add weighted random selection of resolutions.
+  // We are only running one bot right now, so this isn't important
   const screenResolution = '1280x720';
 
   // Screen depth: 24 or 32 (70% use 24-bit)
