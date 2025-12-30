@@ -1,5 +1,6 @@
 import { createQuery, createMutation, useQueryClient } from '@tanstack/solid-query';
 import type { BotConfig, BotWithStatus, ApiResponse } from '../../shared/types';
+import type { BotFormData } from '../../shared/botSchema';
 
 const API_BASE = '/api';
 
@@ -41,9 +42,6 @@ export function useBotQuery(id: () => string) {
 }
 
 // Mutations
-/** Type for bot creation/update data - excludes server-managed fields */
-type BotFormData = Omit<BotConfig, 'id' | 'environment'>;
-
 export function useCreateBotMutation() {
   const queryClient = useQueryClient();
   return createMutation(() => ({

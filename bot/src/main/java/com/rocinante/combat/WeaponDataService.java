@@ -11,6 +11,7 @@ import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
@@ -39,9 +40,15 @@ public class WeaponDataService {
 
     /** Cache for weapon info. Maps item ID -> CachedWeaponInfo. */
     private final Map<Integer, CachedWeaponInfo> weaponCache = new ConcurrentHashMap<>();
+    /** In-flight wiki lookups by weapon ID to avoid duplicate fetches. */
+    private final Map<Integer, java.util.concurrent.CompletableFuture<WeaponInfo>> inFlightRequests = new ConcurrentHashMap<>();
+    /** Last fetch attempt timestamps to throttle retries on failure. */
+    private final Map<Integer, Long> lastFetchAttemptMs = new ConcurrentHashMap<>();
 
     /** Cache TTL in milliseconds (24 hours). */
     private static final long CACHE_TTL_MS = TimeUnit.HOURS.toMillis(24);
+    /** Minimum interval between fetch retries for the same weapon. */
+    private static final long FETCH_RETRY_MS = TimeUnit.SECONDS.toMillis(5);
 
     /** Common attack animations for different weapon categories (fallback). */
     private static final Map<String, int[]> COMMON_ATTACK_ANIMATIONS = Map.of(
@@ -82,11 +89,8 @@ public class WeaponDataService {
             return cached.attackSpeed();
         }
 
-        // Fetch from wiki (sync for combat-critical data)
-        WeaponInfo info = fetchWeaponInfoSync(weaponId);
-        if (info != null && info.hasKnownAttackSpeed()) {
-            return info.attackSpeed();
-        }
+        // Trigger async fetch; use heuristic until data arrives
+        ensureWeaponInfoFetch(weaponId);
 
         // Fallback: Use weapon category heuristics
         return estimateSpeedFromCategory(weaponId);
@@ -145,6 +149,9 @@ public class WeaponDataService {
             if (cached.isMagic()) return AttackStyle.MAGIC;
             if (cached.isMelee()) return AttackStyle.MELEE;
         }
+
+        // Kick off async fetch so we get improved data soon
+        ensureWeaponInfoFetch(weaponId);
 
         // Default to melee
         return AttackStyle.MELEE;
@@ -210,26 +217,37 @@ public class WeaponDataService {
     }
 
     /**
-     * Fetch weapon info synchronously from wiki.
+     * Kick off an async wiki fetch for weapon data if not already cached or in-flight.
      */
-    @Nullable
-    private WeaponInfo fetchWeaponInfoSync(int weaponId) {
-        String itemName = getItemName(weaponId);
-        if (itemName == null || itemName.isEmpty()) {
-            return null;
+    private void ensureWeaponInfoFetch(int weaponId) {
+        long now = System.currentTimeMillis();
+        Long lastAttempt = lastFetchAttemptMs.get(weaponId);
+        if (lastAttempt != null && (now - lastAttempt) < FETCH_RETRY_MS) {
+            return;
         }
+        lastFetchAttemptMs.put(weaponId, now);
 
-        try {
-            WeaponInfo info = wikiDataService.getWeaponInfoSync(weaponId, itemName);
-            if (info != null && info.isValid()) {
-                weaponCache.put(weaponId, new CachedWeaponInfo(info, System.currentTimeMillis()));
-                return info;
+        inFlightRequests.computeIfAbsent(weaponId, id -> {
+            String itemName = getItemName(id);
+            if (itemName == null || itemName.isEmpty()) {
+                return CompletableFuture.completedFuture(WeaponInfo.EMPTY);
             }
-        } catch (Exception e) {
-            log.debug("Failed to fetch weapon info for {}: {}", itemName, e.getMessage());
-        }
 
-        return null;
+            log.debug("Fetching weapon info async for {}", itemName);
+            return wikiDataService.getWeaponInfo(id, itemName, WikiDataService.Priority.HIGH)
+                    .handle((info, ex) -> {
+                        if (ex != null) {
+                            log.debug("Weapon info fetch failed for {}: {}", itemName, ex.getMessage());
+                            return WeaponInfo.EMPTY;
+                        }
+                        if (info != null && info.isValid()) {
+                            weaponCache.put(id, new CachedWeaponInfo(info, System.currentTimeMillis()));
+                            return info;
+                        }
+                        return WeaponInfo.EMPTY;
+                    })
+                    .whenComplete((info, ex) -> inFlightRequests.remove(id));
+        });
     }
 
     /**

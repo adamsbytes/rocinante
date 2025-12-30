@@ -670,8 +670,8 @@ public class GameStateService {
      */
     @Subscribe
     public void onProjectileMoved(ProjectileMoved event) {
-        worldStateDirty = true;
-        log.trace("WorldState marked dirty: Projectile moved");
+        // Intentionally not marking world state dirty for projectiles to avoid
+        // thrashing the expensive world scan; rely on TTL refresh instead.
     }
 
     /**
@@ -679,8 +679,7 @@ public class GameStateService {
      */
     @Subscribe
     public void onGraphicsObjectCreated(GraphicsObjectCreated event) {
-        worldStateDirty = true;
-        log.trace("WorldState marked dirty: GraphicsObject created");
+        // Same as projectile handling: skip dirtying to keep cache effective.
     }
 
     /**

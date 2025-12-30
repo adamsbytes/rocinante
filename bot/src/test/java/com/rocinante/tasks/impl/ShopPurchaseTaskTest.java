@@ -3,6 +3,7 @@ package com.rocinante.tasks.impl;
 import com.rocinante.input.RobotKeyboardController;
 import com.rocinante.input.RobotMouseController;
 import com.rocinante.input.SafeClickExecutor;
+import com.rocinante.input.MenuHelper;
 import com.rocinante.state.InventoryState;
 import com.rocinante.state.PlayerState;
 import com.rocinante.tasks.TaskContext;
@@ -19,6 +20,7 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
 import java.awt.Rectangle;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -47,6 +49,9 @@ public class ShopPurchaseTaskTest {
 
     @Mock
     private SafeClickExecutor safeClickExecutor;
+
+    @Mock
+    private MenuHelper menuHelper;
 
     @Mock
     private Widget shopWidget;
@@ -81,6 +86,7 @@ public class ShopPurchaseTaskTest {
         when(taskContext.getMouseController()).thenReturn(mouseController);
         when(taskContext.getKeyboardController()).thenReturn(keyboardController);
         when(taskContext.getSafeClickExecutor()).thenReturn(safeClickExecutor);
+        when(taskContext.getMenuHelper()).thenReturn(menuHelper);
         when(taskContext.isLoggedIn()).thenReturn(true);
         when(taskContext.getPlayerState()).thenReturn(playerState);
         when(taskContext.getInventoryState()).thenReturn(inventoryState);
@@ -97,6 +103,10 @@ public class ShopPurchaseTaskTest {
         when(keyboardController.pressKey(anyInt()))
                 .thenReturn(CompletableFuture.completedFuture(null));
 
+        // Default menu helper
+        when(menuHelper.selectMenuEntry(any(Rectangle.class), anyString()))
+                .thenReturn(CompletableFuture.completedFuture(true));
+
         // Default NPC setup
         when(shopkeeperNpc.getId()).thenReturn(NpcID.SHOP_KEEPER);
         when(shopkeeperNpc.getWorldLocation()).thenReturn(new WorldPoint(3202, 3202, 0));
@@ -110,6 +120,9 @@ public class ShopPurchaseTaskTest {
         List<NPC> npcs = new ArrayList<>();
         npcs.add(shopkeeperNpc);
         when(client.getNpcs()).thenReturn(npcs);
+
+        // Default item widget data
+        when(itemWidget.getItemQuantity()).thenReturn(100);
     }
 
     // ========================================================================
@@ -347,6 +360,72 @@ public class ShopPurchaseTaskTest {
     }
 
     @Test
+    public void testExactPurchase_MultiChunk_Completes() {
+        // Shop open and item present
+        when(shopWidget.isHidden()).thenReturn(false);
+        when(client.getWidget(ShopPurchaseTask.WIDGET_SHOP_GROUP, 0)).thenReturn(shopWidget);
+        when(itemWidget.getItemId()).thenReturn(ItemID.BUCKET);
+        when(itemWidget.getBounds()).thenReturn(new Rectangle(100, 100, 32, 32));
+        Widget[] items = new Widget[]{itemWidget};
+        when(shopItemsWidget.getDynamicChildren()).thenReturn(items);
+        when(client.getWidget(ShopPurchaseTask.WIDGET_SHOP_GROUP, 16)).thenReturn(shopItemsWidget);
+
+        // Inventory gains across ticks: start 0, then 6, then 12 (complete)
+        stubInventoryCounts(0, 0, 6, 12, 12);
+
+        ShopPurchaseTask task = ShopPurchaseTask.buy(NpcID.SHOP_KEEPER, ItemID.BUCKET, 12);
+
+        executeUntilTerminal(task, 20);
+
+        assertEquals(TaskState.COMPLETED, task.getState());
+        assertNull(task.getFailureReason());
+    }
+
+    @Test
+    public void testExactPurchase_PartialAllowed_WhenStockShort() {
+        // Shop open and item present
+        when(shopWidget.isHidden()).thenReturn(false);
+        when(client.getWidget(ShopPurchaseTask.WIDGET_SHOP_GROUP, 0)).thenReturn(shopWidget);
+        when(itemWidget.getItemId()).thenReturn(ItemID.BUCKET);
+        when(itemWidget.getBounds()).thenReturn(new Rectangle(100, 100, 32, 32));
+        when(itemWidget.getItemQuantity()).thenReturn(2);
+        Widget[] items = new Widget[]{itemWidget};
+        when(shopItemsWidget.getDynamicChildren()).thenReturn(items);
+        when(client.getWidget(ShopPurchaseTask.WIDGET_SHOP_GROUP, 16)).thenReturn(shopItemsWidget);
+
+        // Inventory gains to 2, then stalls
+        stubInventoryCounts(0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2);
+
+        ShopPurchaseTask task = ShopPurchaseTask.buy(NpcID.SHOP_KEEPER, ItemID.BUCKET, 5);
+
+        executeUntilTerminal(task, 30);
+
+        assertEquals(TaskState.COMPLETED, task.getState());
+    }
+
+    @Test
+    public void testExactPurchase_NoProgress_Fails() {
+        when(shopWidget.isHidden()).thenReturn(false);
+        when(client.getWidget(ShopPurchaseTask.WIDGET_SHOP_GROUP, 0)).thenReturn(shopWidget);
+        when(itemWidget.getItemId()).thenReturn(ItemID.BUCKET);
+        when(itemWidget.getBounds()).thenReturn(new Rectangle(100, 100, 32, 32));
+        when(itemWidget.getItemQuantity()).thenReturn(0);
+        Widget[] items = new Widget[]{itemWidget};
+        when(shopItemsWidget.getDynamicChildren()).thenReturn(items);
+        when(client.getWidget(ShopPurchaseTask.WIDGET_SHOP_GROUP, 16)).thenReturn(shopItemsWidget);
+
+        // No inventory gains
+        stubInventoryCounts(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+
+        ShopPurchaseTask task = ShopPurchaseTask.buy(NpcID.SHOP_KEEPER, ItemID.BUCKET, 3);
+
+        executeUntilTerminal(task, 30);
+
+        assertEquals(TaskState.FAILED, task.getState());
+        assertNotNull(task.getFailureReason());
+    }
+
+    @Test
     public void testScenario_BuyFromDistantShopkeeper() {
         // Shopkeeper is far away
         WorldPoint farPos = new WorldPoint(3220, 3220, 0);
@@ -396,6 +475,24 @@ public class ShopPurchaseTaskTest {
         assertTrue(Arrays.asList(quantities).contains(ShopPurchaseTask.PurchaseQuantity.TEN));
         assertTrue(Arrays.asList(quantities).contains(ShopPurchaseTask.PurchaseQuantity.FIFTY));
         assertTrue(Arrays.asList(quantities).contains(ShopPurchaseTask.PurchaseQuantity.EXACT));
+    }
+
+    // ========================================================================
+    // Helpers
+    // ========================================================================
+
+    private void executeUntilTerminal(ShopPurchaseTask task, int maxTicks) {
+        for (int i = 0; i < maxTicks && !task.getState().isTerminal(); i++) {
+            task.execute(taskContext);
+        }
+    }
+
+    private void stubInventoryCounts(int... counts) {
+        AtomicInteger idx = new AtomicInteger(0);
+        when(inventoryState.countItem(anyInt())).thenAnswer(invocation -> {
+            int i = Math.min(idx.getAndIncrement(), counts.length - 1);
+            return counts[i];
+        });
     }
 }
 

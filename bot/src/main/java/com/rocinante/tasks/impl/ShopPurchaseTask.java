@@ -1,5 +1,6 @@
 package com.rocinante.tasks.impl;
 
+import com.rocinante.input.MenuHelper;
 import com.rocinante.input.SafeClickExecutor;
 import com.rocinante.state.PlayerState;
 import com.rocinante.tasks.AbstractTask;
@@ -545,6 +546,8 @@ public class ShopPurchaseTask extends AbstractTask {
 
     private Widget targetItemWidget;
     private int startItemCount;
+    private int actualPurchased;
+    private int remainingToBuy;
 
     private void executeFindItem(TaskContext ctx) {
         Client client = ctx.getClient();
@@ -563,6 +566,8 @@ public class ShopPurchaseTask extends AbstractTask {
 
         // Store initial inventory count for verification
         startItemCount = ctx.getInventoryState().countItem(itemId);
+        actualPurchased = 0;
+        remainingToBuy = quantityMode == PurchaseQuantity.EXACT ? quantity : getQuantityModeAmount(quantityMode);
 
         phase = ShopPhase.PURCHASE_ITEM;
     }
@@ -598,6 +603,41 @@ public class ShopPurchaseTask extends AbstractTask {
             return;
         }
 
+        if (quantityMode == PurchaseQuantity.EXACT) {
+            if (remainingToBuy <= 0) {
+                complete();
+                return;
+            }
+
+            MenuHelper menuHelper = ctx.getMenuHelper();
+            if (menuHelper == null) {
+                fail("MenuHelper unavailable for exact shop purchase");
+                return;
+            }
+
+            int chunk = chooseChunkSize(remainingToBuy);
+            String action = "Buy " + chunk;
+
+            operationPending = true;
+            menuHelper.selectMenuEntry(bounds, action)
+                    .thenAccept(success -> {
+                        operationPending = false;
+                        if (success) {
+                            waitTicks = 0;
+                            phase = ShopPhase.WAIT_PURCHASE;
+                        } else {
+                            fail("Failed to select menu entry: " + action);
+                        }
+                    })
+                    .exceptionally(e -> {
+                        operationPending = false;
+                        log.error("Exact purchase menu selection failed", e);
+                        fail("Exact purchase failed: " + e.getMessage());
+                        return null;
+                    });
+            return;
+        }
+
         java.awt.Point clickPoint = com.rocinante.input.ClickPointCalculator.getGaussianClickPoint(bounds);
         operationPending = true;
 
@@ -623,12 +663,59 @@ public class ShopPurchaseTask extends AbstractTask {
     private void executeWaitPurchase(TaskContext ctx) {
         waitTicks++;
 
-        // Check if we got the item
         int currentCount = ctx.getInventoryState().countItem(itemId);
-        int expectedGain = quantityMode == PurchaseQuantity.EXACT ? quantity : getQuantityModeAmount(quantityMode);
 
-        if (currentCount > startItemCount) {
-            log.debug("Purchased item successfully (got {})", currentCount - startItemCount);
+        // Track progress for all quantity modes
+        int gained = currentCount - startItemCount;
+        boolean madeProgress = gained > actualPurchased;
+        if (madeProgress) {
+            actualPurchased = gained;
+            waitTicks = 0;
+        }
+
+        if (quantityMode == PurchaseQuantity.EXACT) {
+            remainingToBuy = Math.max(quantity - actualPurchased, 0);
+
+            if (remainingToBuy <= 0) {
+                log.debug("Exact purchase complete: requested {}, got {}", quantity, actualPurchased);
+                if (closeAfter) {
+                    phase = ShopPhase.CLOSE_SHOP;
+                } else {
+                    complete();
+                }
+                return;
+            }
+
+            if (madeProgress) {
+                // Continue buying remaining amount
+                phase = ShopPhase.PURCHASE_ITEM;
+                return;
+            }
+
+            int availableStock = targetItemWidget != null ? targetItemWidget.getItemQuantity() : -1;
+            boolean outOfStock = availableStock == 0;
+
+            if (waitTicks > PURCHASE_TIMEOUT) {
+                if (actualPurchased > 0) {
+                    log.warn("Partial purchase: requested {}, acquired {}, remaining {}",
+                            quantity, actualPurchased, remainingToBuy);
+                    if (closeAfter) {
+                        phase = ShopPhase.CLOSE_SHOP;
+                    } else {
+                        complete();
+                    }
+                } else {
+                    String reason = outOfStock ? "Shop is out of stock" : "Exact purchase timed out (no progress)";
+                    fail(reason);
+                }
+            }
+            return;
+        }
+
+        // Non-exact modes: expect a single increment
+        int expectedGain = getQuantityModeAmount(quantityMode);
+        if (gained >= expectedGain) {
+            log.debug("Purchased item successfully (got {})", gained);
             if (closeAfter) {
                 phase = ShopPhase.CLOSE_SHOP;
             } else {
@@ -638,13 +725,7 @@ public class ShopPurchaseTask extends AbstractTask {
         }
 
         if (waitTicks > PURCHASE_TIMEOUT) {
-            // Might have failed (no money, item out of stock)
-            log.warn("Purchase may have failed, assuming success");
-            if (closeAfter) {
-                phase = ShopPhase.CLOSE_SHOP;
-            } else {
-                complete();
-            }
+            fail("Purchase timed out with no progress");
         }
     }
 
@@ -656,6 +737,22 @@ public class ShopPurchaseTask extends AbstractTask {
             case FIFTY: return 50;
             default: return 1;
         }
+    }
+
+    /**
+     * Choose the menu chunk size for exact purchases, preferring larger buy options first.
+     */
+    private int chooseChunkSize(int remaining) {
+        if (remaining >= 50) {
+            return 50;
+        }
+        if (remaining >= 10) {
+            return 10;
+        }
+        if (remaining >= 5) {
+            return 5;
+        }
+        return 1;
     }
 
     // ========================================================================

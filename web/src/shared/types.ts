@@ -39,14 +39,40 @@ export interface EnvironmentConfig {
   gcAlgorithm: 'G1GC' | 'ParallelGC' | 'ZGC';
 }
 
+export type LampSkill =
+  | 'ATTACK'
+  | 'STRENGTH'
+  | 'DEFENCE'
+  | 'RANGED'
+  | 'PRAYER'
+  | 'MAGIC'
+  | 'HITPOINTS'
+  | 'AGILITY'
+  | 'HERBLORE'
+  | 'THIEVING'
+  | 'CRAFTING'
+  | 'FLETCHING'
+  | 'SLAYER'
+  | 'HUNTER'
+  | 'MINING'
+  | 'SMITHING'
+  | 'FISHING'
+  | 'COOKING'
+  | 'FIREMAKING'
+  | 'WOODCUTTING'
+  | 'FARMING'
+  | 'RUNECRAFT'
+  | 'CONSTRUCTION';
+
 export interface BotConfig {
   id: string;
   name: string;
   username: string;  // Jagex account email
   password: string;  // Jagex account password
-  totpSecret?: string;  // Optional: Base32 TOTP secret for 2FA
-  characterName?: string;  // Optional: Desired character name for new accounts
-  preferredWorld?: number;  // Optional: Default world to use (defaults to 301 F2P)
+  totpSecret: string;  // Required: Base32 TOTP secret for Jagex 2FA (email codes unsupported)
+  characterName: string;  // Required: Character name to use in game (max 12 chars)
+  preferredWorld?: number;  // Optional: Default world to use (defaults to 418 F2P)
+  lampSkill: LampSkill; // Required: skill to apply Genie lamps
   proxy: ProxyConfig | null;
   ironman: IronmanConfig;
   resources: ResourceConfig;

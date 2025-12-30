@@ -207,7 +207,7 @@ export async function startBot(bot: BotConfig): Promise<void> {
     env.push(`CHARACTER_NAME=${bot.characterName}`);
   }
 
-  // Add preferred world if provided (defaults to 301 F2P in entrypoint)
+  // Add preferred world if provided (defaults to 418 F2P in entrypoint)
   if (bot.preferredWorld) {
     env.push(`PREFERRED_WORLD=${bot.preferredWorld}`);
   }
@@ -218,6 +218,11 @@ export async function startBot(bot: BotConfig): Promise<void> {
     if (bot.proxy.user) env.push(`PROXY_USER=${bot.proxy.user}`);
     if (bot.proxy.pass) env.push(`PROXY_PASS=${bot.proxy.pass}`);
   }
+
+  if (!bot.lampSkill) {
+    throw new Error(`Bot ${bot.id} missing required lampSkill`);
+  }
+  env.push(`LAMP_SKILL=${bot.lampSkill}`);
 
   if (bot.ironman.enabled) {
     env.push(`IRONMAN_MODE=true`);

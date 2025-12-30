@@ -7,6 +7,7 @@ import com.rocinante.quest.QuestService;
 import com.rocinante.state.PlayerState;
 import com.rocinante.tasks.Task;
 import com.rocinante.tasks.TaskExecutor;
+import com.rocinante.util.IoExecutor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
@@ -73,6 +74,7 @@ public class StatusPublisher {
 
     private final Client client;
     private final Provider<GameStateService> gameStateServiceProvider;
+    private final IoExecutor ioExecutor;
     
     @Setter
     @Nullable
@@ -140,9 +142,12 @@ public class StatusPublisher {
     private volatile BotStatus lastStatus;
 
     @Inject
-    public StatusPublisher(Client client, Provider<GameStateService> gameStateServiceProvider) {
+    public StatusPublisher(Client client,
+                           Provider<GameStateService> gameStateServiceProvider,
+                           IoExecutor ioExecutor) {
         this.client = client;
         this.gameStateServiceProvider = gameStateServiceProvider;
+        this.ioExecutor = ioExecutor;
         
         // Initialize status directory
         initializeStatusDirectory();
@@ -435,25 +440,32 @@ public class StatusPublisher {
     public void writeStatus() {
         try {
             BotStatus status = captureStatus();
-            String json = status.toJson();
-            
-            // Write atomically by writing to temp file first
-            Path tempPath = statusFilePath.resolveSibling(STATUS_FILE_NAME + ".tmp");
-            Files.writeString(tempPath, json, StandardCharsets.UTF_8,
-                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-            Files.move(tempPath, statusFilePath, 
-                    java.nio.file.StandardCopyOption.REPLACE_EXISTING,
-                    java.nio.file.StandardCopyOption.ATOMIC_MOVE);
-            
-            lastWriteTime = System.currentTimeMillis();
-            lastStatus = status;
-            
-            log.trace("Status written to {}", statusFilePath);
-        } catch (IOException e) {
-            log.warn("Failed to write status file: {} - {}", statusFilePath, e.toString());
+            submitStatusWrite(status);
         } catch (Exception e) {
             log.error("Error capturing status", e);
         }
+    }
+
+    private void submitStatusWrite(BotStatus status) {
+        log.debug("Submitting status write (io queue size={})", ioExecutor.getQueueSize());
+
+        ioExecutor.submit(() -> {
+            try {
+                String json = status.toJson();
+                Path tempPath = statusFilePath.resolveSibling(STATUS_FILE_NAME + ".tmp");
+                Files.writeString(tempPath, json, StandardCharsets.UTF_8,
+                        StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+                Files.move(tempPath, statusFilePath,
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                        java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+
+                lastWriteTime = System.currentTimeMillis();
+                lastStatus = status;
+                log.trace("Status written to {}", statusFilePath);
+            } catch (IOException e) {
+                log.warn("Failed to write status file: {} - {}", statusFilePath, e.toString());
+            }
+        });
     }
 
     /**

@@ -51,12 +51,14 @@ public class RequirementTranslator {
      */
     public StateCondition translate(Object qhRequirement) {
         if (qhRequirement == null) {
-            log.warn("Null requirement passed to translator - blocking progress for safety");
-            return StateCondition.never();
+            log.warn("Null requirement passed to translator - treating as unmet");
+            return ctx -> false;
         }
 
         String className = qhRequirement.getClass().getSimpleName();
         log.debug("Translating requirement: {}", className);
+
+        StateCondition checkWrapper = requirementCheckCondition(qhRequirement);
 
         try {
             switch (className) {
@@ -92,7 +94,6 @@ public class RequirementTranslator {
                 case "ChatMessageCondition":
                 case "ChatMessageRequirement":
                 case "MultiChatMessageRequirement":
-                    // Chat conditions need special runtime handling - track via event system
                     return translateChatMessageRequirement(qhRequirement);
                 case "DialogRequirement":
                     return translateDialogRequirement(qhRequirement);
@@ -131,20 +132,20 @@ public class RequirementTranslator {
                 case "NoItemRequirement":
                     return translateNoItemRequirement(qhRequirement);
                 case "StepIsActiveRequirement":
-                    // Step state tracking - requires runtime quest step state
-                    log.warn("StepIsActiveRequirement cannot be evaluated statically - blocking progress for safety");
-                    return StateCondition.never();
+                    // Delegate to Quest Helper check
+                    log.warn("StepIsActiveRequirement cannot be evaluated statically - deferring to check()");
+                    return checkWrapper != null ? checkWrapper : StateCondition.never();
                 case "ConfigRequirement":
-                    // Config-based requirements are RuneLite client settings - cannot be evaluated
-                    log.warn("ConfigRequirement requires RuneLite config access - blocking progress for safety");
-                    return StateCondition.never();
+                    // Config-based requirements are RuneLite client settings - defer to check()
+                    log.warn("ConfigRequirement requires RuneLite config access - deferring to check()");
+                    return checkWrapper != null ? checkWrapper : StateCondition.never();
                 default:
-                    log.error("Unknown requirement type '{}' - blocking progress for safety", className);
-                    return StateCondition.never();
+                    log.error("Unknown requirement type '{}' - deferring to check()", className);
+                    return checkWrapper != null ? checkWrapper : StateCondition.never();
             }
         } catch (Exception e) {
-            log.error("Failed to translate requirement {} - blocking progress for safety: {}", className, e.getMessage());
-            return StateCondition.never();
+            log.error("Failed to translate requirement {} - deferring to check(): {}", className, e.getMessage());
+            return checkWrapper != null ? checkWrapper : StateCondition.never();
         }
     }
 
@@ -358,16 +359,18 @@ public class RequirementTranslator {
         int requiredLevel = getIntField(req, "requiredLevel");
 
         if (skillObj == null) {
-            log.warn("SkillRequirement has null skill - blocking progress for safety");
-            return StateCondition.never();
+            log.warn("SkillRequirement has null skill - deferring to check()");
+            StateCondition wrapper = requirementCheckCondition(req);
+            return wrapper != null ? wrapper : StateCondition.never();
         }
 
         String skillName = skillObj.toString().toLowerCase();
         int skillId = getSkillId(skillName);
         
         if (skillId < 0) {
-            log.warn("SkillRequirement has unknown skill '{}' - blocking progress for safety", skillName);
-            return StateCondition.never();
+            log.warn("SkillRequirement has unknown skill '{}' - deferring to check()", skillName);
+            StateCondition wrapper = requirementCheckCondition(req);
+            return wrapper != null ? wrapper : StateCondition.never();
         }
 
         return ctx -> ctx.getClient().getRealSkillLevel(net.runelite.api.Skill.values()[skillId]) >= requiredLevel;
@@ -388,8 +391,9 @@ public class RequirementTranslator {
     private StateCondition translateQuestRequirement(Object req) throws Exception {
         Object questObj = getFieldValue(req, "quest");
         if (questObj == null) {
-            log.warn("QuestRequirement has null quest - blocking progress for safety");
-            return StateCondition.never();
+            log.warn("QuestRequirement has null quest - deferring to check()");
+            StateCondition wrapper = requirementCheckCondition(req);
+            return wrapper != null ? wrapper : StateCondition.never();
         }
 
         // Quest Helper's Quest enum - try to get the Quest enum value and check completion
@@ -404,12 +408,14 @@ public class RequirementTranslator {
                     return ctx -> matchedQuest.getState(ctx.getClient()) == net.runelite.api.QuestState.FINISHED;
                 }
             }
-            log.warn("QuestRequirement could not find matching quest '{}' - blocking progress for safety", questName);
-            return StateCondition.never();
+            log.warn("QuestRequirement could not find matching quest '{}' - deferring to check()", questName);
+            StateCondition wrapper = requirementCheckCondition(req);
+            return wrapper != null ? wrapper : StateCondition.never();
         } catch (Exception e) {
-            log.warn("QuestRequirement translation failed for '{}' - blocking progress for safety: {}", 
+            log.warn("QuestRequirement translation failed for '{}' - deferring to check(): {}", 
                     questObj, e.getMessage());
-            return StateCondition.never();
+            StateCondition wrapper = requirementCheckCondition(req);
+            return wrapper != null ? wrapper : StateCondition.never();
         }
     }
 
@@ -500,7 +506,11 @@ public class RequirementTranslator {
             }
             
             // For non-active, we'd need event tracking - cannot evaluate statically
-            log.warn("DialogRequirement with mustBeActive=false requires event tracking - blocking progress for safety: {}", textList);
+            StateCondition wrapper = requirementCheckCondition(req);
+            if (wrapper != null) {
+                return wrapper;
+            }
+            log.warn("DialogRequirement with mustBeActive=false missing check() wrapper, blocking progress: {}", textList);
             return StateCondition.never();
             
         } catch (Exception e) {
@@ -549,6 +559,11 @@ public class RequirementTranslator {
                 }
             }
             
+            StateCondition wrapper = requirementCheckCondition(req);
+            if (wrapper != null) {
+                return wrapper;
+            }
+
             log.warn("RuneliteRequirement uses config storage, cannot directly evaluate '{}' - blocking progress for safety", identifier);
             return StateCondition.never();
             
@@ -633,9 +648,11 @@ public class RequirementTranslator {
      * These require event tracking and are evaluated based on historical chat messages.
      */
     private StateCondition translateChatMessageRequirement(Object req) {
-        // Chat message requirements need event-based tracking
-        // Cannot evaluate statically - block progress for safety
-        log.warn("ChatMessageRequirement requires event tracking - blocking progress for safety");
+        StateCondition wrapper = requirementCheckCondition(req);
+        if (wrapper != null) {
+            return wrapper;
+        }
+        log.warn("ChatMessageRequirement missing check() wrapper - blocking progress for safety");
         return StateCondition.never();
     }
 
@@ -959,6 +976,26 @@ public class RequirementTranslator {
             }
         }
         return null;
+    }
+
+    /**
+     * Wrap Quest Helper Requirement.check(client) into a StateCondition.
+     */
+    private StateCondition requirementCheckCondition(Object requirement) {
+        try {
+            Method checkMethod = requirement.getClass().getMethod("check", net.runelite.api.Client.class);
+            return ctx -> {
+                try {
+                    Object result = checkMethod.invoke(requirement, ctx.getClient());
+                    return Boolean.TRUE.equals(result);
+                } catch (Exception e) {
+                    log.trace("Requirement check failed for {}: {}", requirement.getClass().getSimpleName(), e.getMessage());
+                    return false;
+                }
+            };
+        } catch (NoSuchMethodException e) {
+            return null;
+        }
     }
 }
 

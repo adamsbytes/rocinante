@@ -11,7 +11,11 @@ import com.rocinante.data.model.ShopInventory;
 import com.rocinante.data.model.WeaponInfo;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
-import okhttp3.*;
+import com.rocinante.util.IoExecutor;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
 
 import javax.annotation.Nullable;
 import javax.inject.Inject;
@@ -22,7 +26,11 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -206,7 +214,7 @@ public class WikiDataService {
     private final AtomicInteger circuitOpenCount = new AtomicInteger(0);
 
     /**
-     * Executor for async operations.
+     * Executor for async operations (shared I/O thread).
      */
     private final ExecutorService executor;
 
@@ -214,6 +222,11 @@ public class WikiDataService {
      * Priority queue for requests.
      */
     private final PriorityBlockingQueue<PrioritizedRequest> requestQueue;
+
+    /**
+     * Ensures only one request is processed at a time on the shared executor.
+     */
+    private final AtomicBoolean processing = new AtomicBoolean(false);
 
     /**
      * Whether the service is shutting down.
@@ -283,10 +296,13 @@ public class WikiDataService {
     // ========================================================================
 
     @Inject
-    public WikiDataService(WikiCacheManager cacheManager, WikiTemplateParser templateParser) {
+    public WikiDataService(WikiCacheManager cacheManager,
+                           WikiTemplateParser templateParser,
+                           IoExecutor ioExecutor) {
         this.cacheManager = cacheManager;
         this.templateParser = templateParser;
         this.gson = new Gson();
+        this.executor = ioExecutor.getExecutor();
 
         // Configure OkHttpClient with proper headers
         this.httpClient = new OkHttpClient.Builder()
@@ -306,38 +322,7 @@ public class WikiDataService {
         // Request queue with priority ordering
         this.requestQueue = new PriorityBlockingQueue<>();
 
-        // Single-threaded executor for sequential request processing
-        this.executor = Executors.newSingleThreadExecutor(r -> {
-            Thread t = new Thread(r, "WikiDataService-Worker");
-            t.setDaemon(true);
-            return t;
-        });
-
-        // Start request processor
-        startRequestProcessor();
-
         log.info("WikiDataService initialized with User-Agent: {}", USER_AGENT);
-    }
-
-    /**
-     * Start the background request processor.
-     */
-    private void startRequestProcessor() {
-        executor.submit(() -> {
-            while (!shuttingDown) {
-                try {
-                    PrioritizedRequest request = requestQueue.poll(1, TimeUnit.SECONDS);
-                    if (request != null) {
-                        processRequest(request);
-                    }
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                } catch (Exception e) {
-                    log.error("Error processing wiki request", e);
-                }
-            }
-        });
     }
 
     /**
@@ -378,6 +363,36 @@ public class WikiDataService {
         } catch (Exception e) {
             request.future.completeExceptionally(e);
             onFailure(e);
+        }
+    }
+
+    /**
+     * Schedule processing of the next request on the shared I/O executor.
+     */
+    private void scheduleProcessing() {
+        if (processing.compareAndSet(false, true)) {
+            executor.submit(this::processNext);
+        }
+    }
+
+    /**
+     * Drain a single request from the queue (to preserve priority ordering)
+     * and process it. Re-schedules itself if more work remains.
+     */
+    private void processNext() {
+        try {
+            PrioritizedRequest request = requestQueue.poll();
+            if (request == null) {
+                return;
+            }
+            processRequest(request);
+        } catch (Exception e) {
+            log.error("Error processing wiki request", e);
+        } finally {
+            processing.set(false);
+            if (!requestQueue.isEmpty()) {
+                scheduleProcessing();
+            }
         }
     }
 
@@ -795,6 +810,7 @@ public class WikiDataService {
         PrioritizedRequest request = new PrioritizedRequest(
                 priority, System.nanoTime(), url, future);
         requestQueue.offer(request);
+        scheduleProcessing();
         return future;
     }
 

@@ -114,6 +114,21 @@ public interface Quest {
     }
 
     /**
+     * Check if quest is complete with access to the live client.
+     *
+     * By default this delegates to {@link #isComplete(int)}. Implementations that
+     * need richer checks (e.g., Quest Helper state, RuneLite Quest state) should
+     * override this to avoid varbit-only shortcuts.
+     *
+     * @param currentVarbitValue current progress var value (or -1 if unknown)
+     * @param client the RuneLite client (may be null in tests)
+     * @return true if the quest is complete
+     */
+    default boolean isComplete(int currentVarbitValue, net.runelite.api.Client client) {
+        return isComplete(currentVarbitValue);
+    }
+
+    /**
      * Check if this quest has been started.
      *
      * @param currentVarbitValue the current progress varbit value

@@ -35,6 +35,7 @@ import {
   getQuestsFiltered,
 } from './data';
 import type { ApiResponse, BotConfig, BotWithStatus, BotRuntimeStatus, LocationInfo, EnvironmentConfig } from '../shared/types';
+import { botFormSchema, type BotFormData } from '../shared/botSchema';
 
 const PORT = parseInt(process.env.PORT || '3000');
 
@@ -67,6 +68,10 @@ function success<T>(data: T): Response {
 
 function error(message: string, status = 400): Response {
   return json<ApiResponse<never>>({ success: false, error: message }, status);
+}
+
+function formatValidationErrors(issues: Array<{ message: string }>): string {
+  return issues.map((issue) => issue.message).join('; ');
 }
 
 // =============================================================================
@@ -278,6 +283,13 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
   if (path === '/api/bots' && method === 'POST') {
     try {
       const body = await req.json();
+      const parsed = botFormSchema.safeParse(body);
+
+      if (!parsed.success) {
+        return error(`Invalid bot configuration: ${formatValidationErrors(parsed.error.issues)}`, 400);
+      }
+
+      const botData: BotFormData = parsed.data;
       const botId = randomUUIDv7();
       
       // Generate environment fingerprint data (deterministic from bot ID)
@@ -285,15 +297,7 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
 
       const newBot: BotConfig = {
         id: botId,
-        name: body.name,
-        username: body.username,
-        password: body.password,
-        totpSecret: body.totpSecret || undefined,
-        characterName: body.characterName || undefined,
-        preferredWorld: body.preferredWorld || undefined,
-        proxy: body.proxy || null,
-        ironman: body.ironman || { enabled: false, type: null, hcimSafetyLevel: null },
-        resources: body.resources || { cpuLimit: '1.0', memoryLimit: '2G' },
+        ...botData,
         // Environment fingerprint (auto-generated, deterministic per bot)
         environment,
       };
@@ -327,9 +331,13 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
     if (method === 'PUT') {
       try {
         const body = await req.json();
-        // Prevent updating auto-generated environment config
-        const { environment: _, ...updates } = body;
-        const updated = await updateBot(botId, updates);
+        const parsed = botFormSchema.safeParse(body);
+
+        if (!parsed.success) {
+          return error(`Invalid bot configuration: ${formatValidationErrors(parsed.error.issues)}`, 400);
+        }
+
+        const updated = await updateBot(botId, parsed.data);
         if (!updated) {
           return error('Bot not found', 404);
         }

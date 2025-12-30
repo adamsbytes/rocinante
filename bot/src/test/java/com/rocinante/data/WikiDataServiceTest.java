@@ -22,12 +22,14 @@ public class WikiDataServiceTest {
     private WikiCacheManager cacheManager;
     private WikiTemplateParser templateParser;
     private WikiDataService wikiDataService;
+    private com.rocinante.util.IoExecutor ioExecutor;
 
     @Before
     public void setUp() {
         cacheManager = new WikiCacheManager();
         templateParser = new WikiTemplateParser();
-        wikiDataService = new WikiDataService(cacheManager, templateParser);
+        ioExecutor = new com.rocinante.util.IoExecutor();
+        wikiDataService = new WikiDataService(cacheManager, templateParser, ioExecutor);
 
         // Clear cache to ensure fresh fetches
         cacheManager.invalidateAll();
@@ -37,6 +39,7 @@ public class WikiDataServiceTest {
     public void tearDown() {
         wikiDataService.shutdown();
         cacheManager.invalidateAll();
+        ioExecutor.shutdown();
     }
 
     // ========================================================================

@@ -1,67 +1,129 @@
 import { type Component, createSignal } from 'solid-js';
-import type { BotConfig } from '../../shared/types';
+import type { BotConfig, LampSkill } from '../../shared/types';
+import { botFormSchema, type BotFormData } from '../../shared/botSchema';
 
 interface BotFormProps {
   initialData?: BotConfig;
-  onSubmit: (data: Omit<BotConfig, 'id' | 'environment'>) => void;
+  onSubmit: (data: BotFormData) => void;
   isLoading?: boolean;
   submitLabel?: string;
 }
 
 export const BotForm: Component<BotFormProps> = (props) => {
-  const [name, setName] = createSignal(props.initialData?.name ?? '');
-  const [username, setUsername] = createSignal(props.initialData?.username ?? '');
-  const [password, setPassword] = createSignal(props.initialData?.password ?? '');
-  const [totpSecret, setTotpSecret] = createSignal(props.initialData?.totpSecret ?? '');
-  const [characterName, setCharacterName] = createSignal(props.initialData?.characterName ?? '');
-  const [preferredWorld, setPreferredWorld] = createSignal(props.initialData?.preferredWorld ?? 301);
+  const data = props.initialData || null;
+
+  const [name, setName] = createSignal(data ? data.name : '');
+  const [username, setUsername] = createSignal(data ? data.username : '');
+  const [password, setPassword] = createSignal(data ? data.password : '');
+  const [totpSecret, setTotpSecret] = createSignal(data ? data.totpSecret : '');
+  const [characterName, setCharacterName] = createSignal(data ? data.characterName : '');
+  const lampSkillOptions: readonly LampSkill[] = [
+    'ATTACK',
+    'STRENGTH',
+    'DEFENCE',
+    'RANGED',
+    'PRAYER',
+    'MAGIC',
+    'HITPOINTS',
+    'AGILITY',
+    'HERBLORE',
+    'THIEVING',
+    'CRAFTING',
+    'FLETCHING',
+    'SLAYER',
+    'HUNTER',
+    'MINING',
+    'SMITHING',
+    'FISHING',
+    'COOKING',
+    'FIREMAKING',
+    'WOODCUTTING',
+    'FARMING',
+    'RUNECRAFT',
+    'CONSTRUCTION',
+  ];
+
+  type CpuOption = '0.5' | '1.0' | '1.5' | '2.0';
+  const cpuOptions: ReadonlyArray<CpuOption> = ['0.5', '1.0', '1.5', '2.0'];
+  type MemoryOption = '1G' | '2G' | '3G' | '4G';
+  const memoryOptions: ReadonlyArray<MemoryOption> = ['1G', '2G', '3G', '4G'];
+
+  const [lampSkill, setLampSkill] = createSignal<LampSkill>(data ? data.lampSkill : lampSkillOptions[0]);
+  const [preferredWorld, setPreferredWorld] = createSignal(data && data.preferredWorld !== undefined ? data.preferredWorld : 418);
 
   // Proxy
-  const [proxyEnabled, setProxyEnabled] = createSignal(!!props.initialData?.proxy);
-  const [proxyHost, setProxyHost] = createSignal(props.initialData?.proxy?.host ?? '');
-  const [proxyPort, setProxyPort] = createSignal(props.initialData?.proxy?.port ?? 8080);
-  const [proxyUser, setProxyUser] = createSignal(props.initialData?.proxy?.user ?? '');
-  const [proxyPass, setProxyPass] = createSignal(props.initialData?.proxy?.pass ?? '');
+  const proxyData = data && data.proxy ? data.proxy : null;
+  const [proxyEnabled, setProxyEnabled] = createSignal(!!proxyData);
+  const [proxyHost, setProxyHost] = createSignal(proxyData ? proxyData.host : '');
+  const [proxyPort, setProxyPort] = createSignal(proxyData ? proxyData.port : 8080);
+  const [proxyUser, setProxyUser] = createSignal(proxyData && proxyData.user ? proxyData.user : '');
+  const [proxyPass, setProxyPass] = createSignal(proxyData && proxyData.pass ? proxyData.pass : '');
 
   // Ironman - single dropdown for account type
-  const getInitialAccountType = () => {
-    if (!props.initialData?.ironman.enabled) return 'NORMAL';
-    return props.initialData.ironman.type ?? 'NORMAL';
+  type AccountTypeOption = 'NORMAL' | 'STANDARD_IRONMAN' | 'HARDCORE_IRONMAN' | 'ULTIMATE_IRONMAN';
+  const getInitialAccountType = (): AccountTypeOption => {
+    if (!data) return 'NORMAL';
+    if (!data.ironman.enabled) return 'NORMAL';
+    return data.ironman.type ? data.ironman.type as AccountTypeOption : 'NORMAL';
   };
-  const [accountType, setAccountType] = createSignal<'NORMAL' | 'STANDARD_IRONMAN' | 'HARDCORE_IRONMAN' | 'ULTIMATE_IRONMAN'>(getInitialAccountType());
-  const [hcimSafety, setHcimSafety] = createSignal(props.initialData?.ironman.hcimSafetyLevel ?? 'NORMAL');
+  const [accountType, setAccountType] = createSignal<AccountTypeOption>(getInitialAccountType());
+  const initialHcimSafety = data && data.ironman && data.ironman.hcimSafetyLevel ? data.ironman.hcimSafetyLevel : 'NORMAL';
+  const [hcimSafety, setHcimSafety] = createSignal<'NORMAL' | 'CAUTIOUS' | 'PARANOID'>(initialHcimSafety);
 
   // Resources
-  const [cpuLimit, setCpuLimit] = createSignal(props.initialData?.resources.cpuLimit ?? '1.0');
-  const [memoryLimit, setMemoryLimit] = createSignal(props.initialData?.resources.memoryLimit ?? '2G');
+  const initialCpuLimit = cpuOptions.find((opt) => data && data.resources.cpuLimit === opt) || '1.0';
+  const initialMemoryLimit = memoryOptions.find((opt) => data && data.resources.memoryLimit === opt) || '2G';
+  const [cpuLimit, setCpuLimit] = createSignal<CpuOption>(initialCpuLimit);
+  const [memoryLimit, setMemoryLimit] = createSignal<MemoryOption>(initialMemoryLimit);
+  const [errors, setErrors] = createSignal<string[]>([]);
+
+  const isLampSkill = (value: string): value is LampSkill => lampSkillOptions.some((opt) => opt === value);
+  const isCpuOption = (value: string): value is CpuOption => cpuOptions.some((opt) => opt === value);
+  const isMemoryOption = (value: string): value is MemoryOption => memoryOptions.some((opt) => opt === value);
+  const isHcimSafety = (value: string): value is 'NORMAL' | 'CAUTIOUS' | 'PARANOID' =>
+    value === 'NORMAL' || value === 'CAUTIOUS' || value === 'PARANOID';
+
+  const toIronmanType = (value: AccountTypeOption) =>
+    value === 'STANDARD_IRONMAN' || value === 'HARDCORE_IRONMAN' || value === 'ULTIMATE_IRONMAN' ? value : null;
 
   const handleSubmit = (e: Event) => {
     e.preventDefault();
-    props.onSubmit({
+
+    const formData: BotFormData = {
       name: name(),
       username: username(),
       password: password(),
-      totpSecret: totpSecret() || undefined,
-      characterName: characterName() || undefined,
-      preferredWorld: preferredWorld() || undefined,
+      totpSecret: totpSecret(),
+      characterName: characterName(),
+      lampSkill: lampSkill(),
+      preferredWorld: Number.isFinite(preferredWorld()) ? preferredWorld() : undefined,
       proxy: proxyEnabled()
         ? {
-            host: proxyHost(),
+            host: proxyHost().trim(),
             port: proxyPort(),
-            user: proxyUser() || undefined,
+            user: proxyUser().trim() || undefined,
             pass: proxyPass() || undefined,
           }
         : null,
       ironman: {
         enabled: accountType() !== 'NORMAL',
-        type: accountType() !== 'NORMAL' ? (accountType() as 'STANDARD_IRONMAN' | 'HARDCORE_IRONMAN' | 'ULTIMATE_IRONMAN') : null,
+        type: toIronmanType(accountType()),
         hcimSafetyLevel: accountType() === 'HARDCORE_IRONMAN' ? hcimSafety() : null,
       },
       resources: {
         cpuLimit: cpuLimit(),
         memoryLimit: memoryLimit(),
       },
-    });
+    };
+
+    const parsed = botFormSchema.safeParse(formData);
+    if (!parsed.success) {
+      setErrors(parsed.error.issues.map((issue) => issue.message));
+      return;
+    }
+
+    setErrors([]);
+    props.onSubmit(parsed.data);
   };
 
   const inputClass = 'w-full px-3 py-2 bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg focus:outline-none focus:border-[var(--accent)]';
@@ -69,6 +131,16 @@ export const BotForm: Component<BotFormProps> = (props) => {
 
   return (
     <form onSubmit={handleSubmit} class="space-y-6 max-w-2xl">
+      {errors().length > 0 && (
+        <div class="space-y-2 rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-red-100">
+          <p class="font-semibold">Fix the highlighted issues:</p>
+          <ul class="list-disc space-y-1 pl-5 text-sm">
+            {errors().map((err) => (
+              <li>{err}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       {/* Basic Info */}
       <section class="space-y-4">
         <h3 class="text-lg font-semibold border-b border-[var(--border)] pb-2">Account Details</h3>
@@ -107,20 +179,21 @@ export const BotForm: Component<BotFormProps> = (props) => {
           </div>
         </div>
         <div>
-          <label class={labelClass}>2FA TOTP Secret (optional)</label>
+          <label class={labelClass}>2FA TOTP Secret</label>
           <input
             type="password"
             value={totpSecret()}
             onInput={(e) => setTotpSecret(e.currentTarget.value)}
             class={inputClass}
             placeholder="Base32 secret from authenticator setup"
+            required
           />
           <p class="text-xs text-[var(--text-secondary)] mt-1">
-            Required if your Jagex account has authenticator enabled. This is the secret key shown during 2FA setup (not the 6-digit code).
+            Jagex requires 2FA. We only support TOTP (not email codes), so paste the base32 secret shown when enabling the authenticator.
           </p>
         </div>
         <div>
-          <label class={labelClass}>Character Name (optional)</label>
+          <label class={labelClass}>Character Name</label>
           <input
             type="text"
             value={characterName()}
@@ -128,9 +201,31 @@ export const BotForm: Component<BotFormProps> = (props) => {
             class={inputClass}
             placeholder="Desired name for new accounts"
             maxLength={12}
+            required
           />
           <p class="text-xs text-[var(--text-secondary)] mt-1">
-            Only needed for new accounts that don't have a character yet. Max 12 characters.
+            Required for account creation and tracking. Max 12 characters (OSRS limit).
+          </p>
+        </div>
+        <div>
+          <label class={labelClass}>Lamp Skill (Genie lamps)</label>
+          <select
+            value={lampSkill()}
+            onChange={(e) => {
+              const value = e.currentTarget.value;
+              if (isLampSkill(value)) {
+                setLampSkill(value);
+              }
+            }}
+            class={inputClass}
+            required
+          >
+            {lampSkillOptions.map((skill) => (
+              <option value={skill}>{skill}</option>
+            ))}
+          </select>
+          <p class="text-xs text-[var(--text-secondary)] mt-1">
+            Used when consuming Genie lamps. Required; choose the skill to receive XP.
           </p>
         </div>
         <div>
@@ -138,14 +233,14 @@ export const BotForm: Component<BotFormProps> = (props) => {
           <input
             type="number"
             value={preferredWorld()}
-            onInput={(e) => setPreferredWorld(parseInt(e.currentTarget.value) || 301)}
+            onInput={(e) => setPreferredWorld(parseInt(e.currentTarget.value) || 418)}
             class={inputClass}
-            placeholder="301"
+            placeholder="418"
             min={301}
-            max={580}
+            max={638}
           />
           <p class="text-xs text-[var(--text-secondary)] mt-1">
-            Default world to log into. 301 is a safe F2P world. Members worlds are 302+.
+            Default world to log into. 418 is a safe F2P world. Supports any world 301-638.
           </p>
         </div>
       </section>
@@ -240,7 +335,12 @@ export const BotForm: Component<BotFormProps> = (props) => {
             <label class={labelClass}>HCIM Safety Level</label>
             <select
               value={hcimSafety()}
-              onChange={(e) => setHcimSafety(e.currentTarget.value as any)}
+              onChange={(e) => {
+                const value = e.currentTarget.value;
+                if (isHcimSafety(value)) {
+                  setHcimSafety(value);
+                }
+              }}
               class={inputClass}
             >
               <option value="NORMAL">Normal - Standard flee thresholds</option>
@@ -260,25 +360,39 @@ export const BotForm: Component<BotFormProps> = (props) => {
         <div class="grid grid-cols-2 gap-4">
           <div>
             <label class={labelClass}>CPU Limit</label>
-            <input
-              type="text"
+            <select
               value={cpuLimit()}
-              onInput={(e) => setCpuLimit(e.currentTarget.value)}
+              onChange={(e) => {
+                const value = e.currentTarget.value;
+                if (isCpuOption(value)) {
+                  setCpuLimit(value);
+                }
+              }}
               class={inputClass}
-              placeholder="1.0"
-            />
-            <p class="text-xs text-[var(--text-secondary)] mt-1">e.g., 0.5, 1.0, 2.0</p>
+            >
+              {cpuOptions.map((opt) => (
+                <option value={opt}>{opt}</option>
+              ))}
+            </select>
+            <p class="text-xs text-[var(--text-secondary)] mt-1">Allowed: 0.5 - 2.0 CPU</p>
           </div>
           <div>
             <label class={labelClass}>Memory Limit</label>
-            <input
-              type="text"
+            <select
               value={memoryLimit()}
-              onInput={(e) => setMemoryLimit(e.currentTarget.value)}
+              onChange={(e) => {
+                const value = e.currentTarget.value;
+                if (isMemoryOption(value)) {
+                  setMemoryLimit(value);
+                }
+              }}
               class={inputClass}
-              placeholder="2G"
-            />
-            <p class="text-xs text-[var(--text-secondary)] mt-1">e.g., 1G, 2G, 4G</p>
+            >
+              {memoryOptions.map((opt) => (
+                <option value={opt}>{opt}</option>
+              ))}
+            </select>
+            <p class="text-xs text-[var(--text-secondary)] mt-1">Allowed: 1G - 4G</p>
           </div>
         </div>
       </section>

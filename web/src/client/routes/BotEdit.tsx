@@ -2,7 +2,7 @@ import { type Component, Show, Suspense } from 'solid-js';
 import { useNavigate, useParams } from '@tanstack/solid-router';
 import { BotForm } from '../components/BotForm';
 import { useBotQuery, useUpdateBotMutation } from '../lib/api';
-import type { BotConfig } from '../../shared/types';
+import type { BotFormData } from '../../shared/botSchema';
 
 export const BotEdit: Component = () => {
   const params = useParams({ from: '/bots/$id/edit' });
@@ -10,7 +10,7 @@ export const BotEdit: Component = () => {
   const botQuery = useBotQuery(() => params().id);
   const updateMutation = useUpdateBotMutation();
 
-  const handleSubmit = async (data: Omit<BotConfig, 'id' | 'environment'>) => {
+  const handleSubmit = async (data: BotFormData) => {
     try {
       await updateMutation.mutateAsync({ id: params().id, ...data });
       navigate({ to: '/bots/$id', params: { id: params().id } });

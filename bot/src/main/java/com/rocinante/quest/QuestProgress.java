@@ -75,15 +75,18 @@ public class QuestProgress {
      * @return true if progress changed (step or completion)
      */
     public boolean update(Client client) {
-        int currentValue;
-        if (quest.usesVarp()) {
-            // Use VarPlayer (varp) - e.g., Tutorial Island uses varp 281
-            currentValue = client.getVarpValue(quest.getProgressVarbit());
-        } else {
-            // Use Varbit - most quests use this
-            currentValue = client.getVarbitValue(quest.getProgressVarbit());
+        int varId = quest.getProgressVarbit();
+        int currentValue = -1;
+
+        // Guard against missing varbit/varp IDs (Quest Helper quests sometimes use RL quest state instead)
+        if (varId >= 0 && client != null) {
+            if (quest.usesVarp()) {
+                currentValue = client.getVarpValue(varId);
+            } else {
+                currentValue = client.getVarbitValue(varId);
+            }
         }
-        return updateWithValue(currentValue);
+        return updateInternal(currentValue, client);
     }
 
     /**
@@ -116,6 +119,13 @@ public class QuestProgress {
      * @return true if progress changed
      */
     public boolean updateWithValue(int currentValue) {
+        return updateInternal(currentValue, null);
+    }
+
+    /**
+     * Core update logic shared by client-driven and value-only updates.
+     */
+    private boolean updateInternal(int currentValue, Client client) {
         if (currentValue == lastVarbitValue && currentStep != null) {
             return false; // No change
         }
@@ -123,8 +133,8 @@ public class QuestProgress {
         int previousValue = lastVarbitValue;
         lastVarbitValue = currentValue;
 
-        // Check for completion
-        if (quest.isComplete(currentValue)) {
+        // Check for completion (prefer quest-provided strategy with client awareness)
+        if (quest.isComplete(currentValue, client)) {
             if (!completed) {
                 completed = true;
                 currentStep = null;
@@ -139,7 +149,6 @@ public class QuestProgress {
         QuestStep newStep = findStepForVarbit(currentValue);
 
         if (newStep != currentStep) {
-            QuestStep oldStep = currentStep;
             currentStep = newStep;
 
             if (newStep != null) {

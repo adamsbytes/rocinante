@@ -9,10 +9,12 @@ import com.google.gson.JsonParser;
 import com.rocinante.tasks.Task;
 import com.rocinante.tasks.TaskExecutor;
 import com.rocinante.tasks.TaskPriority;
+import com.rocinante.util.IoExecutor;
 import lombok.Setter;
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.events.GameTick;
+import net.runelite.client.callback.ClientThread;
 import net.runelite.client.eventbus.Subscribe;
 
 import javax.annotation.Nullable;
@@ -27,6 +29,7 @@ import java.nio.file.Paths;
 import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -85,6 +88,9 @@ public class CommandProcessor {
     @Nullable
     private StatusPublisher statusPublisher;
 
+    private final IoExecutor ioExecutor;
+    private final ClientThread clientThread;
+
     // ========================================================================
     // State
     // ========================================================================
@@ -118,9 +124,15 @@ public class CommandProcessor {
      * Whether processing is enabled.
      */
     private final AtomicBoolean enabled = new AtomicBoolean(false);
+    /**
+     * Prevent concurrent in-flight file reads.
+     */
+    private final AtomicBoolean commandCheckInFlight = new AtomicBoolean(false);
 
     @Inject
-    public CommandProcessor() {
+    public CommandProcessor(IoExecutor ioExecutor, ClientThread clientThread) {
+        this.ioExecutor = ioExecutor;
+        this.clientThread = clientThread;
         initializeCommandsDirectory();
         restoreLastProcessedTimestamp();
         log.info("CommandProcessor initialized, watching: {}, lastProcessed: {}", 
@@ -212,77 +224,99 @@ public class CommandProcessor {
         tickCounter++;
         if (tickCounter >= TICKS_BETWEEN_CHECKS) {
             tickCounter = 0;
-            checkForCommands();
+            requestCommandCheck();
         }
     }
 
     /**
-     * Check for new commands in the commands file.
+     * Offload command file read to the I/O executor, then apply commands on the client thread.
      */
-    private void checkForCommands() {
-        if (!Files.exists(commandsFilePath)) {
+    private void requestCommandCheck() {
+        if (commandCheckInFlight.getAndSet(true)) {
             return;
         }
 
-        try {
-            FileTime currentModTime = Files.getLastModifiedTime(commandsFilePath);
-            
-            // Skip if file hasn't been modified
-            if (lastModifiedTime != null && !currentModTime.toInstant().isAfter(lastModifiedTime.toInstant())) {
-                return;
-            }
-            
-            lastModifiedTime = currentModTime;
-            processCommandsFile();
-            
-        } catch (IOException e) {
-            log.warn("Error checking commands file: {}", e.getMessage());
-        }
+        CompletableFuture
+                .supplyAsync(this::readCommandsFile, ioExecutor.getExecutor())
+                .whenComplete((result, ex) -> {
+                    if (ex != null) {
+                        log.warn("Error reading commands file: {}", ex.getMessage());
+                        commandCheckInFlight.set(false);
+                        return;
+                    }
+
+                    clientThread.invokeLater(() -> {
+                        try {
+                            applyCommands(result);
+                        } finally {
+                            commandCheckInFlight.set(false);
+                        }
+                    });
+                });
+
+        log.debug("Command read scheduled (io queue size={})", ioExecutor.getQueueSize());
     }
 
-    /**
-     * Read and process commands from the file.
-     */
-    private void processCommandsFile() {
+    private CommandReadResult readCommandsFile() {
         try {
+            if (!Files.exists(commandsFilePath)) {
+                return CommandReadResult.empty();
+            }
+
+            FileTime currentModTime = Files.getLastModifiedTime(commandsFilePath);
             String content = Files.readString(commandsFilePath, StandardCharsets.UTF_8);
             if (content.isBlank()) {
-                return;
+                return new CommandReadResult(currentModTime, List.of());
             }
 
-            // Use older Gson API for compatibility with RuneLite's bundled Gson version
             JsonObject root = new JsonParser().parse(content).getAsJsonObject();
             JsonArray commands = root.getAsJsonArray("commands");
-            
             if (commands == null || commands.size() == 0) {
-                return;
+                return new CommandReadResult(currentModTime, List.of());
             }
 
-            List<ProcessedCommand> processed = new ArrayList<>();
-            
+            List<PendingCommand> parsed = new ArrayList<>();
             for (JsonElement element : commands) {
                 JsonObject cmdObj = element.getAsJsonObject();
                 long timestamp = cmdObj.has("timestamp") ? cmdObj.get("timestamp").getAsLong() : 0;
-                
-                // Skip already processed commands
-                if (timestamp <= lastProcessedTimestamp) {
-                    continue;
-                }
-
                 String type = cmdObj.has("type") ? cmdObj.get("type").getAsString() : "UNKNOWN";
-                boolean success = processCommand(type, cmdObj);
-                
-                processed.add(new ProcessedCommand(type, timestamp, success));
-                lastProcessedTimestamp = Math.max(lastProcessedTimestamp, timestamp);
+                parsed.add(new PendingCommand(timestamp, type, cmdObj));
             }
 
-            // Write acknowledgment
-            if (!processed.isEmpty()) {
-                writeProcessedAcknowledgment(processed);
-            }
-
+            return new CommandReadResult(currentModTime, parsed);
         } catch (Exception e) {
-            log.error("Error processing commands file", e);
+            log.warn("Error reading commands file", e.getMessage());
+            return CommandReadResult.empty();
+        }
+    }
+
+    private void applyCommands(CommandReadResult result) {
+        if (result == null || result.commands().isEmpty()) {
+            return;
+        }
+
+        if (result.modTime() != null) {
+            if (lastModifiedTime != null && !result.modTime().toInstant().isAfter(lastModifiedTime.toInstant())) {
+                return;
+            }
+            lastModifiedTime = result.modTime();
+        }
+
+        List<ProcessedCommand> processed = new ArrayList<>();
+
+        for (PendingCommand cmd : result.commands()) {
+            if (cmd.timestamp() <= lastProcessedTimestamp) {
+                continue;
+            }
+
+            boolean success = processCommand(cmd.type(), cmd.payload());
+            processed.add(new ProcessedCommand(cmd.type(), cmd.timestamp(), success));
+            lastProcessedTimestamp = Math.max(lastProcessedTimestamp, cmd.timestamp());
+        }
+
+        if (!processed.isEmpty()) {
+            long ackTimestamp = lastProcessedTimestamp;
+            ioExecutor.submit(() -> writeProcessedAcknowledgment(processed, ackTimestamp));
         }
     }
 
@@ -431,10 +465,10 @@ public class CommandProcessor {
     /**
      * Write acknowledgment of processed commands.
      */
-    private void writeProcessedAcknowledgment(List<ProcessedCommand> processed) {
+    private void writeProcessedAcknowledgment(List<ProcessedCommand> processed, long ackTimestamp) {
         try {
             JsonObject ack = new JsonObject();
-            ack.addProperty("lastProcessed", lastProcessedTimestamp);
+            ack.addProperty("lastProcessed", ackTimestamp);
             ack.addProperty("processedAt", System.currentTimeMillis());
             
             JsonArray processedArray = new JsonArray();
@@ -511,6 +545,14 @@ public class CommandProcessor {
     // ========================================================================
     // Inner Classes
     // ========================================================================
+
+    private record PendingCommand(long timestamp, String type, JsonObject payload) {}
+
+    private record CommandReadResult(FileTime modTime, List<PendingCommand> commands) {
+        static CommandReadResult empty() {
+            return new CommandReadResult(null, List.of());
+        }
+    }
 
     /**
      * Record of a processed command.

@@ -17,12 +17,14 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.PluginInstantiationException;
 import net.runelite.client.plugins.PluginManager;
 import net.runelite.client.plugins.slayer.SlayerPlugin;
+import net.runelite.client.plugins.randomevents.RandomEventPlugin;
 import com.rocinante.behavior.BotActivityTracker;
 import com.rocinante.behavior.BreakScheduler;
 import com.rocinante.behavior.BreakType;
 import com.rocinante.behavior.EmergencyHandler;
 import com.rocinante.behavior.FatigueModel;
 import com.rocinante.behavior.AttentionModel;
+import com.rocinante.behavior.RandomEventHandler;
 import com.rocinante.behavior.PlayerProfile;
 import com.rocinante.behavior.emergencies.EmergencyTask;
 import com.rocinante.behavior.emergencies.LowHealthEmergency;
@@ -169,6 +171,10 @@ public class RocinantePlugin extends Plugin
     @Getter
     private EmergencyHandler emergencyHandler;
 
+    @Inject
+    @Getter
+    private RandomEventHandler randomEventHandler;
+
     // Break task factory - created manually in startUp() as it requires runtime wiring
     private Function<BreakType, Task> breakTaskFactory;
 
@@ -284,6 +290,9 @@ public class RocinantePlugin extends Plugin
         
         // Register MouseCameraCoupler - idle camera behaviors
         eventBus.register(mouseCameraCoupler);
+
+        // Register RandomEventHandler - handles random event NPC interactions
+        eventBus.register(randomEventHandler);
         
         // Register TradeHandler - handles incoming trade requests
         eventBus.register(tradeHandler);
@@ -415,11 +424,13 @@ public class RocinantePlugin extends Plugin
      * 
      * Required plugins:
      * - Kourend Library: For Arceuus Library book location predictions
+     * - Random Events: For native random event menu stripping/detection
      */
     private void ensureRequiredPluginsEnabled() {
         // List of required plugin class names
         String[] requiredPlugins = {
-                "net.runelite.client.plugins.kourendlibrary.KourendLibraryPlugin"
+                "net.runelite.client.plugins.kourendlibrary.KourendLibraryPlugin",
+                "net.runelite.client.plugins.randomevents.RandomEventPlugin"
         };
 
         for (String pluginClassName : requiredPlugins) {
@@ -713,6 +724,7 @@ public class RocinantePlugin extends Plugin
         eventBus.unregister(breakScheduler);
         eventBus.unregister(attentionModel);
         eventBus.unregister(activityTracker);
+        eventBus.unregister(randomEventHandler);
         
         // Clear emergency conditions
         emergencyHandler.clearConditions();

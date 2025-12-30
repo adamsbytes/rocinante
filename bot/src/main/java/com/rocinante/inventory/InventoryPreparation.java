@@ -581,9 +581,8 @@ public class InventoryPreparation {
 
         switch (location) {
             case EQUIPPED:
-                // Item is equipped but we prefer inventory - unequip it
-                plan.itemsToUnequip.add(itemId);
-                log.debug("Item {} is equipped but PREFER_INVENTORY specified - will unequip to inventory", itemId);
+                // Item is equipped but preference is soft; accept as accessible
+                log.debug("Item {} is equipped with PREFER_INVENTORY preference - accepting as accessible", itemId);
                 break;
             case INVENTORY:
                 // Perfect - already where we want it

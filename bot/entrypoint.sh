@@ -271,6 +271,10 @@ if [ -n "$HCIM_SAFETY_LEVEL" ]; then
     RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -Drocinante.hcim.safetyLevel=$HCIM_SAFETY_LEVEL"
 fi
 
+if [ -n "$LAMP_SKILL" ]; then
+    RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -Drocinante.random.lampSkill=$LAMP_SKILL"
+fi
+
 if [ -n "$CLAUDE_API_KEY" ]; then
     RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -Drocinante.claude.apiKey=$CLAUDE_API_KEY"
 fi
@@ -374,8 +378,8 @@ configure_runelite_settings() {
     GAME_SIZE="${GAME_SIZE:-960x540}"
     echo "Configuring RuneLite for resolution: $GAME_SIZE"
     
-    # Set default world from environment (default to 301 - safe F2P world)
-    DEFAULT_WORLD="${PREFERRED_WORLD:-301}"
+    # Set default world from environment (default to 418 - safe F2P world)
+    DEFAULT_WORLD="${PREFERRED_WORLD:-418}"
     echo "Configuring default world: $DEFAULT_WORLD"
     
     # Update global settings.properties (preserve externalPlugins)
