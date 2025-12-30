@@ -72,6 +72,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * Centralized game state polling and caching service as specified in REQUIREMENTS.md Section 6.1.
@@ -157,11 +160,41 @@ public class GameStateService {
     private final CachedValue<SlayerState> slayerStateCache;
 
     // ========================================================================
+    // Slayer Caching (reduces DB lookups inside per-tick builds)
+    // ========================================================================
+
+    /**
+     * Cache of Slayer taskId -> task name (DB lookup is expensive; cache per session).
+     */
+    private final Map<Integer, String> slayerTaskNameCache = new HashMap<>();
+
+    /**
+     * Cache of Slayer areaId -> area name (DB lookup is expensive; cache per session).
+     */
+    private final Map<Integer, String> slayerAreaNameCache = new HashMap<>();
+
+    /**
+     * Last seen blocked-task varplayer values (per varp id) for change detection.
+     */
+    private final Map<Integer, Integer> blockedVarpValues = new HashMap<>();
+
+    /**
+     * Cached blocked task names per varp id to avoid repeated DB lookups.
+     */
+    private final Map<Integer, String> blockedTaskNamesByVarp = new HashMap<>();
+
+    // ========================================================================
     // State Tracking
     // ========================================================================
 
     @Getter
     private volatile int currentTick = 0;
+
+    /**
+     * Tick when WorldState was last refreshed. Used to coalesce multiple
+     * invalidations in the same game tick and avoid rebuilding more than once.
+     */
+    private volatile int lastWorldRefreshTick = -1;
 
     @Getter
     private volatile boolean loggedIn = false;
@@ -196,6 +229,20 @@ public class GameStateService {
     // This set contains all widget groups we've found visible during this session
     private final Set<Integer> cachedWidgetGroups = new HashSet<>();
     private volatile boolean widgetCacheInitialized = false;
+
+    /**
+     * GE price cache to avoid invoking ItemManager pricing on the game thread
+     * during WorldState builds. Populated asynchronously.
+     */
+    private final Map<Integer, Integer> itemPriceCache = new ConcurrentHashMap<>();
+
+    /** Single-thread executor for off-thread price fetches. */
+    private final ExecutorService priceExecutor = Executors.newSingleThreadExecutor(
+            r -> {
+                Thread t = new Thread(r, "rocinante-price-cache");
+                t.setDaemon(true);
+                return t;
+            });
     
     // ========================================================================
     // Combat Message Tracking
@@ -793,9 +840,17 @@ public class GameStateService {
             return WorldState.EMPTY;
         }
 
-        // Check if cache is still valid (within 5 ticks)
+        // Check cache first
         WorldState cached = worldStateCache.getIfValid(currentTick);
-        if (cached != null && !worldStateDirty) {
+        if (cached != null) {
+            // If not dirty, or we already refreshed this tick, reuse cached value
+            if (!worldStateDirty || lastWorldRefreshTick == currentTick) {
+                return cached;
+            }
+        }
+
+        // Coalesce to at most one rebuild per tick
+        if (lastWorldRefreshTick == currentTick && cached != null) {
             return cached;
         }
 
@@ -914,7 +969,18 @@ public class GameStateService {
         // Fallback to varbits if plugin service not available or returned empty
         if (taskName == null || taskName.isEmpty()) {
             remainingKills = client.getVarpValue(net.runelite.api.VarPlayer.SLAYER_TASK_SIZE);
-            // Task name would need to come from varbit SLAYER_TARGET + lookup
+
+            // Fallback task name/location from varplayers with cached DB lookups
+            int taskId = client.getVarpValue(VarPlayerID.SLAYER_TARGET);
+            int areaId = client.getVarpValue(VarPlayerID.SLAYER_AREA);
+
+            taskName = getCachedSlayerTaskName(taskId);
+            taskLocation = getCachedSlayerAreaName(areaId);
+
+            // Initial amount (original assignment) from varp
+            if (initialKills == 0) {
+                initialKills = client.getVarpValue(VarPlayerID.SLAYER_COUNT_ORIGINAL);
+            }
         }
 
         // Read slayer varbits for points, streak, master, unlocks
@@ -997,12 +1063,29 @@ public class GameStateService {
         for (int varplayerId : blockedVarplayers) {
             try {
                 int taskId = client.getVarpValue(varplayerId);
-                if (taskId > 0) {
-                    String taskNameFromDb = lookupSlayerTaskName(taskId);
-                    if (taskNameFromDb != null && !taskNameFromDb.isEmpty()) {
-                        blocked.add(taskNameFromDb);
-                        log.trace("Found blocked task ID {} = {}", taskId, taskNameFromDb);
+
+                // If value unchanged and we have a cached name, reuse without DB hit
+                Integer lastValue = blockedVarpValues.get(varplayerId);
+                if (lastValue != null && lastValue == taskId) {
+                    String cachedName = blockedTaskNamesByVarp.get(varplayerId);
+                    if (cachedName != null) {
+                        blocked.add(cachedName);
                     }
+                    continue;
+                }
+
+                // Value changed - update cache
+                blockedVarpValues.put(varplayerId, taskId);
+                if (taskId <= 0) {
+                    blockedTaskNamesByVarp.remove(varplayerId);
+                    continue;
+                }
+
+                String taskNameFromDb = getCachedSlayerTaskName(taskId);
+                if (taskNameFromDb != null && !taskNameFromDb.isEmpty()) {
+                    blocked.add(taskNameFromDb);
+                    blockedTaskNamesByVarp.put(varplayerId, taskNameFromDb);
+                    log.trace("Found blocked task ID {} = {}", taskId, taskNameFromDb);
                 }
             } catch (Exception e) {
                 log.trace("Error reading blocked task varplayer {}: {}", varplayerId, e.getMessage());
@@ -1021,6 +1104,12 @@ public class GameStateService {
      * @return the task name, or null if not found
      */
     private String lookupSlayerTaskName(int taskId) {
+        // Cache first to avoid repeated DB lookups
+        String cached = slayerTaskNameCache.get(taskId);
+        if (cached != null) {
+            return cached;
+        }
+
         try {
             // Find the DB row for this task ID
             java.util.List<Integer> taskRows = client.getDBRowsByValue(
@@ -1040,7 +1129,9 @@ public class GameStateService {
             Object[] nameData = client.getDBTableField(dbRow, DBTableID.SlayerTask.COL_NAME_UPPERCASE, 0);
             
             if (nameData != null && nameData.length > 0 && nameData[0] instanceof String) {
-                return (String) nameData[0];
+                String name = (String) nameData[0];
+                slayerTaskNameCache.put(taskId, name);
+                return name;
             }
         } catch (Exception e) {
             log.debug("Error looking up slayer task name for ID {}: {}", taskId, e.getMessage());
@@ -1381,6 +1472,7 @@ public class GameStateService {
         WorldState state = buildWorldState();
         worldStateCache.set(currentTick, state);
         worldStateDirty = false;
+        lastWorldRefreshTick = currentTick;
         return state;
     }
 
@@ -2132,8 +2224,14 @@ public class GameStateService {
                     // Get item composition for name and prices
                     net.runelite.api.ItemComposition itemComp = itemManager.getItemComposition(item.getId());
                     String name = itemComp != null ? itemComp.getName() : null;
-                    int gePrice = itemComp != null ? itemManager.getItemPrice(item.getId()) : -1;
                     int haPrice = itemComp != null ? itemComp.getHaPrice() : 0;
+
+                    // Use cached GE price if present; fetch async otherwise
+                    Integer cachedPrice = itemPriceCache.get(item.getId());
+                    if (cachedPrice == null) {
+                        schedulePriceFetch(item.getId());
+                    }
+                    int gePrice = cachedPrice != null ? cachedPrice : -1;
                     boolean tradeable = itemComp != null && itemComp.isTradeable();
                     boolean stackable = itemComp != null && itemComp.isStackable();
 
@@ -2154,6 +2252,24 @@ public class GameStateService {
         }
 
         return snapshots;
+    }
+
+    /**
+     * Populate GE price cache off the game thread to keep world scans fast.
+     */
+    private void schedulePriceFetch(int itemId) {
+        if (itemPriceCache.containsKey(itemId)) {
+            return;
+        }
+
+        priceExecutor.submit(() -> {
+            try {
+                int price = itemManager.getItemPrice(itemId);
+                itemPriceCache.put(itemId, price);
+            } catch (Exception e) {
+                log.trace("Price fetch failed for item {}: {}", itemId, e.getMessage());
+            }
+        });
     }
 
     /**
@@ -2384,6 +2500,75 @@ public class GameStateService {
         discoveredWidgetGroups.clear(); // Reset so widgets are logged on next login
         cachedWidgetGroups.clear(); // Reset widget cache
         widgetCacheInitialized = false; // Force full scan on next login
+
+        // Slayer caches
+        slayerTaskNameCache.clear();
+        slayerAreaNameCache.clear();
+        blockedVarpValues.clear();
+        blockedTaskNamesByVarp.clear();
+    }
+
+    // ========================================================================
+    // Slayer Helpers (cached lookups)
+    // ========================================================================
+
+    /**
+    * Get slayer task name using cached DB lookup.
+    */
+    private String getCachedSlayerTaskName(int taskId) {
+        if (taskId <= 0) {
+            return null;
+        }
+        String cached = slayerTaskNameCache.get(taskId);
+        if (cached != null) {
+            return cached;
+        }
+        log.debug("Slayer task cache miss for id {}", taskId);
+        return lookupSlayerTaskName(taskId);
+    }
+
+    /**
+    * Get slayer area name using cached DB lookup.
+    */
+    private String getCachedSlayerAreaName(int areaId) {
+        if (areaId <= 0) {
+            return null;
+        }
+        String cached = slayerAreaNameCache.get(areaId);
+        if (cached != null) {
+            return cached;
+        }
+
+        log.debug("Slayer area cache miss for id {}", areaId);
+
+        try {
+            java.util.List<Integer> areaRows = client.getDBRowsByValue(
+                    DBTableID.SlayerArea.ID,
+                    DBTableID.SlayerArea.COL_AREA_ID,
+                    0,
+                    areaId
+            );
+
+            if (areaRows == null || areaRows.isEmpty()) {
+                return null;
+            }
+
+            Object[] nameData = client.getDBTableField(
+                    areaRows.get(0),
+                    DBTableID.SlayerArea.COL_AREA_NAME_IN_HELPER,
+                    0
+            );
+
+            if (nameData != null && nameData.length > 0 && nameData[0] instanceof String) {
+                String name = (String) nameData[0];
+                slayerAreaNameCache.put(areaId, name);
+                return name;
+            }
+        } catch (Exception e) {
+            log.debug("Error looking up slayer area name for ID {}: {}", areaId, e.getMessage());
+        }
+
+        return null;
     }
 
     /**

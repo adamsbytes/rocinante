@@ -100,7 +100,9 @@ export const BotDetail: Component = () => {
               <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
                 <div class="min-w-0">
                   <div class="flex items-center gap-3 mb-2 flex-wrap">
-                    <h2 class="text-xl sm:text-2xl font-bold truncate">{bot().name}</h2>
+                    <h2 class="text-xl sm:text-2xl font-bold truncate">
+                      {bot().characterName}
+                    </h2>
                     <StatusBadge state={bot().status.state} />
                   </div>
                   <div class="flex items-center gap-4 flex-wrap">

@@ -1,0 +1,34 @@
+name: bot-ci
+
+on:
+  pull_request:
+    paths:
+      - 'bot/**'
+      - '.github/workflows/bot-ci.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bot
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run tests
+        run: ./gradlew test --no-daemon
+
+      - name: Build
+        run: ./gradlew build --no-daemon
+

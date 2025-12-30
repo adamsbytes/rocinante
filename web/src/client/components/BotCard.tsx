@@ -51,7 +51,9 @@ export const BotCard: Component<BotCardProps> = (props) => {
       >
         <div class="flex items-start justify-between mb-4">
           <div class="min-w-0 pr-2">
-            <h3 class="font-semibold text-lg truncate">{props.bot.name}</h3>
+            <h3 class="font-semibold text-lg truncate">
+              {props.bot.characterName}
+            </h3>
             <p class="text-[var(--text-secondary)] text-sm truncate">{props.bot.username}</p>
           </div>
           <StatusBadge state={props.bot.status.state} />

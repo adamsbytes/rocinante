@@ -8,6 +8,7 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
+import net.runelite.client.callback.ClientThread;
 
 import javax.annotation.Nullable;
 import javax.inject.Inject;
@@ -110,6 +111,7 @@ public class RobotMouseController {
     private final PerlinNoise perlinNoise;
     private final PlayerProfile playerProfile;
     private final ScheduledExecutorService executor;
+    private final ClientThread clientThread;
 
     /**
      * FatigueModel for fatigue-based click variance and action recording.
@@ -153,21 +155,47 @@ public class RobotMouseController {
 
     @Getter
     private volatile int sessionClickCount = 0;
+    private volatile double clickFatigueVarianceBoost = 1.0;
 
     private volatile long lastMovementTime = System.currentTimeMillis();
     private volatile boolean isMoving = false;
     private long movementSeed = System.nanoTime();
     
-    // Cached canvas offset (updated periodically)
-    // Since we enforce fixed mode, window position changes are rare.
-    // 30 second interval is safe and reduces unnecessary AWT calls.
+    // Cached canvas/viewport info (populated on client thread)
     private volatile Point canvasOffset = new Point(0, 0);
-    private volatile long lastCanvasOffsetUpdate = 0;
-    private static final long CANVAS_OFFSET_UPDATE_INTERVAL_MS = 30_000;
+    private volatile Dimension cachedCanvasSize = new Dimension(765, 503);
+    private volatile Rectangle cachedViewportBounds = new Rectangle(0, 0, 765, 503);
+    private volatile long lastViewportRefresh = 0;
+    private static final long VIEWPORT_CACHE_TTL_MS = 1_000;
 
     @Inject
-    public RobotMouseController(Client client, Randomization randomization, PerlinNoise perlinNoise, 
+    public RobotMouseController(Client client, Randomization randomization, PerlinNoise perlinNoise,
+                                PlayerProfile playerProfile, FatigueModel fatigueModel,
+                                ClientThread clientThread) throws AWTException {
+        this(client, randomization, perlinNoise, playerProfile, fatigueModel, clientThread,
+                Executors.newSingleThreadScheduledExecutor(r -> {
+                    Thread t = new Thread(r, "RobotMouseController");
+                    t.setDaemon(true);
+                    return t;
+                }));
+    }
+
+    /**
+     * Testing constructor (no ClientThread injection).
+     */
+    public RobotMouseController(Client client, Randomization randomization, PerlinNoise perlinNoise,
                                 PlayerProfile playerProfile, FatigueModel fatigueModel) throws AWTException {
+        this(client, randomization, perlinNoise, playerProfile, fatigueModel, null,
+                Executors.newSingleThreadScheduledExecutor(r -> {
+                    Thread t = new Thread(r, "RobotMouseController");
+                    t.setDaemon(true);
+                    return t;
+                }));
+    }
+
+    private RobotMouseController(Client client, Randomization randomization, PerlinNoise perlinNoise,
+                                 PlayerProfile playerProfile, FatigueModel fatigueModel,
+                                 ClientThread clientThread, ScheduledExecutorService executor) throws AWTException {
         this.robot = new Robot();
         this.robot.setAutoDelay(0); // We handle delays ourselves
         this.client = client;
@@ -175,11 +203,8 @@ public class RobotMouseController {
         this.perlinNoise = perlinNoise;
         this.playerProfile = playerProfile;
         this.fatigueModel = fatigueModel;
-        this.executor = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "RobotMouseController");
-            t.setDaemon(true);
-            return t;
-        });
+        this.clientThread = clientThread;
+        this.executor = executor;
 
         // Initialize current position
         try {
@@ -198,38 +223,64 @@ public class RobotMouseController {
     /**
      * Get the current canvas offset (screen position of the game canvas).
      * This is used to translate canvas-relative widget coordinates to absolute screen coordinates.
-     * The offset is cached and updated periodically to avoid frequent AWT calls.
+     * The offset is cached and updated on the client thread to avoid off-thread client access.
      */
     private Point getCanvasOffset() {
-        long now = System.currentTimeMillis();
-        if (now - lastCanvasOffsetUpdate > CANVAS_OFFSET_UPDATE_INTERVAL_MS) {
-            updateCanvasOffset();
-        }
+        refreshDisplayInfoIfStale();
         return canvasOffset;
     }
-    
+
     /**
-     * Update the cached canvas offset by querying the game canvas position.
+     * Refresh viewport/canvas info if the cache is stale.
      */
-    private void updateCanvasOffset() {
+    private void refreshDisplayInfoIfStale() {
+        long now = System.currentTimeMillis();
+        if (now - lastViewportRefresh < VIEWPORT_CACHE_TTL_MS) {
+            return;
+        }
+
+        if (clientThread != null) {
+            lastViewportRefresh = now; // prevent flood of invokes until refresh completes
+            clientThread.invoke(this::updateDisplayInfo);
+        } else {
+            updateDisplayInfo();
+        }
+    }
+
+    /**
+     * Update cached canvas offset, size, and viewport bounds.
+     */
+    private void updateDisplayInfo() {
         try {
             Canvas canvas = client.getCanvas();
             if (canvas != null && canvas.isShowing()) {
                 Point screenPos = canvas.getLocationOnScreen();
-                // Log if this is a significant change (first detection or window moved)
-                if (canvasOffset.x == 0 && canvasOffset.y == 0 && (screenPos.x != 0 || screenPos.y != 0)) {
-                    log.info("Canvas screen position detected: ({}, {})", screenPos.x, screenPos.y);
-                } else if (Math.abs(screenPos.x - canvasOffset.x) > 10 || Math.abs(screenPos.y - canvasOffset.y) > 10) {
+                Dimension size = canvas.getSize();
+                if (Math.abs(screenPos.x - canvasOffset.x) > 10 || Math.abs(screenPos.y - canvasOffset.y) > 10) {
                     log.debug("Canvas position changed: ({}, {}) -> ({}, {})", 
                             canvasOffset.x, canvasOffset.y, screenPos.x, screenPos.y);
                 }
                 canvasOffset = screenPos;
+                cachedCanvasSize = size;
             }
+
+            int areaX = client.getViewportXOffset();
+            int areaY = client.getViewportYOffset();
+            int areaWidth = client.getViewportWidth();
+            int areaHeight = client.getViewportHeight();
+
+            if (areaWidth <= 0 || areaHeight <= 0) {
+                areaX = 0;
+                areaY = 0;
+                areaWidth = cachedCanvasSize.width;
+                areaHeight = cachedCanvasSize.height;
+            }
+
+            cachedViewportBounds = new Rectangle(areaX, areaY, areaWidth, areaHeight);
+            lastViewportRefresh = System.currentTimeMillis();
         } catch (Exception e) {
-            // Canvas may not be displayable yet, keep previous offset
-            log.trace("Could not get canvas offset: {}", e.getMessage());
+            log.trace("Could not refresh display info: {}", e.getMessage());
         }
-        lastCanvasOffsetUpdate = System.currentTimeMillis();
     }
     
     /**
@@ -264,7 +315,7 @@ public class RobotMouseController {
      * Call this when the window is known to have moved or resized.
      */
     public void invalidateCanvasOffset() {
-        lastCanvasOffsetUpdate = 0;
+        lastViewportRefresh = 0;
     }
 
     // ========================================================================
@@ -390,26 +441,8 @@ public class RobotMouseController {
      * @return true if point is within the 3D game area
      */
     public boolean isPointInGameArea(int x, int y) {
-        if (client == null) {
-            return true; // Can't validate without client
-        }
-        
-        // Get 3D game area bounds from client
-        int areaX = client.getViewportXOffset();
-        int areaY = client.getViewportYOffset();
-        int areaWidth = client.getViewportWidth();
-        int areaHeight = client.getViewportHeight();
-        
-        // Fallback for fixed mode
-        if (areaWidth <= 0 || areaHeight <= 0) {
-            areaX = 4;
-            areaY = 4;
-            areaWidth = 512;
-            areaHeight = 334;
-        }
-        
-        return x >= areaX && x < (areaX + areaWidth) &&
-               y >= areaY && y < (areaY + areaHeight);
+        Rectangle viewport = getViewportBounds();
+        return viewport.contains(x, y);
     }
     
     /**
@@ -421,25 +454,8 @@ public class RobotMouseController {
      * @return true if point is within the game window
      */
     public boolean isPointInViewport(int screenX, int screenY) {
-        if (client == null) {
-            return true;
-        }
-        
-        Canvas canvas = client.getCanvas();
-        if (canvas == null) {
-            // Fallback to fixed mode dimensions - assume no offset
-            return screenX >= 0 && screenX < 765 && screenY >= 0 && screenY < 503;
-        }
-        
-        // Get the canvas position on screen and its dimensions
-        Point offset = getCanvasOffset();
-        int width = canvas.getWidth();
-        int height = canvas.getHeight();
-        
-        // Screen coordinates must be within the canvas area on screen
-        // Canvas at screen position (offset.x, offset.y) with size (width, height)
-        return screenX >= offset.x && screenX < (offset.x + width) 
-            && screenY >= offset.y && screenY < (offset.y + height);
+        Rectangle canvasBounds = getCanvasBounds();
+        return canvasBounds.contains(screenX, screenY);
     }
     
     /**
@@ -450,16 +466,10 @@ public class RobotMouseController {
      * @return clamped point
      */
     public Point clampToViewport(int screenX, int screenY) {
-        Point offset = getCanvasOffset();
-        
-        Canvas canvas = client != null ? client.getCanvas() : null;
-        int width = canvas != null ? canvas.getWidth() : 765;
-        int height = canvas != null ? canvas.getHeight() : 503;
-        
-        // Clamp screen coordinates to the canvas area on screen
+        Rectangle bounds = getCanvasBounds();
         return new Point(
-            Math.max(offset.x, Math.min(screenX, offset.x + width - 1)),
-            Math.max(offset.y, Math.min(screenY, offset.y + height - 1))
+            Math.max(bounds.x, Math.min(screenX, bounds.x + bounds.width - 1)),
+            Math.max(bounds.y, Math.min(screenY, bounds.y + bounds.height - 1))
         );
     }
     
@@ -471,25 +481,10 @@ public class RobotMouseController {
      * @return clamped point within game area
      */
     public Point clampToGameArea(int x, int y) {
-        if (client == null) {
-            return new Point(Math.max(4, Math.min(x, 515)), Math.max(4, Math.min(y, 337)));
-        }
-        
-        int areaX = client.getViewportXOffset();
-        int areaY = client.getViewportYOffset();
-        int areaWidth = client.getViewportWidth();
-        int areaHeight = client.getViewportHeight();
-        
-        if (areaWidth <= 0 || areaHeight <= 0) {
-            areaX = 4;
-            areaY = 4;
-            areaWidth = 512;
-            areaHeight = 334;
-        }
-        
+        Rectangle viewport = getViewportBounds();
         return new Point(
-            Math.max(areaX, Math.min(x, areaX + areaWidth - 1)),
-            Math.max(areaY, Math.min(y, areaY + areaHeight - 1))
+            Math.max(viewport.x, Math.min(x, viewport.x + viewport.width - 1)),
+            Math.max(viewport.y, Math.min(y, viewport.y + viewport.height - 1))
         );
     }
 
@@ -856,6 +851,7 @@ public class RobotMouseController {
                 // First click
                 performSingleClick(buttonMask);
                 sessionClickCount++;
+                maybeApplyClickFatigueBoost();
 
                 // Second click for double-click
                 if (doubleClick) {
@@ -864,6 +860,7 @@ public class RobotMouseController {
                     Thread.sleep(interval);
                     performSingleClick(buttonMask);
                     sessionClickCount++;
+                    maybeApplyClickFatigueBoost();
                 }
 
                 clickInProgress = false;
@@ -947,7 +944,8 @@ public class RobotMouseController {
      * Get the effective click variance multiplier combining FatigueModel and session click count.
      */
     private double getEffectiveClickVarianceMultiplier() {
-        return fatigueModel.getClickVarianceMultiplier();
+        maybeApplyClickFatigueBoost();
+        return fatigueModel.getClickVarianceMultiplier() * clickFatigueVarianceBoost;
     }
 
     /**
@@ -969,8 +967,8 @@ public class RobotMouseController {
      * Get the base misclick rate from profile.
      */
     private double getEffectiveMisclickRate() {
-        if (playerProfile != null) {
-            return playerProfile.getBaseMisclickRate();
+        if (playerProfile == null) {
+            throw new IllegalStateException("PlayerProfile not initialized");
         }
         return playerProfile.getBaseMisclickRate();
     }
@@ -1446,6 +1444,7 @@ public class RobotMouseController {
      */
     public void resetClickCount() {
         sessionClickCount = 0;
+        clickFatigueVarianceBoost = 1.0;
     }
 
     /**
@@ -1460,6 +1459,33 @@ public class RobotMouseController {
         } catch (InterruptedException e) {
             executor.shutdownNow();
             Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * Cached canvas bounds helper.
+     */
+    private Rectangle getCanvasBounds() {
+        refreshDisplayInfoIfStale();
+        return new Rectangle(canvasOffset.x, canvasOffset.y, cachedCanvasSize.width, cachedCanvasSize.height);
+    }
+
+    /**
+     * Cached viewport bounds helper.
+     */
+    private Rectangle getViewportBounds() {
+        refreshDisplayInfoIfStale();
+        return cachedViewportBounds;
+    }
+
+    /**
+     * Apply session click fatigue variance bump after threshold is reached.
+     */
+    private void maybeApplyClickFatigueBoost() {
+        if (sessionClickCount >= CLICK_FATIGUE_THRESHOLD && clickFatigueVarianceBoost == 1.0) {
+            clickFatigueVarianceBoost = randomization.uniformRandom(
+                    MIN_FATIGUE_VARIANCE_MULTIPLIER, MAX_FATIGUE_VARIANCE_MULTIPLIER);
+            log.debug("Click fatigue variance boost applied: {}", String.format("%.2f", clickFatigueVarianceBoost));
         }
     }
 }

@@ -374,7 +374,8 @@ public class PredictiveHoverManager {
         boolean shouldPredict = randomization.chance(effectiveRate);
         
         if (shouldPredict) {
-            log.trace("Prediction roll succeeded (effective rate: {:.1f}%)", effectiveRate * 100);
+            log.trace("Prediction roll succeeded (effective rate: {}%)",
+                    String.format("%.3f", effectiveRate * 100));
         }
 
         return shouldPredict;
@@ -403,8 +404,12 @@ public class PredictiveHoverManager {
         effectiveRate = Math.max(MIN_EFFECTIVE_PREDICTION_RATE, 
                         Math.min(MAX_EFFECTIVE_PREDICTION_RATE, effectiveRate));
 
-        log.trace("Effective prediction rate: {:.1f}% (base={:.1f}%, fatigue={:.1f}%, attention={})",
-                effectiveRate * 100, baseRate * 100, fatigueLevel * 100, attention);
+        log.trace(
+                "Effective prediction rate: {}% (base={}%, fatigue={}%, attention={})",
+                String.format("%.3f", effectiveRate * 100),
+                String.format("%.3f", baseRate * 100),
+                String.format("%.3f", fatigueLevel * 100),
+                attention);
 
         return effectiveRate;
     }

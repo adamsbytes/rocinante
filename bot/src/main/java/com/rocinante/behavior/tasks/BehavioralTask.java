@@ -16,6 +16,10 @@ import java.time.Duration;
  * - Have configurable durations
  * - Report their completion to the BreakScheduler
  * - Use BEHAVIORAL priority (between URGENT and NORMAL)
+ * 
+ * Important: Subclasses should clear predictive hover in their first-tick
+ * initialization (e.g., when `started` flag is false) by calling
+ * ctx.getPredictiveHoverManager().clearHover().
  */
 public abstract class BehavioralTask extends AbstractTask {
 

@@ -2,6 +2,9 @@ package com.rocinante.behavior;
 
 import com.google.gson.Gson;
 import com.rocinante.data.GsonFactory;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.rocinante.input.ScreenRegion;
 import com.rocinante.util.Randomization;
 import lombok.Getter;
@@ -55,6 +58,7 @@ public class PlayerProfile {
     private static final int CURRENT_SCHEMA_VERSION = 1;
     private static final long SAVE_INTERVAL_MINUTES = 5;
     private static final Duration FRESH_SESSION_THRESHOLD = Duration.ofMinutes(15);
+    private static final int MAX_DRIFT_HISTORY = 50;
     
     // === Drift percentages ===
     private static final double SESSION_DRIFT_PERCENT = 0.02;  // ±2% per session
@@ -328,40 +332,66 @@ public class PlayerProfile {
      * Simulates natural variation in player behavior between sessions.
      */
     private void applySessionDrift() {
+        List<DriftChange> changes = new ArrayList<>();
+
         // Input characteristics
+        double beforeMouseSpeed = profileData.mouseSpeedMultiplier;
         profileData.mouseSpeedMultiplier = applyDrift(
                 profileData.mouseSpeedMultiplier, MIN_MOUSE_SPEED, MAX_MOUSE_SPEED);
+        recordChange(changes, "mouseSpeedMultiplier", beforeMouseSpeed, profileData.mouseSpeedMultiplier);
+
+        double beforeClickVar = profileData.clickVarianceModifier;
         profileData.clickVarianceModifier = applyDrift(
                 profileData.clickVarianceModifier, MIN_CLICK_VARIANCE, MAX_CLICK_VARIANCE);
+        recordChange(changes, "clickVarianceModifier", beforeClickVar, profileData.clickVarianceModifier);
         
         // WPM has smaller drift
         int wpmDrift = (int) Math.round(profileData.typingSpeedWPM * 
                 randomization.uniformRandom(-0.02, 0.02));
+        int beforeWpm = profileData.typingSpeedWPM;
         profileData.typingSpeedWPM = Randomization.clamp(
                 profileData.typingSpeedWPM + wpmDrift, MIN_TYPING_WPM, MAX_TYPING_WPM);
+        recordChange(changes, "typingSpeedWPM", beforeWpm, profileData.typingSpeedWPM);
         
         // Error rates
+        double beforeMisclick = profileData.baseMisclickRate;
+        double beforeTypo = profileData.baseTypoRate;
         profileData.baseMisclickRate = applyDrift(profileData.baseMisclickRate, 0.01, 0.03);
         profileData.baseTypoRate = applyDrift(profileData.baseTypoRate, 0.005, 0.02);
+        recordChange(changes, "baseMisclickRate", beforeMisclick, profileData.baseMisclickRate);
+        recordChange(changes, "baseTypoRate", beforeTypo, profileData.baseTypoRate);
         
         // Break threshold
+        double beforeBreak = profileData.breakFatigueThreshold;
         profileData.breakFatigueThreshold = applyDrift(
                 profileData.breakFatigueThreshold, MIN_BREAK_THRESHOLD, MAX_BREAK_THRESHOLD);
+        recordChange(changes, "breakFatigueThreshold", beforeBreak, profileData.breakFatigueThreshold);
         
         // Camera angle drift (larger, ±10°)
+        double beforeAngle = profileData.preferredCompassAngle;
         double angleDrift = randomization.uniformRandom(-10, 10);
         profileData.preferredCompassAngle = (profileData.preferredCompassAngle + angleDrift + 360) % 360;
+        recordChange(changes, "preferredCompassAngle", beforeAngle, profileData.preferredCompassAngle);
         
         // Frequency drift
+        double beforeXpFreq = profileData.xpCheckFrequency;
+        double beforeInspectFreq = profileData.playerInspectionFrequency;
         profileData.xpCheckFrequency = applyDrift(profileData.xpCheckFrequency, 0, 20, 0.10);
         profileData.playerInspectionFrequency = applyDrift(profileData.playerInspectionFrequency, 0, 8, 0.10);
+        recordChange(changes, "xpCheckFrequency", beforeXpFreq, profileData.xpCheckFrequency);
+        recordChange(changes, "playerInspectionFrequency", beforeInspectFreq, profileData.playerInspectionFrequency);
         
         // Prediction hover drift (smaller variance - these are stable personality traits)
+        double beforePredictionRate = profileData.basePredictionRate;
+        double beforePredictionBias = profileData.predictionClickSpeedBias;
         profileData.basePredictionRate = applyDrift(
                 profileData.basePredictionRate, 0.30, 0.95, 0.03);
         profileData.predictionClickSpeedBias = applyDrift(
                 profileData.predictionClickSpeedBias, 0.0, 1.0, 0.03);
+        recordChange(changes, "basePredictionRate", beforePredictionRate, profileData.basePredictionRate);
+        recordChange(changes, "predictionClickSpeedBias", beforePredictionBias, profileData.predictionClickSpeedBias);
 
+        recordDrift(DriftType.SESSION, changes);
         log.debug("Applied session drift (session #{})", profileData.sessionCount);
     }
 
@@ -374,6 +404,8 @@ public class PlayerProfile {
     public void applyLongTermDrift(double hoursPlayed) {
         double oldPlaytime = profileData.totalPlaytimeHours;
         profileData.totalPlaytimeHours += hoursPlayed;
+        List<DriftChange> changes = new ArrayList<>();
+        recordChange(changes, "totalPlaytimeHours", oldPlaytime, profileData.totalPlaytimeHours);
         
         // Calculate how many drift periods we've crossed
         int oldPeriods = (int) (oldPlaytime / LONG_TERM_DRIFT_HOURS);
@@ -385,19 +417,25 @@ public class PlayerProfile {
             for (int i = 0; i < periodsToApply; i++) {
                 // Mouse speed improvement: +1-3% per 20 hours (cap at 1.3)
                 double speedImprovement = randomization.uniformRandom(0.01, 0.03);
+                double beforeSpeed = profileData.mouseSpeedMultiplier;
                 profileData.mouseSpeedMultiplier = Math.min(MAX_MOUSE_SPEED,
                         profileData.mouseSpeedMultiplier + speedImprovement);
+                recordChange(changes, "mouseSpeedMultiplier", beforeSpeed, profileData.mouseSpeedMultiplier);
                 
                 // Click precision improvement: reduce variance by 2-5% per 50 hours
                 // (apply partial improvement every 20 hours)
                 double varianceReduction = randomization.uniformRandom(0.008, 0.02);
+                double beforeVariance = profileData.clickVarianceModifier;
                 profileData.clickVarianceModifier = Math.max(MIN_CLICK_VARIANCE,
                         profileData.clickVarianceModifier - varianceReduction);
+                recordChange(changes, "clickVarianceModifier", beforeVariance, profileData.clickVarianceModifier);
             }
             
             log.info("Applied long-term drift after {} hours total playtime", 
                     profileData.totalPlaytimeHours);
         }
+
+        recordDrift(DriftType.LONG_TERM, changes);
     }
 
     /**
@@ -410,6 +448,28 @@ public class PlayerProfile {
     private double applyDrift(double value, double min, double max, double driftPct) {
         double drift = value * randomization.uniformRandom(-driftPct, driftPct);
         return Randomization.clamp(value + drift, min, max);
+    }
+
+    private void recordChange(List<DriftChange> changes, String field, double before, double after) {
+        if (changes == null) {
+            return;
+        }
+        if (Double.compare(before, after) != 0) {
+            changes.add(new DriftChange(field, before, after));
+        }
+    }
+
+    private void recordDrift(DriftType type, List<DriftChange> changes) {
+        if (changes == null || changes.isEmpty()) {
+            return;
+        }
+        if (profileData.driftHistory == null) {
+            profileData.driftHistory = new CopyOnWriteArrayList<>();
+        }
+        profileData.driftHistory.add(0, new DriftRecord(Instant.now(), type, new ArrayList<>(changes)));
+        while (profileData.driftHistory.size() > MAX_DRIFT_HISTORY) {
+            profileData.driftHistory.remove(profileData.driftHistory.size() - 1);
+        }
     }
 
     // ========================================================================
@@ -574,9 +634,14 @@ public class PlayerProfile {
                 }
                 // Convert to thread-safe collections (Gson deserializes to standard collections)
                 ensureThreadSafeCollections(loaded);
-                this.profileData = loaded;
-                log.info("Loaded profile from: {} (session #{}, {} hours played)", 
-                        path, loaded.sessionCount, String.format("%.1f", loaded.totalPlaytimeHours));
+                if (verifyChecksum(loaded)) {
+                    this.profileData = loaded;
+                    log.info("Loaded profile from: {} (session #{}, {} hours played)", 
+                            path, loaded.sessionCount, String.format("%.1f", loaded.totalPlaytimeHours));
+                } else if (!tryLoadBackup(path)) {
+                    log.warn("Checksum validation failed for {}, regenerating profile", path);
+                    generateNewProfile(accountHash, null);
+                }
             } else {
                 log.warn("Invalid profile data at {}, regenerating", path);
                 generateNewProfile(accountHash, null);
@@ -613,6 +678,11 @@ public class PlayerProfile {
         if (data.teleportMethodWeights != null && !(data.teleportMethodWeights instanceof ConcurrentHashMap)) {
             data.teleportMethodWeights = new ConcurrentHashMap<>(data.teleportMethodWeights);
         }
+        if (data.driftHistory == null) {
+            data.driftHistory = new CopyOnWriteArrayList<>();
+        } else if (!(data.driftHistory instanceof CopyOnWriteArrayList)) {
+            data.driftHistory = new CopyOnWriteArrayList<>(data.driftHistory);
+        }
     }
 
     private void saveProfile(Path path) {
@@ -625,12 +695,124 @@ public class PlayerProfile {
                 Files.copy(path, backup, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
             }
 
+            profileData.checksum = computeChecksum(profileData);
             String json = gson.toJson(profileData);
             Files.writeString(path, json);
             log.trace("Saved profile to: {}", path);
         } catch (IOException e) {
             log.error("Failed to save profile: {}", e.getMessage());
         }
+    }
+
+    /**
+    * Compute a stable checksum for the given profile data. The checksum field itself
+    * is excluded from the hash to avoid self-reference.
+    */
+    private String computeChecksum(ProfileData data) {
+        if (data == null) {
+            return "";
+        }
+        String json = toCanonicalJson(data);
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(json.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : hash) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (NoSuchAlgorithmException e) {
+            log.warn("Checksum algorithm unavailable, skipping checksum");
+            return "";
+        }
+    }
+
+    /**
+    * Verify checksum and update it if missing. Returns false on mismatch.
+    */
+    private boolean verifyChecksum(ProfileData data) {
+        if (data == null) {
+            return false;
+        }
+        String computed = computeChecksum(data);
+        if (data.checksum == null || data.checksum.isEmpty()) {
+            data.checksum = computed;
+            return true;
+        }
+        boolean matches = data.checksum.equals(computed);
+        if (matches) {
+            data.checksum = computed;
+        }
+        return matches;
+    }
+
+    private String toCanonicalJson(ProfileData data) {
+        if (data == null) {
+            return "";
+        }
+        String original = data.checksum;
+        data.checksum = null;
+        JsonElement tree = gson.toJsonTree(data);
+        data.checksum = original;
+        JsonElement canonical = canonicalize(tree);
+        return gson.toJson(canonical);
+    }
+
+    private JsonElement canonicalize(JsonElement element) {
+        if (element == null || element.isJsonNull()) {
+            return element;
+        }
+        if (element.isJsonPrimitive()) {
+            return element;
+        }
+        if (element.isJsonArray()) {
+            JsonArray arr = element.getAsJsonArray();
+            JsonArray copy = new JsonArray();
+            for (JsonElement e : arr) {
+                copy.add(canonicalize(e));
+            }
+            return copy;
+        }
+        if (element.isJsonObject()) {
+            JsonObject obj = element.getAsJsonObject();
+            JsonObject sorted = new JsonObject();
+            List<String> keys = new ArrayList<>(obj.keySet());
+            Collections.sort(keys);
+            for (String key : keys) {
+                sorted.add(key, canonicalize(obj.get(key)));
+            }
+            return sorted;
+        }
+        return element;
+    }
+
+    /**
+    * Attempt to load a backup profile when the primary file fails checksum or validation.
+    *
+    * @param path primary profile path
+    * @return true if a valid backup was loaded
+    */
+    private boolean tryLoadBackup(Path path) {
+        Path backup = Paths.get(path.toString() + ".bak");
+        if (!Files.exists(backup)) {
+            return false;
+        }
+
+        try {
+            String backupJson = Files.readString(backup);
+            ProfileData backupData = gson.fromJson(backupJson, ProfileData.class);
+            if (backupData != null && backupData.isValid()) {
+                ensureThreadSafeCollections(backupData);
+                if (verifyChecksum(backupData)) {
+                    this.profileData = backupData;
+                    log.warn("Loaded profile from backup after primary validation failure");
+                    return true;
+                }
+            }
+        } catch (IOException e) {
+            log.warn("Failed to load backup profile: {}", e.getMessage());
+        }
+        return false;
     }
 
     /**
@@ -967,6 +1149,13 @@ public class PlayerProfile {
     }
 
     /**
+     * Get the recorded drift history (most recent first).
+     */
+    public List<DriftRecord> getDriftHistory() {
+        return Collections.unmodifiableList(profileData.driftHistory);
+    }
+
+    /**
      * Calculate inter-character delay for typing based on WPM.
      */
     public long getBaseTypingDelay() {
@@ -1161,6 +1350,41 @@ public class PlayerProfile {
     }
 
     // ========================================================================
+    // Drift History
+    // ========================================================================
+
+    @Getter
+    public static class DriftChange {
+        private final String field;
+        private final double before;
+        private final double after;
+
+        public DriftChange(String field, double before, double after) {
+            this.field = field;
+            this.before = before;
+            this.after = after;
+        }
+    }
+
+    public enum DriftType {
+        SESSION,
+        LONG_TERM
+    }
+
+    @Getter
+    public static class DriftRecord {
+        private final Instant timestamp;
+        private final DriftType type;
+        private final List<DriftChange> changes;
+
+        public DriftRecord(Instant timestamp, DriftType type, List<DriftChange> changes) {
+            this.timestamp = timestamp;
+            this.type = type;
+            this.changes = changes;
+        }
+    }
+
+    // ========================================================================
     // Profile Data Class
     // ========================================================================
 
@@ -1186,6 +1410,8 @@ public class PlayerProfile {
         volatile Instant createdAt;
         volatile Instant lastSessionStart;
         volatile Instant lastLogout;
+        String checksum;
+        List<DriftRecord> driftHistory = new CopyOnWriteArrayList<>();
 
         // === Input characteristics ===
         volatile double mouseSpeedMultiplier = 1.0;

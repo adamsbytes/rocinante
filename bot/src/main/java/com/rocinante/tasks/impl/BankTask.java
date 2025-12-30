@@ -1,5 +1,6 @@
 package com.rocinante.tasks.impl;
 
+import com.rocinante.behavior.InefficiencyInjector;
 import com.rocinante.input.MenuHelper;
 import com.rocinante.input.SafeClickExecutor;
 import com.rocinante.input.WidgetClickHelper;
@@ -711,13 +712,21 @@ public class BankTask extends AbstractTask {
             return;
         }
 
-        // Check for redundant action injection (3% chance per REQUIREMENTS.md 3.4.4)
+        // Check for redundant action injection (per REQUIREMENTS.md 3.4.4)
         if (!redundantActionChecked) {
             redundantActionChecked = true;
             var inefficiency = ctx.getInefficiencyInjector();
-            if (inefficiency != null && inefficiency.shouldPerformRedundantAction()) {
-                redundantActionsRemaining = inefficiency.getRedundantRepetitions();
-                log.debug("Injecting {} redundant bank open/close actions", redundantActionsRemaining);
+            if (inefficiency != null) {
+                InefficiencyInjector.InefficiencyResult result = inefficiency.checkBankInefficiency();
+                if (result != null && result.isPresent()
+                        && result.getType() == InefficiencyInjector.InefficiencyType.REDUNDANT_ACTION) {
+                    redundantActionsRemaining = result.getAmount();
+                } else if (inefficiency.shouldPerformRedundantAction()) {
+                    redundantActionsRemaining = inefficiency.getRedundantRepetitions();
+                }
+                if (redundantActionsRemaining > 0) {
+                    log.debug("Injecting {} redundant bank open/close actions", redundantActionsRemaining);
+                }
             }
         }
 

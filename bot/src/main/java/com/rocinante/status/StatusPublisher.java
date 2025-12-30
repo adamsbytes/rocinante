@@ -19,6 +19,7 @@ import net.runelite.api.VarPlayer;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.StatChanged;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.callback.ClientThread;
 
 import javax.annotation.Nullable;
 import javax.inject.Inject;
@@ -64,6 +65,12 @@ public class StatusPublisher {
     private static final long MIN_WRITE_INTERVAL_MS = 1000;
 
     /**
+     * Minimum interval between quest data refreshes (milliseconds).
+     * Keeps heavy quest scans off back-to-back ticks.
+     */
+    private static final long MIN_QUEST_REFRESH_INTERVAL_MS = 1500;
+
+    /**
      * Game ticks between status updates (roughly 1 second = ~1.67 ticks).
      */
     private static final int TICKS_BETWEEN_UPDATES = 2;
@@ -75,6 +82,7 @@ public class StatusPublisher {
     private final Client client;
     private final Provider<GameStateService> gameStateServiceProvider;
     private final IoExecutor ioExecutor;
+    private final ClientThread clientThread;
     
     @Setter
     @Nullable
@@ -112,6 +120,16 @@ public class StatusPublisher {
     private volatile boolean questRefreshPending = true;
 
     /**
+     * Whether a quest refresh is currently running (client thread).
+     */
+    private final AtomicBoolean questRefreshInFlight = new AtomicBoolean(false);
+
+    /**
+     * Last quest refresh wall-clock time.
+     */
+    private volatile long lastQuestRefreshMs = 0;
+
+    /**
      * Track skill levels to detect level-ups.
      */
     private final Map<Skill, Integer> lastKnownLevels = new HashMap<>();
@@ -144,10 +162,12 @@ public class StatusPublisher {
     @Inject
     public StatusPublisher(Client client,
                            Provider<GameStateService> gameStateServiceProvider,
-                           IoExecutor ioExecutor) {
+                           IoExecutor ioExecutor,
+                           ClientThread clientThread) {
         this.client = client;
         this.gameStateServiceProvider = gameStateServiceProvider;
         this.ioExecutor = ioExecutor;
+        this.clientThread = clientThread;
         
         // Initialize status directory
         initializeStatusDirectory();
@@ -218,10 +238,7 @@ public class StatusPublisher {
         }
 
         // Refresh quest data if pending (initial load, level up, or manual refresh)
-        if (questRefreshPending) {
-            refreshQuestData();
-            questRefreshPending = false;
-        }
+        scheduleQuestRefreshIfNeeded();
 
         tickCounter++;
         if (tickCounter >= TICKS_BETWEEN_UPDATES) {
@@ -262,24 +279,57 @@ public class StatusPublisher {
     }
 
     /**
-     * Refresh the cached quest data from QuestService.
+     * Schedule a quest refresh off the tick path with rate limiting and in-flight guard.
      */
-    private void refreshQuestData() {
+    private void scheduleQuestRefreshIfNeeded() {
+        if (!questRefreshPending) {
+            return;
+        }
+
+        // Don't spam refreshes
+        long now = System.currentTimeMillis();
+        if (now - lastQuestRefreshMs < MIN_QUEST_REFRESH_INTERVAL_MS) {
+            return;
+        }
+
+        // Only one refresh at a time
+        if (!questRefreshInFlight.compareAndSet(false, true)) {
+            return;
+        }
+
+        // Capture lightweight quest state on the client thread, then offload heavy
+        // requirement assembly to the IO executor to avoid blocking ticks.
+        clientThread.invokeLater(() -> {
+            QuestStateSnapshot snapshot = captureQuestStateSnapshot();
+            ioExecutor.submit(() -> {
+                try {
+                    refreshQuestData(snapshot);
+                    lastQuestRefreshMs = System.currentTimeMillis();
+                    questRefreshPending = false;
+                } catch (Exception e) {
+                    log.error("Failed to refresh quest data", e);
+                    cachedQuestsData = BotStatus.QuestsData.empty();
+                } finally {
+                    questRefreshInFlight.set(false);
+                }
+            });
+        });
+    }
+
+    /**
+     * Refresh the cached quest data from QuestService using the provided snapshot.
+     */
+    private void refreshQuestData(QuestStateSnapshot snapshot) {
         if (questService == null) {
             log.debug("QuestService not available, skipping quest data refresh");
             cachedQuestsData = BotStatus.QuestsData.empty();
             return;
         }
 
-        try {
-            log.debug("Refreshing quest data from QuestService...");
-            cachedQuestsData = buildQuestsData();
-            log.info("Quest data refreshed: {} quests available", 
-                    cachedQuestsData.getAvailable() != null ? cachedQuestsData.getAvailable().size() : 0);
-        } catch (Exception e) {
-            log.error("Failed to refresh quest data", e);
-            cachedQuestsData = BotStatus.QuestsData.empty();
-        }
+        log.debug("Refreshing quest data from QuestService (off-thread)...");
+        cachedQuestsData = buildQuestsData(snapshot);
+        log.info("Quest data refreshed: {} quests available",
+                cachedQuestsData.getAvailable() != null ? cachedQuestsData.getAvailable().size() : 0);
     }
 
     /**
@@ -292,51 +342,24 @@ public class StatusPublisher {
      * QuestService (manual implementations), as RuneLite's Quest enum doesn't
      * expose requirement metadata directly.
      */
-    private BotStatus.QuestsData buildQuestsData() {
+    private BotStatus.QuestsData buildQuestsData(QuestStateSnapshot snapshot) {
         List<BotStatus.QuestSummary> available = new ArrayList<>();
         List<String> completed = new ArrayList<>();
         List<String> inProgress = new ArrayList<>();
-        int totalQuestPoints = 0;
-        
-        // Only proceed if we're logged in
-        if (client.getGameState() != GameState.LOGGED_IN) {
-            return BotStatus.QuestsData.builder()
-                    .lastUpdated(System.currentTimeMillis())
-                    .available(available)
-                    .completed(completed)
-                    .inProgress(inProgress)
-                    .totalQuestPoints(0)
-                    .build();
-        }
+        int totalQuestPoints = snapshot.questPoints();
 
-        try {
-            // Get total quest points
-            totalQuestPoints = client.getVarpValue(VarPlayer.QUEST_POINTS);
-        } catch (Exception e) {
-            log.trace("Could not read quest points: {}", e.getMessage());
-        }
+        for (QuestEntry entry : snapshot.entries()) {
+            QuestState state = entry.state();
 
-        // Build quest summaries from RuneLite's Quest enum
-        for (net.runelite.api.Quest quest : net.runelite.api.Quest.values()) {
-            try {
-                QuestState state = quest.getState(client);
-                String questId = quest.name();
-                String questName = quest.getName();
+            if (state == QuestState.FINISHED) {
+                completed.add(entry.id());
+            } else if (state == QuestState.IN_PROGRESS) {
+                inProgress.add(entry.id());
+            }
 
-                // Track completed and in-progress quests
-                if (state == QuestState.FINISHED) {
-                    completed.add(questId);
-                } else if (state == QuestState.IN_PROGRESS) {
-                    inProgress.add(questId);
-                }
-
-                // Build quest summary
-                BotStatus.QuestSummary summary = buildQuestSummary(quest, state);
-                if (summary != null) {
-                    available.add(summary);
-                }
-            } catch (Exception e) {
-                log.trace("Error getting state for quest {}: {}", quest.name(), e.getMessage());
+            BotStatus.QuestSummary summary = buildQuestSummary(entry.quest(), state);
+            if (summary != null) {
+                available.add(summary);
             }
         }
 
@@ -423,6 +446,45 @@ public class StatusPublisher {
                     .build();
         }
     }
+
+    /**
+     * Capture lightweight quest state on the client thread.
+     * This avoids heavy per-quest work (requirements) on the game thread.
+     */
+    private QuestStateSnapshot captureQuestStateSnapshot() {
+        if (client.getGameState() != GameState.LOGGED_IN) {
+            return new QuestStateSnapshot(0, List.of());
+        }
+
+        int questPoints = 0;
+        try {
+            questPoints = client.getVarpValue(VarPlayer.QUEST_POINTS);
+        } catch (Exception e) {
+            log.trace("Could not read quest points: {}", e.getMessage());
+        }
+
+        List<QuestEntry> entries = new ArrayList<>();
+        for (net.runelite.api.Quest quest : net.runelite.api.Quest.values()) {
+            try {
+                QuestState state = quest.getState(client);
+                entries.add(new QuestEntry(quest.name(), quest.getName(), quest, state));
+            } catch (Exception e) {
+                log.trace("Error getting state for quest {}: {}", quest.name(), e.getMessage());
+            }
+        }
+
+        return new QuestStateSnapshot(questPoints, entries);
+    }
+
+    /**
+     * Immutable snapshot of quest states captured on the client thread.
+     */
+    private record QuestStateSnapshot(int questPoints, List<QuestEntry> entries) {}
+
+    /**
+     * Lightweight quest entry (id, name, state) captured on the client thread.
+     */
+    private record QuestEntry(String id, String name, net.runelite.api.Quest quest, QuestState state) {}
 
     /**
      * Write status if enough time has elapsed since last write.

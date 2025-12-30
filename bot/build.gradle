@@ -1,5 +1,6 @@
 plugins {
     id 'java'
+    id 'maven-publish'
 }
 
 repositories {
@@ -46,7 +47,10 @@ dependencies {
 }
 
 group = 'com.rocinante'
-version = '0.1.0-SNAPSHOT'
+
+// Allow overriding version from Gradle property or env.VERSION (CI)
+def resolvedVersion = (findProperty('version') ?: System.getenv('VERSION')) ?: '0.1.0-SNAPSHOT'
+version = resolvedVersion
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
@@ -92,6 +96,25 @@ jar {
             'Implementation-Title': 'Rocinante',
             'Implementation-Version': project.version
         )
+    }
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+            artifactId = 'rocinante'
+        }
+    }
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/adamsbytes/rocinante")
+            credentials {
+                username = System.getenv("USERNAME") ?: findProperty("gpr.user")
+                password = System.getenv("TOKEN") ?: findProperty("gpr.key")
+            }
+        }
     }
 }
 

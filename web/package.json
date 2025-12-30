@@ -1,13 +1,16 @@
 {
   "name": "rocinante-management",
-  "version": "0.4.0",
+  "version": "0.6.4",
   "type": "module",
   "scripts": {
     "dev": "concurrently \"bun run dev:server\" \"bun run dev:client\"",
     "dev:client": "vite",
     "dev:server": "bun --watch src/api/server.ts",
     "build": "vite build && bun build src/api/server.ts --outdir dist/api --target bun",
-    "start": "bun dist/api/server.js"
+    "start": "bun dist/api/server.js",
+    "lint": "eslint \"src/**/*.{ts,tsx}\"",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@tanstack/solid-query": "^5.90.18",
@@ -22,10 +25,15 @@
     "@types/dockerode": "^3.3.47",
     "autoprefixer": "^10.4.23",
     "concurrently": "^9.2.1",
+    "eslint": "^8.57.1",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "eslint-plugin-solid": "^0.13.2",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3",
     "vite": "^7.3.0",
-    "vite-plugin-solid": "^2.11.10"
+    "vite-plugin-solid": "^2.11.10",
+    "vitest": "^2.1.4"
   }
 }

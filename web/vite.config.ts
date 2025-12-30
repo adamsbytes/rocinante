@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import solid from 'vite-plugin-solid';
 import tailwindcss from '@tailwindcss/vite';
 
@@ -38,6 +38,13 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist/client',
+  },
+  test: {
+    globals: true,
+    environment: 'node',
+    coverage: {
+      reporter: ['text', 'lcov'],
+    },
   },
 });
 

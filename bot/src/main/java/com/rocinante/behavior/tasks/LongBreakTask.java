@@ -57,9 +57,8 @@ public class LongBreakTask extends BehavioralTask {
         this.playerProfile = playerProfile;
         this.randomization = randomization;
         this.humanTimer = humanTimer;
-        
-        // 40% chance to logout during long break
-        this.shouldLogout = randomization.chance(0.40);
+        // Phase 5 scope: allow rare logout during long breaks (20% chance)
+        this.shouldLogout = randomization.chance(0.20);
     }
 
     private static Duration generateDuration(Randomization randomization) {
@@ -104,7 +103,7 @@ public class LongBreakTask extends BehavioralTask {
         started = true;
         fatigueModel.startBreak();
         
-        // Clear any pending predictive hover - player is taking a break
+        // Clear predictive hover - player is taking a break
         if (ctx.getPredictiveHoverManager() != null) {
             ctx.getPredictiveHoverManager().clearHover();
         }

@@ -150,9 +150,20 @@ public class ActionSequencer {
      * @return ordered list of BankOperation (only those needed)
      */
     public List<BankOperation> getBankingSequence(Set<BankOperation> neededOperations) {
+        return getBankingSequenceResult(neededOperations).getSequence();
+    }
+
+    /**
+     * Get the banking sequence along with the selected sequence type so callers can
+     * reinforce the profile weights after successful execution.
+     *
+     * @param neededOperations set of operations that are actually needed
+     * @return SequenceResult containing type and ordered operations
+     */
+    public SequenceResult<BankOperation> getBankingSequenceResult(Set<BankOperation> neededOperations) {
         String sequenceType = selectBankingSequenceType();
         List<BankOperation> fullSequence = BANKING_SEQUENCES.get(sequenceType);
-        
+
         // Filter to only needed operations, maintaining sequence order
         List<BankOperation> filtered = new ArrayList<>();
         for (BankOperation op : fullSequence) {
@@ -160,10 +171,10 @@ public class ActionSequencer {
                 filtered.add(op);
             }
         }
-        
-        log.debug("Selected banking sequence: {} -> {} (filtered from {})", 
+
+        log.debug("Selected banking sequence: {} -> {} (filtered from {})",
                 sequenceType, filtered, fullSequence);
-        return filtered;
+        return new SequenceResult<>(sequenceType, filtered);
     }
 
     /**
@@ -214,9 +225,20 @@ public class ActionSequencer {
      * @return ordered list of CombatPrepOperation (only those needed)
      */
     public List<CombatPrepOperation> getCombatPrepSequence(Set<CombatPrepOperation> neededOperations) {
+        return getCombatPrepSequenceResult(neededOperations).getSequence();
+    }
+
+    /**
+     * Get the combat preparation sequence along with the selected type so tasks can
+     * reinforce preferences after success.
+     *
+     * @param neededOperations set of operations that are actually needed
+     * @return SequenceResult containing type and ordered operations
+     */
+    public SequenceResult<CombatPrepOperation> getCombatPrepSequenceResult(Set<CombatPrepOperation> neededOperations) {
         String sequenceType = selectCombatPrepSequenceType();
         List<CombatPrepOperation> fullSequence = COMBAT_PREP_SEQUENCES.get(sequenceType);
-        
+
         // Filter to only needed operations, maintaining sequence order
         List<CombatPrepOperation> filtered = new ArrayList<>();
         for (CombatPrepOperation op : fullSequence) {
@@ -224,10 +246,10 @@ public class ActionSequencer {
                 filtered.add(op);
             }
         }
-        
-        log.debug("Selected combat prep sequence: {} -> {} (filtered from {})", 
+
+        log.debug("Selected combat prep sequence: {} -> {} (filtered from {})",
                 sequenceType, filtered, fullSequence);
-        return filtered;
+        return new SequenceResult<>(sequenceType, filtered);
     }
 
     /**

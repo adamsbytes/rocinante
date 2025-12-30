@@ -66,7 +66,6 @@ export type LampSkill =
 
 export interface BotConfig {
   id: string;
-  name: string;
   username: string;  // Jagex account email
   password: string;  // Jagex account password
   totpSecret: string;  // Required: Base32 TOTP secret for Jagex 2FA (email codes unsupported)

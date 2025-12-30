@@ -1,6 +1,6 @@
 import { type Component, createSignal } from 'solid-js';
 import type { BotConfig, LampSkill } from '../../shared/types';
-import { botFormSchema, type BotFormData } from '../../shared/botSchema';
+import { botFormSchema, type BotFormData, type BotFormInput } from '../../shared/botSchema';
 
 interface BotFormProps {
   initialData?: BotConfig;
@@ -11,12 +11,14 @@ interface BotFormProps {
 
 export const BotForm: Component<BotFormProps> = (props) => {
   const data = props.initialData || null;
+  const initialCharacterName = data ? data.characterName : '';
 
-  const [name, setName] = createSignal(data ? data.name : '');
+  const [characterName, setCharacterName] = createSignal(initialCharacterName);
   const [username, setUsername] = createSignal(data ? data.username : '');
   const [password, setPassword] = createSignal(data ? data.password : '');
   const [totpSecret, setTotpSecret] = createSignal(data ? data.totpSecret : '');
-  const [characterName, setCharacterName] = createSignal(data ? data.characterName : '');
+  const [showPassword, setShowPassword] = createSignal(false);
+  const [showTotpSecret, setShowTotpSecret] = createSignal(false);
   const lampSkillOptions: readonly LampSkill[] = [
     'ATTACK',
     'STRENGTH',
@@ -89,8 +91,7 @@ export const BotForm: Component<BotFormProps> = (props) => {
   const handleSubmit = (e: Event) => {
     e.preventDefault();
 
-    const formData: BotFormData = {
-      name: name(),
+    const formData: BotFormInput = {
       username: username(),
       password: password(),
       totpSecret: totpSecret(),
@@ -145,15 +146,19 @@ export const BotForm: Component<BotFormProps> = (props) => {
       <section class="space-y-4">
         <h3 class="text-lg font-semibold border-b border-[var(--border)] pb-2">Account Details</h3>
         <div>
-          <label class={labelClass}>Display Name</label>
+          <label class={labelClass}>Character Name</label>
           <input
             type="text"
-            value={name()}
-            onInput={(e) => setName(e.currentTarget.value)}
+            value={characterName()}
+            onInput={(e) => setCharacterName(e.currentTarget.value)}
             class={inputClass}
-            placeholder="Main Account"
+            placeholder="Character name (max 12 chars)"
+            maxLength={12}
             required
           />
+          <p class="text-xs text-[var(--text-secondary)] mt-1">
+            Used everywhere as the display name.
+          </p>
         </div>
         <div class="grid grid-cols-2 gap-4">
           <div>
@@ -169,42 +174,45 @@ export const BotForm: Component<BotFormProps> = (props) => {
           </div>
           <div>
             <label class={labelClass}>Password</label>
-            <input
-              type="password"
-              value={password()}
-              onInput={(e) => setPassword(e.currentTarget.value)}
-              class={inputClass}
-              required
-            />
+            <div class="relative">
+              <input
+                type={showPassword() ? 'text' : 'password'}
+                value={password()}
+                onInput={(e) => setPassword(e.currentTarget.value)}
+                class={`${inputClass} pr-12`}
+                required
+              />
+              <button
+                type="button"
+                class="absolute inset-y-0 right-0 px-3 text-sm text-[var(--text-secondary)] hover:text-white"
+                onClick={() => setShowPassword((prev) => !prev)}
+              >
+                {showPassword() ? 'Hide' : 'View'}
+              </button>
+            </div>
           </div>
         </div>
         <div>
           <label class={labelClass}>2FA TOTP Secret</label>
-          <input
-            type="password"
-            value={totpSecret()}
-            onInput={(e) => setTotpSecret(e.currentTarget.value)}
-            class={inputClass}
-            placeholder="Base32 secret from authenticator setup"
-            required
-          />
+          <div class="relative">
+            <input
+              type={showTotpSecret() ? 'text' : 'password'}
+              value={totpSecret()}
+              onInput={(e) => setTotpSecret(e.currentTarget.value)}
+              class={`${inputClass} pr-12`}
+              placeholder="Base32 secret from authenticator setup"
+              required
+            />
+            <button
+              type="button"
+              class="absolute inset-y-0 right-0 px-3 text-sm text-[var(--text-secondary)] hover:text-white"
+              onClick={() => setShowTotpSecret((prev) => !prev)}
+            >
+              {showTotpSecret() ? 'Hide' : 'View'}
+            </button>
+          </div>
           <p class="text-xs text-[var(--text-secondary)] mt-1">
             Jagex requires 2FA. We only support TOTP (not email codes), so paste the base32 secret shown when enabling the authenticator.
-          </p>
-        </div>
-        <div>
-          <label class={labelClass}>Character Name</label>
-          <input
-            type="text"
-            value={characterName()}
-            onInput={(e) => setCharacterName(e.currentTarget.value)}
-            class={inputClass}
-            placeholder="Desired name for new accounts"
-            maxLength={12}
-            required
-          />
-          <p class="text-xs text-[var(--text-secondary)] mt-1">
-            Required for account creation and tracking. Max 12 characters (OSRS limit).
           </p>
         </div>
         <div>

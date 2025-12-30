@@ -44,6 +44,7 @@ import javax.inject.Inject;
 import javax.inject.Provider;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -568,6 +569,47 @@ public class TaskContext {
      */
     public int getCurrentTick() {
         return gameStateServiceProvider.get().getCurrentTick();
+    }
+
+    /**
+     * Select a banking sequence using ActionSequencer with profile weights and return
+     * both the type chosen and the ordered operations. Returns empty if sequencing
+     * is unavailable.
+     */
+    public Optional<ActionSequencer.SequenceResult<ActionSequencer.BankOperation>> getBankingSequence(Set<ActionSequencer.BankOperation> neededOperations) {
+        if (actionSequencer == null || neededOperations == null || neededOperations.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(actionSequencer.getBankingSequenceResult(neededOperations));
+    }
+
+    /**
+     * Reinforce a banking sequence type after successful execution.
+     */
+    public void reinforceBankingSequence(String sequenceType) {
+        if (actionSequencer != null && sequenceType != null) {
+            actionSequencer.reinforceBankingSequence(sequenceType);
+        }
+    }
+
+    /**
+     * Select a combat preparation sequence using ActionSequencer with profile weights.
+     * Returns empty if sequencing is unavailable.
+     */
+    public Optional<ActionSequencer.SequenceResult<ActionSequencer.CombatPrepOperation>> getCombatPrepSequence(Set<ActionSequencer.CombatPrepOperation> neededOperations) {
+        if (actionSequencer == null || neededOperations == null || neededOperations.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(actionSequencer.getCombatPrepSequenceResult(neededOperations));
+    }
+
+    /**
+     * Reinforce a combat preparation sequence type after successful execution.
+     */
+    public void reinforceCombatPrepSequence(String sequenceType) {
+        if (actionSequencer != null && sequenceType != null) {
+            actionSequencer.reinforceCombatPrepSequence(sequenceType);
+        }
     }
 
     /**

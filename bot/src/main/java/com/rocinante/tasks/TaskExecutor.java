@@ -146,6 +146,12 @@ public class TaskExecutor {
     @Setter
     private volatile boolean currentStepComplete = true;
 
+    /**
+     * When set, defer starting the next task until this time to honor injected action
+     * cancellation delays from the InefficiencyInjector (per REQUIREMENTS 3.4.4).
+     */
+    private Instant nextTaskNotBefore = Instant.EPOCH;
+
     // ========================================================================
     // Constructor
     // ========================================================================
@@ -388,12 +394,47 @@ public class TaskExecutor {
             if (currentTask != null) {
                 handleTaskCompletion(currentTask.getState() == TaskState.COMPLETED);
             }
+            if (shouldDelayNextTaskForInefficiency()) {
+                return;
+            }
             currentTask = getNextTask();
         }
 
         if (currentTask != null) {
             executeCurrentTask();
         }
+    }
+
+    /**
+     * Check whether we should defer starting the next task due to injected action
+     * cancellation from InefficiencyInjector. This simulates a human cancelling
+     * an action and pausing briefly before trying again.
+     */
+    private boolean shouldDelayNextTaskForInefficiency() {
+        // Do not delay for urgent conditions
+        if (urgentPending) {
+            return false;
+        }
+
+        // Honor existing delay window
+        if (Instant.now().isBefore(nextTaskNotBefore)) {
+            return true;
+        }
+
+        var injector = taskContext.getInefficiencyInjector();
+        if (injector == null) {
+            return false;
+        }
+
+        var result = injector.checkPreClickInefficiency();
+        if (result.isPresent() && result.getType() == com.rocinante.behavior.InefficiencyInjector.InefficiencyType.ACTION_CANCEL) {
+            long delay = result.getDelayMs();
+            nextTaskNotBefore = Instant.now().plusMillis(delay);
+            log.debug("Injecting action cancellation delay before next task: {}ms", delay);
+            return true;
+        }
+
+        return false;
     }
 
     /**

@@ -1,5 +1,6 @@
 package com.rocinante.tasks.impl;
 
+import com.rocinante.behavior.ActionSequencer;
 import com.rocinante.state.PlayerState;
 import com.rocinante.tasks.AbstractTask;
 import com.rocinante.tasks.Task;
@@ -15,8 +16,11 @@ import net.runelite.api.widgets.Widget;
 
 import javax.annotation.Nullable;
 import java.awt.event.KeyEvent;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Reusable task for banking and resupply operations.
@@ -140,6 +144,38 @@ public class ResupplyTask extends AbstractTask {
      * Flag to prevent concurrent operations.
      */
     private volatile boolean operationPending = false;
+    
+    /**
+     * Sequenced operations to perform (from ActionSequencer).
+     */
+    @Nullable
+    private List<ActionSequencer.BankOperation> operationSequence;
+    
+    /**
+     * Current index in the operation sequence.
+     */
+    private int operationIndex = 0;
+    
+    /**
+     * Whether operations sequence has been initialized.
+     */
+    private boolean sequenceInitialized = false;
+    
+    /**
+     * The sequence type used (for reinforcement on success).
+     */
+    @Nullable
+    private String usedSequenceType;
+    
+    /**
+     * Tracks whether equipment deposit has been done (within deposit phase).
+     */
+    private boolean equipmentDeposited = false;
+    
+    /**
+     * Tracks whether inventory deposit has been done (within deposit phase).
+     */
+    private boolean inventoryDeposited = false;
 
     // ========================================================================
     // Construction
@@ -258,6 +294,16 @@ public class ResupplyTask extends AbstractTask {
         return "Resupply: " + withdrawItems.size() + " item types" +
                 (returnPosition != null ? " (with return)" : "");
     }
+    
+    @Override
+    public void onComplete(TaskContext ctx) {
+        // Reinforce successful banking sequence
+        if (usedSequenceType != null && ctx.getActionSequencer() != null) {
+            ctx.getActionSequencer().reinforceBankingSequence(usedSequenceType);
+            log.debug("Reinforced banking sequence: {}", usedSequenceType);
+        }
+        super.onComplete(ctx);
+    }
 
     // ========================================================================
     // Phase Implementations
@@ -312,9 +358,14 @@ public class ResupplyTask extends AbstractTask {
         // Check if bank already open
         if (isBankOpen(client)) {
             log.debug("Bank opened successfully");
-            phase = depositInventory || depositEquipment 
-                    ? ResupplyPhase.DEPOSIT 
-                    : ResupplyPhase.WITHDRAW;
+            
+            // Initialize operation sequence using ActionSequencer for human-like order variation
+            if (!sequenceInitialized) {
+                initializeOperationSequence(ctx);
+            }
+            
+            // Move to first operation in sequence
+            advanceToNextOperation();
             return;
         }
 
@@ -336,26 +387,28 @@ public class ResupplyTask extends AbstractTask {
             return;
         }
 
-        // Deposit equipment first if requested
-        if (depositEquipment) {
+        // Deposit equipment first if requested and not yet done
+        if (depositEquipment && !equipmentDeposited) {
             log.debug("Depositing equipment");
             BankTask depositTask = BankTask.depositEquipment();
             depositTask.setCloseAfter(false);
             activeSubTask = depositTask;
-            // Continue to inventory deposit or withdraw after
+            equipmentDeposited = true;
+            return; // Wait for completion before continuing
         }
         
-        // Deposit inventory
-        if (depositInventory) {
+        // Deposit inventory if requested and not yet done
+        if (depositInventory && !inventoryDeposited) {
             log.debug("Depositing inventory");
             BankTask depositTask = BankTask.depositAll();
             depositTask.setCloseAfter(false);
             activeSubTask = depositTask;
+            inventoryDeposited = true;
+            return; // Wait for completion before continuing
         }
 
-        // Move to withdraw phase
-        phase = ResupplyPhase.WITHDRAW;
-        initializeWithdrawSequence();
+        // Deposit complete - advance to next operation in sequence
+        advanceToNextOperation();
     }
 
     /**
@@ -379,7 +432,8 @@ public class ResupplyTask extends AbstractTask {
         // Check if all items withdrawn
         if (withdrawIndex >= withdrawEntries.length) {
             log.debug("All items withdrawn ({} types)", withdrawEntries.length);
-            phase = ResupplyPhase.CLOSE_BANK;
+            // Advance to next operation in sequence (or close bank)
+            advanceToNextOperation();
             return;
         }
 
@@ -487,6 +541,73 @@ public class ResupplyTask extends AbstractTask {
         withdrawEntries = withdrawItems.entrySet().toArray(new Map.Entry[0]);
         withdrawIndex = 0;
         log.debug("Initialized withdraw sequence with {} items", withdrawEntries.length);
+    }
+    
+    /**
+     * Initialize the operation sequence using ActionSequencer.
+     * This determines the order of deposit/withdraw operations based on player profile.
+     */
+    private void initializeOperationSequence(TaskContext ctx) {
+        sequenceInitialized = true;
+        
+        // Determine which operations we actually need
+        Set<ActionSequencer.BankOperation> neededOps = EnumSet.noneOf(ActionSequencer.BankOperation.class);
+        
+        if (depositInventory || depositEquipment) {
+            neededOps.add(ActionSequencer.BankOperation.DEPOSIT_ALL);
+        }
+        if (!withdrawItems.isEmpty()) {
+            neededOps.add(ActionSequencer.BankOperation.WITHDRAW);
+        }
+        
+        if (neededOps.isEmpty()) {
+            operationSequence = List.of();
+            return;
+        }
+        
+        // Get profile-based sequence (filtered to only needed operations)
+        var sequenceResult = ctx.getBankingSequence(neededOps);
+        if (sequenceResult.isPresent()) {
+            usedSequenceType = sequenceResult.get().getSequenceType();
+            operationSequence = sequenceResult.get().getSequence().stream()
+                    .filter(neededOps::contains)
+                    .toList();
+        } else {
+            // Fallback to deterministic order when sequencing unavailable
+            usedSequenceType = "DEFAULT";
+            operationSequence = List.of(
+                    ActionSequencer.BankOperation.DEPOSIT_ALL,
+                    ActionSequencer.BankOperation.WITHDRAW
+            );
+        }
+        
+        operationIndex = 0;
+        
+        log.debug("Using banking sequence {} -> {}", usedSequenceType, operationSequence);
+    }
+    
+    /**
+     * Advance to the next operation in the sequence.
+     */
+    private void advanceToNextOperation() {
+        if (operationSequence == null || operationIndex >= operationSequence.size()) {
+            phase = ResupplyPhase.CLOSE_BANK;
+            return;
+        }
+        
+        ActionSequencer.BankOperation nextOp = operationSequence.get(operationIndex);
+        operationIndex++;
+        
+        switch (nextOp) {
+            case DEPOSIT_ALL:
+            case DEPOSIT_SPECIFIC:
+                phase = ResupplyPhase.DEPOSIT;
+                break;
+            case WITHDRAW:
+                phase = ResupplyPhase.WITHDRAW;
+                initializeWithdrawSequence();
+                break;
+        }
     }
 
     // ========================================================================

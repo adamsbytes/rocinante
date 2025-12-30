@@ -1,5 +1,6 @@
 package com.rocinante.tasks.impl;
 
+import com.rocinante.behavior.InefficiencyInjector;
 import com.rocinante.input.WidgetClickHelper;
 import com.rocinante.navigation.*;
 import com.rocinante.state.PlayerState;
@@ -1068,14 +1069,16 @@ public class WalkToTask extends AbstractTask {
             
             log.info("Arrived at destination: {}", destination);
             
-            // Check for backtracking (2% chance per REQUIREMENTS.md 3.4.4)
-            // But only if not already a backtrack walk
+            // Check for post-walk inefficiency injection (backtracking)
             if (!isBacktrackWalk && !backtrackingChecked) {
                 backtrackingChecked = true;
                 var inefficiency = ctx.getInefficiencyInjector();
-                if (inefficiency != null && inefficiency.shouldBacktrack()) {
-                    phase = WalkPhase.BACKTRACKING;
-                    return;
+                if (inefficiency != null) {
+                    var result = inefficiency.checkPostWalkInefficiency();
+                    if (result.isPresent() && result.getType() == InefficiencyInjector.InefficiencyType.BACKTRACK) {
+                        phase = WalkPhase.BACKTRACKING;
+                        return;
+                    }
                 }
             }
             

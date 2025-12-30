@@ -59,46 +59,46 @@ public final class ItemData {
         Set<Integer> antipoisonIds = new HashSet<>();
         
         // Regular antipoison (1-4 dose)
-        antipoisonIds.add(2446);  // Antipoison(4)
-        antipoisonIds.add(175);   // Antipoison(3)
-        antipoisonIds.add(177);   // Antipoison(2)
-        antipoisonIds.add(179);   // Antipoison(1)
+        antipoisonIds.add(ItemID._4DOSEANTIPOISON);
+        antipoisonIds.add(ItemID._3DOSEANTIPOISON);
+        antipoisonIds.add(ItemID._2DOSEANTIPOISON);
+        antipoisonIds.add(ItemID._1DOSEANTIPOISON);
         
         // Superantipoison (1-4 dose)
-        antipoisonIds.add(2448);  // Superantipoison(4)
-        antipoisonIds.add(181);   // Superantipoison(3)
-        antipoisonIds.add(183);   // Superantipoison(2)
-        antipoisonIds.add(185);   // Superantipoison(1)
+        antipoisonIds.add(ItemID._4DOSE2ANTIPOISON);
+        antipoisonIds.add(ItemID._3DOSE2ANTIPOISON);
+        antipoisonIds.add(ItemID._2DOSE2ANTIPOISON);
+        antipoisonIds.add(ItemID._1DOSE2ANTIPOISON);
         
         // Antidote+ (1-4 dose)
-        antipoisonIds.add(5943);  // Antidote+(4)
-        antipoisonIds.add(5945);  // Antidote+(3)
-        antipoisonIds.add(5947);  // Antidote+(2)
-        antipoisonIds.add(5949);  // Antidote+(1)
+        antipoisonIds.add(ItemID.ANTIDOTE_4);
+        antipoisonIds.add(ItemID.ANTIDOTE_3);
+        antipoisonIds.add(ItemID.ANTIDOTE_2);
+        antipoisonIds.add(ItemID.ANTIDOTE_1);
         
         // Antidote++ (1-4 dose)
-        antipoisonIds.add(5952);  // Antidote++(4)
-        antipoisonIds.add(5954);  // Antidote++(3)
-        antipoisonIds.add(5956);  // Antidote++(2)
-        antipoisonIds.add(5958);  // Antidote++(1)
+        antipoisonIds.add(ItemID.ANTIDOTE__4);
+        antipoisonIds.add(ItemID.ANTIDOTE__3);
+        antipoisonIds.add(ItemID.ANTIDOTE__2);
+        antipoisonIds.add(ItemID.ANTIDOTE__1);
         
         // Anti-venom (1-4 dose)
-        antipoisonIds.add(12905); // Anti-venom(4)
-        antipoisonIds.add(12907); // Anti-venom(3)
-        antipoisonIds.add(12909); // Anti-venom(2)
-        antipoisonIds.add(12911); // Anti-venom(1)
+        antipoisonIds.add(ItemID.ANTIVENOM4);
+        antipoisonIds.add(ItemID.ANTIVENOM3);
+        antipoisonIds.add(ItemID.ANTIVENOM2);
+        antipoisonIds.add(ItemID.ANTIVENOM1);
         
         // Anti-venom+ (1-4 dose)
-        antipoisonIds.add(12913); // Anti-venom+(4)
-        antipoisonIds.add(12915); // Anti-venom+(3)
-        antipoisonIds.add(12917); // Anti-venom+(2)
-        antipoisonIds.add(12919); // Anti-venom+(1)
+        antipoisonIds.add(ItemID.ANTIVENOM_4);
+        antipoisonIds.add(ItemID.ANTIVENOM_3);
+        antipoisonIds.add(ItemID.ANTIVENOM_2);
+        antipoisonIds.add(ItemID.ANTIVENOM_1);
         
         // Sanfew serum (cures poison and restores stats)
-        antipoisonIds.add(10925); // Sanfew serum(4)
-        antipoisonIds.add(10927); // Sanfew serum(3)
-        antipoisonIds.add(10929); // Sanfew serum(2)
-        antipoisonIds.add(10931); // Sanfew serum(1)
+        antipoisonIds.add(ItemID.SANFEW_SALVE_4_DOSE);
+        antipoisonIds.add(ItemID.SANFEW_SALVE_3_DOSE);
+        antipoisonIds.add(ItemID.SANFEW_SALVE_2_DOSE);
+        antipoisonIds.add(ItemID.SANFEW_SALVE_1_DOSE);
         
         ANTIPOISON_IDS = Collections.unmodifiableSet(antipoisonIds);
 

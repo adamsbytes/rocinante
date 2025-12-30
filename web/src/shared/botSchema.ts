@@ -55,10 +55,6 @@ export const proxySchema = z.object({
 
 export const botFormSchema = z
   .object({
-    name: z
-      .string()
-      .trim()
-      .min(1, { message: 'Display name is required' }),
     username: z
       .string()
       .trim()
@@ -138,5 +134,6 @@ export const botFormSchema = z
     },
   }));
 
+export type BotFormInput = z.input<typeof botFormSchema>;
 export type BotFormData = z.infer<typeof botFormSchema>;
 

@@ -62,7 +62,7 @@ public class MicroPauseTask extends BehavioralTask {
             started = true;
             fatigueModel.startBreak();
             
-            // Clear any pending predictive hover - player is taking a break
+            // Clear predictive hover - player is taking a break
             if (ctx.getPredictiveHoverManager() != null) {
                 ctx.getPredictiveHoverManager().clearHover();
             }

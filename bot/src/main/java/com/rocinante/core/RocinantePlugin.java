@@ -48,6 +48,9 @@ import com.rocinante.util.Randomization;
 import com.rocinante.behavior.tasks.MicroPauseTask;
 import com.rocinante.behavior.tasks.ShortBreakTask;
 import com.rocinante.behavior.tasks.LongBreakTask;
+import com.rocinante.behavior.tasks.SessionEndTask;
+import com.rocinante.behavior.tasks.SessionRitualTask;
+import com.rocinante.behavior.idle.IdleHabitSupplier;
 import net.runelite.client.plugins.slayer.SlayerPluginService;
 
 import javax.annotation.Nullable;
@@ -177,6 +180,9 @@ public class RocinantePlugin extends Plugin
 
     // Break task factory - created manually in startUp() as it requires runtime wiring
     private Function<BreakType, Task> breakTaskFactory;
+    
+    // Idle habit supplier - provides human-like idle behaviors when queue is empty
+    private IdleHabitSupplier idleHabitSupplier;
 
     // === Behavioral Anti-Detection Components ===
 
@@ -312,14 +318,18 @@ public class RocinantePlugin extends Plugin
                     return new LongBreakTask(breakScheduler, fatigueModel, playerProfile,
                             randomization, humanTimer);
                 case SESSION_END:
-                    log.info("Session end triggered - should logout");
-                    return null;
+                    log.info("Session end triggered - creating logout task");
+                    return new SessionEndTask(breakScheduler, logoutHandler, playerProfile, taskExecutor);
                 default:
                     log.warn("Unknown break type: {}", breakType);
                     return null;
             }
         };
         breakScheduler.setBreakTaskFactory(breakTaskFactory);
+        
+        // Create and wire up idle habit supplier for human-like idle behaviors
+        idleHabitSupplier = new IdleHabitSupplier(playerProfile, randomization, attentionModel, activityTracker);
+        taskExecutor.setIdleTaskSupplier(idleHabitSupplier);
         
         // NOTE: TaskExecutor now receives BreakScheduler and EmergencyHandler via constructor injection
         
@@ -785,6 +795,24 @@ public class RocinantePlugin extends Plugin
         if (predictiveHoverManager != null) {
             predictiveHoverManager.resetMetrics();
             predictiveHoverManager.clearHover();
+        }
+        
+        // Reset idle habit supplier timers for new session
+        if (idleHabitSupplier != null) {
+            idleHabitSupplier.reset();
+        }
+        
+        // Start break scheduler session tracking
+        breakScheduler.onSessionStart();
+        
+        // Queue session rituals if this is a fresh session (>15 min since last logout)
+        // Per REQUIREMENTS.md Section 3.5.1: 2-4 account-specific actions at session start
+        if (playerProfile.isFreshSession()) {
+            log.info("Fresh session detected - queuing session rituals");
+            SessionRitualTask ritualTask = new SessionRitualTask(playerProfile, randomization, humanTimer);
+            taskExecutor.queueTask(ritualTask, TaskPriority.BEHAVIORAL);
+        } else {
+            log.debug("Resuming session - skipping rituals (not a fresh session)");
         }
         
         taskExecutor.start();
