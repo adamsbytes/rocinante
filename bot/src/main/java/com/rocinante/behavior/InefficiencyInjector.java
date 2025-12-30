@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.concurrent.atomic.AtomicLong;
@@ -94,6 +95,7 @@ public class InefficiencyInjector {
     // === Dependencies ===
     
     private final Randomization randomization;
+    private final Clock clock;
     
     @Setter
     @Nullable
@@ -135,7 +137,19 @@ public class InefficiencyInjector {
 
     @Inject
     public InefficiencyInjector(Randomization randomization) {
+        this(randomization, Clock.systemUTC());
+    }
+
+    /**
+     * Constructor with injectable clock for testing.
+     * Allows tests to control time without Thread.sleep().
+     *
+     * @param randomization the randomization instance
+     * @param clock the clock to use for time checks (use Clock.systemUTC() for production)
+     */
+    public InefficiencyInjector(Randomization randomization, Clock clock) {
         this.randomization = randomization;
+        this.clock = clock;
         log.info("InefficiencyInjector initialized");
     }
 
@@ -155,7 +169,7 @@ public class InefficiencyInjector {
         }
         
         // Prevent clustering
-        if (Duration.between(lastBacktrack, Instant.now()).compareTo(MIN_INEFFICIENCY_INTERVAL) < 0) {
+        if (Duration.between(lastBacktrack, clock.instant()).compareTo(MIN_INEFFICIENCY_INTERVAL) < 0) {
             return false;
         }
         
@@ -163,7 +177,7 @@ public class InefficiencyInjector {
         boolean should = randomization.chance(probability);
         
         if (should) {
-            lastBacktrack = Instant.now();
+            lastBacktrack = clock.instant();
             backtrackCount.incrementAndGet();
             log.debug("Backtracking triggered");
         }
@@ -196,7 +210,7 @@ public class InefficiencyInjector {
         }
         
         // Prevent clustering
-        if (Duration.between(lastRedundantAction, Instant.now()).compareTo(MIN_INEFFICIENCY_INTERVAL) < 0) {
+        if (Duration.between(lastRedundantAction, clock.instant()).compareTo(MIN_INEFFICIENCY_INTERVAL) < 0) {
             return false;
         }
         
@@ -204,7 +218,7 @@ public class InefficiencyInjector {
         boolean should = randomization.chance(probability);
         
         if (should) {
-            lastRedundantAction = Instant.now();
+            lastRedundantAction = clock.instant();
             redundantActionCount.incrementAndGet();
             log.debug("Redundant action triggered");
         }
@@ -239,7 +253,7 @@ public class InefficiencyInjector {
         
         // Prevent clustering - shorter interval for hesitation as it's more common
         Duration hesitationInterval = Duration.ofSeconds(10);
-        if (Duration.between(lastHesitation, Instant.now()).compareTo(hesitationInterval) < 0) {
+        if (Duration.between(lastHesitation, clock.instant()).compareTo(hesitationInterval) < 0) {
             return false;
         }
         
@@ -247,7 +261,7 @@ public class InefficiencyInjector {
         boolean should = randomization.chance(probability);
         
         if (should) {
-            lastHesitation = Instant.now();
+            lastHesitation = clock.instant();
             hesitationCount.incrementAndGet();
             log.trace("Hesitation triggered");
         }
@@ -297,7 +311,7 @@ public class InefficiencyInjector {
         }
         
         // Prevent clustering
-        if (Duration.between(lastActionCancel, Instant.now()).compareTo(MIN_INEFFICIENCY_INTERVAL) < 0) {
+        if (Duration.between(lastActionCancel, clock.instant()).compareTo(MIN_INEFFICIENCY_INTERVAL) < 0) {
             return false;
         }
         
@@ -305,7 +319,7 @@ public class InefficiencyInjector {
         boolean should = randomization.chance(probability);
         
         if (should) {
-            lastActionCancel = Instant.now();
+            lastActionCancel = clock.instant();
             actionCancelCount.incrementAndGet();
             log.debug("Action cancellation triggered");
         }

@@ -47,11 +47,12 @@ public class RequirementTranslator {
      * Translate a Quest Helper requirement to a StateCondition.
      *
      * @param qhRequirement the Quest Helper requirement object
-     * @return a StateCondition equivalent, or always-true if unsupported
+     * @return a StateCondition equivalent, or never if cannot be evaluated (blocks progress for safety)
      */
     public StateCondition translate(Object qhRequirement) {
         if (qhRequirement == null) {
-            return StateCondition.always();
+            log.warn("Null requirement passed to translator - blocking progress for safety");
+            return StateCondition.never();
         }
 
         String className = qhRequirement.getClass().getSimpleName();
@@ -218,14 +219,15 @@ public class RequirementTranslator {
         // Get zones list
         Object zonesObj = getFieldValue(req, "zones");
         if (!(zonesObj instanceof List)) {
-            log.debug("ZoneRequirement has no zones list");
-            return StateCondition.always();
+            log.warn("ZoneRequirement has no zones list - blocking progress for safety");
+            return StateCondition.never();
         }
 
         @SuppressWarnings("unchecked")
         List<Object> zones = (List<Object>) zonesObj;
         if (zones.isEmpty()) {
-            return StateCondition.always();
+            log.warn("ZoneRequirement has empty zones list - blocking progress for safety");
+            return StateCondition.never();
         }
 
         // Create a condition that checks any zone
@@ -318,7 +320,8 @@ public class RequirementTranslator {
 
         Object conditionsObj = getFieldValue(req, "conditions");
         if (!(conditionsObj instanceof List)) {
-            return StateCondition.always();
+            log.warn("CompositeRequirement has no conditions list - blocking progress for safety");
+            return StateCondition.never();
         }
 
         @SuppressWarnings("unchecked")
@@ -355,19 +358,19 @@ public class RequirementTranslator {
         int requiredLevel = getIntField(req, "requiredLevel");
 
         if (skillObj == null) {
-            return StateCondition.always();
+            log.warn("SkillRequirement has null skill - blocking progress for safety");
+            return StateCondition.never();
         }
 
         String skillName = skillObj.toString().toLowerCase();
+        int skillId = getSkillId(skillName);
+        
+        if (skillId < 0) {
+            log.warn("SkillRequirement has unknown skill '{}' - blocking progress for safety", skillName);
+            return StateCondition.never();
+        }
 
-        return ctx -> {
-            // Need to check skill level via client
-            // This is simplified - would need proper skill ID mapping
-            int skillId = getSkillId(skillName);
-            if (skillId < 0) return true; // Unknown skill, assume met
-
-            return ctx.getClient().getRealSkillLevel(net.runelite.api.Skill.values()[skillId]) >= requiredLevel;
-        };
+        return ctx -> ctx.getClient().getRealSkillLevel(net.runelite.api.Skill.values()[skillId]) >= requiredLevel;
     }
 
     private int getSkillId(String skillName) {
@@ -385,13 +388,29 @@ public class RequirementTranslator {
     private StateCondition translateQuestRequirement(Object req) throws Exception {
         Object questObj = getFieldValue(req, "quest");
         if (questObj == null) {
-            return StateCondition.always();
+            log.warn("QuestRequirement has null quest - blocking progress for safety");
+            return StateCondition.never();
         }
 
-        // Quest Helper's Quest enum has a getState() method or similar
-        // For now, return always-true since we'd need the quest's varbit ID
-        log.debug("Quest requirement translation not fully implemented: {}", questObj);
-        return StateCondition.always();
+        // Quest Helper's Quest enum - try to get the Quest enum value and check completion
+        // via RuneLite's Quest enum which has getState() method
+        try {
+            String questName = questObj.toString();
+            // Try to find matching RuneLite Quest enum
+            for (net.runelite.api.Quest quest : net.runelite.api.Quest.values()) {
+                if (quest.name().equalsIgnoreCase(questName) || 
+                    quest.getName().equalsIgnoreCase(questName.replace("_", " "))) {
+                    final net.runelite.api.Quest matchedQuest = quest;
+                    return ctx -> matchedQuest.getState(ctx.getClient()) == net.runelite.api.QuestState.FINISHED;
+                }
+            }
+            log.warn("QuestRequirement could not find matching quest '{}' - blocking progress for safety", questName);
+            return StateCondition.never();
+        } catch (Exception e) {
+            log.warn("QuestRequirement translation failed for '{}' - blocking progress for safety: {}", 
+                    questObj, e.getMessage());
+            return StateCondition.never();
+        }
     }
 
     // ========================================================================
@@ -415,7 +434,8 @@ public class RequirementTranslator {
     private StateCondition translateWidgetRequirement(Object req) throws Exception {
         int groupId = getIntFieldSafe(req, "groupId", -1);
         if (groupId < 0) {
-            return StateCondition.always();
+            log.warn("WidgetRequirement has invalid groupId - blocking progress for safety");
+            return StateCondition.never();
         }
         return Conditions.widgetVisible(groupId);
     }
@@ -446,7 +466,8 @@ public class RequirementTranslator {
             boolean mustBeActive = getBoolFieldSafe(req, "mustBeActive", false);
             
             if (textList == null || textList.isEmpty()) {
-                return StateCondition.always();
+                log.warn("DialogRequirement has no text list - blocking progress for safety");
+                return StateCondition.never();
             }
             
             // For mustBeActive, we need to check current dialogue widget
@@ -478,14 +499,13 @@ public class RequirementTranslator {
                 };
             }
             
-            // For non-active, we'd need event tracking - return always for now
-            // The bot should track dialogue history via events
-            log.debug("DialogRequirement with mustBeActive=false requires event tracking: {}", textList);
-            return StateCondition.always();
+            // For non-active, we'd need event tracking - cannot evaluate statically
+            log.warn("DialogRequirement with mustBeActive=false requires event tracking - blocking progress for safety: {}", textList);
+            return StateCondition.never();
             
         } catch (Exception e) {
-            log.debug("Could not translate DialogRequirement: {}", e.getMessage());
-            return StateCondition.always();
+            log.warn("Could not translate DialogRequirement - blocking progress for safety: {}", e.getMessage());
+            return StateCondition.never();
         }
     }
 
@@ -511,7 +531,8 @@ public class RequirementTranslator {
             String expectedValue = getStringFieldSafe(req, "expectedValue", "true");
             
             if (identifier == null) {
-                return StateCondition.always();
+                log.warn("RuneliteRequirement has null identifier - blocking progress for safety");
+                return StateCondition.never();
             }
             
             // RuneLite requirements check config manager - we can't access that
@@ -528,12 +549,12 @@ public class RequirementTranslator {
                 }
             }
             
-            log.debug("RuneliteRequirement uses config storage, cannot directly evaluate: {}", identifier);
-            return StateCondition.always();
+            log.warn("RuneliteRequirement uses config storage, cannot directly evaluate '{}' - blocking progress for safety", identifier);
+            return StateCondition.never();
             
         } catch (Exception e) {
-            log.debug("Could not translate RuneliteRequirement: {}", e.getMessage());
-            return StateCondition.always();
+            log.warn("Could not translate RuneliteRequirement - blocking progress for safety: {}", e.getMessage());
+            return StateCondition.never();
         }
     }
 
@@ -550,9 +571,11 @@ public class RequirementTranslator {
     private StateCondition translateManualRequirement(Object req) {
         try {
             boolean shouldPass = getBoolFieldSafe(req, "shouldPass", false);
+            // ManualRequirement with shouldPass=true is intentionally always-true
             return shouldPass ? StateCondition.always() : StateCondition.never();
         } catch (Exception e) {
-            return StateCondition.always();
+            log.warn("Could not translate ManualRequirement - blocking progress for safety: {}", e.getMessage());
+            return StateCondition.never();
         }
     }
 
@@ -572,7 +595,8 @@ public class RequirementTranslator {
             List<String> messages = (List<String>) getFieldValue(req, "messages");
             
             if (messages == null || messages.isEmpty()) {
-                return StateCondition.always();
+                log.warn("MesBoxRequirement has no messages list - blocking progress for safety");
+                return StateCondition.never();
             }
             
             // Check if message box widget is visible with expected text
@@ -595,8 +619,8 @@ public class RequirementTranslator {
             };
             
         } catch (Exception e) {
-            log.debug("Could not translate MesBoxRequirement: {}", e.getMessage());
-            return StateCondition.always();
+            log.warn("Could not translate MesBoxRequirement - blocking progress for safety: {}", e.getMessage());
+            return StateCondition.never();
         }
     }
 
@@ -610,9 +634,9 @@ public class RequirementTranslator {
      */
     private StateCondition translateChatMessageRequirement(Object req) {
         // Chat message requirements need event-based tracking
-        // For now, return always-true as the bot should handle this via event system
-        log.debug("ChatMessageRequirement requires event tracking");
-        return StateCondition.always();
+        // Cannot evaluate statically - block progress for safety
+        log.warn("ChatMessageRequirement requires event tracking - blocking progress for safety");
+        return StateCondition.never();
     }
 
     // ========================================================================
@@ -658,22 +682,25 @@ public class RequirementTranslator {
      * Translate ItemOnTileRequirement - checks if an item is on the ground.
      *
      * <p>Ground item checking requires scene scanning which is expensive.
-     * For now, we return always-true and let the step execution handle
-     * ground item detection at runtime.
+     * For valid item IDs, we return always-true and let the step execution handle
+     * ground item detection at runtime via GroundItemQuestStep.
      */
     private StateCondition translateItemOnTileRequirement(Object req) {
         try {
             int itemId = getIntFieldSafe(req, "itemID", -1);
             if (itemId < 0) {
-                return StateCondition.always();
+                log.warn("ItemOnTileRequirement has invalid itemId - blocking progress for safety");
+                return StateCondition.never();
             }
             
             // Ground item checking requires TileItem scanning at runtime
             // The step execution will handle this via GroundItemQuestStep
-            log.debug("ItemOnTileRequirement for itemId={} - requires runtime scanning", itemId);
+            // This is intentionally always-true because the runtime check is more reliable
+            log.debug("ItemOnTileRequirement for itemId={} - deferred to runtime scanning", itemId);
             return StateCondition.always();
         } catch (Exception e) {
-            return StateCondition.always();
+            log.warn("Could not translate ItemOnTileRequirement - blocking progress for safety: {}", e.getMessage());
+            return StateCondition.never();
         }
     }
 
@@ -684,12 +711,14 @@ public class RequirementTranslator {
         try {
             int itemId = getIntFieldSafe(req, "id", -1);
             if (itemId < 0) {
-                return StateCondition.always();
+                log.warn("NoItemRequirement has invalid itemId - blocking progress for safety");
+                return StateCondition.never();
             }
             
             return ctx -> !ctx.getInventoryState().hasItem(itemId, 1);
         } catch (Exception e) {
-            return StateCondition.always();
+            log.warn("Could not translate NoItemRequirement - blocking progress for safety: {}", e.getMessage());
+            return StateCondition.never();
         }
     }
 
@@ -721,10 +750,12 @@ public class RequirementTranslator {
                            Math.abs(localWp.getY() - wp.getY()) < 104;
                 };
             }
+            log.warn("TileIsLoadedRequirement has invalid worldPoint - blocking progress for safety");
+            return StateCondition.never();
         } catch (Exception e) {
-            log.trace("Could not translate TileIsLoadedRequirement", e);
+            log.warn("Could not translate TileIsLoadedRequirement - blocking progress for safety: {}", e.getMessage());
+            return StateCondition.never();
         }
-        return StateCondition.always();
     }
 
     // ========================================================================
@@ -758,11 +789,13 @@ public class RequirementTranslator {
                     int prayerVarbit = (int) prayerObj.getClass().getMethod("getVarbit").invoke(prayerObj);
                     return ctx -> ctx.getClient().getVarbitValue(prayerVarbit) == 1;
                 } catch (Exception e) {
-                    log.trace("Could not get prayer varbit", e);
+                    log.warn("Could not get prayer varbit - blocking progress for safety: {}", e.getMessage());
+                    return StateCondition.never();
                 }
             }
+            log.warn("PrayerRequirement has null prayer object - blocking progress for safety");
+            return StateCondition.never();
         }
-        return StateCondition.always();
     }
 
     /**
@@ -784,10 +817,12 @@ public class RequirementTranslator {
                 int finalExpected = expectedValue;
                 return ctx -> ctx.getClient().getVarbitValue(4070) == finalExpected;
             }
+            log.warn("SpellbookRequirement has null spellbook - blocking progress for safety");
+            return StateCondition.never();
         } catch (Exception e) {
-            log.trace("Could not translate SpellbookRequirement", e);
+            log.warn("Could not translate SpellbookRequirement - blocking progress for safety: {}", e.getMessage());
+            return StateCondition.never();
         }
-        return StateCondition.always();
     }
 
     /**
@@ -823,7 +858,9 @@ public class RequirementTranslator {
             String operation = operationObj != null ? operationObj.toString() : "EQUAL";
             
             if (varbitIdA < 0 || varbitIdB < 0) {
-                return StateCondition.always();
+                log.warn("VarComparisonRequirement has invalid varbit IDs ({}, {}) - blocking progress for safety", 
+                        varbitIdA, varbitIdB);
+                return StateCondition.never();
             }
             
             return ctx -> {
@@ -840,7 +877,8 @@ public class RequirementTranslator {
                 }
             };
         } catch (Exception e) {
-            return StateCondition.always();
+            log.warn("Could not translate VarComparisonRequirement - blocking progress for safety: {}", e.getMessage());
+            return StateCondition.never();
         }
     }
 

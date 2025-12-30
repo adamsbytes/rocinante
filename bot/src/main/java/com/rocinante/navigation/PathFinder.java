@@ -252,6 +252,7 @@ public class PathFinder {
 
         // A* data structures
         PriorityQueue<Node> openSet = new PriorityQueue<>(Comparator.comparingInt(n -> n.fScore));
+        Set<Long> openSetMembership = new HashSet<>(); // O(1) membership tracking for openSet
         Map<Long, Node> allNodes = new HashMap<>();
         Set<Long> closedSet = new HashSet<>();
 
@@ -259,8 +260,10 @@ public class PathFinder {
         Node startNode = new Node(startX, startY);
         startNode.gScore = 0;
         startNode.fScore = heuristic(startX, startY, endX, endY);
+        long startKey = nodeKey(startX, startY);
         openSet.add(startNode);
-        allNodes.put(nodeKey(startX, startY), startNode);
+        openSetMembership.add(startKey);
+        allNodes.put(startKey, startNode);
 
         int iterations = 0;
 
@@ -268,13 +271,14 @@ public class PathFinder {
             iterations++;
 
             Node current = openSet.poll();
+            long currentKey = nodeKey(current.x, current.y);
+            openSetMembership.remove(currentKey);
 
             // Check if we reached the goal
             if (current.x == endX && current.y == endY) {
                 return reconstructPath(current, start.getPlane());
             }
 
-            long currentKey = nodeKey(current.x, current.y);
             if (closedSet.contains(currentKey)) {
                 continue;
             }
@@ -318,9 +322,10 @@ public class PathFinder {
                     neighbor.gScore = tentativeG;
                     neighbor.fScore = tentativeG + heuristic(nx, ny, endX, endY);
 
-                    // Add to open set if not already there
-                    if (!openSet.contains(neighbor)) {
+                    // Add to open set if not already there (O(1) check via HashSet)
+                    if (!openSetMembership.contains(neighborKey)) {
                         openSet.add(neighbor);
+                        openSetMembership.add(neighborKey);
                     }
                 }
             }

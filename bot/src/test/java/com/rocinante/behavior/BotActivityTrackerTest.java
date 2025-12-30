@@ -4,6 +4,7 @@ import com.rocinante.state.CombatState;
 import com.rocinante.state.IronmanState;
 import com.rocinante.state.NpcSnapshot;
 import com.rocinante.tasks.Task;
+import com.rocinante.util.NpcUtils;
 import net.runelite.api.Client;
 import net.runelite.api.coords.WorldPoint;
 import org.junit.Before;
@@ -167,14 +168,14 @@ public class BotActivityTrackerTest {
 
     @Test
     public void testIsBoss_RecognizesCommonBosses() {
-        assertTrue(BotActivityTracker.isBoss("Zulrah"));
-        assertTrue(BotActivityTracker.isBoss("Vorkath"));
-        assertTrue(BotActivityTracker.isBoss("General Graardor"));
-        assertTrue(BotActivityTracker.isBoss("TzTok-Jad"));
+        assertTrue(NpcUtils.isBoss("Zulrah"));
+        assertTrue(NpcUtils.isBoss("Vorkath"));
+        assertTrue(NpcUtils.isBoss("General Graardor"));
+        assertTrue(NpcUtils.isBoss("TzTok-Jad"));
         
-        assertFalse(BotActivityTracker.isBoss("Cow"));
-        assertFalse(BotActivityTracker.isBoss("Goblin"));
-        assertFalse(BotActivityTracker.isBoss(null));
+        assertFalse(NpcUtils.isBoss("Cow"));
+        assertFalse(NpcUtils.isBoss("Goblin"));
+        assertFalse(NpcUtils.isBoss(null));
     }
 
     // ========================================================================

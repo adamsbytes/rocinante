@@ -108,26 +108,21 @@ public class GameStateService {
     // State Components
     // ========================================================================
 
-    @Nullable
+    // IronmanState is a @Singleton always provided by Guice - not nullable
     private final com.rocinante.state.IronmanState ironmanState;
 
     // ========================================================================
-    // Behavioral Components
+    // Behavioral Components - all @Singleton, always present after injection
     // ========================================================================
 
-    @Nullable
     private final PlayerProfile playerProfile;
     
-    @Nullable
     private final FatigueModel fatigueModel;
     
-    @Nullable
     private final BreakScheduler breakScheduler;
     
-    @Nullable
     private final AttentionModel attentionModel;
     
-    @Nullable
     private final XpTracker xpTracker;
     
     // TaskExecutor is set via setter to break circular dependency
@@ -136,16 +131,13 @@ public class GameStateService {
     private Provider<TaskExecutor> taskExecutorProvider;
 
     // ========================================================================
-    // Data Services
+    // Data Services - all @Singleton, always present after injection
     // ========================================================================
 
-    @Nullable
     private final WeaponDataService weaponDataService;
 
-    @Nullable
     private final NpcCombatDataLoader npcCombatDataLoader;
 
-    @Nullable
     private final ProjectileDataLoader projectileDataLoader;
 
     // SlayerPluginService is set via setter - it's a RuneLite plugin service that
@@ -344,15 +336,15 @@ public class GameStateService {
                            ItemManager itemManager, 
                            BankStateManager bankStateManager,
                            GrandExchangeStateManager grandExchangeStateManager,
-                           @Nullable com.rocinante.state.IronmanState ironmanState,
-                           @Nullable PlayerProfile playerProfile,
-                           @Nullable FatigueModel fatigueModel,
-                           @Nullable BreakScheduler breakScheduler,
-                           @Nullable AttentionModel attentionModel,
-                           @Nullable XpTracker xpTracker,
-                           @Nullable WeaponDataService weaponDataService,
-                           @Nullable NpcCombatDataLoader npcCombatDataLoader,
-                           @Nullable ProjectileDataLoader projectileDataLoader) {
+                           com.rocinante.state.IronmanState ironmanState,
+                           PlayerProfile playerProfile,
+                           FatigueModel fatigueModel,
+                           BreakScheduler breakScheduler,
+                           AttentionModel attentionModel,
+                           XpTracker xpTracker,
+                           WeaponDataService weaponDataService,
+                           NpcCombatDataLoader npcCombatDataLoader,
+                           ProjectileDataLoader projectileDataLoader) {
         this.client = client;
         this.itemManager = itemManager;
         this.bankStateManager = bankStateManager;
@@ -375,8 +367,7 @@ public class GameStateService {
         this.combatStateCache = new CachedValue<>("CombatState", CachePolicy.TICK_CACHED);
         this.slayerStateCache = new CachedValue<>("SlayerState", CachePolicy.TICK_CACHED);
 
-        log.info("GameStateService initialized (behavioral components: {})", 
-                playerProfile != null && fatigueModel != null && breakScheduler != null && attentionModel != null);
+        log.info("GameStateService initialized with all behavioral and data components");
     }
 
     /**
@@ -517,29 +508,19 @@ public class GameStateService {
         com.rocinante.behavior.AccountType accountType = detectAccountType();
         
         // Initialize PlayerProfile (loads or creates profile)
-        if (playerProfile != null) {
-            playerProfile.initializeForAccount(accountName, accountType);
-        }
+        playerProfile.initializeForAccount(accountName, accountType);
         
         // Start fatigue tracking
-        if (fatigueModel != null) {
-            fatigueModel.onSessionStart();
-        }
+        fatigueModel.onSessionStart();
         
         // Start break scheduling
-        if (breakScheduler != null) {
-            breakScheduler.onSessionStart();
-        }
+        breakScheduler.onSessionStart();
         
         // Reset attention model to fresh state
-        if (attentionModel != null) {
-            attentionModel.reset();
-        }
+        attentionModel.reset();
         
         // Start XP/stats tracking session
-        if (xpTracker != null) {
-            xpTracker.startSession();
-        }
+        xpTracker.startSession();
         
         behaviorsInitialized = true;
         log.info("Behavioral session initialized for account type: {}", accountType);
@@ -564,24 +545,16 @@ public class GameStateService {
         log.info("Ending behavioral session");
         
         // End fatigue session (logs stats)
-        if (fatigueModel != null) {
-            fatigueModel.onSessionEnd();
-        }
+        fatigueModel.onSessionEnd();
         
         // End break scheduler session
-        if (breakScheduler != null) {
-            breakScheduler.onSessionEnd();
-        }
+        breakScheduler.onSessionEnd();
         
         // Record logout time and save profile
-        if (playerProfile != null) {
-            playerProfile.recordLogout();
-        }
+        playerProfile.recordLogout();
         
         // End XP tracking session
-        if (xpTracker != null) {
-            xpTracker.endSession();
-        }
+        xpTracker.endSession();
         
         behaviorsInitialized = false;
         fixedModeEnsured = false;
@@ -632,7 +605,7 @@ public class GameStateService {
         
         // Check if this is an attack animation using WeaponDataService
         int weaponId = getEquippedWeaponId();
-        if (weaponDataService != null && weaponDataService.isPlayerAttackAnimation(weaponId, animationId)) {
+        if (weaponDataService.isPlayerAttackAnimation(weaponId, animationId)) {
             recordPlayerAttack();
             log.trace("Player attack recorded, animation {}", animationId);
         }
@@ -1624,12 +1597,8 @@ public class GameStateService {
 
         // Attack style and weapon speed (from equipped weapon via WeaponDataService)
         int weaponId = getEquippedWeaponId();
-        AttackStyle attackStyle = AttackStyle.MELEE;
-        int weaponSpeed = 4;
-        if (weaponDataService != null) {
-            attackStyle = weaponDataService.getAttackStyle(weaponId);
-            weaponSpeed = weaponDataService.getWeaponSpeed(weaponId);
-        }
+        AttackStyle attackStyle = weaponDataService.getAttackStyle(weaponId);
+        int weaponSpeed = weaponDataService.getWeaponSpeed(weaponId);
 
         // Boosted combat stats
         Map<Skill, Integer> boostedStats = new EnumMap<>(Skill.class);
@@ -1658,9 +1627,7 @@ public class GameStateService {
         if (incomingProjectile.isPresent()) {
             int projectileId = incomingProjectile.get().getId();
             // Use ProjectileDataLoader to determine attack style
-            if (projectileDataLoader != null) {
-                incomingStyle = projectileDataLoader.getAttackStyle(projectileId);
-            }
+            incomingStyle = projectileDataLoader.getAttackStyle(projectileId);
             ticksUntilLands = incomingProjectile.get().getTicksUntilImpact(client.getGameCycle());
         }
 
@@ -1759,17 +1726,14 @@ public class GameStateService {
             int ticksUntilNext = -1;
 
             // Get NPC attack data from data loader
-            int npcAttackSpeed = 4; // Default
-            AttackStyle npcAttackStyle = AttackStyle.MELEE; // Default
+            int npcAttackSpeed = npcCombatDataLoader.getAttackSpeed(npcId);
+            AttackStyle npcAttackStyle = npcCombatDataLoader.getAttackStyle(npcId);
             int npcMaxHit = AggressorInfo.estimateMaxHit(npc.getCombatLevel());
             
-            if (npcCombatDataLoader != null) {
-                npcAttackSpeed = npcCombatDataLoader.getAttackSpeed(npcId);
-                npcAttackStyle = npcCombatDataLoader.getAttackStyle(npcId);
-                var npcData = npcCombatDataLoader.getNpcData(npcId);
-                if (npcData != null && npcData.maxHit() > 0) {
-                    npcMaxHit = npcData.maxHit();
-                }
+            // Override max hit if data exists for this NPC
+            var npcData = npcCombatDataLoader.getNpcData(npcId);
+            if (npcData != null && npcData.maxHit() > 0) {
+                npcMaxHit = npcData.maxHit();
             }
 
             // Estimate attack timing using NPC data
@@ -1778,13 +1742,11 @@ public class GameStateService {
                 ticksUntilNext = Math.max(0, npcAttackSpeed - ticksSince);
             }
 
-            // Detect if currently animating an attack (use data loader if available)
+            // Detect if currently animating an attack
             int animationId = npc.getAnimation();
-            boolean isAttacking = false;
-            if (npcCombatDataLoader != null && npcCombatDataLoader.isAttackAnimation(npcId, animationId)) {
-                isAttacking = true;
-            } else if (animationId > 0) {
-                // Fallback: assume any positive animation could be an attack
+            boolean isAttacking = npcCombatDataLoader.isAttackAnimation(npcId, animationId);
+            if (!isAttacking && animationId > 0) {
+                // Fallback: assume any positive animation could be an attack if not in our data
                 isAttacking = true;
             }
 
@@ -1902,6 +1864,16 @@ public class GameStateService {
 
     /**
      * Build NPC snapshots for all NPCs within range.
+     *
+     * <p><b>Performance Note:</b> Calls to {@code npc.getComposition()} do not require local caching.
+     * RuneLite's client internally caches NPC compositions via its native cache system. This is the
+     * standard pattern used by official RuneLite plugins (e.g., NpcIndicatorsPlugin). See
+     * REQUIREMENTS.md Section 1.6 Priority 1: always use RuneLite native APIs rather than building
+     * custom solutions.
+     *
+     * <p>This method is called when {@code worldStateDirty} is set (on spawn/despawn events),
+     * ensuring data freshness without unnecessary polling. The refresh rate is event-driven,
+     * which is the correct approach for maintaining accurate game state.
      */
     private List<NpcSnapshot> buildNpcSnapshots(WorldPoint playerPos) {
         List<NpcSnapshot> snapshots = new ArrayList<>();
@@ -1955,6 +1927,17 @@ public class GameStateService {
 
     /**
      * Build game object snapshots for all objects within range.
+     *
+     * <p><b>Performance Note:</b> Calls to {@code client.getObjectDefinition()} do not require
+     * local caching. RuneLite's client internally caches ObjectComposition data via
+     * {@code Client.getObjectCompositionCache()} (a NodeCache). This is the standard pattern
+     * used by official RuneLite plugins (e.g., WoodcuttingPlugin, WikiPlugin). See
+     * REQUIREMENTS.md Section 1.6 Priority 1: always use RuneLite native APIs.
+     *
+     * <p>This method scans a ~40x40 tile area around the player (MAX_ENTITY_DISTANCE radius).
+     * The scan is only performed when {@code worldStateDirty} is set (on spawn/despawn events),
+     * not every game tick. This event-driven refresh ensures data freshness without excessive
+     * iteration. The internal cache makes individual getObjectDefinition() calls effectively O(1).
      */
     private List<GameObjectSnapshot> buildGameObjectSnapshots(WorldPoint playerPos) {
         List<GameObjectSnapshot> snapshots = new ArrayList<>();
@@ -2094,6 +2077,16 @@ public class GameStateService {
 
     /**
      * Build ground item snapshots for all items within range.
+     *
+     * <p><b>Performance Note:</b> Calls to {@code itemManager.getItemComposition()} do not require
+     * local caching. The ItemManager simply delegates to {@code client.getItemDefinition()}, which
+     * is backed by RuneLite's internal composition cache (see ItemManager.java in RuneLite source).
+     * This is the standard pattern used by official RuneLite plugins (e.g., GroundItemsPlugin,
+     * BankPlugin). See REQUIREMENTS.md Section 1.6 Priority 1: always use RuneLite native APIs.
+     *
+     * <p>This method is called when {@code worldStateDirty} is set (on item spawn/despawn events),
+     * ensuring accurate ground item state without polling. The internal cache makes individual
+     * getItemComposition() calls effectively O(1).
      */
     private List<GroundItemSnapshot> buildGroundItemSnapshots(WorldPoint playerPos) {
         List<GroundItemSnapshot> snapshots = new ArrayList<>();

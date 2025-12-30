@@ -308,9 +308,7 @@ public class RocinantePlugin extends Plugin
         };
         breakScheduler.setBreakTaskFactory(breakTaskFactory);
         
-        // Wire up TaskExecutor with behavioral components
-        taskExecutor.setBreakScheduler(breakScheduler);
-        taskExecutor.setEmergencyHandler(emergencyHandler);
+        // NOTE: TaskExecutor now receives BreakScheduler and EmergencyHandler via constructor injection
         
         // === Wire behavioral components to input controllers ===
         

@@ -84,6 +84,12 @@ public class GameStateServiceTest {
     @Mock
     private SlayerPluginService slayerPluginService;
 
+    @Mock
+    private com.rocinante.state.IronmanState ironmanState;
+
+    @Mock
+    private com.rocinante.status.XpTracker xpTracker;
+
     private GameStateService gameStateService;
 
     @Before
@@ -91,9 +97,9 @@ public class GameStateServiceTest {
         MockitoAnnotations.openMocks(this);
         gameStateService = new GameStateService(client, itemManager, bankStateManager, 
                 grandExchangeStateManager,
-                null,  // ironmanState
+                ironmanState,
                 playerProfile, fatigueModel, breakScheduler, attentionModel,
-                null,  // xpTracker
+                xpTracker,
                 weaponDataService, npcCombatDataLoader, projectileDataLoader);
         // Wire SlayerPluginService via setter (optional)
         gameStateService.setSlayerPluginService(slayerPluginService);

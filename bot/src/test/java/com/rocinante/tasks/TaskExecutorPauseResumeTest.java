@@ -39,9 +39,7 @@ public class TaskExecutorPauseResumeTest {
         when(taskContext.isLoggedIn()).thenReturn(true);
         when(emergencyHandler.checkEmergencies(any())).thenReturn(Optional.empty());
         
-        taskExecutor = new TaskExecutor(taskContext);
-        taskExecutor.setBreakScheduler(breakScheduler);
-        taskExecutor.setEmergencyHandler(emergencyHandler);
+        taskExecutor = new TaskExecutor(taskContext, breakScheduler, emergencyHandler);
         taskExecutor.start();
     }
 

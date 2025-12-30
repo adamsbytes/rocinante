@@ -44,9 +44,7 @@ public class TaskExecutorTest {
         // Setup emergencyHandler defaults
         when(emergencyHandler.checkEmergencies(any())).thenReturn(Optional.empty());
         
-        taskExecutor = new TaskExecutor(taskContext);
-        taskExecutor.setBreakScheduler(breakScheduler);
-        taskExecutor.setEmergencyHandler(emergencyHandler);
+        taskExecutor = new TaskExecutor(taskContext, breakScheduler, emergencyHandler);
     }
 
     // ========================================================================

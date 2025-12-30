@@ -8,7 +8,6 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.events.GameTick;
 import net.runelite.client.eventbus.Subscribe;
 
-import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.time.Duration;
@@ -124,17 +123,15 @@ public class TaskExecutor {
 
     /**
      * Break scheduler for behavioral task injection.
+     * Required - always present after injection.
      */
-    @Setter
-    @Nullable
-    private BreakScheduler breakScheduler;
+    private final BreakScheduler breakScheduler;
 
     /**
      * Emergency handler for urgent interrupt injection.
+     * Required - always present after injection.
      */
-    @Setter
-    @Nullable
-    private EmergencyHandler emergencyHandler;
+    private final EmergencyHandler emergencyHandler;
 
     /**
      * Stack of tasks paused for behavioral interruptions (to resume after).
@@ -154,12 +151,14 @@ public class TaskExecutor {
     // ========================================================================
 
     @Inject
-    public TaskExecutor(TaskContext taskContext) {
+    public TaskExecutor(TaskContext taskContext, BreakScheduler breakScheduler, EmergencyHandler emergencyHandler) {
         this.taskContext = taskContext;
+        this.breakScheduler = breakScheduler;
+        this.emergencyHandler = emergencyHandler;
         this.taskQueue = new PriorityBlockingQueue<>(100, Comparator
                 .comparingInt((QueuedTask qt) -> qt.task.getPriority().getOrdinalValue())
                 .thenComparingLong(qt -> qt.sequence));
-        log.info("TaskExecutor initialized");
+        log.info("TaskExecutor initialized with break scheduler and emergency handler");
     }
 
     // ========================================================================
@@ -390,10 +389,6 @@ public class TaskExecutor {
      * Check for emergency conditions and queue response tasks.
      */
     private void checkForEmergencies() {
-        if (emergencyHandler == null) {
-            return;
-        }
-
         emergencyHandler.checkEmergencies(taskContext).ifPresent(emergencyTask -> {
             log.warn("Queuing emergency task: {}", emergencyTask.getDescription());
             queueTask(emergencyTask, TaskPriority.URGENT);
@@ -404,10 +399,6 @@ public class TaskExecutor {
      * Check for scheduled breaks and queue behavioral tasks.
      */
     private void checkForScheduledBreaks() {
-        if (breakScheduler == null) {
-            return;
-        }
-
         // Don't schedule breaks if there's already a behavioral task queued
         if (hasBehavioralTaskQueued()) {
             return;

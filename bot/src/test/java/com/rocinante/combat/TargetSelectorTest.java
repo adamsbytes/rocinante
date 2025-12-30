@@ -2,6 +2,8 @@ package com.rocinante.combat;
 
 import com.rocinante.core.GameStateService;
 import com.rocinante.navigation.PathFinder;
+import com.rocinante.state.AggressorInfo;
+import com.rocinante.state.CombatState;
 import com.rocinante.state.NpcSnapshot;
 import com.rocinante.state.PlayerSnapshot;
 import com.rocinante.state.PlayerState;
@@ -56,6 +58,9 @@ public class TargetSelectorTest {
 
         // Default: paths are reachable
         when(pathFinder.hasPath(any(WorldPoint.class), any(WorldPoint.class))).thenReturn(true);
+        
+        // Default: no aggressive NPCs (empty combat state)
+        when(gameStateService.getCombatState()).thenReturn(CombatState.EMPTY);
     }
 
     // ========================================================================
@@ -113,8 +118,20 @@ public class TargetSelectorTest {
                 .nearbyPlayers(Collections.emptyList())
                 .build();
 
+        // Create a CombatState that marks the aggressive goblin as having attacked us
+        AggressorInfo aggressor = AggressorInfo.builder()
+                .npcIndex(2) // aggressiveGoblin's index
+                .npcId(2)
+                .npcName("Goblin")
+                .combatLevel(5)
+                .build();
+        CombatState combatState = CombatState.builder()
+                .aggressiveNpcs(Collections.singletonList(aggressor))
+                .build();
+
         when(gameStateService.getPlayerState()).thenReturn(validPlayerState);
         when(gameStateService.getWorldState()).thenReturn(worldState);
+        when(gameStateService.getCombatState()).thenReturn(combatState);
 
         targetSelector.setConfig(TargetSelectorConfig.builder()
                 .priority(SelectionPriority.TARGETING_PLAYER)
