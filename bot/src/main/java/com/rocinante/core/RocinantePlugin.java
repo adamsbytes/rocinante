@@ -192,6 +192,10 @@ public class RocinantePlugin extends Plugin
 
     @Inject
     @Getter
+    private com.rocinante.behavior.PredictiveHoverManager predictiveHoverManager;
+
+    @Inject
+    @Getter
     private com.rocinante.behavior.LogoutHandler logoutHandler;
 
     @Inject
@@ -331,9 +335,13 @@ public class RocinantePlugin extends Plugin
         logoutHandler.setKeyboardController(keyboardController);
         logoutHandler.setPlayerProfile(playerProfile);
         
-        // Wire mouse controller with camera coupler and inefficiency injector
+        // Wire mouse controller with camera coupler, inefficiency injector, and predictive hover
         mouseController.setCameraCoupler(mouseCameraCoupler);
         mouseController.setInefficiencyInjector(inefficiencyInjector);
+        mouseController.setPredictiveHoverManager(predictiveHoverManager);
+        
+        // Wire camera coupler with predictive hover manager for coordination
+        mouseCameraCoupler.setPredictiveHoverManager(predictiveHoverManager);
         
         // Wire behavioral models to input controllers
         // (FatigueModel and PlayerProfile are constructor-injected)
@@ -761,6 +769,12 @@ public class RocinantePlugin extends Plugin
         // Start XP tracking session
         xpTracker.startSession();
         
+        // Reset predictive hover metrics for new session
+        if (predictiveHoverManager != null) {
+            predictiveHoverManager.resetMetrics();
+            predictiveHoverManager.clearHover();
+        }
+        
         taskExecutor.start();
     }
 
@@ -772,6 +786,11 @@ public class RocinantePlugin extends Plugin
     {
         log.info("Stopping automation...");
         taskExecutor.stop();
+        
+        // Clear any pending predictive hover
+        if (predictiveHoverManager != null) {
+            predictiveHoverManager.clearHover();
+        }
         
         // End XP tracking session (preserves data)
         xpTracker.endSession();

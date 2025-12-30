@@ -135,11 +135,12 @@ public class TrainingMethod {
     String menuAction;
 
     /**
-     * Animation ID played during successful action.
+     * Animation IDs that indicate successful action.
      * Used to verify interaction started correctly.
+     * Multiple IDs support actions with different animations (e.g., cooking on fire vs range).
      */
     @Builder.Default
-    int successAnimationId = -1;
+    List<Integer> successAnimationIds = List.of();
 
     // ========================================================================
     // Inventory Handling

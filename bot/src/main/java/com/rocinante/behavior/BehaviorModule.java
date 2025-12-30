@@ -136,6 +136,27 @@ public class BehaviorModule extends AbstractModule {
     }
 
     /**
+     * Provides the PredictiveHoverManager for anticipatory hovering during gathering activities.
+     * 
+     * <p>The predictive hover system allows the bot to hover over the next target while
+     * the current action is completing, mimicking engaged human behavior during:
+     * <ul>
+     *   <li>Woodcutting - hover next tree while current one falls</li>
+     *   <li>Mining - hover next rock while current one depletes</li>
+     *   <li>Fishing - hover next spot while current one moves</li>
+     * </ul>
+     */
+    @Provides
+    @Singleton
+    public PredictiveHoverManager providePredictiveHoverManager(
+            PlayerProfile playerProfile,
+            FatigueModel fatigueModel,
+            AttentionModel attentionModel,
+            Randomization randomization) {
+        return new PredictiveHoverManager(playerProfile, fatigueModel, attentionModel, randomization);
+    }
+
+    /**
      * Provides the LogoutHandler for humanized logout behavior.
      */
     @Provides

@@ -4,11 +4,16 @@ import com.rocinante.combat.TargetSelectorConfig;
 import com.rocinante.combat.WeaponStyle;
 import com.rocinante.combat.XpGoal;
 import com.rocinante.combat.spell.CombatSpell;
+import com.rocinante.inventory.EquipPreference;
+import com.rocinante.inventory.IdealInventory;
+import com.rocinante.inventory.IdealInventoryFactory;
+import com.rocinante.inventory.InventorySlotSpec;
 import lombok.Builder;
 import lombok.Singular;
 import lombok.Value;
 import net.runelite.api.coords.WorldPoint;
 
+import javax.annotation.Nullable;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
@@ -424,6 +429,39 @@ public class CombatTaskConfig {
     int maxResupplyTrips = -1;
 
     // ========================================================================
+    // Ideal Inventory
+    // ========================================================================
+
+    /**
+     * Explicit ideal inventory specification for combat.
+     *
+     * <p>If set, this specification is used to prepare the inventory before
+     * combat begins and during resupply. If null, ideal inventory is derived
+     * from {@link #resupplyItems} and other config settings.
+     *
+     * <p>Use cases for explicit specification:
+     * <ul>
+     *   <li>Override automatic food/potion selection</li>
+     *   <li>Add extra items (teleport, spec weapon, etc.)</li>
+     *   <li>Skip preparation entirely (set to {@link IdealInventory#none()})</li>
+     * </ul>
+     *
+     * @see IdealInventory
+     * @see IdealInventoryFactory#forCombat
+     */
+    @Nullable
+    IdealInventory idealInventory;
+
+    /**
+     * Whether to skip automatic inventory preparation.
+     *
+     * <p>When true, the task will NOT prepare inventory automatically,
+     * assuming the caller (planner) has already prepared it.
+     */
+    @Builder.Default
+    boolean skipInventoryPreparation = false;
+
+    // ========================================================================
     // Humanization
     // ========================================================================
 
@@ -658,6 +696,61 @@ public class CombatTaskConfig {
             return false;  // Unlimited
         }
         return tripCount >= maxResupplyTrips;
+    }
+
+    /**
+     * Get the ideal inventory for combat.
+     *
+     * <p>Resolution order:
+     * <ol>
+     *   <li>If {@link #skipInventoryPreparation} is true, returns {@link IdealInventory#none()}</li>
+     *   <li>If {@link #idealInventory} is explicitly set, returns that</li>
+     *   <li>Otherwise, derives from {@link #resupplyItems}</li>
+     * </ol>
+     *
+     * @return the ideal inventory specification
+     */
+    public IdealInventory getOrCreateIdealInventory() {
+        // Skip preparation if requested
+        if (skipInventoryPreparation) {
+            return IdealInventory.none();
+        }
+
+        // Use explicit specification if provided
+        if (idealInventory != null) {
+            return idealInventory;
+        }
+
+        // Derive from resupply items
+        if (resupplyItems != null && !resupplyItems.isEmpty()) {
+            IdealInventory.IdealInventoryBuilder builder = IdealInventory.builder()
+                    .depositInventoryFirst(true);
+
+            // Add resupply items as required items
+            for (java.util.Map.Entry<Integer, Integer> entry : resupplyItems.entrySet()) {
+                builder.requiredItem(InventorySlotSpec.forItems(entry.getKey(), entry.getValue()));
+            }
+
+            // If we have a primary food item, fill with it
+            java.util.Map.Entry<Integer, Integer> firstEntry = resupplyItems.entrySet().iterator().next();
+            if (firstEntry != null) {
+                builder.fillRestWithItemId(firstEntry.getKey());
+            }
+
+            return builder.build();
+        }
+
+        // Fallback: no ideal inventory (skip preparation)
+        return IdealInventory.none();
+    }
+
+    /**
+     * Check if this task has custom inventory preparation.
+     *
+     * @return true if idealInventory is explicitly set
+     */
+    public boolean hasCustomIdealInventory() {
+        return idealInventory != null;
     }
 
     /**

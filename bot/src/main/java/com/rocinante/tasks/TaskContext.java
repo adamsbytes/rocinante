@@ -190,6 +190,10 @@ public class TaskContext {
 
     @Getter
     @Nullable
+    private final com.rocinante.behavior.PredictiveHoverManager predictiveHoverManager;
+
+    @Getter
+    @Nullable
     private final LogoutHandler logoutHandler;
     
     @Getter
@@ -207,6 +211,18 @@ public class TaskContext {
     @Getter
     @Nullable
     private final PuzzleSolverRegistry puzzleSolverRegistry;
+
+    // ========================================================================
+    // Inventory System
+    // ========================================================================
+
+    /**
+     * Service for preparing inventory according to IdealInventory specifications.
+     * Handles tool selection, banking, and equipping automatically.
+     */
+    @Getter
+    @Nullable
+    private final com.rocinante.inventory.InventoryPreparation inventoryPreparation;
 
     // ========================================================================
     // RuneLite Plugin References
@@ -265,13 +281,15 @@ public class TaskContext {
             @Nullable MouseCameraCoupler mouseCameraCoupler,
             @Nullable ActionSequencer actionSequencer,
             @Nullable InefficiencyInjector inefficiencyInjector,
+            @Nullable com.rocinante.behavior.PredictiveHoverManager predictiveHoverManager,
             @Nullable LogoutHandler logoutHandler,
             @Nullable BreakScheduler breakScheduler,
             @Nullable Randomization randomization,
             @Nullable com.rocinante.navigation.PathFinder pathFinder,
             @Nullable com.rocinante.navigation.WebWalker webWalker,
             @Nullable com.rocinante.navigation.ObstacleHandler obstacleHandler,
-            @Nullable com.rocinante.navigation.PlaneTransitionHandler planeTransitionHandler) {
+            @Nullable com.rocinante.navigation.PlaneTransitionHandler planeTransitionHandler,
+            @Nullable com.rocinante.inventory.InventoryPreparation inventoryPreparation) {
         this.client = client;
         this.gameStateServiceProvider = gameStateServiceProvider;
         this.mouseController = mouseController;
@@ -294,6 +312,7 @@ public class TaskContext {
         this.mouseCameraCoupler = mouseCameraCoupler;
         this.actionSequencer = actionSequencer;
         this.inefficiencyInjector = inefficiencyInjector;
+        this.predictiveHoverManager = predictiveHoverManager;
         this.logoutHandler = logoutHandler;
         this.breakScheduler = breakScheduler;
         this.randomization = randomization;
@@ -301,6 +320,7 @@ public class TaskContext {
         this.webWalker = webWalker;
         this.obstacleHandler = obstacleHandler;
         this.planeTransitionHandler = planeTransitionHandler;
+        this.inventoryPreparation = inventoryPreparation;
         log.debug("TaskContext created");
     }
 
@@ -318,7 +338,7 @@ public class TaskContext {
             @Nullable CombatManager combatManager) {
         this(client, () -> gameStateService, mouseController, keyboardController, humanTimer, 
                 targetSelector, combatManager, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     /**
@@ -333,7 +353,7 @@ public class TaskContext {
             HumanTimer humanTimer) {
         this(client, () -> gameStateService, mouseController, keyboardController, humanTimer, 
                 null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     /**
@@ -348,7 +368,7 @@ public class TaskContext {
             Randomization randomization) {
         this(client, () -> gameStateService, mouseController, keyboardController, humanTimer, 
                 null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, randomization, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, randomization, null, null, null, null, null);
     }
 
     // ========================================================================

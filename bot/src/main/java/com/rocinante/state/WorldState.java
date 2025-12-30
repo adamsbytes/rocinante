@@ -216,6 +216,57 @@ public class WorldState {
         return nearbyNpcs.stream().anyMatch(NpcSnapshot::isTargetingPlayer);
     }
 
+    /**
+     * Get an NPC at a specific world position with a specific ID.
+     * Useful for validating that a target NPC hasn't moved.
+     *
+     * @param npcId    the NPC definition ID
+     * @param position the expected world position
+     * @return Optional containing the NPC if found at that position
+     */
+    public Optional<NpcSnapshot> getNpcByPosition(int npcId, WorldPoint position) {
+        if (position == null) {
+            return Optional.empty();
+        }
+        return nearbyNpcs.stream()
+                .filter(npc -> npc.getId() == npcId)
+                .filter(npc -> position.equals(npc.getWorldPosition()))
+                .findFirst();
+    }
+
+    /**
+     * Get an NPC at a specific world position with any of the specified IDs.
+     *
+     * @param npcIds   the NPC definition IDs
+     * @param position the expected world position
+     * @return Optional containing the NPC if found at that position
+     */
+    public Optional<NpcSnapshot> getNpcByPosition(Set<Integer> npcIds, WorldPoint position) {
+        if (position == null || npcIds == null || npcIds.isEmpty()) {
+            return Optional.empty();
+        }
+        return nearbyNpcs.stream()
+                .filter(npc -> npcIds.contains(npc.getId()))
+                .filter(npc -> position.equals(npc.getWorldPosition()))
+                .findFirst();
+    }
+
+    /**
+     * Get the nearest NPC matching any of the specified IDs.
+     *
+     * @param npcIds    the NPC definition IDs
+     * @param playerPos the player's current position
+     * @return Optional containing the nearest NPC, or empty if none found
+     */
+    public Optional<NpcSnapshot> getNearestNpcByIds(Set<Integer> npcIds, WorldPoint playerPos) {
+        if (npcIds == null || npcIds.isEmpty()) {
+            return Optional.empty();
+        }
+        return nearbyNpcs.stream()
+                .filter(npc -> npcIds.contains(npc.getId()))
+                .min(Comparator.comparingInt(npc -> npc.distanceTo(playerPos)));
+    }
+
     // ========================================================================
     // Game Object Query Methods
     // ========================================================================

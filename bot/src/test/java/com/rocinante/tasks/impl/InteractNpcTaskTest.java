@@ -182,7 +182,7 @@ public class InteractNpcTaskTest {
 
         assertEquals(20, task.getSearchRadius());
         assertEquals(0.5, task.getCameraRotationChance(), 0.01);
-        assertEquals(422, task.getSuccessAnimationId());
+        assertEquals(List.of(422), task.getSuccessAnimationIds());
         assertFalse(task.isDialogueExpected());
         assertTrue(task.isTrackMovement());
         assertFalse(task.isWaitForIdle());

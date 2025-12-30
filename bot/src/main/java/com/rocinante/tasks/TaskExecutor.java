@@ -229,6 +229,12 @@ public class TaskExecutor {
         int count = taskQueue.size();
         taskQueue.clear();
         urgentPending = false;
+        
+        // Clear any pending predictive hover when clearing queue
+        if (taskContext.getPredictiveHoverManager() != null) {
+            taskContext.getPredictiveHoverManager().clearHover();
+        }
+        
         log.info("Cleared {} tasks from queue", count);
         return count;
     }
@@ -295,6 +301,11 @@ public class TaskExecutor {
                 ((AbstractTask) currentTask).abort();
             }
             handleTaskCompletion(false);
+        }
+        
+        // Clear any pending predictive hover when aborting
+        if (taskContext.getPredictiveHoverManager() != null) {
+            taskContext.getPredictiveHoverManager().clearHover();
         }
     }
 

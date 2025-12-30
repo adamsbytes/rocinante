@@ -61,6 +61,12 @@ public class MicroPauseTask extends BehavioralTask {
             startTime = Instant.now();
             started = true;
             fatigueModel.startBreak();
+            
+            // Clear any pending predictive hover - player is taking a break
+            if (ctx.getPredictiveHoverManager() != null) {
+                ctx.getPredictiveHoverManager().clearHover();
+            }
+            
             log.debug("Starting micro-pause for {} seconds", targetDuration.toSeconds());
         }
         

@@ -140,6 +140,14 @@ public class RobotMouseController {
     @Nullable
     private com.rocinante.behavior.InefficiencyInjector inefficiencyInjector;
 
+    /**
+     * PredictiveHoverManager for coordinating idle behavior suppression.
+     * When set and actively hovering, idle behaviors that would move the mouse are suppressed.
+     */
+    @Setter
+    @Nullable
+    private com.rocinante.behavior.PredictiveHoverManager predictiveHoverManager;
+
     @Getter
     private volatile Point currentPosition;
 
@@ -1308,10 +1316,20 @@ public class RobotMouseController {
      * - 70%: Stationary
      * - 20%: Small drift (5-30px over 500-2000ms)
      * - 10%: Move to rest position
+     * 
+     * <p><b>Predictive Hover Integration:</b> If there is an active predictive hover,
+     * behaviors that would move the mouse away from the target (drift, rest position)
+     * are suppressed to maintain the hover. Only stationary behavior is allowed.
      *
      * @return CompletableFuture that completes when idle behavior is done
      */
     public CompletableFuture<Void> performIdleBehavior() {
+        // Check if predictive hover should suppress mouse movement
+        if (predictiveHoverManager != null && predictiveHoverManager.shouldSuppressIdleBehavior()) {
+            log.trace("Idle: suppressed due to active predictive hover");
+            return CompletableFuture.completedFuture(null);
+        }
+
         double roll = randomization.uniformRandom(0, 1);
 
         if (roll < IDLE_STATIONARY_PROBABILITY) {

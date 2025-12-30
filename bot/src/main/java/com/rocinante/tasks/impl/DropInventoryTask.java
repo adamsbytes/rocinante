@@ -416,17 +416,13 @@ public class DropInventoryTask extends AbstractTask {
 
     /**
      * Execute a single shift+click drop with humanization.
+     * Shift is already held from executeHoldShift phase.
      */
     private void executeShiftClickDrop(TaskContext ctx, int slot, Randomization random) {
         InventoryClickHelper inventoryHelper = ctx.getInventoryClickHelper();
-        RobotKeyboardController keyboard = ctx.getKeyboardController();
 
-        // Hold shift, click, release shift pattern for each item
-        keyboard.pressKey(KeyEvent.VK_SHIFT, 50) // Brief hold
-                .thenCompose(v -> {
-                    // Shift is now held, click the item
-                    return inventoryHelper.executeClick(slot, "Drop item");
-                })
+        // Shift is already held, just click the item
+        inventoryHelper.executeClick(slot, "Drop item")
                 .thenAccept(success -> {
                     if (success) {
                         droppedCount++;

@@ -178,7 +178,7 @@ public class InteractObjectTaskTest {
 
         assertEquals(10, task.getSearchRadius());
         assertEquals(0.8, task.getCameraRotationChance(), 0.01);
-        assertEquals(AnimationID.WOODCUTTING_RUNE, task.getSuccessAnimationId());
+        assertEquals(List.of(AnimationID.WOODCUTTING_RUNE), task.getSuccessAnimationIds());
         assertFalse(task.isWaitForIdle());
         assertEquals("Chop a tree", task.getDescription());
         assertEquals(2, task.getAlternateObjectIds().size());

@@ -104,6 +104,11 @@ public class LongBreakTask extends BehavioralTask {
         started = true;
         fatigueModel.startBreak();
         
+        // Clear any pending predictive hover - player is taking a break
+        if (ctx.getPredictiveHoverManager() != null) {
+            ctx.getPredictiveHoverManager().clearHover();
+        }
+        
         log.info("Starting long break for {} minutes (logout={})",
                 targetDuration.toMinutes(), shouldLogout);
         

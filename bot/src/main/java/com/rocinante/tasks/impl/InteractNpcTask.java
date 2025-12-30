@@ -122,11 +122,12 @@ public class InteractNpcTask extends AbstractTask {
     private double cameraRotationChance = DEFAULT_CAMERA_ROTATION_CHANCE;
 
     /**
-     * Expected animation ID after successful interaction (optional).
+     * Expected animation IDs after successful interaction (optional).
+     * Multiple IDs support actions with different animations.
      */
     @Getter
     @Setter
-    private int successAnimationId = -1;
+    private List<Integer> successAnimationIds = new ArrayList<>();
 
     /**
      * Whether dialogue is expected after interaction.
@@ -169,6 +170,13 @@ public class InteractNpcTask extends AbstractTask {
      */
     @Getter
     private List<Integer> alternateNpcIds = new ArrayList<>();
+
+    /**
+     * Callback to notify when the target position is determined.
+     * Used by SkillTask for predictive hover exclusion.
+     */
+    @Setter
+    private java.util.function.Consumer<WorldPoint> targetPositionCallback;
 
     // ========================================================================
     // Execution State
@@ -303,7 +311,19 @@ public class InteractNpcTask extends AbstractTask {
      * @return this task for chaining
      */
     public InteractNpcTask withSuccessAnimation(int animationId) {
-        this.successAnimationId = animationId;
+        this.successAnimationIds = new ArrayList<>(List.of(animationId));
+        return this;
+    }
+
+    /**
+     * Set expected success animations (builder-style).
+     * Multiple IDs support actions with different animations.
+     *
+     * @param animationIds the expected animation IDs
+     * @return this task for chaining
+     */
+    public InteractNpcTask withSuccessAnimations(List<Integer> animationIds) {
+        this.successAnimationIds = new ArrayList<>(animationIds);
         return this;
     }
 
@@ -481,6 +501,11 @@ public class InteractNpcTask extends AbstractTask {
         // Store NPC position
         lastNpcPosition = targetNpc.getWorldLocation();
         log.debug("Found NPC {} at {}", getNpcDescription(), lastNpcPosition);
+        
+        // Notify callback of target position (used for predictive hover exclusion)
+        if (targetPositionCallback != null && lastNpcPosition != null) {
+            targetPositionCallback.accept(lastNpcPosition);
+        }
 
         // Store starting state for success detection
         startPosition = playerPos;
@@ -760,14 +785,19 @@ public class InteractNpcTask extends AbstractTask {
             }
         }
 
-        // Check for expected animation
-        if (!success && successAnimationId > 0 && player.isAnimating(successAnimationId)) {
-            success = true;
-            successReason = "playing expected animation";
+        // Check for expected animation(s)
+        if (!success && !successAnimationIds.isEmpty()) {
+            for (int animId : successAnimationIds) {
+                if (player.isAnimating(animId)) {
+                    success = true;
+                    successReason = "playing expected animation " + animId;
+                    break;
+                }
+            }
         }
 
         // Check for any animation (if no specific animation expected and dialogue not expected)
-        if (!success && successAnimationId < 0 && !dialogueExpected && player.isAnimating()) {
+        if (!success && successAnimationIds.isEmpty() && !dialogueExpected && player.isAnimating()) {
             success = true;
             successReason = "playing animation";
         }

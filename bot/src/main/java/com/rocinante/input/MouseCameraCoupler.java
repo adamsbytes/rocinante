@@ -141,6 +141,15 @@ public class MouseCameraCoupler {
     @Setter
     @Nullable
     private AttentionModel attentionModel;
+
+    /**
+     * PredictiveHoverManager for coordinating camera behavior during hover.
+     * When set and actively hovering, idle camera drifts are suppressed or
+     * trigger a re-hover to compensate.
+     */
+    @Setter
+    @Nullable
+    private com.rocinante.behavior.PredictiveHoverManager predictiveHoverManager;
     
     // === State ===
     
@@ -420,8 +429,18 @@ public class MouseCameraCoupler {
 
     /**
      * Check and potentially perform idle drift.
+     * 
+     * <p><b>Predictive Hover Integration:</b> If there is an active predictive hover,
+     * camera drift is suppressed to maintain the hover. The screen position of the
+     * hovered target would change after rotation, invalidating the hover.
      */
     private void checkIdleDrift() {
+        // Suppress drift during predictive hover
+        if (predictiveHoverManager != null && predictiveHoverManager.shouldSuppressIdleBehavior()) {
+            log.trace("Camera drift suppressed due to active predictive hover");
+            return;
+        }
+
         // Don't drift if attention model says we're focused
         if (attentionModel != null && attentionModel.canAct()) {
             // Only drift when AFK or distracted, not when focused on task
@@ -434,6 +453,11 @@ public class MouseCameraCoupler {
         }
         
         if (randomization.chance(IDLE_DRIFT_CHANCE)) {
+            // Notify hover manager that camera is about to rotate
+            if (predictiveHoverManager != null) {
+                predictiveHoverManager.onCameraRotationStart();
+            }
+
             log.trace("Performing idle camera drift");
             cameraController.performIdleDrift()
                 .exceptionally(e -> {
@@ -446,8 +470,17 @@ public class MouseCameraCoupler {
 
     /**
      * Check and potentially perform 360 look-around.
+     * 
+     * <p><b>Predictive Hover Integration:</b> A 360 look-around completely invalidates
+     * any hover, so we clear it before performing the rotation.
      */
     private void checkLookAround() {
+        // 360 look-around invalidates any hover - clear it first
+        if (predictiveHoverManager != null && predictiveHoverManager.hasPendingHover()) {
+            log.debug("Clearing predictive hover due to 360 look-around");
+            predictiveHoverManager.clearHover();
+        }
+
         if (randomization.chance(LOOK_AROUND_CHANCE_PER_MINUTE)) {
             log.debug("Performing 360 look-around");
             cameraController.perform360LookAround()

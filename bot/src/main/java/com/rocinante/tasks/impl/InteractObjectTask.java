@@ -126,12 +126,13 @@ public class InteractObjectTask extends AbstractTask {
     private double cameraRotationChance = DEFAULT_CAMERA_ROTATION_CHANCE;
 
     /**
-     * Expected animation ID after successful interaction (optional).
+     * Expected animation IDs after successful interaction (optional).
      * Used to verify interaction was successful.
+     * Multiple IDs support actions with different animations (e.g., cooking on fire vs range).
      */
     @Getter
     @Setter
-    private int successAnimationId = -1;
+    private List<Integer> successAnimationIds = new ArrayList<>();
 
     /**
      * Whether to wait for the player to become idle after interaction.
@@ -168,6 +169,13 @@ public class InteractObjectTask extends AbstractTask {
      */
     @Getter
     private List<Integer> alternateObjectIds = new java.util.ArrayList<>();
+
+    /**
+     * Callback to notify when the target position is determined.
+     * Used by SkillTask for predictive hover exclusion.
+     */
+    @Setter
+    private java.util.function.Consumer<WorldPoint> targetPositionCallback;
 
     // ========================================================================
     // Execution State
@@ -304,7 +312,19 @@ public class InteractObjectTask extends AbstractTask {
      * @return this task for chaining
      */
     public InteractObjectTask withSuccessAnimation(int animationId) {
-        this.successAnimationId = animationId;
+        this.successAnimationIds = new ArrayList<>(List.of(animationId));
+        return this;
+    }
+
+    /**
+     * Set expected success animations (builder-style).
+     * Multiple IDs support actions with different animations (e.g., cooking on fire vs range).
+     *
+     * @param animationIds the expected animation IDs
+     * @return this task for chaining
+     */
+    public InteractObjectTask withSuccessAnimations(List<Integer> animationIds) {
+        this.successAnimationIds = new ArrayList<>(animationIds);
         return this;
     }
 
@@ -441,6 +461,11 @@ public class InteractObjectTask extends AbstractTask {
         // Store object position
         targetPosition = getObjectWorldPoint(targetObject);
         log.debug("Found object {} at {}", objectId, targetPosition);
+        
+        // Notify callback of target position (used for predictive hover exclusion)
+        if (targetPositionCallback != null && targetPosition != null) {
+            targetPositionCallback.accept(targetPosition);
+        }
         
         // Reset despawn retry counter on successful find
         despawnRetryCount = 0;
@@ -731,14 +756,19 @@ public class InteractObjectTask extends AbstractTask {
             }
         }
 
-        // Check for expected animation
-        if (!success && successAnimationId > 0 && player.isAnimating(successAnimationId)) {
-            success = true;
-            successReason = "playing expected animation";
+        // Check for expected animation(s)
+        if (!success && !successAnimationIds.isEmpty()) {
+            for (int animId : successAnimationIds) {
+                if (player.isAnimating(animId)) {
+                    success = true;
+                    successReason = "playing expected animation " + animId;
+                    break;
+                }
+            }
         }
 
         // Check for any animation (if no specific animation expected and dialogue not expected)
-        if (!success && successAnimationId < 0 && !dialogueExpected && player.isAnimating()) {
+        if (!success && successAnimationIds.isEmpty() && !dialogueExpected && player.isAnimating()) {
             success = true;
             successReason = "playing animation";
         }

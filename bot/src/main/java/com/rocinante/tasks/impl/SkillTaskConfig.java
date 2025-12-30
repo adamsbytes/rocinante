@@ -1,10 +1,14 @@
 package com.rocinante.tasks.impl;
 
+import com.rocinante.inventory.IdealInventory;
+import com.rocinante.inventory.IdealInventoryFactory;
 import com.rocinante.progression.TrainingMethod;
+import com.rocinante.state.PlayerState;
 import lombok.Builder;
 import lombok.Value;
 import net.runelite.api.Skill;
 
+import javax.annotation.Nullable;
 import java.time.Duration;
 
 /**
@@ -145,6 +149,42 @@ public class SkillTaskConfig {
     boolean returnToExactSpot = true;
 
     // ========================================================================
+    // Ideal Inventory
+    // ========================================================================
+
+    /**
+     * Explicit ideal inventory specification for this task.
+     *
+     * <p>If set, this specification is used directly to prepare the inventory
+     * before training begins. If null, the ideal inventory is automatically
+     * derived from the {@link #method} using {@link IdealInventoryFactory}.
+     *
+     * <p>Use cases for explicit specification:
+     * <ul>
+     *   <li>Override automatic tool selection (force specific axe)</li>
+     *   <li>Add extra items not inferred from method (teleports, supplies)</li>
+     *   <li>Skip preparation entirely (set to {@link IdealInventory#none()})</li>
+     * </ul>
+     *
+     * @see IdealInventory
+     * @see IdealInventoryFactory#fromTrainingMethod
+     */
+    @Nullable
+    IdealInventory idealInventory;
+
+    /**
+     * Whether to skip automatic inventory preparation.
+     *
+     * <p>When true, the task will NOT prepare inventory automatically,
+     * assuming the caller (planner) has already prepared it.
+     *
+     * <p>This is a convenience flag - equivalent to setting
+     * {@code idealInventory = IdealInventory.none()}.
+     */
+    @Builder.Default
+    boolean skipInventoryPreparation = false;
+
+    // ========================================================================
     // Validation
     // ========================================================================
 
@@ -226,6 +266,48 @@ public class SkillTaskConfig {
      */
     public boolean hasActionLimit() {
         return maxActions > 0;
+    }
+
+    /**
+     * Get the ideal inventory for this task.
+     *
+     * <p>Resolution order:
+     * <ol>
+     *   <li>If {@link #skipInventoryPreparation} is true, returns {@link IdealInventory#none()}</li>
+     *   <li>If {@link #idealInventory} is explicitly set, returns that</li>
+     *   <li>Otherwise, derives from {@link #method} using {@link IdealInventoryFactory}</li>
+     * </ol>
+     *
+     * @param player the current player state (for level-based tool selection)
+     * @return the ideal inventory specification
+     */
+    public IdealInventory getOrCreateIdealInventory(@Nullable PlayerState player) {
+        // Skip preparation if requested
+        if (skipInventoryPreparation) {
+            return IdealInventory.none();
+        }
+
+        // Use explicit specification if provided
+        if (idealInventory != null) {
+            return idealInventory;
+        }
+
+        // Derive from training method
+        if (method != null) {
+            return IdealInventoryFactory.fromTrainingMethod(method, player);
+        }
+
+        // Fallback: empty inventory
+        return IdealInventory.emptyInventory();
+    }
+
+    /**
+     * Check if this task has custom inventory preparation.
+     *
+     * @return true if idealInventory is explicitly set
+     */
+    public boolean hasCustomIdealInventory() {
+        return idealInventory != null;
     }
 
     /**

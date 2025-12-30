@@ -341,6 +341,29 @@ public final class ObjectCollections {
             ObjectID.RUNITE_ROCKS_36209
     ));
 
+    /**
+     * Gem rock objects for mining gems.
+     * Found in Shilo Village (requires quest), Lunar Isle, and Varlamore.
+     */
+    public static final List<Integer> GEM_ROCKS = Collections.unmodifiableList(Arrays.asList(
+            // Shilo Village gem rocks
+            ObjectID.GEM_ROCKS,          // 11380
+            ObjectID.GEM_ROCKS_11381,    // 11381
+            
+            // Lunar Isle gem rocks (Lunar Diplomacy quest)
+            ObjectID.GEM_ROCK,           // 9030
+            ObjectID.GEM_ROCK_9031,      // 9031
+            ObjectID.GEM_ROCK_9032,      // 9032
+            
+            // Varlamore gemstone rocks (newer content)
+            ObjectID.GEMSTONE_ROCK,      // 57607
+            ObjectID.GEMSTONE_ROCK_57608,
+            ObjectID.GEMSTONE_ROCK_57609,
+            ObjectID.GEMSTONE_ROCK_57610,
+            ObjectID.GEMSTONE_ROCK_57611,
+            ObjectID.GEMSTONE_ROCK_57612
+    ));
+
     // ========================================================================
     // Furnaces (for smelting)
     // ========================================================================
@@ -544,6 +567,7 @@ public final class ObjectCollections {
      * Note: Ranges are preferred over fires for cooking as they have lower burn rates.
      */
     public static final List<Integer> COOKING_RANGES = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.COOKING_RANGE,   // 114 - Lumbridge Castle range
             ObjectID.RANGE,
             ObjectID.RANGE_7183,
             ObjectID.RANGE_7184,

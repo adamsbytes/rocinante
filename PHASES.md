@@ -81,6 +81,7 @@
 - [X] `PlayerProfile` - Per-account persistent fingerprints
 - [X] `BotActivityTracker` - Activity type awareness, account type detection, HCIM safety checks
 - [X] `EmergencyHandler` - Poison/health emergency conditions with task interruption
+- [X] `PredictiveHoverManager` - Hovers over the next-target (tree, etc.) during skilling
 - [X] Session rituals, idle behaviors, XP checking patterns
 - [X] Long-term behavioral drift (via PlayerProfile session drift)
 - [X] Action sequence randomization

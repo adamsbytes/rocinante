@@ -266,6 +266,15 @@ public class PlayerProfile {
         // ~60% of players prefer hotkeys, ~40% are habitual clickers
         profileData.prefersHotkeys = seededRandom.nextDouble() < 0.60;
         
+        // === Predictive hovering preferences ===
+        // Base prediction rate: 40-90% (how often player hovers over next target while acting)
+        // Some players are very "ahead" and always predict, others are more reactive
+        profileData.basePredictionRate = 0.40 + seededRandom.nextDouble() * 0.50;
+        
+        // Click speed bias: 0.0-1.0 (0=slow/hesitant, 1=fast/snappy)
+        // Affects distribution of INSTANT vs DELAYED clicks when prediction succeeds
+        profileData.predictionClickSpeedBias = seededRandom.nextDouble();
+        
         // === Metrics ===
         profileData.sessionCount = 0;
         profileData.totalPlaytimeHours = 0;
@@ -346,6 +355,12 @@ public class PlayerProfile {
         // Frequency drift
         profileData.xpCheckFrequency = applyDrift(profileData.xpCheckFrequency, 0, 20, 0.10);
         profileData.playerInspectionFrequency = applyDrift(profileData.playerInspectionFrequency, 0, 8, 0.10);
+        
+        // Prediction hover drift (smaller variance - these are stable personality traits)
+        profileData.basePredictionRate = applyDrift(
+                profileData.basePredictionRate, 0.30, 0.95, 0.03);
+        profileData.predictionClickSpeedBias = applyDrift(
+                profileData.predictionClickSpeedBias, 0.0, 1.0, 0.03);
 
         log.debug("Applied session drift (session #{})", profileData.sessionCount);
     }
@@ -1062,6 +1077,28 @@ public class PlayerProfile {
     }
 
     // ========================================================================
+    // Predictive Hover Accessors
+    // ========================================================================
+
+    /**
+     * Get the base rate at which this player hovers over the next target while acting.
+     * 
+     * @return prediction rate from 0.30-0.95
+     */
+    public double getBasePredictionRate() {
+        return profileData.basePredictionRate;
+    }
+
+    /**
+     * Get the bias toward instant vs delayed clicks when prediction succeeds.
+     * 
+     * @return speed bias from 0.0 (hesitant) to 1.0 (snappy)
+     */
+    public double getPredictionClickSpeedBias() {
+        return profileData.predictionClickSpeedBias;
+    }
+
+    // ========================================================================
     // Environment Fingerprint Accessors
     // ========================================================================
 
@@ -1242,6 +1279,34 @@ public class PlayerProfile {
          * This affects WidgetInteractTask behavior when opening tabs.
          */
         volatile boolean prefersHotkeys = true;
+
+        // === Predictive hovering preferences ===
+        /**
+         * Base rate at which player hovers over next target while current action is in progress.
+         * Range: 0.30-0.95 (30-95%).
+         * 
+         * High values (0.8+) represent very engaged "ahead" players who always anticipate.
+         * Low values (0.4-) represent more reactive players who wait for actions to complete.
+         * 
+         * This base rate is modified by fatigue (reduces prediction) and attention state
+         * (DISTRACTED significantly reduces, AFK disables).
+         */
+        volatile double basePredictionRate = 0.60;
+        
+        /**
+         * Bias toward instant vs delayed clicks when prediction succeeds.
+         * Range: 0.0-1.0 (0=hesitant/slow, 1=snappy/fast).
+         * 
+         * High values (0.8+) mean the player typically clicks instantly when their
+         * current action completes.
+         * Low values (0.3-) mean the player often hesitates briefly before clicking
+         * even when they've been hovering.
+         * 
+         * This affects the distribution of ClickBehavior outcomes:
+         * - High bias: More INSTANT, fewer DELAYED
+         * - Low bias: More DELAYED, fewer INSTANT
+         */
+        volatile double predictionClickSpeedBias = 0.50;
 
         // === Metrics ===
         volatile int sessionCount = 0;

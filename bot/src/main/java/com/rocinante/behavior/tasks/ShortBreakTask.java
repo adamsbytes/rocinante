@@ -68,6 +68,10 @@ public class ShortBreakTask extends BehavioralTask {
     @Override
     protected void executeImpl(TaskContext ctx) {
         if (!started) {
+            // Clear any pending predictive hover - player is taking a break
+            if (ctx.getPredictiveHoverManager() != null) {
+                ctx.getPredictiveHoverManager().clearHover();
+            }
             startBreak();
         }
         

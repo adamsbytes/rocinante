@@ -2,6 +2,8 @@ package com.rocinante.tasks.impl;
 
 import com.rocinante.agility.AgilityCourse;
 import com.rocinante.agility.AgilityCourseRepository;
+import com.rocinante.inventory.IdealInventory;
+import com.rocinante.inventory.InventoryPreparation;
 import com.rocinante.progression.GroundItemWatch;
 import com.rocinante.progression.MethodLocation;
 import com.rocinante.progression.MethodType;
@@ -36,8 +38,10 @@ import net.runelite.api.coords.WorldPoint;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * High-level orchestrator task for skill training sessions.
@@ -127,6 +131,12 @@ public class SkillTask extends AbstractTask {
     private WorldPoint trainingPosition;
 
     /**
+     * Whether inventory preparation phase has completed.
+     * Used to ensure we only prepare inventory once.
+     */
+    private boolean inventoryPrepared = false;
+
+    /**
      * Ticks idle (for detecting when action completes).
      */
     private int idleTicks = 0;
@@ -177,6 +187,26 @@ public class SkillTask extends AbstractTask {
      */
     @Setter
     private String description;
+
+    /**
+     * The current target position for gathering (to exclude from predictive hover).
+     */
+    private WorldPoint currentTargetPosition;
+
+    /**
+     * Cached expanded target IDs for the current training method.
+     */
+    private Set<Integer> expandedTargetIds;
+
+    /**
+     * Whether the current method targets NPCs (true) or objects (false).
+     */
+    private boolean targetsNpcs;
+
+    /**
+     * Menu action for predictive hover clicks.
+     */
+    private String hoverMenuAction;
 
     // ========================================================================
     // Constructor
@@ -321,7 +351,34 @@ public class SkillTask extends AbstractTask {
     private void executePrepare(TaskContext ctx) {
         TrainingMethod method = config.getMethod();
 
-        // Check if we need to travel to training location
+        // Phase 1: Prepare inventory using IdealInventory system
+        InventoryPreparation inventoryPrep = ctx.getInventoryPreparation();
+        if (inventoryPrep != null && !inventoryPrepared) {
+            IdealInventory ideal = config.getOrCreateIdealInventory(ctx.getPlayerState());
+            
+            // Check if inventory already matches ideal state
+            if (!inventoryPrep.isInventoryReady(ideal, ctx)) {
+                // Use analyzeAndPrepare to get detailed result without throwing
+                InventoryPreparation.PreparationResult result = inventoryPrep.analyzeAndPrepare(ideal, ctx);
+                
+                if (result.isFailed()) {
+                    // Required items are missing and cannot be obtained
+                    log.warn("Cannot prepare inventory - missing required items: {}", result.getMissingItems());
+                    fail("Missing required items: " + String.join(", ", result.getMissingItems()));
+                    return;
+                }
+                
+                if (result.getTask() != null) {
+                    log.debug("Preparing inventory: {}", ideal.getSummary());
+                    activeSubTask = result.getTask();
+                    return;
+                }
+            }
+            inventoryPrepared = true;
+            log.debug("Inventory preparation complete");
+        }
+
+        // Phase 2: Travel to training location
         PlayerState player = ctx.getPlayerState();
         WorldPoint playerPos = player.getWorldPosition();
 
@@ -340,8 +397,8 @@ public class SkillTask extends AbstractTask {
         // Store training position for return after banking
         trainingPosition = playerPos;
 
-        // Verify we have required tools
-        if (!hasRequiredTools(ctx)) {
+        // Phase 3: Verify we have required tools (legacy fallback if no InventoryPreparation)
+        if (inventoryPrep == null && !hasRequiredTools(ctx)) {
             log.warn("Missing required tools for {}", method.getName());
             fail("Missing required tools");
             return;
@@ -398,9 +455,14 @@ public class SkillTask extends AbstractTask {
         TrainingMethod method = config.getMethod();
         PlayerState player = ctx.getPlayerState();
         InventoryState inventory = ctx.getInventoryState();
+        com.rocinante.behavior.PredictiveHoverManager hoverManager = ctx.getPredictiveHoverManager();
 
         // Check if inventory is full
         if (inventory.isFull() && method.isRequiresInventorySpace()) {
+            // Clear any pending hover when inventory is full
+            if (hoverManager != null) {
+                hoverManager.clearHover();
+            }
             if (config.shouldDrop()) {
                 log.debug("Inventory full, switching to drop phase");
                 phase = SkillPhase.DROP;
@@ -421,11 +483,35 @@ public class SkillTask extends AbstractTask {
                 actionsCompleted++;
                 interactionStarted = false;
                 idleTicks = 0;
+                currentTargetPosition = null; // Clear current target
                 log.trace("Action complete, total actions: {}", actionsCompleted);
 
                 // Check for watched ground items after completing an action
                 if (checkForWatchedGroundItems(ctx, false)) {
+                    // Clear any pending hover when picking up items
+                    if (hoverManager != null) {
+                        hoverManager.clearHover();
+                    }
                     return; // Switched to PICKUP_ITEM phase
+                }
+
+                // Check if we have a predicted hover to execute
+                if (hoverManager != null && hoverManager.hasPendingHover()) {
+                    log.debug("Executing predicted click from hover");
+                    // CRITICAL: Set interactionStarted SYNCHRONOUSLY before async click
+                    // This prevents race condition where next tick calls startTrainingInteraction()
+                    // before the async callback completes
+                    interactionStarted = true;
+                    hoverManager.executePredictedClick(ctx).thenAccept(success -> {
+                        if (success) {
+                            log.trace("Predicted click executed successfully");
+                        } else {
+                            // Click failed (abandoned or error) - allow retry on next cycle
+                            log.debug("Predicted click failed, will retry with normal interaction");
+                            interactionStarted = false;
+                        }
+                    });
+                    return;
                 }
             }
 
@@ -433,6 +519,10 @@ public class SkillTask extends AbstractTask {
             if (!interactionStarted) {
                 // Before starting new interaction, check for high-priority ground items
                 if (checkForWatchedGroundItems(ctx, true)) {
+                    // Clear any pending hover when picking up items
+                    if (hoverManager != null) {
+                        hoverManager.clearHover();
+                    }
                     return; // Switched to PICKUP_ITEM phase
                 }
 
@@ -445,8 +535,18 @@ public class SkillTask extends AbstractTask {
 
             // Check for ground items that should interrupt current action
             if (checkForWatchedGroundItems(ctx, true)) {
+                // Clear any pending hover when picking up items
+                if (hoverManager != null) {
+                    hoverManager.clearHover();
+                }
                 // Note: This will interrupt the current action
                 return;
+            }
+
+            // === PREDICTIVE HOVER ===
+            // While animating (gathering), attempt to hover over the next target
+            if (hoverManager != null && method.getMethodType() == MethodType.GATHER) {
+                attemptPredictiveHover(ctx, hoverManager, method);
             }
         }
 
@@ -455,7 +555,85 @@ public class SkillTask extends AbstractTask {
         if (phaseWaitTicks > MAX_WAIT_TICKS && !player.isAnimating()) {
             log.warn("Training phase timeout, retrying interaction");
             interactionStarted = false;
+            // Clear hover on timeout
+            if (hoverManager != null) {
+                hoverManager.clearHover();
+            }
             phaseWaitTicks = 0;
+        }
+    }
+
+    /**
+     * Attempt to start or validate a predictive hover for gathering skills.
+     * 
+     * <p>This is called each tick while the player is animating (gathering).
+     * It either:
+     * <ul>
+     *   <li>Starts a new hover if conditions are met (shouldPredictiveHover returns true)</li>
+     *   <li>Validates an existing hover (for NPC targets that may move)</li>
+     * </ul>
+     *
+     * @param ctx          the task context
+     * @param hoverManager the predictive hover manager
+     * @param method       the current training method
+     */
+    private void attemptPredictiveHover(
+            TaskContext ctx,
+            com.rocinante.behavior.PredictiveHoverManager hoverManager,
+            TrainingMethod method) {
+        
+        // If already hovering, just validate the hover (for moving NPCs)
+        if (hoverManager.hasPendingHover()) {
+            if (expandedTargetIds != null) {
+                hoverManager.validateAndUpdateHover(ctx, expandedTargetIds);
+            }
+            return;
+        }
+
+        // Not hovering yet - check if we should start
+        if (!hoverManager.shouldPredictiveHover()) {
+            return; // Roll failed or conditions not met
+        }
+
+        // Ensure we have expanded target IDs
+        if (expandedTargetIds == null) {
+            initializeTargetIds(method);
+        }
+
+        if (expandedTargetIds == null || expandedTargetIds.isEmpty()) {
+            return; // No targets configured
+        }
+
+        // Start the hover
+        hoverManager.startPredictiveHover(
+                ctx,
+                expandedTargetIds,
+                currentTargetPosition,
+                targetsNpcs,
+                hoverMenuAction
+        ).thenAccept(success -> {
+            if (success) {
+                log.debug("Started predictive hover for next {} target", 
+                        targetsNpcs ? "NPC" : "object");
+            }
+        });
+    }
+
+    /**
+     * Initialize target IDs and hover parameters from the training method.
+     * Caches the expanded IDs to avoid repeated expansion.
+     */
+    private void initializeTargetIds(TrainingMethod method) {
+        if (method.hasTargetObjects()) {
+            List<Integer> originalIds = method.getTargetObjectIds();
+            expandedTargetIds = new HashSet<>(CollectionResolver.expandObjectIds(originalIds));
+            targetsNpcs = false;
+            hoverMenuAction = method.getMenuAction() != null ? method.getMenuAction() : "Mine";
+        } else if (method.hasTargetNpcs()) {
+            List<Integer> originalIds = method.getTargetNpcIds();
+            expandedTargetIds = new HashSet<>(CollectionResolver.expandNpcIds(originalIds));
+            targetsNpcs = true;
+            hoverMenuAction = method.getMenuAction() != null ? method.getMenuAction() : "Net";
         }
     }
 
@@ -510,8 +688,15 @@ public class SkillTask extends AbstractTask {
      * <p>Object and NPC IDs are automatically expanded via {@link CollectionResolver}
      * to include all variants from matching collections. This allows training_methods.json
      * to use single representative IDs while supporting all game variants.
+     * 
+     * <p>Also initializes predictive hover parameters for gathering methods.
      */
     private void startGatherTraining(TaskContext ctx, TrainingMethod method) {
+        // Initialize target IDs for predictive hovering (if not already done)
+        if (expandedTargetIds == null) {
+            initializeTargetIds(method);
+        }
+
         if (method.hasTargetObjects()) {
             // Mining, woodcutting - interact with objects
             List<Integer> originalIds = method.getTargetObjectIds();
@@ -527,9 +712,12 @@ public class SkillTask extends AbstractTask {
                 interactTask.withAlternateIds(objectIds.subList(1, objectIds.size()));
             }
 
-            if (method.getSuccessAnimationId() > 0) {
-                interactTask.withSuccessAnimation(method.getSuccessAnimationId());
+            if (!method.getSuccessAnimationIds().isEmpty()) {
+                interactTask.withSuccessAnimations(method.getSuccessAnimationIds());
             }
+
+            // Track current target position for predictive hover exclusion
+            interactTask.setTargetPositionCallback(pos -> currentTargetPosition = pos);
 
             activeSubTask = interactTask;
             log.debug("Starting interaction with object(s): {} (expanded from {})", 
@@ -549,6 +737,9 @@ public class SkillTask extends AbstractTask {
             if (npcIds.size() > 1) {
                 interactTask.withAlternateIds(npcIds.subList(1, npcIds.size()));
             }
+
+            // Track current target position for predictive hover exclusion
+            interactTask.setTargetPositionCallback(pos -> currentTargetPosition = pos);
 
             activeSubTask = interactTask;
             log.debug("Starting interaction with NPC(s): {} (expanded from {})", 

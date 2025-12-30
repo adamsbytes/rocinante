@@ -156,8 +156,8 @@ public class TrainingMethodRepository {
         if (obj.has("menuAction")) {
             builder.menuAction(obj.get("menuAction").getAsString());
         }
-        if (obj.has("successAnimationId")) {
-            builder.successAnimationId(obj.get("successAnimationId").getAsInt());
+        if (obj.has("successAnimationIds")) {
+            builder.successAnimationIds(parseIntList(obj.getAsJsonArray("successAnimationIds")));
         }
 
         // Inventory handling

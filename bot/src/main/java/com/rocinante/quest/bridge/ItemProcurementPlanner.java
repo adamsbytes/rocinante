@@ -1,5 +1,9 @@
 package com.rocinante.quest.bridge;
 
+import com.rocinante.inventory.EquipPreference;
+import com.rocinante.inventory.IdealInventory;
+import com.rocinante.inventory.InventoryPreparation;
+import com.rocinante.inventory.InventorySlotSpec;
 import com.rocinante.state.BankState;
 import com.rocinante.state.InventoryState;
 import com.rocinante.tasks.Task;
@@ -326,6 +330,147 @@ public class ItemProcurementPlanner {
         }
 
         return missing;
+    }
+
+    // ========================================================================
+    // IdealInventory Integration
+    // ========================================================================
+
+    /**
+     * Convert item requirements to an IdealInventory specification.
+     *
+     * <p>This creates an IdealInventory that can be used with
+     * {@link InventoryPreparation} for a more integrated approach.
+     *
+     * <p>Note: This method only handles bank-obtainable items.
+     * Shop purchases must still be handled separately.
+     *
+     * @param requirements the item requirements
+     * @return IdealInventory specification
+     */
+    public IdealInventory toIdealInventory(List<ItemRequirementInfo> requirements) {
+        if (requirements == null || requirements.isEmpty()) {
+            return IdealInventory.emptyInventory();
+        }
+
+        IdealInventory.IdealInventoryBuilder builder = IdealInventory.builder()
+                .depositInventoryFirst(false)  // Don't clear - might have useful items
+                .keepExistingItems(true)       // Keep what we have
+                .failOnMissingItems(false);    // Graceful handling
+
+        for (ItemRequirementInfo req : requirements) {
+            // Skip quest-obtainable items
+            if (req.isObtainableDuringQuest()) {
+                continue;
+            }
+
+            // Create spec for this requirement
+            InventorySlotSpec spec = createSlotSpec(req);
+            if (spec != null) {
+                builder.requiredItem(spec);
+            }
+        }
+
+        return builder.build();
+    }
+
+    /**
+     * Create an InventorySlotSpec from an ItemRequirementInfo.
+     */
+    private InventorySlotSpec createSlotSpec(ItemRequirementInfo req) {
+        List<Integer> allIds = req.getAllIds();
+
+        if (allIds.size() == 1) {
+            // Single item
+            return InventorySlotSpec.builder()
+                    .itemId(allIds.get(0))
+                    .quantity(req.getQuantity())
+                    .equipPreference(EquipPreference.PREFER_INVENTORY)
+                    .displayName(req.getName())
+                    .optional(false)
+                    .build();
+        } else {
+            // Multiple alternates - use collection
+            return InventorySlotSpec.builder()
+                    .itemCollection(allIds)
+                    .quantity(req.getQuantity())
+                    .equipPreference(EquipPreference.PREFER_INVENTORY)
+                    .displayName(req.getName())
+                    .optional(false)
+                    .allowFallback(true)
+                    .build();
+        }
+    }
+
+    /**
+     * Plan procurement using InventoryPreparation service if available.
+     *
+     * <p>This is an enhanced version of {@link #planProcurement} that uses
+     * the IdealInventory system for bank withdrawals when the
+     * InventoryPreparation service is available.
+     *
+     * <p>Falls back to legacy behavior if InventoryPreparation is not available.
+     *
+     * @param requirements the item requirements to procure
+     * @param ctx          the task context
+     * @return list of tasks to acquire the items
+     */
+    public List<Task> planProcurementWithIdealInventory(List<ItemRequirementInfo> requirements, TaskContext ctx) {
+        if (requirements == null || requirements.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        InventoryPreparation inventoryPrep = ctx.getInventoryPreparation();
+
+        // Separate bank items from shop items
+        List<ItemRequirementInfo> bankItems = new ArrayList<>();
+        List<ItemRequirementInfo> shopItems = new ArrayList<>();
+        InventoryState inventory = ctx.getInventoryState();
+
+        for (ItemRequirementInfo req : requirements) {
+            if (req.isObtainableDuringQuest()) {
+                continue;
+            }
+
+            int currentCount = countItemWithAlternates(inventory, req);
+            if (currentCount >= req.getQuantity()) {
+                continue; // Already have enough
+            }
+
+            int needed = req.getQuantity() - currentCount;
+            int bankCount = countItemWithAlternatesInBank(ctx.getBankState(), req);
+
+            if (canGetFromBank(req, needed, bankCount, ctx)) {
+                bankItems.add(req);
+            } else if (req.hasKnownShop()) {
+                shopItems.add(req);
+            }
+        }
+
+        List<Task> tasks = new ArrayList<>();
+
+        // Use InventoryPreparation for bank items if available
+        if (!bankItems.isEmpty() && inventoryPrep != null) {
+            IdealInventory bankIdeal = toIdealInventory(bankItems);
+            Task prepTask = inventoryPrep.prepareInventory(bankIdeal, ctx);
+            if (prepTask != null) {
+                tasks.add(prepTask);
+                log.info("Using InventoryPreparation for {} bank items", bankItems.size());
+            }
+        } else if (!bankItems.isEmpty()) {
+            // Fallback to legacy bank tasks
+            tasks.addAll(createBankWithdrawTasks(bankItems, inventory));
+        }
+
+        // Shop purchases still use legacy system
+        if (!shopItems.isEmpty()) {
+            tasks.addAll(createShopPurchaseTasks(shopItems, inventory));
+        }
+
+        log.info("Planned {} procurement tasks ({} via IdealInventory, {} via shop)",
+                tasks.size(), bankItems.size(), shopItems.size());
+
+        return tasks;
     }
 }
 
