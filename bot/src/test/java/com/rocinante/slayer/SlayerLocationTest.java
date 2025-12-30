@@ -1,5 +1,6 @@
 package com.rocinante.slayer;
 
+import com.rocinante.tasks.impl.skills.slayer.SlayerLocation;
 import net.runelite.api.coords.WorldPoint;
 import org.junit.Test;
 

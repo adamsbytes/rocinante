@@ -276,11 +276,19 @@ export async function resetStatusFile(botId: string): Promise<void> {
 // Command Writing
 // ============================================================================
 
+// Per-bot locks to prevent race conditions when writing commands
+const commandLocks = new Map<string, Promise<void>>();
+
 /**
  * Send a command to a bot.
  * Writes the command to the bot's commands.json file.
+ * Uses per-bot locking to prevent race conditions.
  */
 export async function sendBotCommand(botId: string, command: Omit<BotCommand, 'timestamp'>): Promise<void> {
+  // Wait for any pending write to complete, then run ours
+  const existingLock = commandLocks.get(botId) ?? Promise.resolve();
+  
+  const writePromise = existingLock.then(async () => {
   const commandsFilePath = getCommandsFilePath(botId);
   await ensureStatusDir(botId);
   
@@ -316,6 +324,13 @@ export async function sendBotCommand(botId: string, command: Omit<BotCommand, 't
     console.error(`Error writing command for bot ${botId}:`, error);
     throw error;
   }
+  });
+  
+  // Update the lock for this bot
+  commandLocks.set(botId, writePromise.catch(() => {})); // Swallow errors for lock chain
+  
+  // Wait for our write to complete (will throw if it failed)
+  await writePromise;
 }
 
 // ============================================================================

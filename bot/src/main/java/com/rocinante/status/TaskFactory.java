@@ -231,6 +231,11 @@ public class TaskFactory {
             builder.foodItemId(spec.get("foodItemId").getAsInt());
         }
 
+        // Optional: specific location within the method
+        if (spec.has("locationId")) {
+            builder.locationId(spec.get("locationId").getAsString());
+        }
+
         SkillTaskConfig config = builder.build();
         
         try {

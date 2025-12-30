@@ -3,6 +3,33 @@
   "version": "1.0.0",
   "courses": [
     {
+      "id": "gnome_stronghold",
+      "name": "Gnome Stronghold Agility Course",
+      "requiredLevel": 1,
+      "maxLevel": 10,
+      "xpPerLap": 86.5,
+      "marksPerHour": 0,
+      "lapsPerHour": 60,
+      "regionId": 9781,
+      "isRooftop": false,
+      "startArea": {"x": 2474, "y": 3436, "plane": 0},
+      "startAreaRadius": 5,
+      "courseEndPoint": {"x": 2485, "y": 3437, "plane": 0},
+      "obstacles": [
+        {"index": 0, "name": "Log balance", "objectId": 23145, "action": "Walk-across", "interactArea": {"x": 2474, "y": 3435, "width": 3, "height": 3, "plane": 0}, "expectedLanding": {"x": 2474, "y": 3429, "plane": 0}, "expectedTicks": 6},
+        {"index": 1, "name": "Obstacle net", "objectId": 23134, "action": "Climb-over", "interactArea": {"x": 2471, "y": 3426, "width": 5, "height": 3, "plane": 0}, "expectedLanding": {"x": 2473, "y": 3423, "plane": 1}, "expectedTicks": 3},
+        {"index": 2, "name": "Tree branch", "objectId": 23559, "action": "Climb", "interactArea": {"x": 2472, "y": 3422, "width": 4, "height": 3, "plane": 1}, "expectedLanding": {"x": 2473, "y": 3420, "plane": 2}, "expectedTicks": 3},
+        {"index": 3, "name": "Balancing rope", "objectId": 23557, "action": "Walk-on", "interactArea": {"x": 2477, "y": 3420, "width": 3, "height": 3, "plane": 2}, "expectedLanding": {"x": 2483, "y": 3420, "plane": 2}, "expectedTicks": 6},
+        {"index": 4, "name": "Tree branch", "objectId": 23560, "action": "Climb-down", "interactArea": {"x": 2485, "y": 3418, "width": 3, "height": 3, "plane": 2}, "expectedLanding": {"x": 2487, "y": 3420, "plane": 0}, "expectedTicks": 3},
+        {"index": 5, "name": "Obstacle net", "objectId": 23135, "action": "Climb-over", "interactArea": {"x": 2483, "y": 3425, "width": 5, "height": 3, "plane": 0}, "expectedLanding": {"x": 2484, "y": 3427, "plane": 0}, "expectedTicks": 3},
+        {"index": 6, "name": "Obstacle pipe", "objectId": 23138, "action": "Squeeze-through", "interactArea": {"x": 2484, "y": 3430, "width": 3, "height": 3, "plane": 0}, "expectedLanding": {"x": 2484, "y": 3437, "plane": 0}, "expectedTicks": 5}
+      ],
+      "markSpawnTiles": [],
+      "hasShortcut": false,
+      "requiresDiary": false,
+      "notes": "Starter course for levels 1-10. No marks of grace. Located in Tree Gnome Stronghold."
+    },
+    {
       "id": "draynor_rooftop",
       "name": "Draynor Village Rooftop",
       "requiredLevel": 10,

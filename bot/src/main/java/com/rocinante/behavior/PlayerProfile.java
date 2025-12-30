@@ -49,7 +49,9 @@ import java.util.concurrent.TimeUnit;
 @Singleton
 public class PlayerProfile {
 
-    private static final String PROFILE_DIR = ".runelite/rocinante/profiles";
+    private static final String DEFAULT_PROFILE_DIR = System.getProperty("user.home") 
+        + "/.runelite/rocinante/profiles";
+    private static final String PROFILE_SUBDIR = "profiles";
     private static final int CURRENT_SCHEMA_VERSION = 1;
     private static final long SAVE_INTERVAL_MINUTES = 5;
     private static final Duration FRESH_SESSION_THRESHOLD = Duration.ofMinutes(15);
@@ -634,8 +636,15 @@ public class PlayerProfile {
     }
 
     private Path getProfilePath() {
-        String userHome = System.getProperty("user.home");
-        return Paths.get(userHome, PROFILE_DIR, accountHash + ".json");
+        // Use ROCINANTE_STATUS_DIR if available (same as status files), else default
+        String statusDir = System.getenv("ROCINANTE_STATUS_DIR");
+        if (statusDir != null && !statusDir.isEmpty()) {
+            // Status dir is like /home/runelite/.runelite/rocinante/<botId>
+            // Profile dir should be sibling: /home/runelite/.runelite/rocinante/profiles
+            Path statusPath = Paths.get(statusDir);
+            return statusPath.getParent().resolve(PROFILE_SUBDIR).resolve(accountHash + ".json");
+        }
+        return Paths.get(DEFAULT_PROFILE_DIR, accountHash + ".json");
     }
 
     // ========================================================================

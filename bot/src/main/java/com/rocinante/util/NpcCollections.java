@@ -1264,7 +1264,21 @@ public final class NpcCollections {
      */
     public static final List<Integer> MASTER_FARMERS = Collections.unmodifiableList(Arrays.asList(
             NpcID.MASTER_FARMER,
-            NpcID.MASTER_FARMER_5731
+            NpcID.MASTER_FARMER_5731,
+            NpcID.MASTER_FARMER_11940,
+            NpcID.MASTER_FARMER_11941,
+            NpcID.MASTER_FARMER_13236,
+            NpcID.MASTER_FARMER_13237,
+            NpcID.MASTER_FARMER_13238,
+            NpcID.MASTER_FARMER_13239,
+            NpcID.MASTER_FARMER_13240,
+            NpcID.MASTER_FARMER_13241,
+            NpcID.MASTER_FARMER_13242,
+            NpcID.MASTER_FARMER_13243,
+            NpcID.MASTER_FARMER_14755,
+            NpcID.MASTER_FARMER_14756,
+            NpcID.MASTER_FARMER_14757,
+            NpcID.MASTER_FARMER_14758
     ));
 
     /**
@@ -1274,7 +1288,16 @@ public final class NpcCollections {
      */
     public static final List<Integer> KNIGHTS_OF_ARDOUGNE = Collections.unmodifiableList(Arrays.asList(
             NpcID.KNIGHT_OF_ARDOUGNE,
-            NpcID.KNIGHT_OF_ARDOUGNE_3300
+            NpcID.KNIGHT_OF_ARDOUGNE_3300,
+            NpcID.KNIGHT_OF_ARDOUGNE_8799,
+            NpcID.KNIGHT_OF_ARDOUGNE_8800,
+            NpcID.KNIGHT_OF_ARDOUGNE_8801,
+            NpcID.KNIGHT_OF_ARDOUGNE_8851,
+            NpcID.KNIGHT_OF_ARDOUGNE_8852,
+            NpcID.KNIGHT_OF_ARDOUGNE_8854,
+            NpcID.KNIGHT_OF_ARDOUGNE_8855,
+            NpcID.KNIGHT_OF_ARDOUGNE_11902,
+            NpcID.KNIGHT_OF_ARDOUGNE_11936
     ));
 
     /**

@@ -46,7 +46,7 @@ public class TrainingMethodRepositoryTest {
         Optional<TrainingMethod> method = repository.getMethodById("iron_ore_powermine");
         
         assertTrue("iron_ore_powermine should exist", method.isPresent());
-        assertEquals("Iron Ore (Power Mining)", method.get().getName());
+        assertEquals("Iron Ore - Power Mining", method.get().getName());
         assertEquals(Skill.MINING, method.get().getSkill());
         assertEquals(MethodType.GATHER, method.get().getMethodType());
         assertEquals(15, method.get().getMinLevel());
@@ -155,8 +155,10 @@ public class TrainingMethodRepositoryTest {
     public void testTrainingMethodXpPerHour() {
         TrainingMethod ironMethod = repository.getMethodById("iron_ore_powermine").get();
         
-        double expectedXpPerHour = 35.0 * 1200; // xpPerAction * actionsPerHour
-        assertEquals(expectedXpPerHour, ironMethod.getXpPerHour(), 0.01);
+        // xpPerHour now depends on the location's actionsPerHour
+        // iron_ore_powermine at al_kharid has 1200 actions/hr
+        double expectedXpPerHour = 35.0 * 1200; // xpPerAction * actionsPerHour at default location
+        assertEquals(expectedXpPerHour, ironMethod.getXpPerHour(15), 0.01);
     }
 
     @Test
@@ -259,8 +261,9 @@ public class TrainingMethodRepositoryTest {
 
     @Test
     public void testWoodcuttingBirdNestWatching() {
-        Optional<TrainingMethod> method = repository.getMethodById("willow_trees_draynor_nests");
-        assertTrue("Willow trees with nests should exist", method.isPresent());
+        // In new format, bird nest watching is on willow_trees_powerchop
+        Optional<TrainingMethod> method = repository.getMethodById("willow_trees_powerchop");
+        assertTrue("Willow trees powerchop should exist", method.isPresent());
 
         TrainingMethod wc = method.get();
         assertTrue("Woodcutting should have watched ground items", wc.hasWatchedGroundItems());
@@ -289,5 +292,74 @@ public class TrainingMethodRepositoryTest {
         assertTrue("Should match mark ID", markWatch.matches(11849));
         assertFalse("Should not match random ID", markWatch.matches(12345));
     }
-}
 
+    // ========================================================================
+    // Multi-Location Tests
+    // ========================================================================
+
+    @Test
+    public void testMethodHasLocations() {
+        TrainingMethod ironMethod = repository.getMethodById("iron_ore_powermine").get();
+        
+        assertTrue("Iron mining should have locations", ironMethod.getLocationCount() > 0);
+        assertTrue("Iron mining should have multiple locations", ironMethod.hasMultipleLocations());
+    }
+
+    @Test
+    public void testMethodLocationDetails() {
+        TrainingMethod ironMethod = repository.getMethodById("iron_ore_powermine").get();
+        MethodLocation defaultLoc = ironMethod.getDefaultLocation();
+        
+        assertNotNull("Should have a default location", defaultLoc);
+        assertNotNull("Location should have an ID", defaultLoc.getId());
+        assertNotNull("Location should have a name", defaultLoc.getName());
+        assertTrue("Location should have actions per hour", defaultLoc.getActionsPerHour() > 0);
+    }
+
+    @Test
+    public void testMethodLocationLookup() {
+        TrainingMethod ironMethod = repository.getMethodById("iron_ore_powermine").get();
+        
+        MethodLocation alKharid = ironMethod.getLocation("al_kharid");
+        assertNotNull("Should find al_kharid location", alKharid);
+        assertEquals("al_kharid", alKharid.getId());
+        
+        MethodLocation nonexistent = ironMethod.getLocation("nonexistent");
+        assertNull("Should return null for nonexistent location", nonexistent);
+    }
+
+    @Test
+    public void testMethodXpPerHourRange() {
+        TrainingMethod ironMethod = repository.getMethodById("iron_ore_powermine").get();
+        
+        double[] range = ironMethod.getXpPerHourRange(15);
+        assertTrue("Min XP/hr should be > 0", range[0] > 0);
+        assertTrue("Max XP/hr should be >= min", range[1] >= range[0]);
+    }
+
+    // ========================================================================
+    // Requirements Tests
+    // ========================================================================
+
+    @Test
+    public void testMethodRequirements() {
+        // Prifddinas agility should have quest requirement
+        Optional<TrainingMethod> prifMethod = repository.getMethodById("prifddinas_agility_course");
+        assertTrue("Prifddinas course should exist", prifMethod.isPresent());
+        
+        assertTrue("Prifddinas should have requirements", prifMethod.get().hasRequirements());
+        assertTrue("Prifddinas should require membership", prifMethod.get().requiresMembership());
+    }
+
+    @Test
+    public void testLocationRequirements() {
+        TrainingMethod ironMethod = repository.getMethodById("iron_ore_powermine").get();
+        
+        // Mining guild location should have level requirement
+        MethodLocation guildLoc = ironMethod.getLocation("mining_guild");
+        if (guildLoc != null) {
+            assertTrue("Mining guild should have requirements", guildLoc.hasRequirements());
+            assertTrue("Mining guild should require membership", guildLoc.requiresMembership());
+        }
+    }
+}

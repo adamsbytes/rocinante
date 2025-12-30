@@ -122,7 +122,9 @@ public class CommandProcessor {
     @Inject
     public CommandProcessor() {
         initializeCommandsDirectory();
-        log.info("CommandProcessor initialized, watching: {}", commandsFilePath);
+        restoreLastProcessedTimestamp();
+        log.info("CommandProcessor initialized, watching: {}, lastProcessed: {}", 
+                commandsFilePath, lastProcessedTimestamp);
     }
 
     /**
@@ -144,6 +146,32 @@ public class CommandProcessor {
             log.error("Failed to create commands directory: {}", dirPath, e);
             commandsFilePath = Paths.get(System.getProperty("java.io.tmpdir"), COMMANDS_FILE_NAME);
             processedFilePath = Paths.get(System.getProperty("java.io.tmpdir"), PROCESSED_FILE_NAME);
+        }
+    }
+
+    /**
+     * Restore lastProcessedTimestamp from the processed file to prevent
+     * reprocessing old commands after a restart.
+     */
+    private void restoreLastProcessedTimestamp() {
+        if (!Files.exists(processedFilePath)) {
+            return;
+        }
+        
+        try {
+            String content = Files.readString(processedFilePath, StandardCharsets.UTF_8);
+            if (content.isBlank()) {
+                return;
+            }
+            
+            // Use older Gson API for compatibility with RuneLite's bundled Gson version
+            JsonObject ack = new JsonParser().parse(content).getAsJsonObject();
+            if (ack.has("lastProcessed")) {
+                lastProcessedTimestamp = ack.get("lastProcessed").getAsLong();
+                log.info("Restored lastProcessedTimestamp from previous session: {}", lastProcessedTimestamp);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to restore lastProcessedTimestamp: {}", e.getMessage());
         }
     }
 
@@ -226,7 +254,7 @@ public class CommandProcessor {
             JsonObject root = new JsonParser().parse(content).getAsJsonObject();
             JsonArray commands = root.getAsJsonArray("commands");
             
-            if (commands == null || commands.isEmpty()) {
+            if (commands == null || commands.size() == 0) {
                 return;
             }
 

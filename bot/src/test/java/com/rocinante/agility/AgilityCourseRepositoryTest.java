@@ -23,8 +23,8 @@ public class AgilityCourseRepositoryTest {
 
     @Test
     public void testLoadCourses() {
-        // Verify all 10 courses were loaded
-        assertEquals("Should have 10 courses", 10, repository.getCourseCount());
+        // Verify all 11 courses were loaded
+        assertEquals("Should have 11 courses", 11, repository.getCourseCount());
         
         // Verify each course exists
         assertTrue("Should have Draynor rooftop course", repository.hasCourse("draynor_rooftop"));

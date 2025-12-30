@@ -1,5 +1,7 @@
 package com.rocinante.slayer;
 
+import com.rocinante.tasks.impl.skills.slayer.SlayerEquipmentManager;
+import com.rocinante.tasks.impl.skills.slayer.SlayerUnlock;
 import net.runelite.api.ItemID;
 import org.junit.Test;
 

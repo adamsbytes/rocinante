@@ -3,7 +3,7 @@
  * Reads data files from the bot's resources directory.
  */
 
-import type { TrainingMethodInfo, LocationInfo, QuestInfo, SkillName } from '../shared/types';
+import type { TrainingMethodInfo, MethodLocationInfo, LocationInfo, QuestInfo, SkillName } from '../shared/types';
 
 // Path to bot's data directory (symlinked at web/bot-data -> ../bot/src/main/resources/data)
 const BOT_DATA_PATH = process.env.BOT_DATA_PATH || './bot-data';
@@ -12,19 +12,33 @@ const BOT_DATA_PATH = process.env.BOT_DATA_PATH || './bot-data';
 // Training Methods
 // ============================================================================
 
+interface RawMethodLocation {
+  name: string;
+  locationId: string;
+  actionsPerHour: number;
+  gpPerHour?: number;
+  bankLocationId?: string;
+  notes?: string;
+  requirements?: {
+    members?: boolean;
+    quests?: string[];
+  };
+}
+
 interface RawTrainingMethod {
   id: string;
   name: string;
   skill: string;
   methodType: string;
   minLevel: number;
-  maxLevel?: number;
   xpPerAction?: number;
   xpMultiplier?: number;
-  actionsPerHour: number;
-  gpPerHour?: number;
   ironmanViable?: boolean;
-  locationId?: string;
+  locations?: RawMethodLocation[];
+  notes?: string;
+  requirements?: {
+    members?: boolean;
+  };
 }
 
 interface TrainingMethodsFile {
@@ -50,20 +64,34 @@ export async function getTrainingMethods(): Promise<TrainingMethodInfo[]> {
     const file = Bun.file(`${BOT_DATA_PATH}/training_methods.json`);
     const data: TrainingMethodsFile = await file.json();
     
-    cachedTrainingMethods = data.methods.map(m => ({
-      id: m.id,
-      name: m.name,
-      skill: formatSkillName(m.skill) as SkillName,
-      methodType: m.methodType as TrainingMethodInfo['methodType'],
-      minLevel: m.minLevel,
-      maxLevel: m.maxLevel ?? -1,
-      xpPerAction: m.xpPerAction ?? 0,
-      xpMultiplier: m.xpMultiplier ?? 0,
-      actionsPerHour: m.actionsPerHour,
-      gpPerHour: m.gpPerHour ?? 0,
-      ironmanViable: m.ironmanViable ?? true,
-      locationId: m.locationId,
-    }));
+    cachedTrainingMethods = data.methods.map(m => {
+      // Parse locations array
+      const locations: MethodLocationInfo[] = (m.locations || []).map((loc, idx) => ({
+        id: `${m.id}_loc_${idx}`,
+        name: loc.name,
+        locationId: loc.locationId,
+        actionsPerHour: loc.actionsPerHour,
+        gpPerHour: loc.gpPerHour ?? 0,
+        bankLocationId: loc.bankLocationId,
+        notes: loc.notes,
+        membersOnly: loc.requirements?.members,
+        questRequirements: loc.requirements?.quests,
+      }));
+      
+      return {
+        id: m.id,
+        name: m.name,
+        skill: formatSkillName(m.skill) as SkillName,
+        methodType: m.methodType as TrainingMethodInfo['methodType'],
+        minLevel: m.minLevel,
+        xpPerAction: m.xpPerAction ?? 0,
+        xpMultiplier: m.xpMultiplier ?? 0,
+        ironmanViable: m.ironmanViable ?? true,
+        locations,
+        notes: m.notes,
+        membersOnly: m.requirements?.members,
+      };
+    });
     
     trainingMethodsCacheTime = now;
     return cachedTrainingMethods;

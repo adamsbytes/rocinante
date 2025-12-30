@@ -1,6 +1,7 @@
 package com.rocinante.data;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.rocinante.state.AttackStyle;
@@ -22,6 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * - Multi-style attack info (e.g., dragons with melee + dragonfire)
  *
  * Data is loaded from resources/data/npc_combat_data.json at startup.
+ * Format version 2 uses an array of NPC entries, each with an array of npcIds.
  */
 @Slf4j
 @Singleton
@@ -42,29 +44,77 @@ public class NpcCombatDataLoader {
     /**
      * Load NPC combat data from JSON resource.
      * Uses JsonResourceLoader for retry logic and error handling.
+     * Supports both format version 1 (object with NPC ID keys) and
+     * format version 2 (array with npcIds arrays).
      */
     private void loadData() {
         try {
             JsonObject root = JsonResourceLoader.load(gson, DATA_FILE);
-            JsonObject npcs = JsonResourceLoader.getRequiredObject(root, "npcs");
             
-            for (Map.Entry<String, JsonElement> entry : npcs.entrySet()) {
-                try {
-                    int npcId = Integer.parseInt(entry.getKey());
-                    NpcCombatData data = parseNpcData(entry.getValue().getAsJsonObject());
-                    if (data != null) {
-                        npcData.put(npcId, data);
-                    }
-                } catch (NumberFormatException e) {
-                    log.debug("Skipping non-numeric NPC ID: {}", entry.getKey());
-                }
+            // Check format version
+            int formatVersion = 1;
+            if (root.has("_meta") && root.getAsJsonObject("_meta").has("format_version")) {
+                formatVersion = root.getAsJsonObject("_meta").get("format_version").getAsInt();
+            }
+            
+            if (formatVersion >= 2) {
+                loadFormatV2(root);
+            } else {
+                loadFormatV1(root);
             }
             
             loaded = true;
-            log.info("Loaded combat data for {} NPCs", npcData.size());
+            log.info("Loaded combat data for {} NPCs (format v{})", npcData.size(), formatVersion);
         } catch (JsonResourceLoader.JsonLoadException e) {
             log.error("Failed to load NPC combat data: {}", e.getMessage());
         }
+    }
+
+    /**
+     * Load format version 1: object with NPC ID keys.
+     */
+    private void loadFormatV1(JsonObject root) {
+        JsonObject npcs = JsonResourceLoader.getRequiredObject(root, "npcs");
+        
+        for (Map.Entry<String, JsonElement> entry : npcs.entrySet()) {
+            try {
+                int npcId = Integer.parseInt(entry.getKey());
+                NpcCombatData data = parseNpcData(entry.getValue().getAsJsonObject());
+                if (data != null) {
+                    npcData.put(npcId, data);
+                }
+            } catch (NumberFormatException e) {
+                log.debug("Skipping non-numeric NPC ID: {}", entry.getKey());
+            }
+        }
+    }
+
+    /**
+     * Load format version 2: array of NPC entries with npcIds arrays.
+     */
+    private void loadFormatV2(JsonObject root) {
+        JsonArray npcs = JsonResourceLoader.getRequiredArray(root, "npcs");
+        int entriesLoaded = 0;
+        
+        for (JsonElement element : npcs) {
+            try {
+                JsonObject obj = element.getAsJsonObject();
+                NpcCombatData data = parseNpcData(obj);
+                
+                if (data != null && obj.has("npcIds")) {
+                    JsonArray npcIds = obj.getAsJsonArray("npcIds");
+                    for (JsonElement idElement : npcIds) {
+                        int npcId = idElement.getAsInt();
+                        npcData.put(npcId, data);
+                    }
+                    entriesLoaded++;
+                }
+            } catch (Exception e) {
+                log.debug("Failed to parse NPC entry: {}", e.getMessage());
+            }
+        }
+        
+        log.debug("Processed {} NPC combat data entries", entriesLoaded);
     }
 
     /**

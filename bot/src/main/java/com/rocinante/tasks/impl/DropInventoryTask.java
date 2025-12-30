@@ -357,27 +357,26 @@ public class DropInventoryTask extends AbstractTask {
     private void executeHoldShift(TaskContext ctx) {
         RobotKeyboardController keyboard = ctx.getKeyboardController();
         if (keyboard == null) {
-            fail("KeyboardController not available");
+            log.error("Keyboard controller is null, cannot drop items");
+            fail("No keyboard controller available");
             return;
         }
-
+        
         operationPending = true;
 
         // Small delay before pressing shift (natural behavior)
         ctx.getHumanTimer().sleep(PRE_SHIFT_DELAY_MS)
                 .thenRun(() -> {
-                    keyboard.pressKey(KeyEvent.VK_SHIFT, Long.MAX_VALUE) // Hold indefinitely
+                    keyboard.holdKey(KeyEvent.VK_SHIFT)
                             .thenAccept(v -> {
-                                // Note: pressKey releases automatically, we need to hold manually
-                                // For shift-click dropping, we'll press and release for each click
                                 shiftHeld = true;
                                 operationPending = false;
                                 phase = DropPhase.DROP_ITEMS;
-                                log.debug("Shift key ready for dropping");
+                                log.debug("Shift key held down for dropping");
                             })
                             .exceptionally(e -> {
                                 operationPending = false;
-                                log.error("Failed to prepare shift key", e);
+                                log.error("Failed to hold shift key", e);
                                 fail("Shift key failed: " + e.getMessage());
                                 return null;
                             });
@@ -397,11 +396,6 @@ public class DropInventoryTask extends AbstractTask {
         InventoryClickHelper inventoryHelper = ctx.getInventoryClickHelper();
         RobotKeyboardController keyboard = ctx.getKeyboardController();
         Randomization random = ctx.getRandomization();
-
-        if (inventoryHelper == null || keyboard == null) {
-            fail("Required controllers not available");
-            return;
-        }
 
         int slot = slotsToDropQueue.poll();
 
@@ -467,15 +461,24 @@ public class DropInventoryTask extends AbstractTask {
     // ========================================================================
 
     private void executeReleaseShift(TaskContext ctx) {
-        // Shift is released automatically after each click, so just complete
+        RobotKeyboardController keyboard = ctx.getKeyboardController();
         operationPending = true;
 
-        ctx.getHumanTimer().sleep(POST_SHIFT_DELAY_MS)
+        // Release the shift key that was held during dropping
+        keyboard.releaseKey(KeyEvent.VK_SHIFT)
+                .thenCompose(v -> ctx.getHumanTimer().sleep(POST_SHIFT_DELAY_MS))
                 .thenRun(() -> {
                     shiftHeld = false;
                     operationPending = false;
                     log.info("Dropped {} items successfully", droppedCount);
                     complete();
+                })
+                .exceptionally(e -> {
+                    operationPending = false;
+                    log.error("Failed to release shift key", e);
+                    // Still complete - items were dropped
+                    complete();
+                    return null;
                 });
     }
 
@@ -505,13 +508,9 @@ public class DropInventoryTask extends AbstractTask {
     public void onFail(TaskContext ctx, Exception e) {
         super.onFail(ctx, e);
         // Make sure shift is released if we fail mid-drop
-        if (shiftHeld) {
-            RobotKeyboardController keyboard = ctx.getKeyboardController();
-            if (keyboard != null) {
-                log.debug("Releasing shift key after failure");
-                // Shift should auto-release, but press a dummy key to ensure
-                keyboard.pressKey(KeyEvent.VK_SHIFT, 10);
-            }
+        if (shiftHeld && ctx.getKeyboardController() != null) {
+            log.debug("Releasing shift key after failure");
+            ctx.getKeyboardController().releaseKey(KeyEvent.VK_SHIFT);
         }
     }
 

@@ -66,6 +66,12 @@ public class SkillTaskConfig {
      */
     TrainingMethod method;
 
+    /**
+     * Specific location ID within the method to use.
+     * If null, the first/default location is used.
+     */
+    String locationId;
+
     // ========================================================================
     // Behavior Overrides
     // ========================================================================

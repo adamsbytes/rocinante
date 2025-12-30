@@ -3,6 +3,7 @@ package com.rocinante.tasks.impl;
 import com.rocinante.agility.AgilityCourse;
 import com.rocinante.agility.AgilityCourseRepository;
 import com.rocinante.progression.GroundItemWatch;
+import com.rocinante.progression.MethodLocation;
 import com.rocinante.progression.MethodType;
 import com.rocinante.progression.TrainingMethod;
 import com.rocinante.state.GroundItemSnapshot;
@@ -24,6 +25,7 @@ import com.rocinante.tasks.impl.skills.firemaking.FiremakingConfig;
 import com.rocinante.tasks.impl.skills.firemaking.FiremakingSkillTask;
 import com.rocinante.tasks.impl.skills.prayer.PrayerSkillTask;
 import com.rocinante.tasks.impl.skills.thieving.ThievingSkillTask;
+import com.rocinante.util.CollectionResolver;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -200,6 +202,31 @@ public class SkillTask extends AbstractTask {
     }
 
     // ========================================================================
+    // Location Selection
+    // ========================================================================
+
+    /**
+     * Get the selected location for this task.
+     * Uses locationId from config if specified, otherwise returns the default location.
+     *
+     * @return the selected MethodLocation, or null if method has no locations
+     */
+    private MethodLocation getSelectedLocation() {
+        TrainingMethod method = config.getMethod();
+        String locationId = config.getLocationId();
+        
+        if (locationId != null && !locationId.isEmpty()) {
+            MethodLocation loc = method.getLocation(locationId);
+            if (loc != null) {
+                return loc;
+            }
+            log.warn("Location ID '{}' not found in method {}, using default", locationId, method.getId());
+        }
+        
+        return method.getDefaultLocation();
+    }
+
+    // ========================================================================
     // Builder Methods
     // ========================================================================
 
@@ -298,13 +325,14 @@ public class SkillTask extends AbstractTask {
         PlayerState player = ctx.getPlayerState();
         WorldPoint playerPos = player.getWorldPosition();
 
-        // If method has an exact position, check if we're there
-        if (method.getExactPosition() != null) {
-            WorldPoint targetPos = method.getExactPosition();
+        // If method has a location with an exact position, check if we're there
+        MethodLocation location = getSelectedLocation();
+        if (location != null && location.getExactPosition() != null) {
+            WorldPoint targetPos = location.getExactPosition();
             if (playerPos.distanceTo(targetPos) > 5) {
-                log.debug("Traveling to training location: {}", targetPos);
+                log.debug("Traveling to training location: {} at {}", location.getName(), targetPos);
                 activeSubTask = new WalkToTask(targetPos)
-                        .withDescription("Walk to " + method.getName() + " training spot");
+                        .withDescription("Walk to " + location.getName());
                 return;
             }
         }
@@ -478,11 +506,16 @@ public class SkillTask extends AbstractTask {
 
     /**
      * Start gathering skill training (mining, woodcutting, fishing).
+     * 
+     * <p>Object and NPC IDs are automatically expanded via {@link CollectionResolver}
+     * to include all variants from matching collections. This allows training_methods.json
+     * to use single representative IDs while supporting all game variants.
      */
     private void startGatherTraining(TaskContext ctx, TrainingMethod method) {
         if (method.hasTargetObjects()) {
             // Mining, woodcutting - interact with objects
-            List<Integer> objectIds = method.getTargetObjectIds();
+            List<Integer> originalIds = method.getTargetObjectIds();
+            List<Integer> objectIds = CollectionResolver.expandObjectIds(originalIds);
             String menuAction = method.getMenuAction();
 
             InteractObjectTask interactTask = new InteractObjectTask(
@@ -499,11 +532,13 @@ public class SkillTask extends AbstractTask {
             }
 
             activeSubTask = interactTask;
-            log.debug("Starting interaction with object(s): {}", objectIds);
+            log.debug("Starting interaction with object(s): {} (expanded from {})", 
+                    objectIds.size(), originalIds.size());
 
         } else if (method.hasTargetNpcs()) {
             // Fishing - interact with NPCs (fishing spots)
-            List<Integer> npcIds = method.getTargetNpcIds();
+            List<Integer> originalIds = method.getTargetNpcIds();
+            List<Integer> npcIds = CollectionResolver.expandNpcIds(originalIds);
             String menuAction = method.getMenuAction();
 
             InteractNpcTask interactTask = new InteractNpcTask(
@@ -516,7 +551,8 @@ public class SkillTask extends AbstractTask {
             }
 
             activeSubTask = interactTask;
-            log.debug("Starting interaction with NPC(s): {}", npcIds);
+            log.debug("Starting interaction with NPC(s): {} (expanded from {})", 
+                    npcIds.size(), originalIds.size());
         }
     }
 
@@ -675,6 +711,10 @@ public class SkillTask extends AbstractTask {
 
     /**
      * Start thieving training.
+     * 
+     * <p>Object and NPC IDs are automatically expanded via {@link CollectionResolver}
+     * to include all variants from matching collections. This allows training_methods.json
+     * to use single representative IDs while supporting all game variants.
      */
     private void startThievingTraining(TaskContext ctx, TrainingMethod method) {
         log.debug("Thieving method, delegating to ThievingSkillTask");
@@ -682,19 +722,28 @@ public class SkillTask extends AbstractTask {
         ThievingSkillTask thievingTask;
 
         if (method.hasTargetObjects()) {
+            List<Integer> expandedStalls = CollectionResolver.expandObjectIds(
+                    method.getTargetObjectIds());
             thievingTask = new ThievingSkillTask(ThievingSkillTask.ThievingMethod.STALL)
-                    .withTargetStalls(method.getTargetObjectIds());
+                    .withTargetStalls(expandedStalls);
+            log.debug("Thieving stalls expanded: {} -> {} IDs", 
+                    method.getTargetObjectIds().size(), expandedStalls.size());
         } else if (method.hasTargetNpcs()) {
+            List<Integer> expandedNpcs = CollectionResolver.expandNpcIds(
+                    method.getTargetNpcIds());
             thievingTask = new ThievingSkillTask(ThievingSkillTask.ThievingMethod.PICKPOCKET)
-                    .withTargetNpcs(method.getTargetNpcIds());
+                    .withTargetNpcs(expandedNpcs);
+            log.debug("Thieving NPCs expanded: {} -> {} IDs", 
+                    method.getTargetNpcIds().size(), expandedNpcs.size());
         } else {
             log.warn("THIEVING method {} has no target objects or NPCs configured", method.getId());
             fail("Invalid thieving method configuration");
             return;
         }
 
-        if (method.getExactPosition() != null) {
-            thievingTask.withLocation(method.getExactPosition());
+        MethodLocation thievingLocation = getSelectedLocation();
+        if (thievingLocation != null && thievingLocation.getExactPosition() != null) {
+            thievingTask.withLocation(thievingLocation.getExactPosition());
         }
 
         if (config.getTargetLevel() > 0) {
@@ -809,8 +858,9 @@ public class SkillTask extends AbstractTask {
         if (activeSubTask == null) {
             TrainingMethod method = config.getMethod();
 
-            // Look up bank location from web.json
-            String bankLocationId = method.getBankLocationId();
+            // Look up bank location from the selected location
+            MethodLocation location = getSelectedLocation();
+            String bankLocationId = location != null ? location.getBankLocationId() : null;
             WorldPoint bankPosition = lookupBankLocation(ctx, bankLocationId);
             
             if (bankPosition != null) {

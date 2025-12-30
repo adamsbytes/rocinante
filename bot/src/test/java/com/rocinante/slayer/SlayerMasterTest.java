@@ -1,5 +1,6 @@
 package com.rocinante.slayer;
 
+import com.rocinante.tasks.impl.skills.slayer.SlayerMaster;
 import net.runelite.api.NpcID;
 import org.junit.Test;
 

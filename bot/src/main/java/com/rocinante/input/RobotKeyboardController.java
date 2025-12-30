@@ -462,6 +462,55 @@ public class RobotKeyboardController {
     }
 
     /**
+     * Hold a key down without releasing it.
+     * Must be paired with {@link #releaseKey(int)} to release.
+     * Used for shift-click operations where shift needs to be held across multiple clicks.
+     *
+     * @param keyCode the AWT key code to hold
+     * @return CompletableFuture that completes when key is pressed down
+     */
+    public CompletableFuture<Void> holdKey(int keyCode) {
+        CompletableFuture<Void> future = new CompletableFuture<>();
+
+        executor.execute(() -> {
+            try {
+                robot.keyPress(keyCode);
+                log.debug("Key {} held down", keyCode);
+                future.complete(null);
+            } catch (Exception e) {
+                log.error("Hold key failed", e);
+                future.completeExceptionally(e);
+            }
+        });
+
+        return future;
+    }
+
+    /**
+     * Release a previously held key.
+     * Should only be called after {@link #holdKey(int)}.
+     *
+     * @param keyCode the AWT key code to release
+     * @return CompletableFuture that completes when key is released
+     */
+    public CompletableFuture<Void> releaseKey(int keyCode) {
+        CompletableFuture<Void> future = new CompletableFuture<>();
+
+        executor.execute(() -> {
+            try {
+                robot.keyRelease(keyCode);
+                log.debug("Key {} released", keyCode);
+                future.complete(null);
+            } catch (Exception e) {
+                log.error("Release key failed", e);
+                future.completeExceptionally(e);
+            }
+        });
+
+        return future;
+    }
+
+    /**
      * Press a hotkey combination (e.g., Ctrl+A).
      * Includes reaction time delay as per REQUIREMENTS 3.2.2.
      *

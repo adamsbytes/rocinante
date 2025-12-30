@@ -773,7 +773,8 @@ public final class ObjectCollections {
             ObjectID.BAKERY_STALL_6163,
             ObjectID.BAKERY_STALL_6569,
             ObjectID.BAKERS_STALL,
-            ObjectID.BAKERS_STALL_11730
+            ObjectID.BAKERS_STALL_11730,
+            ObjectID.BAKERY_STALL_44031
     ));
 
     /**
@@ -784,7 +785,12 @@ public final class ObjectCollections {
     public static final List<Integer> SILK_STALLS = Collections.unmodifiableList(Arrays.asList(
             ObjectID.SILK_STALL,
             ObjectID.SILK_STALL_6568,
-            ObjectID.SILK_STALL_11729
+            ObjectID.SILK_STALL_11729,
+            ObjectID.SILK_STALL_20344,
+            ObjectID.SILK_STALL_36569,
+            ObjectID.SILK_STALL_41755,
+            ObjectID.SILK_STALL_51933,
+            ObjectID.SILK_STALL_58101
     ));
 
     /**
@@ -932,7 +938,10 @@ public final class ObjectCollections {
      * Special handling required for the bone save mechanic.
      */
     public static final List<Integer> CHAOS_ALTARS = Collections.unmodifiableList(Arrays.asList(
-            ObjectID.CHAOS_ALTAR
+            ObjectID.CHAOS_ALTAR,
+            ObjectID.CHAOS_ALTAR_411,
+            ObjectID.CHAOS_ALTAR_412,
+            ObjectID.CHAOS_ALTAR_26258
     ));
 
     /**
@@ -956,12 +965,15 @@ public final class ObjectCollections {
 
     /**
      * All altars suitable for offering bones (excludes regular prayer restore altars).
-     * Includes POH altars and Chaos Altar.
+     * Includes POH altars and Chaos Altar variants.
      */
     public static final List<Integer> BONE_OFFERING_ALTARS = Collections.unmodifiableList(Arrays.asList(
             ObjectID.ALTAR_13199,
             ObjectID.ALTAR_13198,
             ObjectID.ALTAR_13197,
-            ObjectID.CHAOS_ALTAR
+            ObjectID.CHAOS_ALTAR,
+            ObjectID.CHAOS_ALTAR_411,
+            ObjectID.CHAOS_ALTAR_412,
+            ObjectID.CHAOS_ALTAR_26258
     ));
 }

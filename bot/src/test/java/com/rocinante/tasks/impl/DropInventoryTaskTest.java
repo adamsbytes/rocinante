@@ -90,8 +90,12 @@ public class DropInventoryTaskTest {
         when(inventoryClickHelper.executeClick(anyInt(), anyString()))
                 .thenReturn(CompletableFuture.completedFuture(true));
 
-        // Default keyboard returns success
+        // Default keyboard returns success for all key operations
         when(keyboardController.pressKey(anyInt(), anyLong()))
+                .thenReturn(CompletableFuture.completedFuture(null));
+        when(keyboardController.holdKey(anyInt()))
+                .thenReturn(CompletableFuture.completedFuture(null));
+        when(keyboardController.releaseKey(anyInt()))
                 .thenReturn(CompletableFuture.completedFuture(null));
 
         // Default timer completion
@@ -344,8 +348,8 @@ public class DropInventoryTaskTest {
             task.execute(taskContext);
         }
 
-        // Should have pressed shift key at some point
-        verify(keyboardController, atLeastOnce()).pressKey(eq(KeyEvent.VK_SHIFT), anyLong());
+        // Should have held shift key in HOLD_SHIFT phase
+        verify(keyboardController, atLeastOnce()).holdKey(eq(KeyEvent.VK_SHIFT));
     }
 
     @Test

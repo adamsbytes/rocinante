@@ -1,6 +1,6 @@
 import { type Component, createSignal, createEffect, createResource, For, Show } from 'solid-js';
-import type { SkillTaskSpec, TrainingMethodInfo, SkillName } from '../../../shared/types';
-import { SKILLS, calculateXpPerHour, formatXpShort } from '../../../shared/types';
+import type { SkillTaskSpec, TrainingMethodInfo, MethodLocationInfo, SkillName } from '../../../shared/types';
+import { SKILLS, calculateXpPerHour, getXpPerHourRange, formatXpShort } from '../../../shared/types';
 
 interface SkillTaskFormProps {
   onSubmit: (task: SkillTaskSpec) => void;
@@ -24,11 +24,22 @@ async function fetchTrainingMethods(): Promise<Record<SkillName, TrainingMethodI
 }
 
 /**
+ * Format XP/hr range for display.
+ */
+function formatXpRange(min: number, max: number): string {
+  if (min === max) {
+    return formatXpShort(min);
+  }
+  return `${formatXpShort(min)}-${formatXpShort(max)}`;
+}
+
+/**
  * Skill Task Form - create skill training tasks.
  * 
  * Features:
  * - Skill selector dropdown
  * - Training method dropdown (filtered by skill and level)
+ * - Location selector (when method has multiple locations)
  * - Target type selector (Level / XP / Duration)
  * - XP/hr estimate display
  * - Optional settings (banking, world hopping)
@@ -38,6 +49,7 @@ export const SkillTaskForm: Component<SkillTaskFormProps> = (props) => {
   
   const [selectedSkill, setSelectedSkill] = createSignal<SkillName | ''>('');
   const [selectedMethod, setSelectedMethod] = createSignal<string>('');
+  const [selectedLocation, setSelectedLocation] = createSignal<string>('');
   const [targetType, setTargetType] = createSignal<'LEVEL' | 'XP' | 'DURATION'>('LEVEL');
   const [targetValue, setTargetValue] = createSignal<number>(0);
   const [bankInsteadOfDrop, setBankInsteadOfDrop] = createSignal<boolean | undefined>(undefined);
@@ -62,9 +74,7 @@ export const SkillTaskForm: Component<SkillTaskFormProps> = (props) => {
   // Filter methods by current level
   const validMethods = () => {
     const level = currentLevel();
-    return availableMethods().filter(m => 
-      m.minLevel <= level && (m.maxLevel === -1 || m.maxLevel >= level)
-    );
+    return availableMethods().filter(m => m.minLevel <= level);
   };
 
   // Get the selected method object
@@ -73,17 +83,43 @@ export const SkillTaskForm: Component<SkillTaskFormProps> = (props) => {
     return availableMethods().find(m => m.id === methodId);
   };
 
-  // Calculate estimated XP/hr for selected method
+  // Get the selected location object
+  const selectedLocationObj = (): MethodLocationInfo | undefined => {
+    const method = selectedMethodObj();
+    const locId = selectedLocation();
+    if (!method || !locId) return method?.locations[0];
+    return method.locations.find(l => l.id === locId) || method.locations[0];
+  };
+
+  // Calculate estimated XP/hr for selected method and location
   const estimatedXpHr = () => {
     const method = selectedMethodObj();
+    const location = selectedLocationObj();
     if (!method) return 0;
-    return calculateXpPerHour(method, currentLevel());
+    return calculateXpPerHour(method, currentLevel(), location);
+  };
+
+  // Get XP/hr range for display in method dropdown
+  const getMethodXpRange = (method: TrainingMethodInfo) => {
+    const range = getXpPerHourRange(method, currentLevel());
+    return formatXpRange(range.min, range.max);
   };
 
   // Reset method when skill changes
   createEffect(() => {
     selectedSkill(); // track
     setSelectedMethod('');
+    setSelectedLocation('');
+  });
+
+  // Reset location when method changes
+  createEffect(() => {
+    const method = selectedMethodObj();
+    if (method && method.locations.length > 0) {
+      setSelectedLocation(method.locations[0].id);
+    } else {
+      setSelectedLocation('');
+    }
   });
 
   // Set default target value based on target type
@@ -113,6 +149,15 @@ export const SkillTaskForm: Component<SkillTaskFormProps> = (props) => {
       targetType: targetType(),
       targetValue: targetValue(),
     };
+
+    // Include location if method has multiple locations
+    const methodObj = selectedMethodObj();
+    if (methodObj && methodObj.locations.length > 1) {
+      const locId = selectedLocation();
+      if (locId) {
+        task.locationId = locId;
+      }
+    }
 
     // Add optional fields
     if (bankInsteadOfDrop() !== undefined) {
@@ -181,7 +226,7 @@ export const SkillTaskForm: Component<SkillTaskFormProps> = (props) => {
                 {(method) => (
                   <option value={method.id}>
                     {method.name} 
-                    {' '}(Lvl {method.minLevel}+, ~{formatXpShort(calculateXpPerHour(method, currentLevel()))}/hr)
+                    {' '}(Lvl {method.minLevel}+, ~{getMethodXpRange(method)}/hr)
                   </option>
                 )}
               </For>
@@ -195,35 +240,83 @@ export const SkillTaskForm: Component<SkillTaskFormProps> = (props) => {
         </div>
       </Show>
 
+      {/* Location Selector - only show if method has multiple locations */}
+      <Show when={selectedMethodObj() && selectedMethodObj()!.locations.length > 1}>
+        {(_) => {
+          const method = selectedMethodObj()!;
+          return (
+            <div>
+              <label class="block text-sm font-medium text-gray-300 mb-1">
+                Location
+              </label>
+              <select
+                value={selectedLocation()}
+                onChange={(e) => setSelectedLocation(e.target.value)}
+                class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+              >
+                <For each={method.locations}>
+                  {(location) => (
+                    <option value={location.id}>
+                      {location.name}
+                      {' '}(~{formatXpShort(calculateXpPerHour(method, currentLevel(), location))}/hr)
+                      {location.membersOnly ? ' [P2P]' : ''}
+                    </option>
+                  )}
+                </For>
+              </select>
+            </div>
+          );
+        }}
+      </Show>
+
       {/* Method Info Card */}
       <Show when={selectedMethodObj()}>
-        {(method) => (
-          <div class="bg-gray-700/50 rounded-lg p-3 space-y-2">
-            <div class="flex justify-between text-sm">
-              <span class="text-gray-400">Estimated XP/hr:</span>
-              <span class="text-emerald-400 font-medium">
-                {formatXpShort(estimatedXpHr())}
-              </span>
-            </div>
-            <Show when={method().gpPerHour !== 0}>
+        {(method) => {
+          const location = selectedLocationObj();
+          return (
+            <div class="bg-gray-700/50 rounded-lg p-3 space-y-2">
               <div class="flex justify-between text-sm">
-                <span class="text-gray-400">GP/hr:</span>
-                <span class={method().gpPerHour > 0 ? 'text-green-400' : 'text-red-400'}>
-                  {method().gpPerHour > 0 ? '+' : ''}{method().gpPerHour.toLocaleString()}
+                <span class="text-gray-400">Estimated XP/hr:</span>
+                <span class="text-emerald-400 font-medium">
+                  {formatXpShort(estimatedXpHr())}
                 </span>
               </div>
-            </Show>
-            <div class="flex justify-between text-sm">
-              <span class="text-gray-400">Type:</span>
-              <span class="text-gray-200">{method().methodType}</span>
-            </div>
-            <Show when={!method().ironmanViable}>
-              <div class="text-amber-400 text-xs mt-1">
-                ⚠️ Not ironman viable
+              <Show when={location && location.gpPerHour !== 0}>
+                <div class="flex justify-between text-sm">
+                  <span class="text-gray-400">GP/hr:</span>
+                  <span class={location!.gpPerHour > 0 ? 'text-green-400' : 'text-red-400'}>
+                    {location!.gpPerHour > 0 ? '+' : ''}{location!.gpPerHour.toLocaleString()}
+                  </span>
+                </div>
+              </Show>
+              <div class="flex justify-between text-sm">
+                <span class="text-gray-400">Type:</span>
+                <span class="text-gray-200">{method().methodType}</span>
               </div>
-            </Show>
-          </div>
-        )}
+              <Show when={method().locations.length === 1 && method().locations[0].name}>
+                <div class="flex justify-between text-sm">
+                  <span class="text-gray-400">Location:</span>
+                  <span class="text-gray-200">{method().locations[0].name}</span>
+                </div>
+              </Show>
+              <Show when={!method().ironmanViable}>
+                <div class="text-amber-400 text-xs mt-1">
+                  ⚠️ Not ironman viable
+                </div>
+              </Show>
+              <Show when={method().membersOnly || location?.membersOnly}>
+                <div class="text-sky-400 text-xs mt-1">
+                  🔷 Members only
+                </div>
+              </Show>
+              <Show when={location?.notes}>
+                <div class="text-gray-400 text-xs mt-1 italic">
+                  {location!.notes}
+                </div>
+              </Show>
+            </div>
+          );
+        }}
       </Show>
 
       {/* Target Configuration */}

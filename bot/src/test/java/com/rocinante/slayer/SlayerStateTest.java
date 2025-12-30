@@ -1,5 +1,8 @@
 package com.rocinante.slayer;
 
+import com.rocinante.state.SlayerState;
+import com.rocinante.tasks.impl.skills.slayer.SlayerMaster;
+import com.rocinante.tasks.impl.skills.slayer.SlayerUnlock;
 import net.runelite.api.NPC;
 import org.junit.Test;
 

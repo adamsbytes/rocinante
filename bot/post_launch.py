@@ -83,13 +83,8 @@ def find_template(screen: np.ndarray, template_name: str, threshold: float = MAT
     If return_bounds=True, returns (x, y, width, height) of top-left corner + size.
     """
     template_path = TEMPLATES_DIR / template_name
-    if not template_path.exists():
-        # Don't log error for missing templates - they may be optional
-        return None
-    
     template = cv2.imread(str(template_path))
     if template is None:
-        log_error(f"Failed to load template image: {template_path}")
         return None
     
     # Convert to grayscale for robust matching
@@ -255,19 +250,16 @@ def main():
     
     save_debug_screenshot("phase1_initial")
     
-    if (TEMPLATES_DIR / "license_accept_button.png").exists():
-        screen = take_screenshot()
-        if screen is not None:
-            coords = find_template(screen, "license_accept_button.png")
-            if coords:
-                log_info(f"License button found at ({coords[0]}, {coords[1]}) - clicking")
-                click_at(coords[0], coords[1])
-                time.sleep(1)
-                save_debug_screenshot("phase1_after_license")
-            else:
-                log_info("No license screen visible (not needed)")
-    else:
-        log_warn("Template not found: license_accept_button.png")
+    screen = take_screenshot()
+    if screen is not None:
+        coords = find_template(screen, "license_accept_button.png")
+        if coords:
+            log_info(f"License button found at ({coords[0]}, {coords[1]}) - clicking")
+            click_at(coords[0], coords[1])
+            time.sleep(1)
+            save_debug_screenshot("phase1_after_license")
+        else:
+            log_info("No license screen visible (not needed)")
     
     # =========================================
     # Phase 2: Click Play button
@@ -276,17 +268,38 @@ def main():
     
     save_debug_screenshot("phase2_before_play")
     
-    if (TEMPLATES_DIR / "runelite_play_button.png").exists():
-        # Lower threshold (0.6) because dynamic username affects matching
-        if wait_and_click("runelite_play_button.png", timeout=30, step_name="Play", threshold=0.6):
-            log_info("Play button clicked!")
-            time.sleep(5)
-            save_debug_screenshot("phase2_after_play")
-        else:
-            log_warn("Play button not found on screen")
+    # Lower threshold (0.6) because dynamic username affects matching
+    if wait_and_click("runelite_play_button.png", timeout=30, step_name="Play", threshold=0.6):
+        log_info("Play button clicked!")
+        time.sleep(5)
+        save_debug_screenshot("phase2_after_play")
     else:
-        log_warn("Template not found: runelite_play_button.png")
-        log_info("Create from: /tmp/debug_screenshots/")
+        log_warn("Play button not found on screen")
+    
+    # =========================================
+    # Phase 2.5: Handle in-game lobby screen ("Welcome to Gielinor")
+    # This appears AFTER the RuneLite play button, BEFORE world loads
+    # The "CLICK HERE TO PLAY" button enters the game world
+    # =========================================
+    log_step("Phase 2.5: Checking for in-game lobby screen...")
+    
+    time.sleep(3)  # Wait for lobby to potentially appear
+    save_debug_screenshot("phase2_5_lobby_check")
+    
+    # Try a few times - the lobby screen may take a moment to appear
+    for attempt in range(6):  # 6 attempts over ~15 seconds
+        screen = take_screenshot()
+        if screen is not None:
+            coords = find_template(screen, "lobby_click_to_play.png", threshold=0.7)
+            if coords:
+                log_info(f"Lobby screen found at ({coords[0]}, {coords[1]}) - clicking")
+                click_at(coords[0], coords[1])
+                time.sleep(3)
+                save_debug_screenshot("phase2_5_after_lobby")
+                break
+        time.sleep(2.5)
+    else:
+        log_info("No lobby screen detected (may not be needed for this account)")
     
     # =========================================
     # Phase 3: Handle name entry (for new accounts)
@@ -297,35 +310,28 @@ def main():
         time.sleep(3)
         save_debug_screenshot("phase3_name_check")
         
-        if (TEMPLATES_DIR / "name_entry_field.png").exists():
-            screen = take_screenshot()
-            if screen is not None:
-                coords = find_template(screen, "name_entry_field.png")
-                if coords:
-                    log_info("Name entry screen detected")
-                    click_at(coords[0], coords[1])
-                    time.sleep(0.5)
-                    
-                    log_info(f"Typing character name: {character_name}")
-                    type_text(character_name)
-                    time.sleep(0.5)
-                    
-                    # Try confirm button, fall back to Enter
-                    if (TEMPLATES_DIR / "name_confirm_button.png").exists():
-                        if wait_and_click("name_confirm_button.png", timeout=5, step_name="Confirm Name"):
-                            log_info("Name confirmed!")
-                        else:
-                            press_key("Return")
-                    else:
-                        press_key("Return")
-                    
-                    time.sleep(2)
-                    save_debug_screenshot("phase3_after_name")
+        screen = take_screenshot()
+        if screen is not None:
+            coords = find_template(screen, "name_entry_field.png")
+            if coords:
+                log_info("Name entry screen detected")
+                click_at(coords[0], coords[1])
+                time.sleep(0.5)
+                
+                log_info(f"Typing character name: {character_name}")
+                type_text(character_name)
+                time.sleep(0.5)
+                
+                # Try confirm button, fall back to Enter
+                if wait_and_click("name_confirm_button.png", timeout=5, step_name="Confirm Name"):
+                    log_info("Name confirmed!")
                 else:
-                    log_info("No name entry screen visible (may not be needed)")
-        else:
-            log_warn("Template not found: name_entry_field.png")
-            log_info("Create from: /tmp/debug_screenshots/ if name entry is needed")
+                    press_key("Return")
+                
+                time.sleep(2)
+                save_debug_screenshot("phase3_after_name")
+            else:
+                log_info("No name entry screen visible (may not be needed)")
     else:
         log_info("Phase 3: Skipping name entry (CHARACTER_NAME not set)")
     

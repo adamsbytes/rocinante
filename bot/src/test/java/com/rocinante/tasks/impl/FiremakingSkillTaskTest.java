@@ -10,6 +10,8 @@ import com.rocinante.state.WorldState;
 import com.rocinante.tasks.TaskContext;
 import com.rocinante.tasks.TaskState;
 import com.rocinante.tasks.TaskTestHelper;
+import com.rocinante.tasks.impl.skills.firemaking.FiremakingConfig;
+import com.rocinante.tasks.impl.skills.firemaking.FiremakingSkillTask;
 import com.rocinante.timing.HumanTimer;
 import com.rocinante.util.ItemCollections;
 import com.rocinante.util.Randomization;
@@ -33,10 +35,10 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 /**
- * Comprehensive tests for FiremakingTask.
+ * Comprehensive tests for FiremakingSkillTask.
  * Tests fire lighting, line repositioning, banking, and XP tracking.
  */
-public class FiremakingTaskTest {
+public class FiremakingSkillTaskTest {
 
     private static final WorldPoint START_POS = new WorldPoint(3165, 3487, 0);
 
@@ -223,7 +225,7 @@ public class FiremakingTaskTest {
                 .logItemId(ItemID.WILLOW_LOGS)
                 .targetLevel(45)
                 .build();
-        FiremakingTask task = new FiremakingTask(config);
+        FiremakingSkillTask task = new FiremakingSkillTask(config);
 
         assertTrue(task.canExecute(taskContext));
     }
@@ -236,7 +238,7 @@ public class FiremakingTaskTest {
                 .logItemId(ItemID.WILLOW_LOGS)
                 .targetLevel(45)
                 .build();
-        FiremakingTask task = new FiremakingTask(config);
+        FiremakingSkillTask task = new FiremakingSkillTask(config);
 
         assertFalse(task.canExecute(taskContext));
     }
@@ -249,7 +251,7 @@ public class FiremakingTaskTest {
                 .logItemId(ItemID.WILLOW_LOGS) // Requires level 30
                 .targetLevel(45)
                 .build();
-        FiremakingTask task = new FiremakingTask(config);
+        FiremakingSkillTask task = new FiremakingSkillTask(config);
 
         assertFalse(task.canExecute(taskContext));
     }
@@ -262,7 +264,7 @@ public class FiremakingTaskTest {
                 .logItemId(ItemID.WILLOW_LOGS)
                 .targetLevel(45)
                 .build();
-        FiremakingTask task = new FiremakingTask(config);
+        FiremakingSkillTask task = new FiremakingSkillTask(config);
 
         assertFalse(task.canExecute(taskContext));
     }
@@ -279,7 +281,7 @@ public class FiremakingTaskTest {
                 .logItemId(ItemID.WILLOW_LOGS)
                 .targetLevel(45)
                 .build();
-        FiremakingTask task = new FiremakingTask(config);
+        FiremakingSkillTask task = new FiremakingSkillTask(config);
         task.execute(taskContext);
 
         assertEquals(TaskState.FAILED, task.getState());
@@ -297,7 +299,7 @@ public class FiremakingTaskTest {
                 .targetLevel(45)
                 .bankForLogs(true)
                 .build();
-        FiremakingTask task = new FiremakingTask(config);
+        FiremakingSkillTask task = new FiremakingSkillTask(config);
         task.execute(taskContext);
 
         // Should transition to banking phase (not fail)
@@ -314,7 +316,7 @@ public class FiremakingTaskTest {
                 .targetLevel(45)
                 .bankForLogs(false)
                 .build();
-        FiremakingTask task = new FiremakingTask(config);
+        FiremakingSkillTask task = new FiremakingSkillTask(config);
         task.execute(taskContext);
 
         assertEquals(TaskState.COMPLETED, task.getState());
@@ -336,7 +338,7 @@ public class FiremakingTaskTest {
                 .targetLevel(45)
                 .startPosition(START_POS)
                 .build();
-        FiremakingTask task = new FiremakingTask(config);
+        FiremakingSkillTask task = new FiremakingSkillTask(config);
 
         // Execute multiple times to progress through phases
         for (int i = 0; i < 5; i++) {
@@ -360,7 +362,7 @@ public class FiremakingTaskTest {
                 .targetLevel(45)
                 .startPosition(START_POS)
                 .build();
-        FiremakingTask task = new FiremakingTask(config);
+        FiremakingSkillTask task = new FiremakingSkillTask(config);
 
         // Execute through setup and lighting
         for (int i = 0; i < 5; i++) {
@@ -391,7 +393,7 @@ public class FiremakingTaskTest {
                 .targetLevel(45)
                 .startPosition(START_POS)
                 .build();
-        FiremakingTask task = new FiremakingTask(config);
+        FiremakingSkillTask task = new FiremakingSkillTask(config);
 
         // Execute through phases
         for (int i = 0; i < 10; i++) {
@@ -438,7 +440,7 @@ public class FiremakingTaskTest {
                 .startPosition(START_POS)
                 .minLineTiles(10)
                 .build();
-        FiremakingTask task = new FiremakingTask(config);
+        FiremakingSkillTask task = new FiremakingSkillTask(config);
 
         // Task should detect end of line and reposition
         assertNotNull(task);
@@ -458,7 +460,7 @@ public class FiremakingTaskTest {
                 .logItemId(ItemID.WILLOW_LOGS)
                 .targetLevel(45)
                 .build();
-        FiremakingTask task = new FiremakingTask(config);
+        FiremakingSkillTask task = new FiremakingSkillTask(config);
 
         // Should not be executable since target reached
         assertFalse(task.canExecute(taskContext));
@@ -475,7 +477,7 @@ public class FiremakingTaskTest {
                 .logItemId(ItemID.WILLOW_LOGS)
                 .targetXp(50000)
                 .build();
-        FiremakingTask task = new FiremakingTask(config);
+        FiremakingSkillTask task = new FiremakingSkillTask(config);
         
         // Task should not be executable - target already reached
         assertFalse(task.canExecute(taskContext));
@@ -498,7 +500,7 @@ public class FiremakingTaskTest {
                 .logItemId(ItemID.WILLOW_LOGS)
                 .targetLogsBurned(0) // 0 means "no target" - hasLogsBurnedTarget returns false
                 .build();
-        FiremakingTask task = new FiremakingTask(config);
+        FiremakingSkillTask task = new FiremakingSkillTask(config);
         
         // With no logs target set, task should be executable
         assertTrue(task.canExecute(taskContext));
@@ -519,7 +521,7 @@ public class FiremakingTaskTest {
                 .logItemId(ItemID.WILLOW_LOGS)
                 .targetLogsBurned(10) // Positive target - should be executable
                 .build();
-        FiremakingTask task = new FiremakingTask(config);
+        FiremakingSkillTask task = new FiremakingSkillTask(config);
         
         // Task should be executable - logsBurned (0) < target (10)
         assertTrue(task.canExecute(taskContext));
@@ -542,7 +544,7 @@ public class FiremakingTaskTest {
                 .logItemId(ItemID.WILLOW_LOGS)
                 .targetLevel(45)
                 .build();
-        FiremakingTask task = new FiremakingTask(config);
+        FiremakingSkillTask task = new FiremakingSkillTask(config);
         
         // Initialize task
         task.execute(taskContext);
@@ -564,7 +566,7 @@ public class FiremakingTaskTest {
                 .logItemId(ItemID.WILLOW_LOGS)
                 .targetLevel(45)
                 .build();
-        FiremakingTask task = new FiremakingTask(config);
+        FiremakingSkillTask task = new FiremakingSkillTask(config);
 
         String desc = task.getDescription();
         assertTrue(desc.contains("Firemaking"));
@@ -576,7 +578,7 @@ public class FiremakingTaskTest {
                 .logItemId(ItemID.WILLOW_LOGS)
                 .targetLevel(45)
                 .build();
-        FiremakingTask task = new FiremakingTask(config)
+        FiremakingSkillTask task = new FiremakingSkillTask(config)
                 .withDescription("Train firemaking at GE");
 
         assertEquals("Train firemaking at GE", task.getDescription());
@@ -600,7 +602,7 @@ public class FiremakingTaskTest {
                 .bankForLogs(true)
                 .targetLevel(45)
                 .build();
-        FiremakingTask task = new FiremakingTask(config);
+        FiremakingSkillTask task = new FiremakingSkillTask(config);
 
         assertTrue(task.canExecute(taskContext));
         assertEquals(FiremakingConfig.GE_START_POINT, config.getStartPosition());
@@ -616,7 +618,7 @@ public class FiremakingTaskTest {
                 .logItemId(ItemID.MAGIC_LOGS)
                 .targetLevel(99)
                 .build();
-        FiremakingTask task = new FiremakingTask(config);
+        FiremakingSkillTask task = new FiremakingSkillTask(config);
 
         assertTrue(task.canExecute(taskContext));
         assertEquals(303.8, config.getXpPerLog(), 0.1);
@@ -633,7 +635,7 @@ public class FiremakingTaskTest {
                 .logItemId(ItemID.WILLOW_LOGS)
                 .maxDuration(Duration.ofHours(2))
                 .build();
-        FiremakingTask task = new FiremakingTask(config);
+        FiremakingSkillTask task = new FiremakingSkillTask(config);
 
         assertTrue(task.canExecute(taskContext));
         assertTrue(config.hasTimeLimit());
@@ -657,7 +659,7 @@ public class FiremakingTaskTest {
                 .targetLevel(45)
                 .tinderboxItemIds(ItemCollections.TINDERBOXES)
                 .build();
-        FiremakingTask task = new FiremakingTask(config);
+        FiremakingSkillTask task = new FiremakingSkillTask(config);
 
         // Task should recognize golden tinderbox
         assertTrue(config.getTinderboxItemIds().contains(ItemID.GOLDEN_TINDERBOX));

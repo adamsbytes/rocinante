@@ -239,6 +239,8 @@ export interface SkillTaskSpec {
   taskType: 'SKILL';
   /** Training method ID from training_methods.json */
   methodId: string;
+  /** Location ID within the method (optional, uses default if not specified) */
+  locationId?: string;
   /** Target type: LEVEL, XP, or DURATION */
   targetType: 'LEVEL' | 'XP' | 'DURATION';
   /** Target value (level number, XP amount, or duration in minutes) */
@@ -327,33 +329,76 @@ export interface QuestTaskSpec {
 // ============================================================================
 
 /**
+ * A specific location for a training method.
+ * Each location can have different efficiency and requirements.
+ */
+export interface MethodLocationInfo {
+  /** Unique location identifier (e.g., "ardy_safespot") */
+  id: string;
+  /** Display name for the location */
+  name: string;
+  /** Navigation location ID from web.json */
+  locationId: string;
+  /** Actions per hour at this location */
+  actionsPerHour: number;
+  /** GP per hour at this location */
+  gpPerHour: number;
+  /** Bank location ID if banking is needed */
+  bankLocationId?: string;
+  /** Notes about this location */
+  notes?: string;
+  /** Whether this location is members-only */
+  membersOnly?: boolean;
+  /** Quest requirements for this location */
+  questRequirements?: string[];
+}
+
+/**
  * Training method information for the UI.
  */
 export interface TrainingMethodInfo {
   id: string;
   name: string;
   skill: SkillName;
-  methodType: 'GATHER' | 'PROCESS' | 'AGILITY' | 'FIREMAKING' | 'MINIGAME';
+  methodType: 'GATHER' | 'PROCESS' | 'AGILITY' | 'FIREMAKING' | 'MINIGAME' | 'THIEVING' | 'PRAYER' | 'HERBLORE';
   minLevel: number;
-  maxLevel: number;
   xpPerAction: number;
   /** Multiplier for level-based XP (0 if static) */
   xpMultiplier: number;
-  actionsPerHour: number;
-  gpPerHour: number;
   ironmanViable: boolean;
-  locationId?: string;
+  /** Available training locations */
+  locations: MethodLocationInfo[];
+  /** Notes about this method */
+  notes?: string;
+  /** Whether this method is members-only */
+  membersOnly?: boolean;
 }
 
 /**
- * Calculate XP/hr for a training method at a given level.
+ * Calculate XP/hr for a training method at a given level and location.
  * Handles both static and level-based (xpMultiplier) methods.
  */
-export function calculateXpPerHour(method: TrainingMethodInfo, level: number): number {
+export function calculateXpPerHour(method: TrainingMethodInfo, level: number, location?: MethodLocationInfo): number {
+  const actionsPerHour = location?.actionsPerHour ?? method.locations[0]?.actionsPerHour ?? 0;
   if (method.xpMultiplier > 0) {
-    return level * method.xpMultiplier * method.actionsPerHour;
+    return level * method.xpMultiplier * actionsPerHour;
   }
-  return method.xpPerAction * method.actionsPerHour;
+  return method.xpPerAction * actionsPerHour;
+}
+
+/**
+ * Get XP/hr range across all locations for a method.
+ */
+export function getXpPerHourRange(method: TrainingMethodInfo, level: number): { min: number; max: number } {
+  if (method.locations.length === 0) {
+    return { min: 0, max: 0 };
+  }
+  
+  const xpRates = method.locations.map(loc => calculateXpPerHour(method, level, loc));
+  return {
+    min: Math.min(...xpRates),
+    max: Math.max(...xpRates),
+  };
 }
 
 /**

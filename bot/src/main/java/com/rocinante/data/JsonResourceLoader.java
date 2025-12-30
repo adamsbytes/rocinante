@@ -1,6 +1,7 @@
 package com.rocinante.data;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -162,6 +163,25 @@ public final class JsonResourceLoader {
         JsonObject child = root.getAsJsonObject(fieldName);
         if (child == null) {
             throw new JsonLoadException("Required field '" + fieldName + "' not found in JSON");
+        }
+        return child;
+    }
+
+    /**
+     * Get a required child array from a JsonObject.
+     *
+     * @param root      the parent JsonObject
+     * @param fieldName the field name
+     * @return the child JsonArray
+     * @throws JsonLoadException if the field doesn't exist or isn't an array
+     */
+    public static JsonArray getRequiredArray(JsonObject root, String fieldName) {
+        if (!root.has(fieldName)) {
+            throw new JsonLoadException("Required field '" + fieldName + "' not found in JSON");
+        }
+        JsonArray child = root.getAsJsonArray(fieldName);
+        if (child == null) {
+            throw new JsonLoadException("Field '" + fieldName + "' is not an array");
         }
         return child;
     }

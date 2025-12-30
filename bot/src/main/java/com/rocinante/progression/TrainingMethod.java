@@ -11,18 +11,22 @@ import java.util.List;
  * Immutable configuration for a skill training method.
  *
  * <p>Training methods are loaded from {@code data/training_methods.json} and define
- * everything needed to train a skill: location, objects to interact with, items
+ * everything needed to train a skill: locations, objects to interact with, items
  * to use, banking behavior, and XP rates.
+ *
+ * <p>Each method can have multiple locations with different efficiency rates.
+ * The UI allows users to select which location to use.
  *
  * <p>Example methods:
  * <ul>
- *   <li>Mining: "iron_ore_powermine" - Power mine iron ore at Al Kharid</li>
+ *   <li>Mining: "iron_ore_powermine" - Power mine iron ore at multiple locations</li>
  *   <li>Woodcutting: "willows_banking" - Cut willows at Draynor, bank logs</li>
  *   <li>Fletching: "maple_longbow_u" - Fletch maple logs into unstrung bows</li>
  * </ul>
  *
  * @see TrainingMethodRepository
  * @see MethodType
+ * @see MethodLocation
  */
 @Value
 @Builder(toBuilder = true)
@@ -38,7 +42,7 @@ public class TrainingMethod {
     String id;
 
     /**
-     * Human-readable name (e.g., "Iron Ore (Power Mining)").
+     * Human-readable name (e.g., "Mining - Iron Ore (Power)").
      */
     String name;
 
@@ -61,15 +65,8 @@ public class TrainingMethod {
      */
     int minLevel;
 
-    /**
-     * Maximum level this method is efficient for (-1 for no limit).
-     * Used by SkillPlanner to select appropriate methods.
-     */
-    @Builder.Default
-    int maxLevel = -1;
-
     // ========================================================================
-    // XP and Efficiency
+    // XP Configuration
     // ========================================================================
 
     /**
@@ -87,34 +84,33 @@ public class TrainingMethod {
     double xpMultiplier = 0;
 
     /**
-     * Theoretical maximum actions per hour (used for efficiency calculations).
-     */
-    int actionsPerHour;
-
-    /**
      * Estimated GP profit/loss per hour (negative = cost).
      */
     @Builder.Default
     int gpPerHour = 0;
 
     // ========================================================================
-    // Location
+    // Locations
     // ========================================================================
 
     /**
-     * Reference to a node in web.json for navigation.
+     * Available locations where this method can be performed.
+     * Each location has its own efficiency rate and requirements.
+     * At least one location is required.
      */
-    String locationId;
+    @Builder.Default
+    List<MethodLocation> locations = List.of();
+
+    // ========================================================================
+    // Requirements
+    // ========================================================================
 
     /**
-     * Optional exact position to stand at.
+     * Method-level requirements (applies to all locations).
+     * Individual locations may have additional requirements.
      */
-    WorldPoint exactPosition;
-
-    /**
-     * Bank location for methods that require banking.
-     */
-    String bankLocationId;
+    @Builder.Default
+    MethodRequirements requirements = MethodRequirements.none();
 
     // ========================================================================
     // Gathering Configuration (GATHER methods)
@@ -219,7 +215,7 @@ public class TrainingMethod {
     int makeAllChildId = -1;
 
     // ========================================================================
-    // Requirements
+    // Tool Requirements
     // ========================================================================
 
     /**
@@ -235,12 +231,6 @@ public class TrainingMethod {
      */
     @Builder.Default
     boolean ironmanViable = true;
-
-    /**
-     * Quest requirements (quest IDs that must be completed).
-     */
-    @Builder.Default
-    List<Integer> questRequirements = List.of();
 
     // ========================================================================
     // Ground Item Watching
@@ -289,6 +279,15 @@ public class TrainingMethod {
     int logItemId = -1;
 
     // ========================================================================
+    // Notes
+    // ========================================================================
+
+    /**
+     * Optional notes or tips for this method.
+     */
+    String notes;
+
+    // ========================================================================
     // Utility Methods
     // ========================================================================
 
@@ -296,13 +295,10 @@ public class TrainingMethod {
      * Check if this method is valid for a given level.
      *
      * @param level the player's current level
-     * @return true if level is within [minLevel, maxLevel]
+     * @return true if level >= minLevel
      */
     public boolean isValidForLevel(int level) {
-        if (level < minLevel) {
-            return false;
-        }
-        return maxLevel < 0 || level <= maxLevel;
+        return level >= minLevel;
     }
 
     /**
@@ -330,27 +326,87 @@ public class TrainingMethod {
     }
 
     /**
-     * Calculate theoretical XP per hour at a specific level.
-     * For level-based methods, uses level * xpMultiplier * actionsPerHour.
+     * Get the default/first location.
      *
-     * @param level the player's current level in the trained skill
-     * @return estimated XP per hour
+     * @return the first location, or null if none defined
      */
-    public double getXpPerHour(int level) {
-        return getXpPerAction(level) * actionsPerHour;
+    public MethodLocation getDefaultLocation() {
+        if (locations == null || locations.isEmpty()) {
+            return null;
+        }
+        return locations.get(0);
     }
 
     /**
-     * Calculate theoretical XP per hour using static xpPerAction.
-     * For level-based methods, this returns 0 - use getXpPerHour(int level) instead.
+     * Get a location by its ID.
      *
-     * @return estimated XP per hour (0 if level-based)
+     * @param locationId the location ID to find
+     * @return the location, or null if not found
      */
-    public double getXpPerHour() {
-        if (hasLevelBasedXp()) {
-            return 0; // Must use getXpPerHour(level) for level-based methods
+    public MethodLocation getLocation(String locationId) {
+        if (locations == null || locationId == null) {
+            return null;
         }
-        return xpPerAction * actionsPerHour;
+        return locations.stream()
+                .filter(loc -> locationId.equals(loc.getId()))
+                .findFirst()
+                .orElse(null);
+    }
+
+    /**
+     * Calculate XP per hour at the default location.
+     *
+     * @param level the player's current level (for level-based methods)
+     * @return estimated XP per hour, or 0 if no locations defined
+     */
+    public double getXpPerHour(int level) {
+        MethodLocation loc = getDefaultLocation();
+        if (loc == null) {
+            return 0;
+        }
+        return getXpPerAction(level) * loc.getActionsPerHour();
+    }
+
+    /**
+     * Calculate XP per hour at a specific location.
+     *
+     * @param level the player's current level
+     * @param locationId the location to calculate for
+     * @return estimated XP per hour
+     */
+    public double getXpPerHour(int level, String locationId) {
+        MethodLocation loc = getLocation(locationId);
+        if (loc == null) {
+            loc = getDefaultLocation();
+        }
+        if (loc == null) {
+            return 0;
+        }
+        return getXpPerAction(level) * loc.getActionsPerHour();
+    }
+
+    /**
+     * Get the XP/hr range across all locations (min to max).
+     *
+     * @param level the player's current level
+     * @return array of [minXpPerHour, maxXpPerHour]
+     */
+    public double[] getXpPerHourRange(int level) {
+        if (locations == null || locations.isEmpty()) {
+            return new double[]{0, 0};
+        }
+        
+        double xpPerAction = getXpPerAction(level);
+        double min = Double.MAX_VALUE;
+        double max = Double.MIN_VALUE;
+        
+        for (MethodLocation loc : locations) {
+            double xpHr = xpPerAction * loc.getActionsPerHour();
+            min = Math.min(min, xpHr);
+            max = Math.max(max, xpHr);
+        }
+        
+        return new double[]{min, max};
     }
 
     /**
@@ -377,7 +433,7 @@ public class TrainingMethod {
      * @return true if method uses banking instead of dropping
      */
     public boolean requiresBanking() {
-        return requiresInventorySpace && !dropWhenFull && bankLocationId != null;
+        return requiresInventorySpace && !dropWhenFull;
     }
 
     /**
@@ -453,25 +509,73 @@ public class TrainingMethod {
     }
 
     /**
+     * Check if this method has any requirements.
+     *
+     * @return true if method-level requirements exist
+     */
+    public boolean hasRequirements() {
+        return requirements != null && requirements.hasRequirements();
+    }
+
+    /**
+     * Check if this method requires membership.
+     *
+     * @return true if method is members-only
+     */
+    public boolean requiresMembership() {
+        return requirements != null && requirements.isMembers();
+    }
+
+    /**
+     * Get number of available locations.
+     *
+     * @return count of locations
+     */
+    public int getLocationCount() {
+        return locations == null ? 0 : locations.size();
+    }
+
+    /**
+     * Check if this method has multiple location options.
+     *
+     * @return true if more than one location is available
+     */
+    public boolean hasMultipleLocations() {
+        return getLocationCount() > 1;
+    }
+
+    /**
      * Get a summary string for logging.
      *
      * @return human-readable summary
      */
     public String getSummary() {
+        double[] xpRange = getXpPerHourRange(minLevel);
         if (hasLevelBasedXp()) {
-            return String.format("%s [%s] (lvl %d-%s, %.0fx level xp/action)",
+            return String.format("%s [%s] (lvl %d+, %.0fx level xp/action, %d locations)",
                     name,
                     skill.getName(),
                     minLevel,
-                    maxLevel < 0 ? "99" : String.valueOf(maxLevel),
-                    xpMultiplier);
+                    xpMultiplier,
+                    getLocationCount());
         }
-        return String.format("%s [%s] (lvl %d-%s, %.0f xp/hr)",
+        
+        if (xpRange[0] == xpRange[1]) {
+            return String.format("%s [%s] (lvl %d+, %,.0f xp/hr, %d locations)",
+                    name,
+                    skill.getName(),
+                    minLevel,
+                    xpRange[0],
+                    getLocationCount());
+        }
+        
+        return String.format("%s [%s] (lvl %d+, %,.0f-%,.0f xp/hr, %d locations)",
                 name,
                 skill.getName(),
                 minLevel,
-                maxLevel < 0 ? "99" : String.valueOf(maxLevel),
-                getXpPerHour());
+                xpRange[0],
+                xpRange[1],
+                getLocationCount());
     }
 
     /**
@@ -481,13 +585,23 @@ public class TrainingMethod {
      * @return human-readable summary with actual XP rates
      */
     public String getSummary(int level) {
-        return String.format("%s [%s] (lvl %d-%s, %.0f xp/hr @ lvl %d)",
+        double[] xpRange = getXpPerHourRange(level);
+        
+        if (xpRange[0] == xpRange[1]) {
+            return String.format("%s [%s] (lvl %d+, %,.0f xp/hr @ lvl %d)",
+                    name,
+                    skill.getName(),
+                    minLevel,
+                    xpRange[0],
+                    level);
+        }
+        
+        return String.format("%s [%s] (lvl %d+, %,.0f-%,.0f xp/hr @ lvl %d)",
                 name,
                 skill.getName(),
                 minLevel,
-                maxLevel < 0 ? "99" : String.valueOf(maxLevel),
-                getXpPerHour(level),
+                xpRange[0],
+                xpRange[1],
                 level);
     }
 }
-

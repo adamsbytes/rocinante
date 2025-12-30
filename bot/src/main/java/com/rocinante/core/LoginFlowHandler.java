@@ -185,8 +185,15 @@ public class LoginFlowHandler {
         boolean isOnTutorial = checkTutorialIsland();
         
         if (!isOnTutorial) {
-            // Not on tutorial island - mark login flow as complete
-            log.info("[LOGIN] Not on Tutorial Island - login flow complete (existing account)");
+            // Not on tutorial island - start TaskExecutor and mark login flow as complete
+            log.info("[LOGIN] Not on Tutorial Island - starting TaskExecutor for existing account");
+            try {
+                TaskExecutor taskExecutor = taskExecutorProvider.get();
+                taskExecutor.start();
+                log.info("[LOGIN] ✓ TaskExecutor started for existing account");
+            } catch (Exception e) {
+                log.error("[LOGIN] Failed to start TaskExecutor", e);
+            }
             loginFlowComplete.set(true);
             return;
         }
