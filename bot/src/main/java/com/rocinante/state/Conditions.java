@@ -991,7 +991,7 @@ public final class Conditions {
      */
     public static StateCondition hasSlayerTask() {
         return ctx -> {
-            com.rocinante.slayer.SlayerState slayer = ctx.getSlayerState();
+            com.rocinante.state.SlayerState slayer = ctx.getSlayerState();
             return slayer != null && slayer.hasTask();
         };
     }
@@ -1003,7 +1003,7 @@ public final class Conditions {
      */
     public static StateCondition slayerTaskComplete() {
         return ctx -> {
-            com.rocinante.slayer.SlayerState slayer = ctx.getSlayerState();
+            com.rocinante.state.SlayerState slayer = ctx.getSlayerState();
             return slayer != null && slayer.isTaskComplete();
         };
     }
@@ -1016,7 +1016,7 @@ public final class Conditions {
      */
     public static StateCondition slayerKillsBelow(int count) {
         return ctx -> {
-            com.rocinante.slayer.SlayerState slayer = ctx.getSlayerState();
+            com.rocinante.state.SlayerState slayer = ctx.getSlayerState();
             return slayer != null && slayer.getRemainingKills() <= count;
         };
     }
@@ -1029,7 +1029,7 @@ public final class Conditions {
      */
     public static StateCondition slayerProgressAbove(int percent) {
         return ctx -> {
-            com.rocinante.slayer.SlayerState slayer = ctx.getSlayerState();
+            com.rocinante.state.SlayerState slayer = ctx.getSlayerState();
             return slayer != null && slayer.getCompletionPercentage() >= percent;
         };
     }
@@ -1042,7 +1042,7 @@ public final class Conditions {
      */
     public static StateCondition slayerPointsAtLeast(int points) {
         return ctx -> {
-            com.rocinante.slayer.SlayerState slayer = ctx.getSlayerState();
+            com.rocinante.state.SlayerState slayer = ctx.getSlayerState();
             return slayer != null && slayer.getSlayerPoints() >= points;
         };
     }
@@ -1054,7 +1054,7 @@ public final class Conditions {
      */
     public static StateCondition canSkipSlayerTask() {
         return ctx -> {
-            com.rocinante.slayer.SlayerState slayer = ctx.getSlayerState();
+            com.rocinante.state.SlayerState slayer = ctx.getSlayerState();
             return slayer != null && slayer.canSkipTask();
         };
     }
@@ -1066,7 +1066,7 @@ public final class Conditions {
      */
     public static StateCondition canBlockSlayerTask() {
         return ctx -> {
-            com.rocinante.slayer.SlayerState slayer = ctx.getSlayerState();
+            com.rocinante.state.SlayerState slayer = ctx.getSlayerState();
             return slayer != null && slayer.canBlockTask();
         };
     }
@@ -1077,9 +1077,9 @@ public final class Conditions {
      * @param unlock the unlock to check
      * @return condition checking unlock status
      */
-    public static StateCondition hasSlayerUnlock(com.rocinante.slayer.SlayerUnlock unlock) {
+    public static StateCondition hasSlayerUnlock(com.rocinante.tasks.impl.skills.slayer.SlayerUnlock unlock) {
         return ctx -> {
-            com.rocinante.slayer.SlayerState slayer = ctx.getSlayerState();
+            com.rocinante.state.SlayerState slayer = ctx.getSlayerState();
             return slayer != null && slayer.hasUnlock(unlock);
         };
     }
@@ -1091,7 +1091,7 @@ public final class Conditions {
      */
     public static StateCondition isWildernessSlayerTask() {
         return ctx -> {
-            com.rocinante.slayer.SlayerState slayer = ctx.getSlayerState();
+            com.rocinante.state.SlayerState slayer = ctx.getSlayerState();
             return slayer != null && slayer.isWildernessTask();
         };
     }
@@ -1103,7 +1103,7 @@ public final class Conditions {
      */
     public static StateCondition isKonarSlayerTask() {
         return ctx -> {
-            com.rocinante.slayer.SlayerState slayer = ctx.getSlayerState();
+            com.rocinante.state.SlayerState slayer = ctx.getSlayerState();
             return slayer != null && slayer.isLocationRestricted();
         };
     }
@@ -1115,7 +1115,7 @@ public final class Conditions {
      */
     public static StateCondition slayerTargetsNearby() {
         return ctx -> {
-            com.rocinante.slayer.SlayerState slayer = ctx.getSlayerState();
+            com.rocinante.state.SlayerState slayer = ctx.getSlayerState();
             return slayer != null && slayer.hasTargetsNearby();
         };
     }
@@ -1128,7 +1128,7 @@ public final class Conditions {
      */
     public static StateCondition slayerStreakAtLeast(int streak) {
         return ctx -> {
-            com.rocinante.slayer.SlayerState slayer = ctx.getSlayerState();
+            com.rocinante.state.SlayerState slayer = ctx.getSlayerState();
             return slayer != null && slayer.getRelevantStreak() >= streak;
         };
     }
@@ -1141,7 +1141,7 @@ public final class Conditions {
      */
     public static StateCondition slayerTaskIs(String taskName) {
         return ctx -> {
-            com.rocinante.slayer.SlayerState slayer = ctx.getSlayerState();
+            com.rocinante.state.SlayerState slayer = ctx.getSlayerState();
             if (slayer == null || slayer.getTaskName() == null) {
                 return false;
             }

@@ -24,7 +24,7 @@ import com.rocinante.navigation.ResourceAwareness;
 import com.rocinante.agility.AgilityCourseRepository;
 import com.rocinante.progression.UnlockTracker;
 import com.rocinante.puzzle.PuzzleSolverRegistry;
-import com.rocinante.slayer.SlayerState;
+import com.rocinante.state.SlayerState;
 import com.rocinante.state.BankState;
 import com.rocinante.state.CombatState;
 import com.rocinante.state.EquipmentState;

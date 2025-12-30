@@ -118,12 +118,13 @@ public class TutorialIslandTest {
             600, // Talk to Brother Brace (after opening friend's list)
             610, // Exit chapel
             
-            // Section 9: Magic Instructor (var 620-670)
+            // Section 9: Magic Instructor (var 620-671)
             620, // Walk/talk to Magic Instructor
             630, // Open spell book
             640, // Talk to Magic Instructor (after opening spells)
             650, // Kill Chicken with Air Strike
-            670, // Magic Instructor is ready to teleport the player off
+            670, // Talk to Magic Instructor (before teleporting)
+            671, // Cast Home Teleport to leave Tutorial Island
             
             // Tutorial completion marker
             1000 // Tutorial Island complete - mark in IronmanState

@@ -92,6 +92,14 @@ public class TeleportQuestStep extends QuestStep {
     private boolean jewelryEquipped = false;
 
     /**
+     * Force click mode for opening tabs (spellbook).
+     * - null: Use PlayerProfile preference (default)
+     * - true: Always click (needed for Tutorial Island where hotkeys aren't available)
+     * - false: Always use hotkeys
+     */
+    private Boolean forceClick = null;
+
+    /**
      * Create a teleport quest step with text.
      *
      * @param text instruction text
@@ -152,34 +160,51 @@ public class TeleportQuestStep extends QuestStep {
             }
         }
 
+        TravelTask task;
         switch (method) {
             case SPELL:
-                return TravelTask.spell(spellName);
+                task = TravelTask.spell(spellName);
+                break;
 
             case HOME_TELEPORT:
-                return TravelTask.homeTeleport();
+                task = TravelTask.homeTeleport();
+                break;
 
             case TABLET:
-                return TravelTask.tablet(tabletItemId);
+                task = TravelTask.tablet(tabletItemId);
+                break;
 
             case JEWELRY_EQUIPPED:
-                return TravelTask.jewelry(jewelryItemId, teleportOption);
+                task = TravelTask.jewelry(jewelryItemId, teleportOption);
+                break;
 
             case JEWELRY_INVENTORY:
-                return TravelTask.jewelryFromInventory(jewelryItemId, teleportOption);
+                task = TravelTask.jewelryFromInventory(jewelryItemId, teleportOption);
+                break;
 
             case FAIRY_RING:
-                return TravelTask.fairyRing(fairyRingCode);
+                task = TravelTask.fairyRing(fairyRingCode);
+                break;
 
             case SPIRIT_TREE:
-                return TravelTask.spiritTree(spiritTreeDestination);
+                task = TravelTask.spiritTree(spiritTreeDestination);
+                break;
 
             case POH_PORTAL:
-                return TravelTask.pohPortal(teleportOption);
+                task = TravelTask.pohPortal(teleportOption);
+                break;
 
             default:
-                return TravelTask.homeTeleport();
+                task = TravelTask.homeTeleport();
+                break;
         }
+
+        // Apply forceClick if set (for Tutorial Island and other hotkey-disabled scenarios)
+        if (forceClick != null) {
+            task.withForceClick(forceClick);
+        }
+
+        return task;
     }
 
     // ========================================================================
@@ -316,6 +341,18 @@ public class TeleportQuestStep extends QuestStep {
      */
     public TeleportQuestStep withTeleportOption(String option) {
         this.teleportOption = option;
+        return this;
+    }
+
+    /**
+     * Set force click mode for opening tabs (e.g., spellbook).
+     * Use true for scenarios where hotkeys aren't available (e.g., Tutorial Island).
+     *
+     * @param forceClick true to always click, false to always use hotkeys, null for PlayerProfile preference
+     * @return this step for chaining
+     */
+    public TeleportQuestStep withForceClick(Boolean forceClick) {
+        this.forceClick = forceClick;
         return this;
     }
 }

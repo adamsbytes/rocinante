@@ -4,6 +4,7 @@ import com.rocinante.state.WorldState;
 import com.rocinante.tasks.AbstractTask;
 import com.rocinante.tasks.TaskContext;
 import com.rocinante.util.Randomization;
+import com.rocinante.util.WidgetInteractionHelpers;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -14,6 +15,8 @@ import java.awt.Point;
 import java.awt.Rectangle;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
+
+import static com.rocinante.util.WidgetInteractionHelpers.*;
 
 /**
  * Task for interacting with UI widgets.
@@ -54,101 +57,7 @@ public class WidgetInteractTask extends AbstractTask {
     // Resizable mode interface
     public static final int RESIZABLE_INVENTORY_TAB = 161;
 
-    // Tab indices (for keyboard shortcuts)
-    public static final int TAB_COMBAT = 0;
-    public static final int TAB_SKILLS = 1;
-    public static final int TAB_QUESTS = 2;
-    public static final int TAB_INVENTORY = 3;
-    public static final int TAB_EQUIPMENT = 4;
-    public static final int TAB_PRAYER = 5;
-    public static final int TAB_SPELLBOOK = 6;
-    public static final int TAB_CLAN = 7;
-    public static final int TAB_FRIENDS = 8;
-    public static final int TAB_ACCOUNT = 9;
-    public static final int TAB_LOGOUT = 10;
-    public static final int TAB_SETTINGS = 11;
-    public static final int TAB_EMOTES = 12;
-    public static final int TAB_MUSIC = 13;
-
-    // F-key mappings (OSRS default keybinds when configured)
-    // Note: These are the common defaults, but players must configure them in-game
-    private static final int[] TAB_FKEYS = {
-            java.awt.event.KeyEvent.VK_F1,      // Combat (0)
-            java.awt.event.KeyEvent.VK_F2,      // Skills (1)
-            java.awt.event.KeyEvent.VK_F3,      // Quests (2)
-            java.awt.event.KeyEvent.VK_F4,      // Inventory (3)
-            java.awt.event.KeyEvent.VK_F5,      // Equipment (4)
-            java.awt.event.KeyEvent.VK_F6,      // Prayer (5)
-            java.awt.event.KeyEvent.VK_F7,      // Spellbook (6)
-            java.awt.event.KeyEvent.VK_F8,      // Clan (7)
-            java.awt.event.KeyEvent.VK_F9,      // Friends (8)
-            java.awt.event.KeyEvent.VK_F10,     // Account (9)
-            0,                                   // Logout (10) - no default key
-            java.awt.event.KeyEvent.VK_F11,     // Settings (11)
-            java.awt.event.KeyEvent.VK_F12,     // Emotes (12)
-            0                                    // Music (13) - no default key
-    };
-
-    // Widget group IDs for tab icons (stone icons) in different interface modes
-    // Used when forceClick=true to click the tab icon directly
-    // Values from RuneLite InterfaceID.java
-    
-    // Resizable classic layout (group 161 = ToplevelOsrsStretch)
-    private static final int TAB_STONE_GROUP_RESIZABLE_CLASSIC = 161;
-    private static final int[] TAB_STONE_CHILDREN_RESIZABLE_CLASSIC = {
-            59,  // Combat (0) - STONE0
-            60,  // Skills (1) - STONE1
-            61,  // Quests (2) - STONE2
-            62,  // Inventory (3) - STONE3
-            63,  // Equipment (4) - STONE4
-            64,  // Prayer (5) - STONE5
-            65,  // Spellbook (6) - STONE6
-            43,  // Clan (7) - STONE7
-            45,  // Friends (8) - STONE9 (note: 8 and 9 swapped in RuneLite)
-            44,  // Ignores (9) - STONE8
-            46,  // Logout (10) - STONE10
-            47,  // Settings (11) - STONE11
-            48,  // Emotes (12) - STONE12
-            49   // Music (13) - STONE13
-    };
-    
-    // Resizable modern/bottom-line layout (group 164 = ToplevelPreEoc)
-    private static final int TAB_STONE_GROUP_RESIZABLE_MODERN = 164;
-    private static final int[] TAB_STONE_CHILDREN_RESIZABLE_MODERN = {
-            52,  // Combat (0) - STONE0
-            53,  // Skills (1) - STONE1
-            54,  // Quests (2) - STONE2
-            55,  // Inventory (3) - STONE3
-            56,  // Equipment (4) - STONE4
-            57,  // Prayer (5) - STONE5
-            58,  // Spellbook (6) - STONE6
-            38,  // Clan (7) - STONE7
-            40,  // Friends (8) - STONE9 (swapped)
-            39,  // Account (9) - STONE8 (swapped)
-            34,  // Logout (10) - STONE10
-            41,  // Settings (11) - STONE11
-            42,  // Emotes (12) - STONE12
-            43   // Music (13) - STONE13
-    };
-    
-    // Fixed mode layout (group 548 = Toplevel)
-    private static final int TAB_STONE_GROUP_FIXED = 548;
-    private static final int[] TAB_STONE_CHILDREN_FIXED = {
-            64,  // Combat (0) - STONE0
-            65,  // Skills (1) - STONE1
-            66,  // Quests (2) - STONE2
-            67,  // Inventory (3) - STONE3
-            68,  // Equipment (4) - STONE4
-            69,  // Prayer (5) - STONE5
-            70,  // Spellbook (6) - STONE6
-            48,  // Clan (7) - STONE7
-            50,  // Friends (8) - STONE9
-            49,  // Account (9) - STONE8
-            51,  // Logout (10) - STONE10
-            52,  // Settings (11) - STONE11
-            53,  // Emotes (12) - STONE12
-            54   // Music (13) - STONE13
-    };
+    // Tab constants are in WidgetInteractionHelpers (imported via static import above)
     
 
     // ========================================================================
@@ -363,12 +272,12 @@ public class WidgetInteractTask extends AbstractTask {
      * @return widget task
      */
     public static WidgetInteractTask openTab(int tabIndex) {
-        if (tabIndex < 0 || tabIndex >= TAB_FKEYS.length) {
+        if (tabIndex < 0 || tabIndex > TAB_MUSIC) {
             throw new IllegalArgumentException("Invalid tab index: " + tabIndex);
         }
 
         // Store both the keyCode (for hotkey mode) and tab info (for click mode)
-        int keyCode = TAB_FKEYS[tabIndex];
+        int keyCode = WidgetInteractionHelpers.getTabFKey(tabIndex);
         
         WidgetInteractTask task;
         if (keyCode != 0) {
@@ -754,18 +663,7 @@ public class WidgetInteractTask extends AbstractTask {
      * 3. Default to hotkeys if profile unavailable
      */
     private boolean shouldUseHotkey(TaskContext ctx) {
-        // Explicit override takes precedence
-        if (forceClick != null) {
-            return !forceClick;  // forceClick=true means don't use hotkey
-        }
-
-        // Check player profile preference
-        if (ctx.getPlayerProfile() != null && ctx.getPlayerProfile().isLoaded()) {
-            return ctx.getPlayerProfile().getProfileData().isPrefersHotkeys();
-        }
-
-        // Default: use hotkeys if available
-        return true;
+        return com.rocinante.util.WidgetInteractionHelpers.shouldUseHotkey(ctx, forceClick);
     }
 
     /**
@@ -800,58 +698,23 @@ public class WidgetInteractTask extends AbstractTask {
     
     /**
      * Find the tab stone widget for a given tab index, using the correct interface mode.
-     * Uses GameStateService's cached interface mode for efficiency.
+     * Uses GameStateService's cached interface mode.
      */
     private Widget findTabStoneWidget(Client client, int tabIdx) {
-        // Try to get interface mode from context (if available during execution)
-        com.rocinante.core.GameStateService.InterfaceMode mode = null;
-        if (lastContext != null && lastContext.getGameStateService() != null) {
-            mode = lastContext.getGameStateService().getInterfaceMode();
+        if (lastContext == null) {
+            log.warn("No context available for tab stone lookup");
+            return null;
         }
         
-        // Use cached mode if available
-        if (mode != null && mode != com.rocinante.core.GameStateService.InterfaceMode.UNKNOWN) {
-            Widget widget = null;
-            switch (mode) {
-                case FIXED:
-                    widget = client.getWidget(TAB_STONE_GROUP_FIXED, TAB_STONE_CHILDREN_FIXED[tabIdx]);
-                    break;
-                case RESIZABLE_CLASSIC:
-                    widget = client.getWidget(TAB_STONE_GROUP_RESIZABLE_CLASSIC, TAB_STONE_CHILDREN_RESIZABLE_CLASSIC[tabIdx]);
-                    break;
-                case RESIZABLE_MODERN:
-                    widget = client.getWidget(TAB_STONE_GROUP_RESIZABLE_MODERN, TAB_STONE_CHILDREN_RESIZABLE_MODERN[tabIdx]);
-                    break;
-            }
-            if (widget != null && !widget.isHidden()) {
-                return widget;
-            }
-            // Mode was set but widget not found - log this
-            log.debug("Tab stone not found for mode={}, tabIdx={}, trying all modes", mode, tabIdx);
+        int[] ids = com.rocinante.util.WidgetInteractionHelpers.getTabWidgetIds(lastContext, tabIdx);
+        Widget widget = client.getWidget(ids[0], ids[1]);
+        
+        if (widget == null || widget.isHidden()) {
+            log.warn("Tab stone widget not found for tabIdx={}", tabIdx);
+            return null;
         }
         
-        // Fallback: try ALL modes if we don't have cached info or the cached mode failed
-        // Order: resizable classic (most common), resizable modern, fixed
-        Widget widget = client.getWidget(TAB_STONE_GROUP_RESIZABLE_CLASSIC, TAB_STONE_CHILDREN_RESIZABLE_CLASSIC[tabIdx]);
-        if (widget != null && !widget.isHidden()) {
-            log.debug("Found tab stone in RESIZABLE_CLASSIC mode");
             return widget;
-        }
-        
-        widget = client.getWidget(TAB_STONE_GROUP_RESIZABLE_MODERN, TAB_STONE_CHILDREN_RESIZABLE_MODERN[tabIdx]);
-        if (widget != null && !widget.isHidden()) {
-            log.debug("Found tab stone in RESIZABLE_MODERN mode");
-            return widget;
-        }
-        
-        widget = client.getWidget(TAB_STONE_GROUP_FIXED, TAB_STONE_CHILDREN_FIXED[tabIdx]);
-        if (widget != null && !widget.isHidden()) {
-            log.debug("Found tab stone in FIXED mode");
-            return widget;
-        }
-        
-        log.warn("Tab stone widget not found in ANY mode for tabIdx={}", tabIdx);
-        return null;
     }
 
     // ========================================================================

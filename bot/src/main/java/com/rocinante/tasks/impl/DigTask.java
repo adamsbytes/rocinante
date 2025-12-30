@@ -408,10 +408,11 @@ public class DigTask extends AbstractTask {
 
         Widget inventoryWidget = client.getWidget(INVENTORY_GROUP_ID, INVENTORY_CHILD_ID);
         if (inventoryWidget == null || inventoryWidget.isHidden()) {
-            // Need to open inventory first
+            // Need to open inventory first using shared helper (handles already-open check internally)
             log.debug("Opening inventory to access spade");
             actionPending = true;
-            ctx.getKeyboardController().pressKey(java.awt.event.KeyEvent.VK_F4)
+            com.rocinante.util.WidgetInteractionHelpers.openTabAsync(ctx, 
+                    com.rocinante.util.WidgetInteractionHelpers.TAB_INVENTORY, null)
                     .thenRun(() -> actionPending = false)
                     .exceptionally(e -> {
                         actionPending = false;

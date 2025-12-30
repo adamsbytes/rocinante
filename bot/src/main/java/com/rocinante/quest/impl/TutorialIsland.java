@@ -454,7 +454,12 @@ public class TutorialIsland implements Quest {
         steps.put(670, new NpcQuestStep(NpcID.MAGIC_INSTRUCTOR, "Talk to the Magic Instructor to leave")
                 .withWalkTo(LOC_MAGIC_INSTRUCTOR)
                 .withDialogueExpected(true)
-                .withDialogueOptions("Yes", "No, I'm not ready"));
+                .withDialogueOptions("Yes", "No, I'm not planning to do that."));
+
+        // var 671: Cast Home Teleport to leave Tutorial Island
+        // Note: Must use forceClick because Tutorial Island doesn't have hotkeys enabled
+        steps.put(671, TeleportQuestStep.homeTeleport("Cast Home Teleport to leave Tutorial Island")
+                .withForceClick(true));
         
         // var 1000: Tutorial complete - mark in IronmanState
         steps.put(1000, new CustomQuestStep("Tutorial Island complete", ctx -> {

@@ -332,4 +332,276 @@ public final class ItemCollections {
             ItemID.DARK_CRAB,         // 22 HP
             ItemID.ANGLERFISH         // 22 HP (scales with HP level)
     );
+
+    // ========================================================================
+    // Slayer Equipment - Protective
+    // ========================================================================
+
+    /**
+     * Slayer helmets (all variants including imbued and colored).
+     * All provide protection against multiple slayer creatures.
+     */
+    public static final List<Integer> SLAYER_HELMETS = List.of(
+            ItemID.SLAYER_HELMET,
+            ItemID.SLAYER_HELMET_I,
+            ItemID.BLACK_SLAYER_HELMET,
+            ItemID.BLACK_SLAYER_HELMET_I,
+            ItemID.GREEN_SLAYER_HELMET,
+            ItemID.GREEN_SLAYER_HELMET_I,
+            ItemID.RED_SLAYER_HELMET,
+            ItemID.RED_SLAYER_HELMET_I,
+            ItemID.PURPLE_SLAYER_HELMET,
+            ItemID.PURPLE_SLAYER_HELMET_I,
+            ItemID.TURQUOISE_SLAYER_HELMET,
+            ItemID.TURQUOISE_SLAYER_HELMET_I,
+            ItemID.HYDRA_SLAYER_HELMET,
+            ItemID.HYDRA_SLAYER_HELMET_I,
+            ItemID.TWISTED_SLAYER_HELMET,
+            ItemID.TWISTED_SLAYER_HELMET_I,
+            ItemID.TZTOK_SLAYER_HELMET,
+            ItemID.TZTOK_SLAYER_HELMET_I,
+            ItemID.VAMPYRIC_SLAYER_HELMET,
+            ItemID.VAMPYRIC_SLAYER_HELMET_I,
+            ItemID.TZKAL_SLAYER_HELMET,
+            ItemID.TZKAL_SLAYER_HELMET_I,
+            ItemID.ARAXYTE_SLAYER_HELMET,
+            ItemID.ARAXYTE_SLAYER_HELMET_I
+    );
+
+    /**
+     * Nose peg - required for aberrant spectres.
+     */
+    public static final List<Integer> NOSE_PEGS = List.of(
+            ItemID.NOSE_PEG
+    );
+
+    /**
+     * Earmuffs - required for banshees.
+     */
+    public static final List<Integer> EARMUFFS = List.of(
+            ItemID.EARMUFFS
+    );
+
+    /**
+     * Mirror shield - required for basilisks and cockatrice.
+     */
+    public static final List<Integer> MIRROR_SHIELDS = List.of(
+            ItemID.MIRROR_SHIELD
+    );
+
+    /**
+     * Witchwood icon - required for cave horrors.
+     */
+    public static final List<Integer> WITCHWOOD_ICONS = List.of(
+            ItemID.WITCHWOOD_ICON
+    );
+
+    /**
+     * All spectre protection items (nose peg or slayer helmet).
+     */
+    public static final List<Integer> SPECTRE_PROTECTION = List.of(
+            ItemID.NOSE_PEG,
+            ItemID.SLAYER_HELMET,
+            ItemID.SLAYER_HELMET_I,
+            ItemID.BLACK_SLAYER_HELMET,
+            ItemID.BLACK_SLAYER_HELMET_I,
+            ItemID.GREEN_SLAYER_HELMET,
+            ItemID.GREEN_SLAYER_HELMET_I,
+            ItemID.RED_SLAYER_HELMET,
+            ItemID.RED_SLAYER_HELMET_I,
+            ItemID.PURPLE_SLAYER_HELMET,
+            ItemID.PURPLE_SLAYER_HELMET_I,
+            ItemID.TURQUOISE_SLAYER_HELMET,
+            ItemID.TURQUOISE_SLAYER_HELMET_I,
+            ItemID.HYDRA_SLAYER_HELMET,
+            ItemID.HYDRA_SLAYER_HELMET_I,
+            ItemID.TWISTED_SLAYER_HELMET,
+            ItemID.TWISTED_SLAYER_HELMET_I
+    );
+
+    // ========================================================================
+    // Slayer Equipment - Finishing Items
+    // ========================================================================
+
+    /**
+     * Rock hammer - used to finish gargoyles below 9 HP.
+     */
+    public static final List<Integer> ROCK_HAMMERS = List.of(
+            ItemID.ROCK_HAMMER
+    );
+
+    /**
+     * Bag of salt - used to finish rockslugs below 4 HP.
+     */
+    public static final List<Integer> BAGS_OF_SALT = List.of(
+            ItemID.BAG_OF_SALT
+    );
+
+    /**
+     * Ice cooler - used to finish desert lizards below 4 HP.
+     */
+    public static final List<Integer> ICE_COOLERS = List.of(
+            ItemID.ICE_COOLER
+    );
+
+    // ========================================================================
+    // Slayer Equipment - Leaf-Bladed Weapons
+    // ========================================================================
+
+    /**
+     * Leaf-bladed weapons - required to damage kurasks and turoths.
+     */
+    public static final List<Integer> LEAF_BLADED_WEAPONS = List.of(
+            ItemID.LEAFBLADED_SPEAR,
+            ItemID.LEAFBLADED_SWORD,
+            ItemID.LEAFBLADED_BATTLEAXE
+    );
+
+    // ========================================================================
+    // Slayer Ammunition - Broad
+    // ========================================================================
+
+    /**
+     * Broad arrows - can damage kurasks and turoths.
+     */
+    public static final List<Integer> BROAD_ARROWS = List.of(
+            ItemID.BROAD_ARROWS,
+            ItemID.BROAD_ARROWS_4160
+    );
+
+    /**
+     * Broad bolts - can damage kurasks and turoths.
+     */
+    public static final List<Integer> BROAD_BOLTS = List.of(
+            ItemID.BROAD_BOLTS,
+            ItemID.AMETHYST_BROAD_BOLTS
+    );
+
+    // ========================================================================
+    // Antipoison Potions
+    // ========================================================================
+
+    /**
+     * Regular antipoison potions (all doses).
+     */
+    public static final List<Integer> ANTIPOISON_POTIONS = List.of(
+            ItemID.ANTIPOISON4,
+            ItemID.ANTIPOISON3,
+            ItemID.ANTIPOISON2,
+            ItemID.ANTIPOISON1
+    );
+
+    /**
+     * Super antipoison potions (all doses).
+     */
+    public static final List<Integer> SUPER_ANTIPOISON_POTIONS = List.of(
+            ItemID.SUPERANTIPOISON4,
+            ItemID.SUPERANTIPOISON3,
+            ItemID.SUPERANTIPOISON2,
+            ItemID.SUPERANTIPOISON1
+    );
+
+    /**
+     * Antidote++ potions (all doses) - strongest antipoison.
+     */
+    public static final List<Integer> ANTIDOTE_PLUS_PLUS = List.of(
+            ItemID.ANTIDOTE4,
+            ItemID.ANTIDOTE3,
+            ItemID.ANTIDOTE2,
+            ItemID.ANTIDOTE1
+    );
+
+    // ========================================================================
+    // Antifire Potions
+    // ========================================================================
+
+    /**
+     * Regular antifire potions (all doses).
+     */
+    public static final List<Integer> ANTIFIRE_POTIONS = List.of(
+            ItemID.ANTIFIRE_POTION4,
+            ItemID.ANTIFIRE_POTION3,
+            ItemID.ANTIFIRE_POTION2,
+            ItemID.ANTIFIRE_POTION1
+    );
+
+    /**
+     * Extended antifire potions (all doses).
+     */
+    public static final List<Integer> EXTENDED_ANTIFIRE_POTIONS = List.of(
+            ItemID.EXTENDED_ANTIFIRE4,
+            ItemID.EXTENDED_ANTIFIRE3,
+            ItemID.EXTENDED_ANTIFIRE2,
+            ItemID.EXTENDED_ANTIFIRE1
+    );
+
+    /**
+     * Super antifire potions (all doses).
+     */
+    public static final List<Integer> SUPER_ANTIFIRE_POTIONS = List.of(
+            ItemID.SUPER_ANTIFIRE_POTION4,
+            ItemID.SUPER_ANTIFIRE_POTION3,
+            ItemID.SUPER_ANTIFIRE_POTION2,
+            ItemID.SUPER_ANTIFIRE_POTION1
+    );
+
+    /**
+     * Extended super antifire potions (all doses).
+     */
+    public static final List<Integer> EXTENDED_SUPER_ANTIFIRE_POTIONS = List.of(
+            ItemID.EXTENDED_SUPER_ANTIFIRE4,
+            ItemID.EXTENDED_SUPER_ANTIFIRE3,
+            ItemID.EXTENDED_SUPER_ANTIFIRE2,
+            ItemID.EXTENDED_SUPER_ANTIFIRE1
+    );
+
+    // ========================================================================
+    // Dragonfire Protection Shields
+    // ========================================================================
+
+    /**
+     * Anti-dragon shields - basic dragonfire protection.
+     */
+    public static final List<Integer> ANTI_DRAGON_SHIELDS = List.of(
+            ItemID.ANTIDRAGON_SHIELD,
+            ItemID.ANTIDRAGON_SHIELD_8282
+    );
+
+    /**
+     * Dragonfire shields - superior dragonfire protection with special attack.
+     */
+    public static final List<Integer> DRAGONFIRE_SHIELDS = List.of(
+            ItemID.DRAGONFIRE_SHIELD,
+            ItemID.DRAGONFIRE_SHIELD_11284
+    );
+
+    /**
+     * Dragonfire wards - ranged variant of dragonfire shield.
+     */
+    public static final List<Integer> DRAGONFIRE_WARDS = List.of(
+            ItemID.DRAGONFIRE_WARD,
+            ItemID.DRAGONFIRE_WARD_22003
+    );
+
+    /**
+     * Ancient wyvern shields - ice dragonfire protection.
+     */
+    public static final List<Integer> ANCIENT_WYVERN_SHIELDS = List.of(
+            ItemID.ANCIENT_WYVERN_SHIELD,
+            ItemID.ANCIENT_WYVERN_SHIELD_21634
+    );
+
+    /**
+     * All dragonfire protection equipment.
+     */
+    public static final List<Integer> ALL_DRAGONFIRE_PROTECTION = List.of(
+            ItemID.ANTIDRAGON_SHIELD,
+            ItemID.ANTIDRAGON_SHIELD_8282,
+            ItemID.DRAGONFIRE_SHIELD,
+            ItemID.DRAGONFIRE_SHIELD_11284,
+            ItemID.DRAGONFIRE_WARD,
+            ItemID.DRAGONFIRE_WARD_22003,
+            ItemID.ANCIENT_WYVERN_SHIELD,
+            ItemID.ANCIENT_WYVERN_SHIELD_21634
+    );
 }

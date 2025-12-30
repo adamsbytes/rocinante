@@ -475,6 +475,16 @@ public class TravelTask extends AbstractTask {
     @Setter
     private boolean verifyArrival = true;
 
+    /**
+     * Force click mode for opening tabs (spellbook, equipment, inventory).
+     * - null: Use PlayerProfile preference (default)
+     * - true: Always click the tab icon (ignore hotkeys) - needed for Tutorial Island
+     * - false: Always use hotkeys
+     */
+    @Getter
+    @Setter
+    private Boolean forceClick = null;
+
     // ========================================================================
     // Execution State
     // ========================================================================
@@ -1199,6 +1209,17 @@ public class TravelTask extends AbstractTask {
     }
 
     /**
+     * Set force click mode for tab opening (builder-style).
+     * Use true for scenarios where hotkeys aren't available (e.g., Tutorial Island).
+     *
+     * @param forceClick true to always click, false to always use hotkeys, null for PlayerProfile preference
+     */
+    public TravelTask withForceClick(Boolean forceClick) {
+        this.forceClick = forceClick;
+        return this;
+    }
+
+    /**
      * Set whether to verify arrival (builder-style).
      */
     public TravelTask withVerifyArrival(boolean verify) {
@@ -1445,29 +1466,20 @@ public class TravelTask extends AbstractTask {
     // ========================================================================
 
     private void executeOpenSpellbook(TaskContext ctx) {
-        Client client = ctx.getClient();
-        Widget spellbook = client.getWidget(SPELLBOOK_GROUP, 0);
+        if (clickPending) return;
 
-        if (spellbook != null && !spellbook.isHidden()) {
-            log.debug("Spellbook is open");
-            phase = TravelPhase.CLICK_TELEPORT;
-            return;
-        }
-
-        // Open spellbook using F7 (or click)
-        log.debug("Opening spellbook");
+        log.debug("Opening spellbook (forceClick={})", forceClick);
         clickPending = true;
 
-        ctx.getKeyboardController().pressKey(java.awt.event.KeyEvent.VK_F7)
+        // Helper checks if already open and returns immediately if so
+        com.rocinante.util.WidgetInteractionHelpers.openTabAsync(ctx, 
+                com.rocinante.util.WidgetInteractionHelpers.TAB_SPELLBOOK, forceClick)
                 .thenRun(() -> {
                     clickPending = false;
                     waitTicks = 0;
+                    phase = TravelPhase.CLICK_TELEPORT;
                 })
-                .exceptionally(e -> {
-                    clickPending = false;
-                    log.error("Failed to open spellbook", e);
-                    return null;
-                });
+                .exceptionally(e -> { clickPending = false; log.error("Failed to open spellbook", e); return null; });
     }
 
     // ========================================================================
@@ -1475,29 +1487,20 @@ public class TravelTask extends AbstractTask {
     // ========================================================================
 
     private void executeOpenEquipment(TaskContext ctx) {
-        Client client = ctx.getClient();
-        Widget equipment = client.getWidget(EQUIPMENT_GROUP, 0);
+        if (clickPending) return;
 
-        if (equipment != null && !equipment.isHidden()) {
-            log.debug("Equipment tab is open");
-            phase = TravelPhase.CLICK_TELEPORT;
-            return;
-        }
-
-        // Open equipment using F5 (or click)
-        log.debug("Opening equipment tab");
+        log.debug("Opening equipment tab (forceClick={})", forceClick);
         clickPending = true;
 
-        ctx.getKeyboardController().pressKey(java.awt.event.KeyEvent.VK_F5)
+        // Helper checks if already open and returns immediately if so
+        com.rocinante.util.WidgetInteractionHelpers.openTabAsync(ctx, 
+                com.rocinante.util.WidgetInteractionHelpers.TAB_EQUIPMENT, forceClick)
                 .thenRun(() -> {
                     clickPending = false;
                     waitTicks = 0;
+                    phase = TravelPhase.CLICK_TELEPORT;
                 })
-                .exceptionally(e -> {
-                    clickPending = false;
-                    log.error("Failed to open equipment", e);
-                    return null;
-                });
+                .exceptionally(e -> { clickPending = false; log.error("Failed to open equipment", e); return null; });
     }
 
     // ========================================================================
@@ -1505,29 +1508,20 @@ public class TravelTask extends AbstractTask {
     // ========================================================================
 
     private void executeOpenInventory(TaskContext ctx) {
-        Client client = ctx.getClient();
-        Widget inventory = client.getWidget(INVENTORY_GROUP, 0);
+        if (clickPending) return;
 
-        if (inventory != null && !inventory.isHidden()) {
-            log.debug("Inventory is open");
-            phase = TravelPhase.CLICK_TELEPORT;
-            return;
-        }
-
-        // Open inventory using F4 (or click)
-        log.debug("Opening inventory");
+        log.debug("Opening inventory (forceClick={})", forceClick);
         clickPending = true;
 
-        ctx.getKeyboardController().pressKey(java.awt.event.KeyEvent.VK_F4)
+        // Helper checks if already open and returns immediately if so
+        com.rocinante.util.WidgetInteractionHelpers.openTabAsync(ctx, 
+                com.rocinante.util.WidgetInteractionHelpers.TAB_INVENTORY, forceClick)
                 .thenRun(() -> {
                     clickPending = false;
                     waitTicks = 0;
+                    phase = TravelPhase.CLICK_TELEPORT;
                 })
-                .exceptionally(e -> {
-                    clickPending = false;
-                    log.error("Failed to open inventory", e);
-                    return null;
-                });
+                .exceptionally(e -> { clickPending = false; log.error("Failed to open inventory", e); return null; });
     }
 
     // ========================================================================

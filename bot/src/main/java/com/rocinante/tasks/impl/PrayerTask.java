@@ -353,21 +353,13 @@ public class PrayerTask extends AbstractTask {
             return;
         }
 
-        Client client = ctx.getClient();
+        if (actionPending) return;
 
-        // Check if prayer tab is already open
-        Widget prayerTab = client.getWidget(PRAYERBOOK_GROUP_ID, 0);
-        if (prayerTab != null && !prayerTab.isHidden()) {
-            log.debug("Prayer tab already open");
-            phase = Phase.EXECUTE_OPERATION;
-            waitTicks = 0;
-            return;
-        }
-
-        // Press F5 to open prayer tab
-        log.debug("Opening prayer tab via F5");
+        // Open prayer tab - helper checks if already open and returns immediately if so
+        log.debug("Opening prayer tab");
         actionPending = true;
-        ctx.getKeyboardController().pressKey(KeyEvent.VK_F5)
+        com.rocinante.util.WidgetInteractionHelpers.openTabAsync(ctx, 
+                com.rocinante.util.WidgetInteractionHelpers.TAB_PRAYER, null)
                 .thenRun(() -> {
                     actionPending = false;
                     phase = Phase.EXECUTE_OPERATION;

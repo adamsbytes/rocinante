@@ -764,11 +764,12 @@ public class CombatTask extends AbstractTask {
         // Check if spellbook tab is visible
         Widget spellbookWidget = client.getWidget(WIDGET_SPELLBOOK, 0);
         if (spellbookWidget == null || spellbookWidget.isHidden()) {
-            // Open spellbook tab using F6 key
+            // Open spellbook tab using helper (handles already-open check internally)
             log.debug("Opening spellbook tab to cast {}", spell.getSpellName());
             clickPending = true;
             
-            ctx.getKeyboardController().pressKey(java.awt.event.KeyEvent.VK_F6)
+            com.rocinante.util.WidgetInteractionHelpers.openTabAsync(ctx, 
+                    com.rocinante.util.WidgetInteractionHelpers.TAB_SPELLBOOK, null)
                     .thenRun(() -> {
                         clickPending = false;
                         phaseWaitTicks = 0;

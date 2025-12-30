@@ -5,8 +5,8 @@
     {
       "name": "Aberrant spectres",
       "slayerLevel": 60,
-      "npcIds": [2, 3, 7801, 7802],
-      "superiorNpcIds": [7402],
+      "npcIds": [2, 3, 4, 5, 6, 7, 7279],
+      "superiorNpcIds": [7402, 7403],
       "superiorName": "Abhorrent spectre",
       "hasSuperior": true,
       "requiredEquipment": [4168, 11864, 21888],
@@ -45,7 +45,7 @@
     {
       "name": "Abyssal demons",
       "slayerLevel": 85,
-      "npcIds": [415, 7241],
+      "npcIds": [415, 416, 7241, 11239, 14174, 14175],
       "superiorNpcIds": [7410],
       "superiorName": "Greater abyssal demon",
       "hasSuperior": true,
@@ -82,7 +82,7 @@
     {
       "name": "Ankou",
       "slayerLevel": 1,
-      "npcIds": [2514, 2515, 2516, 2517, 2518, 2519],
+      "npcIds": [2514, 2515, 2516, 2517, 2518, 2519, 6608, 7257, 7864],
       "hasSuperior": false,
       "weakness": "crush",
       "attackStyles": ["melee"],
@@ -117,8 +117,8 @@
     {
       "name": "Banshees",
       "slayerLevel": 15,
-      "npcIds": [414],
-      "superiorNpcIds": [7391],
+      "npcIds": [414, 7272],
+      "superiorNpcIds": [7390, 7391],
       "superiorName": "Screaming banshee",
       "hasSuperior": true,
       "requiredEquipment": [4166, 11864, 21888],
@@ -145,8 +145,8 @@
     {
       "name": "Basilisks",
       "slayerLevel": 40,
-      "npcIds": [417, 9283, 9284, 9285, 9286],
-      "superiorNpcIds": [9292],
+      "npcIds": [417, 418, 9282, 9283, 9284, 9285, 9286],
+      "superiorNpcIds": [7395, 9287, 9288],
       "superiorName": "Monstrous basilisk",
       "hasSuperior": true,
       "requiredEquipment": [4156, 11864, 21888],
@@ -187,7 +187,7 @@
     {
       "name": "Black demons",
       "slayerLevel": 1,
-      "npcIds": [240, 241, 7874, 7875, 7876],
+      "npcIds": [240, 1432, 2048, 2049, 2050, 2051, 2052, 7242, 7243, 7874, 7875, 7876],
       "superiorNpcIds": [7411],
       "superiorName": "Greater black demon",
       "hasSuperior": true,
@@ -225,7 +225,7 @@
     {
       "name": "Black dragons",
       "slayerLevel": 1,
-      "npcIds": [252, 253, 254, 7862, 7863],
+      "npcIds": [252, 253, 254, 255, 256, 257, 258, 259, 7861, 7862, 7863, 8084, 8085],
       "hasSuperior": false,
       "weakness": "ranged",
       "attackStyles": ["melee", "magic"],
@@ -262,8 +262,8 @@
     {
       "name": "Bloodveld",
       "slayerLevel": 50,
-      "npcIds": [484, 485, 7276, 7277],
-      "superiorNpcIds": [7397],
+      "npcIds": [484, 485, 486, 487, 7276, 9610, 9611],
+      "superiorNpcIds": [7397, 7398],
       "superiorName": "Insatiable Bloodveld",
       "hasSuperior": true,
       "weakness": "slash",
@@ -350,7 +350,7 @@
     {
       "name": "Cave horrors",
       "slayerLevel": 58,
-      "npcIds": [1047, 1048, 1049],
+      "npcIds": [1047, 1048, 1049, 1050, 1051],
       "superiorNpcIds": [7401],
       "superiorName": "Cave abomination",
       "hasSuperior": true,
@@ -380,7 +380,7 @@
     {
       "name": "Cockatrice",
       "slayerLevel": 25,
-      "npcIds": [419],
+      "npcIds": [419, 420],
       "superiorNpcIds": [7393],
       "superiorName": "Cockathrice",
       "hasSuperior": true,
@@ -408,7 +408,7 @@
     {
       "name": "Dagannoth",
       "slayerLevel": 1,
-      "npcIds": [970, 971, 972, 973, 974, 2881, 2882, 2883],
+      "npcIds": [140, 970, 971, 972, 973, 974, 975, 976, 977, 978, 979, 2259, 3185, 5942, 5943, 7259, 7260],
       "hasSuperior": false,
       "weakness": "melee",
       "attackStyles": ["melee", "ranged"],
@@ -444,7 +444,7 @@
     {
       "name": "Dark beasts",
       "slayerLevel": 90,
-      "npcIds": [4005, 7250, 7251],
+      "npcIds": [4005, 7250],
       "superiorNpcIds": [7409],
       "superiorName": "Night beast",
       "hasSuperior": true,
@@ -521,9 +521,37 @@
       ]
     },
     {
+      "name": "Drakes",
+      "slayerLevel": 84,
+      "npcIds": [8612, 8613],
+      "superiorNpcIds": [10400, 10401],
+      "superiorName": "Guardian Drake",
+      "hasSuperior": true,
+      "requiredEquipment": [21643, 23037, 22951],
+      "weakness": "stab",
+      "attackStyles": ["melee", "ranged"],
+      "canPoison": false,
+      "baseSlayerXp": 205,
+      "taskWeight": 8,
+      "notes": "Requires boots of stone, granite boots, or brimstone boots to traverse Karuulm dungeon heated areas. Volcanic projectile attack leaves lingering flames - move to avoid.",
+      "locations": [
+        {
+          "name": "Karuulm Slayer Dungeon",
+          "center": {"x": 1302, "y": 10189, "plane": 0},
+          "radius": 25,
+          "nearestBank": "mount_karuulm_bank",
+          "nearestTeleport": "xeric_inferno",
+          "multiCombat": false,
+          "hcimSafetyRating": 6,
+          "monsterDensity": 8,
+          "konarRegion": "Karuulm Slayer Dungeon"
+        }
+      ]
+    },
+    {
       "name": "Fire giants",
       "slayerLevel": 1,
-      "npcIds": [2075, 2076, 2077, 2078, 2079, 2080],
+      "npcIds": [2075, 2076, 2077, 2078, 2079, 2080, 2081, 2082, 2083, 2084, 7251, 7252],
       "hasSuperior": false,
       "weakness": "slash",
       "attackStyles": ["melee"],
@@ -598,10 +626,8 @@
     {
       "name": "Greater demons",
       "slayerLevel": 1,
-      "npcIds": [2025, 2026, 2027, 2028],
-      "superiorNpcIds": [7412],
-      "superiorName": "Greater hellhound",
-      "hasSuperior": true,
+      "npcIds": [2025, 2026, 2027, 2028, 2029, 2030, 2031, 2032, 7244, 7245, 7246, 7871, 7872, 7873],
+      "hasSuperior": false,
       "weakness": "ranged",
       "attackStyles": ["melee"],
       "canPoison": false,
@@ -635,10 +661,8 @@
     {
       "name": "Hellhounds",
       "slayerLevel": 1,
-      "npcIds": [104, 135, 3133],
-      "superiorNpcIds": [7398],
-      "superiorName": "Greater hellhound",
-      "hasSuperior": true,
+      "npcIds": [104, 105, 135, 3133, 7256, 7877],
+      "hasSuperior": false,
       "weakness": "slash",
       "attackStyles": ["melee"],
       "canPoison": false,
@@ -671,9 +695,37 @@
       ]
     },
     {
+      "name": "Hydras",
+      "slayerLevel": 95,
+      "npcIds": [8609],
+      "superiorNpcIds": [10402],
+      "superiorName": "Colossal Hydra",
+      "hasSuperior": true,
+      "requiredEquipment": [21643, 23037, 22951],
+      "weakness": "stab",
+      "attackStyles": ["magic", "ranged"],
+      "canPoison": true,
+      "baseSlayerXp": 260,
+      "taskWeight": 10,
+      "notes": "Requires boots of stone, granite boots, or brimstone boots to traverse Karuulm dungeon heated areas. Can be poisoned. Alchemical Hydra boss is separate and not assigned as regular task.",
+      "locations": [
+        {
+          "name": "Karuulm Slayer Dungeon (Lower Level)",
+          "center": {"x": 1313, "y": 10246, "plane": 0},
+          "radius": 20,
+          "nearestBank": "mount_karuulm_bank",
+          "nearestTeleport": "xeric_inferno",
+          "multiCombat": false,
+          "hcimSafetyRating": 5,
+          "monsterDensity": 6,
+          "konarRegion": "Karuulm Slayer Dungeon"
+        }
+      ]
+    },
+    {
       "name": "Kalphite",
       "slayerLevel": 1,
-      "npcIds": [955, 956, 957, 958, 959],
+      "npcIds": [955, 956, 957, 958, 959, 960, 961, 962, 966],
       "hasSuperior": false,
       "weakness": "ranged",
       "attackStyles": ["melee"],
@@ -709,7 +761,7 @@
     {
       "name": "Kurask",
       "slayerLevel": 70,
-      "npcIds": [410, 411, 7799],
+      "npcIds": [410, 411, 14172, 14173],
       "superiorNpcIds": [7405],
       "superiorName": "King kurask",
       "hasSuperior": true,
@@ -739,7 +791,7 @@
     {
       "name": "Nechryael",
       "slayerLevel": 80,
-      "npcIds": [8, 7278, 7279],
+      "npcIds": [8, 11, 7278, 11240],
       "superiorNpcIds": [7411],
       "superiorName": "Nechryarch",
       "hasSuperior": true,
@@ -776,7 +828,7 @@
     {
       "name": "Rockslugs",
       "slayerLevel": 20,
-      "npcIds": [421],
+      "npcIds": [421, 422],
       "superiorNpcIds": [7392],
       "superiorName": "Giant rockslug",
       "hasSuperior": true,
@@ -817,7 +869,7 @@
     {
       "name": "Smoke devils",
       "slayerLevel": 93,
-      "npcIds": [498, 499, 8482, 8483],
+      "npcIds": [498, 8482, 8483],
       "superiorNpcIds": [7406],
       "superiorName": "Nuclear smoke devil",
       "hasSuperior": true,
@@ -845,7 +897,7 @@
     {
       "name": "Trolls",
       "slayerLevel": 1,
-      "npcIds": [937, 938, 939, 940, 941, 1095],
+      "npcIds": [133, 931, 932, 933, 934, 935, 936, 937, 938, 939, 940, 941],
       "hasSuperior": false,
       "weakness": "crush",
       "attackStyles": ["melee", "ranged"],
@@ -880,8 +932,8 @@
     {
       "name": "Turoth",
       "slayerLevel": 55,
-      "npcIds": [426, 427, 428, 429, 430, 431],
-      "superiorNpcIds": [7400],
+      "npcIds": [426, 427, 428, 429, 430, 431, 432],
+      "superiorNpcIds": [10397],
       "superiorName": "Spiked Turoth",
       "hasSuperior": true,
       "validWeapons": [4158, 4718, 20727, 22971],
@@ -911,7 +963,7 @@
       "name": "Wyrms",
       "slayerLevel": 62,
       "npcIds": [8610, 8611],
-      "superiorNpcIds": [8612],
+      "superiorNpcIds": [10398, 10399],
       "superiorName": "Shadow Wyrm",
       "hasSuperior": true,
       "weakness": "magic",

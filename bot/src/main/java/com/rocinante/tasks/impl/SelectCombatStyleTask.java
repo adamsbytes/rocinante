@@ -119,9 +119,10 @@ public class SelectCombatStyleTask extends AbstractTask {
 
         switch (phase) {
             case OPENING_TAB -> {
-                // Press F1 to open combat tab
-                log.debug("Opening combat tab with F1");
-                ctx.getKeyboardController().pressKey(KeyEvent.VK_F1);
+                // Open combat tab using shared helper (handles already-open check internally)
+                log.debug("Opening combat tab");
+                com.rocinante.util.WidgetInteractionHelpers.openTabAsync(ctx, 
+                        com.rocinante.util.WidgetInteractionHelpers.TAB_COMBAT, null);
                 phase = ExecutionPhase.CLICKING_STYLE;
                 ticksInPhase = 0;
             }

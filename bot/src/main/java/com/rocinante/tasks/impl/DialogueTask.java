@@ -720,7 +720,8 @@ public class DialogueTask extends AbstractTask {
                 || isWidgetVisible(client, WIDGET_PLAYER_DIALOGUE)
                 || isWidgetVisible(client, WIDGET_CONTINUE)
                 || isWidgetVisible(client, WIDGET_DIALOGUE_GENERIC)
-                || isWidgetVisible(client, WIDGET_SPRITE_DIALOGUE);
+                || isWidgetVisible(client, WIDGET_SPRITE_DIALOGUE)
+                || isWidgetVisible(client, WIDGET_LEVEL_UP);
     }
 
     private String getDialogueText(Client client) {

@@ -161,7 +161,7 @@
 **Goal**: Full support for skills with unique mechanics beyond basic gather/process patterns.
 
 **9A: Runecraft System**
-- [ ] `RunecraftTask` - Altar running with essence management
+- [ ] `RunecraftSkillTask` - Altar running with essence management
 - [ ] `PouchManager` - Fill/empty rune pouches, track degradation
 - [ ] `EssenceCraftTask` - Click altar, handle instant rune creation
 - [ ] `RunecraftingRoute` - Data model for bank-altar routes (Abyss, ZMI, standard)
@@ -169,7 +169,7 @@
 - [ ] `data/runecraft_routes.json` - Route definitions
 
 **9B: Hunter System**
-- [ ] `HunterTask` - Multi-trap management orchestration
+- [ ] `HunterSkillTask` - Hunter training
 - [ ] `TrapPlacementStrategy` - Optimal tile selection for spawns
 - [ ] `TrapStateTracker` - Monitor trap status (success/fallen/empty)
 - [ ] `TrapType` enum - Bird snares, box traps, deadfalls, net traps
@@ -179,6 +179,7 @@
 - [ ] `data/hunter_areas.json` - Trap locations and spawn tiles
 
 **9C: Farming System**
+- [ ] `FarmingSkillTask` - Farming training
 - [ ] `FarmRunTask` - Visit patches in optimal routing order
 - [ ] `PatchState` detection - Empty, planted, growing, diseased, harvestable
 - [ ] `FarmingAction` - Rake, plant, compost, harvest
@@ -198,25 +199,25 @@
 - [ ] `data/construction_furniture.json` - Buildable furniture definitions
 
 **9E: Thieving System**
-- [ ] `ThievingTask` - Pickpocket/stall-based training
-- [ ] `StunHandler` - Detect stun state, wait for recovery
-- [ ] HP monitoring with food consumption during thieving
-- [ ] `DodgyNecklaceTracker` - Track charges, auto-equip replacements
-- [ ] `PickpocketTarget` - NPC selection and cycling
-- [ ] `StallThievingTask` - Different mechanics than pickpocketing, include a specific `Ardy Cake Stall Safespot` training method for low level food gathering/decent XP
-- [ ] Ardy knight splashing setup support
+- [X] `ThievingSkillTask` - Pickpocket/stall-based training
+- [X] `StunHandler` - Detect stun state, wait for recovery
+- [X] HP monitoring with food consumption during thieving
+- [X] `DodgyNecklaceTracker` - Track charges, auto-equip replacements
+- [X] `PickpocketTarget` - NPC selection and cycling
+- [X] `StallThievingTask` - Different mechanics than pickpocketing, include a specific `Ardy Cake Stall Safespot` training method for low level food gathering/decent XP
+- [X] Ardy knight splashing setup support
 
 **9F: Firemaking System**
-- [X] `FiremakingTask` - Line-based log burning
+- [X] `FiremakingSkillTask` - Line-based log burning
 - [X] Starting position selection with obstacle awareness
 - [X] Line completion detection and repositioning
 
 **9G: Spell-Based Training**
-- [ ] `MagicTrainingTask` - Spell casting for XP
+- [ ] `MagicSkillTask` - Spell casting for XP
 - [ ] `AlchTask` - High/low alchemy automation
 - [ ] `EnchantTask` - Jewelry/bolt enchanting
 - [ ] `SplashingTask` - Auto-combat with -65 magic bonus setup
-- [ ] `AltarOfferTask` - Prayer training method
+- [X] `AltarOfferTask` - Prayer training method
 
 **9H: Minigame-Based Training**
 - [X] `ArceusLibraryTask` - Magic and Runecrafting options

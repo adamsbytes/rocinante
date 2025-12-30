@@ -177,6 +177,81 @@ public final class ObjectCollections {
             ObjectID.WILLOW_TREE_8488
     ));
 
+    /**
+     * Maple tree objects.
+     */
+    public static final List<Integer> MAPLE_TREES = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.MAPLE_TREE,
+            ObjectID.MAPLE_TREE_4674,
+            ObjectID.MAPLE_TREE_5126,
+            ObjectID.MAPLE_TREE_8435,
+            ObjectID.MAPLE_TREE_8436,
+            ObjectID.MAPLE_TREE_8437,
+            ObjectID.MAPLE_TREE_8438,
+            ObjectID.MAPLE_TREE_8439,
+            ObjectID.MAPLE_TREE_8440,
+            ObjectID.MAPLE_TREE_8441,
+            ObjectID.MAPLE_TREE_8442,
+            ObjectID.MAPLE_TREE_8443,
+            ObjectID.MAPLE_TREE_8444,
+            ObjectID.MAPLE_TREE_10832,
+            ObjectID.MAPLE_TREE_36681,
+            ObjectID.MAPLE_TREE_36682
+    ));
+
+    /**
+     * Yew tree objects.
+     */
+    public static final List<Integer> YEW_TREES = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.YEW_TREE,
+            ObjectID.YEW_TREE_5121,
+            ObjectID.YEW_TREE_8503,
+            ObjectID.YEW_TREE_8504,
+            ObjectID.YEW_TREE_8505,
+            ObjectID.YEW_TREE_8506,
+            ObjectID.YEW_TREE_8507,
+            ObjectID.YEW_TREE_8508,
+            ObjectID.YEW_TREE_8509,
+            ObjectID.YEW_TREE_8510,
+            ObjectID.YEW_TREE_8511,
+            ObjectID.YEW_TREE_8512,
+            ObjectID.YEW_TREE_8513,
+            ObjectID.YEW_TREE_10822,
+            ObjectID.YEW_TREE_36683,
+            ObjectID.YEW_TREE_42391,
+            ObjectID.YEW_TREE_42427
+    ));
+
+    /**
+     * Magic tree objects.
+     */
+    public static final List<Integer> MAGIC_TREES = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.MAGIC_TREE,
+            ObjectID.MAGIC_TREE_5127,
+            ObjectID.MAGIC_TREE_8396,
+            ObjectID.MAGIC_TREE_8397,
+            ObjectID.MAGIC_TREE_8398,
+            ObjectID.MAGIC_TREE_8399,
+            ObjectID.MAGIC_TREE_8400,
+            ObjectID.MAGIC_TREE_8401,
+            ObjectID.MAGIC_TREE_8402,
+            ObjectID.MAGIC_TREE_8403,
+            ObjectID.MAGIC_TREE_8404,
+            ObjectID.MAGIC_TREE_8405,
+            ObjectID.MAGIC_TREE_10834,
+            ObjectID.MAGIC_TREE_36685
+    ));
+
+    /**
+     * Redwood tree objects.
+     */
+    public static final List<Integer> REDWOOD_TREES = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.REDWOOD_TREE,
+            ObjectID.REDWOOD_TREE_29669,
+            ObjectID.REDWOOD_TREE_29670,
+            ObjectID.REDWOOD_TREE_29671
+    ));
+
     // ========================================================================
     // Rocks (for mining)
     // ========================================================================
@@ -209,6 +284,61 @@ public final class ObjectCollections {
             ObjectID.IRON_ROCKS_11365,
             ObjectID.IRON_ROCKS_36203,
             ObjectID.IRON_ROCKS_42833
+    ));
+
+    /**
+     * Coal rock objects.
+     */
+    public static final List<Integer> COAL_ROCKS = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.COAL_ROCKS,
+            ObjectID.COAL_ROCKS_11366,
+            ObjectID.COAL_ROCKS_11367,
+            ObjectID.COAL_ROCKS_36204
+    ));
+
+    /**
+     * Silver rock objects.
+     */
+    public static final List<Integer> SILVER_ROCKS = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.SILVER_ROCKS,
+            ObjectID.SILVER_ROCKS_11369,
+            ObjectID.SILVER_ROCKS_36205
+    ));
+
+    /**
+     * Gold rock objects.
+     */
+    public static final List<Integer> GOLD_ROCKS = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.GOLD_ROCKS,
+            ObjectID.GOLD_ROCKS_11371,
+            ObjectID.GOLD_ROCKS_36206
+    ));
+
+    /**
+     * Mithril rock objects.
+     */
+    public static final List<Integer> MITHRIL_ROCKS = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.MITHRIL_ROCKS,
+            ObjectID.MITHRIL_ROCKS_11373,
+            ObjectID.MITHRIL_ROCKS_36207
+    ));
+
+    /**
+     * Adamantite rock objects.
+     */
+    public static final List<Integer> ADAMANTITE_ROCKS = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.ADAMANTITE_ROCKS,
+            ObjectID.ADAMANTITE_ROCKS_11375,
+            ObjectID.ADAMANTITE_ROCKS_36208
+    ));
+
+    /**
+     * Runite rock objects.
+     */
+    public static final List<Integer> RUNITE_ROCKS = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.RUNITE_ROCKS,
+            ObjectID.RUNITE_ROCKS_11377,
+            ObjectID.RUNITE_ROCKS_36209
     ));
 
     // ========================================================================
@@ -536,4 +666,302 @@ public final class ObjectCollections {
     public static boolean requiresPreciseClick(int objectId) {
         return PRECISE_CLICK_OBJECTS.contains(objectId);
     }
+
+    // ========================================================================
+    // Altars (for prayer)
+    // ========================================================================
+
+    /**
+     * Altar objects for restoring prayer.
+     */
+    public static final List<Integer> ALTARS = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.ALTAR,
+            ObjectID.ALTAR_2640,
+            ObjectID.ALTAR_4008,
+            ObjectID.ALTAR_6552,
+            ObjectID.ALTAR_7814,
+            ObjectID.ALTAR_8749,
+            ObjectID.ALTAR_10639,
+            ObjectID.ALTAR_10640,
+            ObjectID.ALTAR_13179,
+            ObjectID.ALTAR_13180,
+            ObjectID.ALTAR_13181,
+            ObjectID.ALTAR_13182,
+            ObjectID.ALTAR_13183,
+            ObjectID.ALTAR_13184,
+            ObjectID.ALTAR_13185,
+            ObjectID.ALTAR_13186,
+            ObjectID.ALTAR_13187,
+            ObjectID.ALTAR_13188,
+            ObjectID.ALTAR_13189,
+            ObjectID.ALTAR_13190,
+            ObjectID.ALTAR_13191,
+            ObjectID.ALTAR_13192
+    ));
+
+    // ========================================================================
+    // Spinning Wheels (for crafting)
+    // ========================================================================
+
+    /**
+     * Spinning wheel objects for crafting.
+     */
+    public static final List<Integer> SPINNING_WHEELS = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.SPINNING_WHEEL,
+            ObjectID.SPINNING_WHEEL_8748,
+            ObjectID.SPINNING_WHEEL_14889,
+            ObjectID.SPINNING_WHEEL_20365,
+            ObjectID.SPINNING_WHEEL_21304,
+            ObjectID.SPINNING_WHEEL_25824,
+            ObjectID.SPINNING_WHEEL_26143,
+            ObjectID.SPINNING_WHEEL_30934,
+            ObjectID.SPINNING_WHEEL_40735,
+            ObjectID.SPINNING_WHEEL_55330,
+            ObjectID.SPINNING_WHEEL_56964,
+            ObjectID.SPINNING_WHEEL_58649
+    ));
+
+    // ========================================================================
+    // Water Sources
+    // ========================================================================
+
+    /**
+     * Water source objects (wells, fountains) for filling containers.
+     */
+    public static final List<Integer> WATER_SOURCES = Collections.unmodifiableList(Arrays.asList(
+            // Fountains
+            ObjectID.FOUNTAIN,
+            ObjectID.FOUNTAIN_879,
+            ObjectID.FOUNTAIN_880,
+            ObjectID.FOUNTAIN_2864,
+            ObjectID.FOUNTAIN_3641,
+            ObjectID.FOUNTAIN_5125,
+            ObjectID.FOUNTAIN_6232,
+            ObjectID.FOUNTAIN_7143,
+            ObjectID.FOUNTAIN_10436,
+            ObjectID.SMALL_FOUNTAIN,
+            ObjectID.LARGE_FOUNTAIN,
+            ObjectID.ORNAMENTAL_FOUNTAIN,
+            // Wells
+            ObjectID.WELL,
+            ObjectID.WELL_884,
+            ObjectID.WELL_3264,
+            ObjectID.WELL_3305,
+            ObjectID.WELL_3359,
+            ObjectID.WELL_3485,
+            ObjectID.WELL_3646,
+            ObjectID.WELL_4004,
+            ObjectID.WELL_4005,
+            ObjectID.WELL_6097,
+            ObjectID.WELL_6249,
+            ObjectID.WELL_6549,
+            ObjectID.WELL_8747,
+            ObjectID.WELL_8927
+    ));
+
+    // ========================================================================
+    // Thieving Stalls
+    // ========================================================================
+
+    /**
+     * Bakery stall objects (level 5 Thieving).
+     * 16 XP per steal. Gives cake, bread, or chocolate slice.
+     * 2.5 second respawn time.
+     */
+    public static final List<Integer> BAKERY_STALLS = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.BAKERY_STALL,
+            ObjectID.BAKERY_STALL_6163,
+            ObjectID.BAKERY_STALL_6569,
+            ObjectID.BAKERS_STALL,
+            ObjectID.BAKERS_STALL_11730
+    ));
+
+    /**
+     * Silk stall objects (level 20 Thieving).
+     * 24 XP per steal. Gives silk.
+     * 5 second respawn time.
+     */
+    public static final List<Integer> SILK_STALLS = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.SILK_STALL,
+            ObjectID.SILK_STALL_6568,
+            ObjectID.SILK_STALL_11729
+    ));
+
+    /**
+     * Fur stall objects (level 35 Thieving).
+     * 36 XP per steal. Gives grey wolf fur.
+     * 10 second respawn time.
+     */
+    public static final List<Integer> FUR_STALLS = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.FUR_STALL,
+            ObjectID.FUR_STALL_4278,
+            ObjectID.FUR_STALL_6571,
+            ObjectID.FUR_STALL_11732
+    ));
+
+    /**
+     * Silver stall objects (level 50 Thieving).
+     * 54 XP per steal. Gives silver ore.
+     * 30 second respawn time.
+     */
+    public static final List<Integer> SILVER_STALLS = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.SILVER_STALL,
+            ObjectID.SILVER_STALL_6164
+    ));
+
+    /**
+     * Spice stall objects (level 65 Thieving).
+     * 81 XP per steal. Gives spice.
+     * 80 second respawn time.
+     */
+    public static final List<Integer> SPICE_STALLS = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.SPICE_STALL,
+            ObjectID.SPICE_STALL_6572,
+            ObjectID.SPICE_STALL_11733
+    ));
+
+    /**
+     * Gem stall objects (level 75 Thieving).
+     * 160 XP per steal. Gives sapphire, emerald, ruby, or diamond.
+     * 180 second respawn time.
+     */
+    public static final List<Integer> GEM_STALLS = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.GEM_STALL,
+            ObjectID.GEM_STALL_6162,
+            ObjectID.GEM_STALL_6570,
+            ObjectID.GEM_STALL_11731
+    ));
+
+    /**
+     * Tea stall objects (level 5 Thieving).
+     * 16 XP per steal. Gives cup of tea.
+     * 7 second respawn time.
+     */
+    public static final List<Integer> TEA_STALLS = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.TEA_STALL,
+            ObjectID.TEA_STALL_6574
+    ));
+
+    /**
+     * Fish stall objects (level 42 Thieving, Piscarilius only).
+     * 42 XP per steal. Gives raw fish.
+     */
+    public static final List<Integer> FISH_STALLS = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.FISH_STALL,
+            ObjectID.FISH_STALL_4705,
+            ObjectID.FISH_STALL_4707
+    ));
+
+    /**
+     * Fruit stall objects in Hosidius (level 25 Thieving).
+     * 28.5 XP per steal. Gives various fruits.
+     * 2.5 second respawn time.
+     */
+    public static final List<Integer> FRUIT_STALLS = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.FRUIT_STALL,
+            ObjectID.FRUIT_STALL_28823
+    ));
+
+    /**
+     * Seed stall objects in Draynor Village (level 27 Thieving).
+     * 10 XP per steal. Gives various seeds.
+     */
+    public static final List<Integer> SEED_STALLS = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.SEED_STALL,
+            ObjectID.SEED_STALL_7053
+    ));
+
+    /**
+     * Vegetable stall objects (level 2 Thieving).
+     * 10 XP per steal. Gives various vegetables.
+     */
+    public static final List<Integer> VEG_STALLS = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.VEG_STALL,
+            ObjectID.VEG_STALL_4708,
+            ObjectID.VEGETABLE_STALL
+    ));
+
+    /**
+     * Crafting stall objects in Ape Atoll/Keldagrim (level 5 Thieving).
+     * 16 XP per steal.
+     */
+    public static final List<Integer> CRAFTING_STALLS = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.CRAFTING_STALL,
+            ObjectID.CRAFTING_STALL_6166
+    ));
+
+    /**
+     * Food stall objects in Ape Atoll (level 5 Thieving).
+     * 16 XP per steal.
+     */
+    public static final List<Integer> FOOD_STALLS = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.FOOD_STALL
+    ));
+
+    /**
+     * Magic stall objects in Ape Atoll (level 65 Thieving).
+     * 100 XP per steal.
+     */
+    public static final List<Integer> MAGIC_STALLS = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.MAGIC_STALL
+    ));
+
+    /**
+     * Scimitar stall objects in Ape Atoll (level 65 Thieving).
+     * 100 XP per steal.
+     */
+    public static final List<Integer> SCIMITAR_STALLS = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.SCIMITAR_STALL
+    ));
+
+    /**
+     * Herb stall objects in Kourend (level 25 Thieving).
+     * 10 XP per steal. Gives grimy herbs.
+     */
+    public static final List<Integer> HERB_STALLS = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.HERB_STALL
+    ));
+
+    // ========================================================================
+    // Prayer Altars (for bone offering)
+    // ========================================================================
+
+    /**
+     * Chaos Temple altar in the Wilderness (level 38 Wilderness).
+     * 50% chance to NOT consume the bone when offering.
+     * Special handling required for the bone save mechanic.
+     */
+    public static final List<Integer> CHAOS_ALTARS = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.CHAOS_ALTAR
+    ));
+
+    /**
+     * POH altar objects in player-owned houses.
+     * Requires 2 lit burners for maximum 350% XP bonus.
+     * Note: Only includes altars with verified RuneLite constants.
+     */
+    public static final List<Integer> POH_GILDED_ALTARS = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.ALTAR_13197,
+            ObjectID.ALTAR_13198,
+            ObjectID.ALTAR_13199
+    ));
+
+    /**
+     * Ectofuntus for prayer training (requires ghost speak amulet).
+     * Requires grinding bones and collecting slime.
+     */
+    public static final List<Integer> ECTOFUNTUS = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.ECTOFUNTUS
+    ));
+
+    /**
+     * All altars suitable for offering bones (excludes regular prayer restore altars).
+     * Includes POH altars and Chaos Altar.
+     */
+    public static final List<Integer> BONE_OFFERING_ALTARS = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.ALTAR_13199,
+            ObjectID.ALTAR_13198,
+            ObjectID.ALTAR_13197,
+            ObjectID.CHAOS_ALTAR
+    ));
 }

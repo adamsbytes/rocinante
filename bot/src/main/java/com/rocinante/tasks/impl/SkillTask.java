@@ -13,6 +13,17 @@ import com.rocinante.tasks.AbstractTask;
 import com.rocinante.tasks.Task;
 import com.rocinante.tasks.TaskContext;
 import com.rocinante.tasks.TaskState;
+import com.rocinante.tasks.impl.minigame.library.ArceuusLibraryConfig;
+import com.rocinante.tasks.impl.minigame.library.ArceuusLibraryTask;
+import com.rocinante.tasks.impl.minigame.wintertodt.WintertodtConfig;
+import com.rocinante.tasks.impl.minigame.wintertodt.WintertodtStrategy;
+import com.rocinante.tasks.impl.minigame.wintertodt.WintertodtTask;
+import com.rocinante.tasks.impl.skills.agility.AgilityCourseConfig;
+import com.rocinante.tasks.impl.skills.agility.AgilityCourseTask;
+import com.rocinante.tasks.impl.skills.firemaking.FiremakingConfig;
+import com.rocinante.tasks.impl.skills.firemaking.FiremakingSkillTask;
+import com.rocinante.tasks.impl.skills.prayer.PrayerSkillTask;
+import com.rocinante.tasks.impl.skills.thieving.ThievingSkillTask;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -426,181 +437,272 @@ public class SkillTask extends AbstractTask {
     private void startTrainingInteraction(TaskContext ctx) {
         TrainingMethod method = config.getMethod();
 
-        if (method.getMethodType() == MethodType.GATHER) {
-            // Gathering skill - interact with object or NPC
-            if (method.hasTargetObjects()) {
-                // Mining, woodcutting - interact with objects
-                List<Integer> objectIds = method.getTargetObjectIds();
-                String menuAction = method.getMenuAction();
+        switch (method.getMethodType()) {
+            case GATHER:
+                startGatherTraining(ctx, method);
+                break;
 
-                InteractObjectTask interactTask = new InteractObjectTask(
-                        objectIds.get(0), // Primary object ID
-                        menuAction != null ? menuAction : "Mine"
-                );
+            case PROCESS:
+                log.debug("Processing method, switching to process phase");
+                phase = SkillPhase.PROCESS;
+                break;
 
-                // Add alternate object IDs
-                if (objectIds.size() > 1) {
-                    interactTask.withAlternateIds(objectIds.subList(1, objectIds.size()));
-                }
+            case AGILITY:
+                startAgilityTraining(ctx, method);
+                break;
 
-                // Configure success detection
-                if (method.getSuccessAnimationId() > 0) {
-                    interactTask.withSuccessAnimation(method.getSuccessAnimationId());
-                }
+            case FIREMAKING:
+                startFiremakingTraining(ctx, method);
+                break;
 
-                activeSubTask = interactTask;
-                log.debug("Starting interaction with object(s): {}", objectIds);
+            case MINIGAME:
+                startMinigameTraining(ctx, method);
+                break;
 
-            } else if (method.hasTargetNpcs()) {
-                // Fishing - interact with NPCs (fishing spots)
-                List<Integer> npcIds = method.getTargetNpcIds();
-                String menuAction = method.getMenuAction();
+            case PRAYER:
+                startPrayerTraining(ctx, method);
+                break;
 
-                InteractNpcTask interactTask = new InteractNpcTask(
-                        npcIds.get(0),
-                        menuAction != null ? menuAction : "Net"
-                );
+            case THIEVING:
+                startThievingTraining(ctx, method);
+                break;
 
-                // Add alternate NPC IDs
-                if (npcIds.size() > 1) {
-                    interactTask.withAlternateIds(npcIds.subList(1, npcIds.size()));
-                }
-
-                activeSubTask = interactTask;
-                log.debug("Starting interaction with NPC(s): {}", npcIds);
-            }
-
-        } else if (method.getMethodType() == MethodType.PROCESS) {
-            // Processing skill - handled in PROCESS phase
-            log.debug("Processing method, switching to process phase");
-            phase = SkillPhase.PROCESS;
-
-        } else if (method.getMethodType() == MethodType.AGILITY) {
-            // Agility training - delegate to AgilityCourseTask
-            if (!method.isAgilityCourse()) {
-                log.warn("AGILITY method {} doesn't have courseId configured", method.getId());
-                fail("Invalid agility method configuration");
+            default:
+                log.warn("Unsupported method type: {}", method.getMethodType());
+                fail("Unsupported method type: " + method.getMethodType());
                 return;
-            }
-
-            // Get course from repository (via TaskContext if available, otherwise log error)
-            AgilityCourseRepository courseRepo = ctx.getAgilityCourseRepository();
-            if (courseRepo == null) {
-                log.warn("AgilityCourseRepository not available in TaskContext, cannot run agility course");
-                fail("AgilityCourseRepository not available");
-                return;
-            }
-
-            AgilityCourse course = courseRepo.getCourseById(method.getCourseId()).orElse(null);
-            if (course == null) {
-                log.warn("Agility course '{}' not found", method.getCourseId());
-                fail("Agility course not found: " + method.getCourseId());
-                return;
-            }
-
-            // Create AgilityCourseConfig from SkillTaskConfig
-            AgilityCourseConfig courseConfig = AgilityCourseConfig.builder()
-                    .course(course)
-                    .targetLevel(config.getTargetLevel())
-                    .targetXp(config.getTargetXp())
-                    .maxDuration(config.getMaxDuration())
-                    .pickupMarksOfGrace(method.hasWatchedGroundItems()) // If marks are in watchedItems
-                    .build();
-
-            // Delegate to AgilityCourseTask
-            activeSubTask = new AgilityCourseTask(courseConfig)
-                    .withDescription("Train Agility at " + course.getName());
-            log.info("Starting agility training at {}", course.getName());
-
-        } else if (method.getMethodType() == MethodType.FIREMAKING) {
-            // Firemaking training - delegate to FiremakingTask
-            if (!method.isFiremakingMethod()) {
-                log.warn("FIREMAKING method {} doesn't have logItemId configured", method.getId());
-                fail("Invalid firemaking method configuration");
-                return;
-            }
-
-            // Create FiremakingConfig from method and SkillTaskConfig
-            FiremakingConfig fmConfig = FiremakingConfig.builder()
-                    .logItemId(method.getLogItemId())
-                    .targetLevel(config.getTargetLevel())
-                    .targetXp(config.getTargetXp())
-                    .maxDuration(config.getMaxDuration())
-                    .bankForLogs(method.requiresBanking())
-                    .build();
-
-            // Delegate to FiremakingTask
-            activeSubTask = new FiremakingTask(fmConfig)
-                    .withDescription("Train Firemaking with " + method.getName());
-            log.info("Starting firemaking training: {}", method.getName());
-
-        } else if (method.getMethodType() == MethodType.MINIGAME) {
-            // Minigame-based training - delegate to appropriate MinigameTask
-            if (!method.isMinigameMethod()) {
-                log.warn("MINIGAME method {} doesn't have minigameId configured", method.getId());
-                fail("Invalid minigame method configuration");
-                return;
-            }
-
-            String minigameId = method.getMinigameId();
-
-            if ("wintertodt".equalsIgnoreCase(minigameId)) {
-                // Create WintertodtConfig based on method strategy
-                com.rocinante.tasks.minigame.wintertodt.WintertodtConfig.WintertodtConfigBuilder<?, ?> wtBuilder = 
-                        com.rocinante.tasks.minigame.wintertodt.WintertodtConfig.builder()
-                        .targetLevel(config.getTargetLevel())
-                        .targetXp(config.getTargetXp())
-                        .maxDuration(config.getMaxDuration());
-
-                // Set strategy from method
-                String strategyStr = method.getMinigameStrategy();
-                if ("fletch".equalsIgnoreCase(strategyStr)) {
-                    wtBuilder.strategy(com.rocinante.tasks.minigame.wintertodt.WintertodtStrategy.FLETCH);
-                } else {
-                    wtBuilder.strategy(com.rocinante.tasks.minigame.wintertodt.WintertodtStrategy.SIMPLE);
-                }
-
-                com.rocinante.tasks.minigame.wintertodt.WintertodtConfig wtConfig = wtBuilder.build();
-
-                // Delegate to WintertodtTask
-                activeSubTask = new com.rocinante.tasks.minigame.wintertodt.WintertodtTask(wtConfig);
-                log.info("Starting Wintertodt training: {} strategy", strategyStr != null ? strategyStr : "simple");
-
-            } else if ("arceuus_library".equalsIgnoreCase(minigameId)) {
-                // Determine target skill from minigame strategy
-                Skill targetSkill = Skill.MAGIC;
-                String strategyStr = method.getMinigameStrategy();
-                if ("runecraft".equalsIgnoreCase(strategyStr)) {
-                    targetSkill = Skill.RUNECRAFT;
-                }
-
-                // Create ArceuusLibraryConfig
-                com.rocinante.tasks.minigame.library.ArceuusLibraryConfig libraryConfig;
-                if (config.getTargetLevel() > 0) {
-                    libraryConfig = targetSkill == Skill.MAGIC
-                            ? com.rocinante.tasks.minigame.library.ArceuusLibraryConfig.forMagic(config.getTargetLevel())
-                            : com.rocinante.tasks.minigame.library.ArceuusLibraryConfig.forRunecraft(config.getTargetLevel());
-                } else if (config.getTargetXp() > 0) {
-                    libraryConfig = com.rocinante.tasks.minigame.library.ArceuusLibraryConfig.forXp(targetSkill, config.getTargetXp());
-                } else {
-                    // Default to level 99 target
-                    libraryConfig = targetSkill == Skill.MAGIC
-                            ? com.rocinante.tasks.minigame.library.ArceuusLibraryConfig.forMagic(99)
-                            : com.rocinante.tasks.minigame.library.ArceuusLibraryConfig.forRunecraft(99);
-                }
-
-                // Delegate to ArceuusLibraryTask (uses reflection to access RuneLite plugin)
-                activeSubTask = new com.rocinante.tasks.minigame.library.ArceuusLibraryTask(libraryConfig);
-                log.info("Starting Arceuus Library training: {} ({})", targetSkill.getName(), strategyStr);
-
-            } else {
-                log.warn("Unknown minigame: {}", minigameId);
-                fail("Unsupported minigame: " + minigameId);
-                return;
-            }
         }
 
         phaseWaitTicks = 0;
+    }
+
+    /**
+     * Start gathering skill training (mining, woodcutting, fishing).
+     */
+    private void startGatherTraining(TaskContext ctx, TrainingMethod method) {
+        if (method.hasTargetObjects()) {
+            // Mining, woodcutting - interact with objects
+            List<Integer> objectIds = method.getTargetObjectIds();
+            String menuAction = method.getMenuAction();
+
+            InteractObjectTask interactTask = new InteractObjectTask(
+                    objectIds.get(0),
+                    menuAction != null ? menuAction : "Mine"
+            );
+
+            if (objectIds.size() > 1) {
+                interactTask.withAlternateIds(objectIds.subList(1, objectIds.size()));
+            }
+
+            if (method.getSuccessAnimationId() > 0) {
+                interactTask.withSuccessAnimation(method.getSuccessAnimationId());
+            }
+
+            activeSubTask = interactTask;
+            log.debug("Starting interaction with object(s): {}", objectIds);
+
+        } else if (method.hasTargetNpcs()) {
+            // Fishing - interact with NPCs (fishing spots)
+            List<Integer> npcIds = method.getTargetNpcIds();
+            String menuAction = method.getMenuAction();
+
+            InteractNpcTask interactTask = new InteractNpcTask(
+                    npcIds.get(0),
+                    menuAction != null ? menuAction : "Net"
+            );
+
+            if (npcIds.size() > 1) {
+                interactTask.withAlternateIds(npcIds.subList(1, npcIds.size()));
+            }
+
+            activeSubTask = interactTask;
+            log.debug("Starting interaction with NPC(s): {}", npcIds);
+        }
+    }
+
+    /**
+     * Start agility course training.
+     */
+    private void startAgilityTraining(TaskContext ctx, TrainingMethod method) {
+        if (!method.isAgilityCourse()) {
+            log.warn("AGILITY method {} doesn't have courseId configured", method.getId());
+            fail("Invalid agility method configuration");
+            return;
+        }
+
+        AgilityCourseRepository courseRepo = ctx.getAgilityCourseRepository();
+        if (courseRepo == null) {
+            log.warn("AgilityCourseRepository not available in TaskContext");
+            fail("AgilityCourseRepository not available");
+            return;
+        }
+
+        AgilityCourse course = courseRepo.getCourseById(method.getCourseId()).orElse(null);
+        if (course == null) {
+            log.warn("Agility course '{}' not found", method.getCourseId());
+            fail("Agility course not found: " + method.getCourseId());
+            return;
+        }
+
+        AgilityCourseConfig courseConfig = AgilityCourseConfig.builder()
+                .course(course)
+                .targetLevel(config.getTargetLevel())
+                .targetXp(config.getTargetXp())
+                .maxDuration(config.getMaxDuration())
+                .pickupMarksOfGrace(method.hasWatchedGroundItems())
+                .build();
+
+        activeSubTask = new AgilityCourseTask(courseConfig)
+                .withDescription("Train Agility at " + course.getName());
+        log.info("Starting agility training at {}", course.getName());
+    }
+
+    /**
+     * Start firemaking training.
+     */
+    private void startFiremakingTraining(TaskContext ctx, TrainingMethod method) {
+        if (!method.isFiremakingMethod()) {
+            log.warn("FIREMAKING method {} doesn't have logItemId configured", method.getId());
+            fail("Invalid firemaking method configuration");
+            return;
+        }
+
+        FiremakingConfig fmConfig = FiremakingConfig.builder()
+                .logItemId(method.getLogItemId())
+                .targetLevel(config.getTargetLevel())
+                .targetXp(config.getTargetXp())
+                .maxDuration(config.getMaxDuration())
+                .bankForLogs(method.requiresBanking())
+                .build();
+
+        activeSubTask = new FiremakingSkillTask(fmConfig)
+                .withDescription("Train Firemaking with " + method.getName());
+        log.info("Starting firemaking training: {}", method.getName());
+    }
+
+    /**
+     * Start minigame-based training.
+     */
+    private void startMinigameTraining(TaskContext ctx, TrainingMethod method) {
+        if (!method.isMinigameMethod()) {
+            log.warn("MINIGAME method {} doesn't have minigameId configured", method.getId());
+            fail("Invalid minigame method configuration");
+            return;
+        }
+
+        String minigameId = method.getMinigameId();
+
+        if ("wintertodt".equalsIgnoreCase(minigameId)) {
+            startWintertodtTraining(method);
+        } else if ("arceuus_library".equalsIgnoreCase(minigameId)) {
+            startArceuusLibraryTraining(method);
+        } else {
+            log.warn("Unknown minigame: {}", minigameId);
+            fail("Unsupported minigame: " + minigameId);
+        }
+    }
+
+    /**
+     * Start Wintertodt minigame training.
+     */
+    private void startWintertodtTraining(TrainingMethod method) {
+        WintertodtConfig.WintertodtConfigBuilder<?, ?> wtBuilder = WintertodtConfig.builder()
+                .targetLevel(config.getTargetLevel())
+                .targetXp(config.getTargetXp())
+                .maxDuration(config.getMaxDuration());
+
+        String strategyStr = method.getMinigameStrategy();
+        if ("fletch".equalsIgnoreCase(strategyStr)) {
+            wtBuilder.strategy(WintertodtStrategy.FLETCH);
+        } else {
+            wtBuilder.strategy(WintertodtStrategy.SIMPLE);
+        }
+
+        activeSubTask = new WintertodtTask(wtBuilder.build());
+        log.info("Starting Wintertodt training: {} strategy", strategyStr != null ? strategyStr : "simple");
+    }
+
+    /**
+     * Start Arceuus Library minigame training.
+     */
+    private void startArceuusLibraryTraining(TrainingMethod method) {
+        Skill targetSkill = Skill.MAGIC;
+        String strategyStr = method.getMinigameStrategy();
+        if ("runecraft".equalsIgnoreCase(strategyStr)) {
+            targetSkill = Skill.RUNECRAFT;
+        }
+
+        ArceuusLibraryConfig libraryConfig;
+        if (config.getTargetLevel() > 0) {
+            libraryConfig = targetSkill == Skill.MAGIC
+                    ? ArceuusLibraryConfig.forMagic(config.getTargetLevel())
+                    : ArceuusLibraryConfig.forRunecraft(config.getTargetLevel());
+        } else if (config.getTargetXp() > 0) {
+            libraryConfig = ArceuusLibraryConfig.forXp(targetSkill, config.getTargetXp());
+        } else {
+            libraryConfig = targetSkill == Skill.MAGIC
+                    ? ArceuusLibraryConfig.forMagic(99)
+                    : ArceuusLibraryConfig.forRunecraft(99);
+        }
+
+        activeSubTask = new ArceuusLibraryTask(libraryConfig);
+        log.info("Starting Arceuus Library training: {} ({})", targetSkill.getName(), strategyStr);
+    }
+
+    /**
+     * Start prayer training.
+     */
+    private void startPrayerTraining(TaskContext ctx, TrainingMethod method) {
+        log.debug("Prayer method, delegating to PrayerSkillTask");
+
+        PrayerSkillTask prayerTask;
+
+        if (method.hasTargetObjects()) {
+            boolean isChaosAltar = method.getId() != null && 
+                    method.getId().toLowerCase().contains("chaos");
+            prayerTask = isChaosAltar ? PrayerSkillTask.chaosAltar() : PrayerSkillTask.basicAltar();
+        } else {
+            prayerTask = PrayerSkillTask.buryBones();
+        }
+
+        if (config.getTargetLevel() > 0) {
+            prayerTask.withTargetLevel(config.getTargetLevel());
+        }
+
+        activeSubTask = prayerTask;
+        log.info("Starting prayer training: {}", method.getName());
+    }
+
+    /**
+     * Start thieving training.
+     */
+    private void startThievingTraining(TaskContext ctx, TrainingMethod method) {
+        log.debug("Thieving method, delegating to ThievingSkillTask");
+
+        ThievingSkillTask thievingTask;
+
+        if (method.hasTargetObjects()) {
+            thievingTask = new ThievingSkillTask(ThievingSkillTask.ThievingMethod.STALL)
+                    .withTargetStalls(method.getTargetObjectIds());
+        } else if (method.hasTargetNpcs()) {
+            thievingTask = new ThievingSkillTask(ThievingSkillTask.ThievingMethod.PICKPOCKET)
+                    .withTargetNpcs(method.getTargetNpcIds());
+        } else {
+            log.warn("THIEVING method {} has no target objects or NPCs configured", method.getId());
+            fail("Invalid thieving method configuration");
+            return;
+        }
+
+        if (method.getExactPosition() != null) {
+            thievingTask.withLocation(method.getExactPosition());
+        }
+
+        if (config.getTargetLevel() > 0) {
+            thievingTask.withTargetLevel(config.getTargetLevel());
+        }
+
+        activeSubTask = thievingTask;
+        log.info("Starting thieving training: {}", method.getName());
     }
 
     // ========================================================================

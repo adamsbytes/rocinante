@@ -3,7 +3,7 @@ package com.rocinante.progression;
 /**
  * Types of skill training methods.
  *
- * Each type has different execution patterns in SkillTask:
+ * <p>Each type has different execution patterns in SkillTask:
  * <ul>
  *   <li>GATHER - Interact with objects/NPCs, wait for inventory to fill</li>
  *   <li>PROCESS - Use item on item, handle make-all interfaces</li>
@@ -11,6 +11,9 @@ package com.rocinante.progression;
  *   <li>RUNECRAFT - Special altar-based runecrafting</li>
  *   <li>AGILITY - Course-based obstacle running</li>
  *   <li>THIEVING - Pickpocket NPCs or steal from stalls</li>
+ *   <li>PRAYER - Bury bones or offer bones at altars</li>
+ *   <li>FIREMAKING - Line-based log burning</li>
+ *   <li>MINIGAME - Delegate to MinigameTask implementations</li>
  * </ul>
  */
 public enum MethodType {
@@ -47,9 +50,17 @@ public enum MethodType {
 
     /**
      * Thieving from NPCs or stalls.
-     * Pattern: Pickpocket NPC or steal from stall, handle stun, repeat.
+     * Pattern: Delegate to ThievingSkillTask which uses PickpocketTask or StallThievingTask.
+     * Handles stun recovery, HP management, dodgy necklace tracking.
      */
     THIEVING,
+
+    /**
+     * Prayer training via bone burying or altar offering.
+     * Pattern: Delegate to PrayerSkillTask which uses BuryBonesTask or AltarOfferTask.
+     * Supports regular burying, gilded altars, and Chaos Altar with 50% bone save.
+     */
+    PRAYER,
 
     /**
      * Firemaking (line-based log burning).

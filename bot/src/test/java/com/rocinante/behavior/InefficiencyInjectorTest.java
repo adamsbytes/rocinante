@@ -76,7 +76,7 @@ public class InefficiencyInjectorTest {
     @Before
     public void setUp() {
         MockitoAnnotations.openMocks(this);
-
+        
         testClock = new MutableClock(Instant.now(), ZoneId.systemDefault());
         randomization = new Randomization(12345L);
         injector = new InefficiencyInjector(randomization, testClock);
@@ -91,7 +91,7 @@ public class InefficiencyInjectorTest {
     public void testSetEnabled_ChangesState() {
         injector.setEnabled(false);
         assertFalse(injector.isEnabled());
-
+        
         injector.setEnabled(true);
         assertTrue(injector.isEnabled());
     }
@@ -99,7 +99,7 @@ public class InefficiencyInjectorTest {
     @Test
     public void testShouldBacktrack_WhenDisabled_ReturnsFalse() {
         injector.setEnabled(false);
-
+        
         for (int i = 0; i < 100; i++) {
             testClock.advancePastClusteringInterval();
             assertFalse(injector.shouldBacktrack());
@@ -111,7 +111,7 @@ public class InefficiencyInjectorTest {
         // 2% base rate, run many trials with clock advancing past the clustering interval
         int backtrackCount = 0;
         int trials = 1000;
-
+        
         for (int i = 0; i < trials; i++) {
             // Advance time past clustering interval so each check gets a fair probability test
             testClock.advancePastClusteringInterval();
@@ -119,7 +119,7 @@ public class InefficiencyInjectorTest {
                 backtrackCount++;
             }
         }
-
+        
         // With 2% rate over 1000 trials, expect ~20 (±statistical variance)
         // Use wide bounds to avoid flaky tests while still catching gross errors
         double rate = (double) backtrackCount / trials;
@@ -155,7 +155,7 @@ public class InefficiencyInjectorTest {
     @Test
     public void testShouldHesitate_WhenDisabled_ReturnsFalse() {
         injector.setEnabled(false);
-
+        
         for (int i = 0; i < 100; i++) {
             testClock.advance(Duration.ofSeconds(11)); // Past hesitation interval
             assertFalse(injector.shouldHesitate());
@@ -196,17 +196,17 @@ public class InefficiencyInjectorTest {
         // Set up fatigue model with 50% fatigue
         when(fatigueModel.getFatigueLevel()).thenReturn(0.5);
         injector.setFatigueModel(fatigueModel);
-
+        
         // Collect samples with and without fatigue
         long baseTotalDelay = 0;
         long fatigueTotalDelay = 0;
         int samples = 100;
-
+        
         for (int i = 0; i < samples; i++) {
             baseTotalDelay += injector.getHesitationDelay();
             fatigueTotalDelay += injector.getAdjustedHesitationDelay();
         }
-
+        
         // Average adjusted delay should be higher due to fatigue multiplier
         assertTrue("Fatigued hesitation should be longer than base",
                 fatigueTotalDelay > baseTotalDelay);
@@ -215,7 +215,7 @@ public class InefficiencyInjectorTest {
     @Test
     public void testShouldPerformRedundantAction_WhenDisabled_ReturnsFalse() {
         injector.setEnabled(false);
-
+        
         for (int i = 0; i < 100; i++) {
             testClock.advancePastClusteringInterval();
             assertFalse(injector.shouldPerformRedundantAction());
@@ -252,7 +252,7 @@ public class InefficiencyInjectorTest {
     @Test
     public void testShouldCancelAction_WhenDisabled_ReturnsFalse() {
         injector.setEnabled(false);
-
+        
         for (int i = 0; i < 100; i++) {
             testClock.advancePastClusteringInterval();
             assertFalse(injector.shouldCancelAction());
@@ -290,9 +290,9 @@ public class InefficiencyInjectorTest {
     @Test
     public void testCheckPreClickInefficiency_WhenDisabled_ReturnsNone() {
         injector.setEnabled(false);
-
+        
         InefficiencyInjector.InefficiencyResult result = injector.checkPreClickInefficiency();
-
+        
         assertFalse(result.isPresent());
         assertEquals(InefficiencyInjector.InefficiencyType.NONE, result.getType());
     }
@@ -300,9 +300,9 @@ public class InefficiencyInjectorTest {
     @Test
     public void testCheckPostWalkInefficiency_WhenDisabled_ReturnsNone() {
         injector.setEnabled(false);
-
+        
         InefficiencyInjector.InefficiencyResult result = injector.checkPostWalkInefficiency();
-
+        
         assertFalse(result.isPresent());
         assertEquals(InefficiencyInjector.InefficiencyType.NONE, result.getType());
     }
@@ -310,9 +310,9 @@ public class InefficiencyInjectorTest {
     @Test
     public void testCheckBankInefficiency_WhenDisabled_ReturnsNone() {
         injector.setEnabled(false);
-
+        
         InefficiencyInjector.InefficiencyResult result = injector.checkBankInefficiency();
-
+        
         assertFalse(result.isPresent());
         assertEquals(InefficiencyInjector.InefficiencyType.NONE, result.getType());
     }
@@ -370,7 +370,7 @@ public class InefficiencyInjectorTest {
     @Test
     public void testInefficiencyResult_None_IsNotPresent() {
         InefficiencyInjector.InefficiencyResult result = InefficiencyInjector.InefficiencyResult.none();
-
+        
         assertFalse(result.isPresent());
         assertEquals(InefficiencyInjector.InefficiencyType.NONE, result.getType());
         assertEquals(0, result.getDelayMs());
@@ -379,10 +379,10 @@ public class InefficiencyInjectorTest {
 
     @Test
     public void testInefficiencyResult_WithType_IsPresent() {
-        InefficiencyInjector.InefficiencyResult result =
+        InefficiencyInjector.InefficiencyResult result = 
             new InefficiencyInjector.InefficiencyResult(
                 InefficiencyInjector.InefficiencyType.HESITATION, 1000, 0);
-
+        
         assertTrue(result.isPresent());
         assertEquals(InefficiencyInjector.InefficiencyType.HESITATION, result.getType());
         assertEquals(1000, result.getDelayMs());
@@ -398,10 +398,10 @@ public class InefficiencyInjectorTest {
             injector.shouldPerformRedundantAction();
             injector.shouldCancelAction();
         }
-
+        
         // Reset
         injector.resetCounters();
-
+        
         // All counts should be 0
         assertEquals(0, injector.getBacktrackCount());
         assertEquals(0, injector.getHesitationCount());
@@ -438,19 +438,19 @@ public class InefficiencyInjectorTest {
     @Test
     public void testGetTotalInefficiencyCount_SumsAllTypes() {
         injector.resetCounters();
-
+        
         // The total should always equal sum of individual counts
         long total = injector.getTotalInefficiencyCount();
-        long sum = injector.getBacktrackCount() + injector.getHesitationCount()
+        long sum = injector.getBacktrackCount() + injector.getHesitationCount() 
                  + injector.getRedundantActionCount() + injector.getActionCancelCount();
-
+        
         assertEquals(sum, total);
     }
 
     @Test
     public void testInefficiencyType_HasAllExpectedValues() {
         InefficiencyInjector.InefficiencyType[] types = InefficiencyInjector.InefficiencyType.values();
-
+        
         assertEquals(5, types.length);
         assertNotNull(InefficiencyInjector.InefficiencyType.NONE);
         assertNotNull(InefficiencyInjector.InefficiencyType.BACKTRACK);

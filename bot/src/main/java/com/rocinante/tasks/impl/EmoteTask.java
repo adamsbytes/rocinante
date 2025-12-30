@@ -377,22 +377,14 @@ public class EmoteTask extends AbstractTask {
     // ========================================================================
 
     private void executeOpenTab(TaskContext ctx) {
-        Client client = ctx.getClient();
+        if (clickPending) return;
 
-        // Check if emote tab is already open
-        Widget emoteContainer = client.getWidget(EMOTE_GROUP_ID, EMOTE_CONTENTS_CHILD);
-        if (emoteContainer != null && !emoteContainer.isHidden()) {
-            log.debug("Emote tab already open");
-            phase = EmotePhase.FIND_EMOTE;
-            return;
-        }
-
-        // Open emote tab using F12 or clicking
+        // Open emote tab - helper checks if already open and returns immediately if so
         log.debug("Opening emote tab");
         clickPending = true;
 
-        // Use keyboard shortcut (F12 for emotes)
-        ctx.getKeyboardController().pressKey(java.awt.event.KeyEvent.VK_F12)
+        com.rocinante.util.WidgetInteractionHelpers.openTabAsync(ctx, 
+                com.rocinante.util.WidgetInteractionHelpers.TAB_EMOTES, null)
                 .thenRun(() -> {
                     clickPending = false;
                     waitTicks = 0;

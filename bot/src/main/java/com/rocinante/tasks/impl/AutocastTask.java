@@ -230,21 +230,13 @@ public class AutocastTask extends AbstractTask {
     // ========================================================================
 
     private void executeOpenCombatTab(TaskContext ctx) {
-        Client client = ctx.getClient();
+        if (actionPending) return;
 
-        // Check if combat interface is already visible
-        Widget combatWidget = client.getWidget(COMBAT_INTERFACE_ID, 0);
-        if (combatWidget != null && !combatWidget.isHidden()) {
-            log.debug("Combat tab already open");
-            phase = Phase.CLICK_AUTOCAST_BUTTON;
-            waitTicks = 0;
-            return;
-        }
-
-        // Press F1 to open combat tab
-        log.debug("Opening combat tab via F1");
+        // Open combat tab - helper checks if already open and returns immediately if so
+        log.debug("Opening combat tab");
         actionPending = true;
-        ctx.getKeyboardController().pressKey(KeyEvent.VK_F1)
+        com.rocinante.util.WidgetInteractionHelpers.openTabAsync(ctx, 
+                com.rocinante.util.WidgetInteractionHelpers.TAB_COMBAT, null)
                 .thenRun(() -> {
                     actionPending = false;
                     phase = Phase.CLICK_AUTOCAST_BUTTON;

@@ -278,14 +278,14 @@ public class GroupingTeleportTask implements TravelSubTask {
             return Status.IN_PROGRESS;
         }
 
-        // Open the Grouping interface via the clan chat button or F-key
-        // The grouping button is in the chat-channel buttons (widget 162, child 38 typically)
-        // We use keyboard shortcut F6 which is typically bound to clan chat/grouping
+        // Open the Grouping interface via the clan chat tab (F8)
+        // Note: Grouping is accessed through the clan chat interface
         log.debug("Opening Grouping interface");
         waiting = true;
 
-        // Try pressing the grouping hotkey or clicking the button
-        ctx.getKeyboardController().pressKey(java.awt.event.KeyEvent.VK_F6)
+        // Use the shared helper which handles hotkey/click based on player preference
+        com.rocinante.util.WidgetInteractionHelpers.openTabAsync(ctx, 
+                com.rocinante.util.WidgetInteractionHelpers.TAB_CLAN, null)
                 .thenRun(() -> {
                     waiting = false;
                     phase = Phase.WAIT_FOR_INTERFACE;
@@ -293,7 +293,7 @@ public class GroupingTeleportTask implements TravelSubTask {
                 })
                 .exceptionally(e -> {
                     waiting = false;
-                    log.error("Failed to open Grouping interface via key", e);
+                    log.error("Failed to open Grouping interface via tab", e);
                     // Fall back to clicking the button
                     tryClickGroupingButton(ctx);
                     return null;
