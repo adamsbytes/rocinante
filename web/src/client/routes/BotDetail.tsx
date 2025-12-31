@@ -11,6 +11,7 @@ import { SessionStatsPanel, InlineSessionStats } from '../components/SessionStat
 import { AccountStatsGrid } from '../components/AccountStatsGrid';
 import { AccountStatsHiscores } from '../components/AccountStatsHiscores';
 import { ManualTaskPanel } from '../components/ManualTaskPanel';
+import { ScreenshotsGallery } from '../components/ScreenshotsGallery';
 
 type StatsView = 'grid' | 'table';
 
@@ -181,6 +182,9 @@ export const BotDetail: Component = () => {
               <Show when={showLogs()}>
                 <LogsViewer botId={params().id} onClose={() => setShowLogs(false)} />
               </Show>
+
+              {/* Screenshots gallery */}
+              <ScreenshotsGallery botId={params().id} characterName={bot().characterName} />
 
               {/* VNC Viewer - always show, with offline placeholder when not running */}
               <div class="mb-6">

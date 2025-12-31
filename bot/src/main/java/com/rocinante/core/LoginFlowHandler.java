@@ -604,7 +604,7 @@ public class LoginFlowHandler {
         
         return humanTimer.sleep(DelayProfile.REACTION)
             .thenCompose(v -> {
-                log.trace("[TUTORIAL] Clicking: {} ({}/{})", name, index + 1, targets.size());
+                log.debug("[TUTORIAL] Clicking: {} ({}/{})", name, index + 1, targets.size());
                 return mouseController.click(bounds);
             })
             .thenCompose(v -> humanTimer.sleep(DelayProfile.ACTION_GAP))

@@ -9,6 +9,7 @@ import com.rocinante.core.GameStateService;
 import com.rocinante.input.RobotKeyboardController;
 import com.rocinante.input.RobotMouseController;
 import com.rocinante.navigation.PathFinder;
+import com.rocinante.navigation.Reachability;
 import com.rocinante.state.*;
 import com.rocinante.tasks.TaskContext;
 import com.rocinante.tasks.TaskState;
@@ -89,7 +90,8 @@ public class CombatTaskTest {
         MockitoAnnotations.openMocks(this);
 
         // Create real TargetSelector with mocked dependencies
-        targetSelector = new TargetSelector(client, gameStateService, pathFinder);
+        Reachability reachability = mock(Reachability.class);
+        targetSelector = new TargetSelector(client, gameStateService, pathFinder, reachability);
 
         // Set up TaskContext with Randomization for tasks that need it
         taskContext = new TaskContext(client, gameStateService, mouseController, 

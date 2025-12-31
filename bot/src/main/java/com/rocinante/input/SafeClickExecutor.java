@@ -167,7 +167,7 @@ public class SafeClickExecutor {
             // Clear to click - use left click
             log.debug("Click point clear, using left-click at ({}, {}) [dist={}, paranoid={}%]", 
                     initialPoint.x, initialPoint.y, distance, Math.round(paranoidProb * 100));
-            return executeLeftClick(initialPoint);
+            return executeLeftClick(initialPoint, clickbox);
         }
 
         if (overlap.hasBlockingEntity()) {
@@ -261,7 +261,7 @@ public class SafeClickExecutor {
         if (!overlap.hasBlockingEntity() && !forceMenu) {
             log.debug("NPC click point clear, using left-click at ({}, {}) [dist={}, paranoid={}%]", 
                     initialPoint.x, initialPoint.y, distance, Math.round(paranoidProb * 100));
-            return executeLeftClick(initialPoint);
+            return executeLeftClick(initialPoint, hull);
         }
 
         if (overlap.hasBlockingEntity()) {
@@ -378,7 +378,7 @@ public class SafeClickExecutor {
                 OverlapResult testOverlap = overlapChecker.checkPointAtLocation(testPoint);
                 if (!testOverlap.hasBlockingEntity()) {
                     log.debug("Found clear ground item point at ({}, {}), using left-click", testPoint.x, testPoint.y);
-                    return executeLeftClick(testPoint);
+                    return executeLeftClick(testPoint, hitbox);
                 }
             }
         }
@@ -412,21 +412,39 @@ public class SafeClickExecutor {
         RIGHT_CLICK_MENU
     }
 
+    private static final int CLICK_REPOSITION_THRESHOLD_PX = 4;
+
     // ========================================================================
     // Strategy Execution
     // ========================================================================
 
     /**
-     * Execute left-click at a point.
+     * Execute left-click, reusing current mouse position when already on target.
+     *
+     * @param point      target canvas point (fallback if reposition needed)
+     * @param targetArea optional target shape (clickbox/hull/hitbox) for containment check
      */
-    private CompletableFuture<Boolean> executeLeftClick(Point point) {
-        return mouseController.moveToCanvas(point.x, point.y)
-                .thenCompose(v -> mouseController.click())
+    private CompletableFuture<Boolean> executeLeftClick(Point point, @Nullable Shape targetArea) {
+        Point current = mouseController.getCurrentPosition();
+        boolean onTarget =
+                current != null &&
+                        ((targetArea != null && targetArea.contains(current)) ||
+                                current.distance(point) <= CLICK_REPOSITION_THRESHOLD_PX);
+
+        CompletableFuture<Void> moveFuture = onTarget
+                ? CompletableFuture.completedFuture(null)
+                : mouseController.moveToCanvas(point.x, point.y);
+
+        return moveFuture.thenCompose(v -> mouseController.click())
                 .thenApply(v -> true)
                 .exceptionally(e -> {
                     log.error("Left-click failed", e);
                     return false;
                 });
+    }
+
+    private CompletableFuture<Boolean> executeLeftClick(Point point) {
+        return executeLeftClick(point, null);
     }
 
     /**
@@ -439,7 +457,7 @@ public class SafeClickExecutor {
 
         if (clearPoint != null) {
             log.debug("Found clear point at ({}, {}), using left-click", clearPoint.x, clearPoint.y);
-            return executeLeftClick(clearPoint);
+            return executeLeftClick(clearPoint, target.getClickbox());
         }
 
         // No clear point found - fall back to menu
@@ -462,7 +480,7 @@ public class SafeClickExecutor {
 
         if (clearPoint != null) {
             log.debug("Found clear NPC point at ({}, {}), using left-click", clearPoint.x, clearPoint.y);
-            return executeLeftClick(clearPoint);
+            return executeLeftClick(clearPoint, target.getConvexHull());
         }
 
         log.debug("No clear NPC point found, falling back to right-click menu");
@@ -548,7 +566,7 @@ public class SafeClickExecutor {
             int dy = Math.abs(targetWorldY - playerPos.getY());
             return Math.max(dx, dy); // Chebyshev distance (OSRS uses this for most distance checks)
         } catch (Exception e) {
-            log.trace("Could not calculate distance to player", e);
+            log.debug("Could not calculate distance to player", e);
             return -1;
         }
     }
@@ -578,7 +596,7 @@ public class SafeClickExecutor {
                 return def != null ? def.getName() : null;
             }
         } catch (Exception e) {
-            log.trace("Could not get object name", e);
+            log.debug("Could not get object name", e);
         }
         return null;
     }

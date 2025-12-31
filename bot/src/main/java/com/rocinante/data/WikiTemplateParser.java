@@ -190,7 +190,7 @@ public class WikiTemplateParser {
                     drops.add(drop);
                 }
             } catch (Exception e) {
-                log.trace("Failed to parse DropsLine: {}", e.getMessage());
+                log.debug("Failed to parse DropsLine: {}", e.getMessage());
             }
         }
 
@@ -262,7 +262,7 @@ public class WikiTemplateParser {
                         drops.add(drop);
                     }
                 } catch (Exception e) {
-                    log.trace("Failed to parse DropTableNew entry: {}", e.getMessage());
+                    log.debug("Failed to parse DropTableNew entry: {}", e.getMessage());
                 }
             }
         }
@@ -296,7 +296,7 @@ public class WikiTemplateParser {
                         drops.add(drop);
                     }
                 } catch (Exception e) {
-                    log.trace("Failed to parse wikitable row: {}", e.getMessage());
+                    log.debug("Failed to parse wikitable row: {}", e.getMessage());
                 }
             }
         }
@@ -382,7 +382,7 @@ public class WikiTemplateParser {
                         drops.add(drop);
                     }
                 } catch (Exception e) {
-                    log.trace("Failed to parse legacy Drops: {}", e.getMessage());
+                    log.debug("Failed to parse legacy Drops: {}", e.getMessage());
                 }
             }
         }
@@ -469,7 +469,7 @@ public class WikiTemplateParser {
                         sources.add(source);
                     }
                 } catch (Exception e) {
-                    log.trace("Failed to parse ItemSources entry: {}", e.getMessage());
+                    log.debug("Failed to parse ItemSources entry: {}", e.getMessage());
                 }
             }
         }
@@ -678,7 +678,7 @@ public class WikiTemplateParser {
                     items.add(item);
                 }
             } catch (Exception e) {
-                log.trace("Failed to parse StoreLine: {}", e.getMessage());
+                log.debug("Failed to parse StoreLine: {}", e.getMessage());
             }
         }
 
@@ -893,7 +893,7 @@ public class WikiTemplateParser {
             if (matcher.find()) {
                 int cost = parseIntSafe(matcher.group(1), -1);
                 if (cost > 0 && cost <= 100) {
-                    log.trace("Parsed spec cost {} using pattern: {}", cost, pattern.pattern());
+                    log.debug("Parsed spec cost {} using pattern: {}", cost, pattern.pattern());
                     return cost;
                 }
             }

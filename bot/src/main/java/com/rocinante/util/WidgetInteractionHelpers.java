@@ -192,15 +192,15 @@ public final class WidgetInteractionHelpers {
     public static boolean shouldUseHotkey(TaskContext ctx, Boolean forceClick) {
         if (forceClick != null) {
             boolean useHotkey = !forceClick;
-            log.trace("shouldUseHotkey: forceClick={} -> useHotkey={}", forceClick, useHotkey);
+            log.debug("shouldUseHotkey: forceClick={} -> useHotkey={}", forceClick, useHotkey);
             return useHotkey;
         }
         if (ctx.getPlayerProfile() != null && ctx.getPlayerProfile().isLoaded()) {
             boolean prefersHotkeys = ctx.getPlayerProfile().getProfileData().isPrefersHotkeys();
-            log.trace("shouldUseHotkey: using profile preference -> useHotkey={}", prefersHotkeys);
+            log.debug("shouldUseHotkey: using profile preference -> useHotkey={}", prefersHotkeys);
             return prefersHotkeys;
         }
-        log.trace("shouldUseHotkey: no profile loaded, defaulting to hotkey");
+        log.debug("shouldUseHotkey: no profile loaded, defaulting to hotkey");
         return true;
     }
 
@@ -247,7 +247,7 @@ public final class WidgetInteractionHelpers {
             }
         }
         
-        log.trace("getTabWidgetIds: tab={} mode={} -> widget {}:{}", 
+        log.debug("getTabWidgetIds: tab={} mode={} -> widget {}:{}", 
                 getTabName(tabIndex), modeUsed, ids[0], ids[1]);
         return ids;
     }

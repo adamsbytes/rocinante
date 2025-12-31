@@ -617,12 +617,12 @@ public class GameStateService {
 
         if (containerId == InventoryID.INVENTORY.getId()) {
             inventoryDirty = true;
-            log.trace("Inventory marked dirty");
+            log.debug("Inventory marked dirty");
         } else if (containerId == InventoryID.EQUIPMENT.getId()) {
             equipmentDirty = true;
             // Invalidate combat state cache too - weapon speed/style may have changed
             combatStateCache.invalidate();
-            log.trace("Equipment marked dirty, combat state invalidated");
+            log.debug("Equipment marked dirty, combat state invalidated");
         }
     }
 
@@ -654,7 +654,7 @@ public class GameStateService {
         int weaponId = getEquippedWeaponId();
         if (weaponDataService.isPlayerAttackAnimation(weaponId, animationId)) {
             recordPlayerAttack();
-            log.trace("Player attack recorded, animation {}", animationId);
+            log.debug("Player attack recorded, animation {}", animationId);
         }
     }
 
@@ -664,7 +664,7 @@ public class GameStateService {
     @Subscribe
     public void onNpcSpawned(NpcSpawned event) {
         worldStateDirty = true;
-        log.trace("WorldState marked dirty: NPC spawned");
+        log.debug("WorldState marked dirty: NPC spawned");
     }
 
     /**
@@ -673,7 +673,7 @@ public class GameStateService {
     @Subscribe
     public void onNpcDespawned(NpcDespawned event) {
         worldStateDirty = true;
-        log.trace("WorldState marked dirty: NPC despawned");
+        log.debug("WorldState marked dirty: NPC despawned");
     }
 
     /**
@@ -682,7 +682,7 @@ public class GameStateService {
     @Subscribe
     public void onGameObjectSpawned(GameObjectSpawned event) {
         worldStateDirty = true;
-        log.trace("WorldState marked dirty: GameObject spawned");
+        log.debug("WorldState marked dirty: GameObject spawned");
     }
 
     /**
@@ -691,7 +691,7 @@ public class GameStateService {
     @Subscribe
     public void onGameObjectDespawned(GameObjectDespawned event) {
         worldStateDirty = true;
-        log.trace("WorldState marked dirty: GameObject despawned");
+        log.debug("WorldState marked dirty: GameObject despawned");
     }
 
     /**
@@ -700,7 +700,7 @@ public class GameStateService {
     @Subscribe
     public void onItemSpawned(ItemSpawned event) {
         worldStateDirty = true;
-        log.trace("WorldState marked dirty: Item spawned");
+        log.debug("WorldState marked dirty: Item spawned");
     }
 
     /**
@@ -709,7 +709,7 @@ public class GameStateService {
     @Subscribe
     public void onItemDespawned(ItemDespawned event) {
         worldStateDirty = true;
-        log.trace("WorldState marked dirty: Item despawned");
+        log.debug("WorldState marked dirty: Item despawned");
     }
 
     /**
@@ -1085,10 +1085,10 @@ public class GameStateService {
                 if (taskNameFromDb != null && !taskNameFromDb.isEmpty()) {
                     blocked.add(taskNameFromDb);
                     blockedTaskNamesByVarp.put(varplayerId, taskNameFromDb);
-                    log.trace("Found blocked task ID {} = {}", taskId, taskNameFromDb);
+                    log.debug("Found blocked task ID {} = {}", taskId, taskNameFromDb);
                 }
             } catch (Exception e) {
-                log.trace("Error reading blocked task varplayer {}: {}", varplayerId, e.getMessage());
+                log.debug("Error reading blocked task varplayer {}: {}", varplayerId, e.getMessage());
             }
         }
 
@@ -1120,7 +1120,7 @@ public class GameStateService {
             );
 
             if (taskRows == null || taskRows.isEmpty()) {
-                log.trace("No DB row found for slayer task ID {}", taskId);
+                log.debug("No DB row found for slayer task ID {}", taskId);
                 return null;
             }
 
@@ -1275,7 +1275,7 @@ public class GameStateService {
                 interfaceMode = newMode;
             }
         } catch (Exception e) {
-            log.trace("Could not detect interface mode: {}", e.getMessage());
+            log.debug("Could not detect interface mode: {}", e.getMessage());
         }
     }
     
@@ -1597,7 +1597,7 @@ public class GameStateService {
             // Return remaining, clamped to 0 if negative (cooldown has expired)
             return (int) Math.max(0, remainingSeconds);
         } catch (Exception e) {
-            log.trace("Error calculating teleport cooldown for varp {}: {}", varplayerId, e.getMessage());
+            log.debug("Error calculating teleport cooldown for varp {}: {}", varplayerId, e.getMessage());
             return 0; // Assume available on error
         }
     }
@@ -2267,7 +2267,7 @@ public class GameStateService {
                 int price = itemManager.getItemPrice(itemId);
                 itemPriceCache.put(itemId, price);
             } catch (Exception e) {
-                log.trace("Price fetch failed for item {}: {}", itemId, e.getMessage());
+                log.debug("Price fetch failed for item {}: {}", itemId, e.getMessage());
             }
         });
     }

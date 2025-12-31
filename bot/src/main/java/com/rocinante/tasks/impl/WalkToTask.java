@@ -24,6 +24,7 @@ import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.widgets.Widget;
 
+import net.runelite.api.TileObject;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.time.Duration;
@@ -32,6 +33,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -315,6 +317,12 @@ public class WalkToTask extends AbstractTask {
      * Whether we're currently in a backtrack walk.
      */
     private boolean isBacktrackWalk = false;
+
+    /**
+     * Cached index of the current click target within currentPath, if applicable.
+     * -1 when the click target is not part of the local path list (e.g., direct destination).
+     */
+    private int lastClickTargetIndex = -1;
 
     // ========================================================================
     // Obstacle Handling State
@@ -792,7 +800,6 @@ public class WalkToTask extends AbstractTask {
             case NO_PATH_BETWEEN_NODES:
                 log.warn("No path between nodes - may need unlock or teleport: {}", 
                         navResult.getFailureReason());
-                // Fall through to simple walk
                 break;
                 
             case PLAYER_ISOLATED:
@@ -813,26 +820,13 @@ public class WalkToTask extends AbstractTask {
                 
             case COMPLETELY_ISOLATED:
                 log.error("Complete navigation isolation: {}", navResult.getFailureReason());
-                // Last resort: simple walk if close enough
-                if (distance <= 100) {
-                    break; // Fall through to simple walk
-                }
                 fail("Navigation impossible: " + navResult.getFailureReason() + 
                      ". Suggestions: " + navResult.getSuggestions());
                 return false;
                 
             case SYSTEM_NOT_AVAILABLE:
                 log.error("Navigation system not available");
-                // Fall through to simple walk
                 break;
-        }
-        
-        // Strategy 3: Simple walk toward destination (last resort)
-        currentPath = new ArrayList<>(calculateSimpleWalkToward(playerPos, distance));
-        if (!currentPath.isEmpty()) {
-            log.debug("Simple walk: {} tiles toward destination", currentPath.size());
-            pathIndex = 0;
-            return true;
         }
         
         log.warn("All pathfinding strategies failed for {} -> {}", playerPos, destination);
@@ -849,20 +843,19 @@ public class WalkToTask extends AbstractTask {
         }
         
         log.debug("Graph path: {} edges, ~{} ticks", unifiedPath.size(), navResult.getEstimatedGraphTicks());
-            currentEdgeIndex = 0;
-            
+        currentEdgeIndex = 0;
+        
         // Get local path to first edge
-            NavigationEdge firstEdge = unifiedPath.getEdge(0);
-            if (firstEdge != null && firstEdge.getFromLocation() != null) {
-                currentPath = new ArrayList<>(pathFinder.findPath(playerPos, firstEdge.getFromLocation()));
+        NavigationEdge firstEdge = unifiedPath.getEdge(0);
+        if (firstEdge != null && firstEdge.getFromLocation() != null) {
+            currentPath = new ArrayList<>(pathFinder.findPath(playerPos, firstEdge.getFromLocation()));
             pathIndex = 0;
-            
-            if (currentPath.isEmpty()) {
-                // Can't reach first edge - try simple walk
-                currentPath = new ArrayList<>(calculateSimpleWalkToward(playerPos, 
-                        playerPos.distanceTo(firstEdge.getFromLocation())));
-                pathIndex = 0;
-            }
+        }
+        
+        // If we cannot reach the first edge, fail fast
+        if (currentPath.isEmpty()) {
+            fail("Unable to reach first navigation edge start");
+            return false;
         }
         
         return true;
@@ -880,11 +873,6 @@ public class WalkToTask extends AbstractTask {
         // First, walk to the nearest node
         WorldPoint nodePos = nearestNode.getWorldPoint();
         currentPath = new ArrayList<>(pathFinder.findPath(playerPos, nodePos));
-        
-        if (currentPath.isEmpty()) {
-            // A* can't find path - use simple walk toward the node
-            currentPath = new ArrayList<>(calculateSimpleWalkToward(playerPos, navResult.getFirstMileDistance()));
-        }
 
         if (!currentPath.isEmpty()) {
             log.debug("First-mile: walking {} tiles to node '{}'", 
@@ -911,80 +899,25 @@ public class WalkToTask extends AbstractTask {
         }
         
         WorldPoint nodePos = nearestNode.getWorldPoint();
-        int distance = playerPos.distanceTo(nodePos);
-        
-        currentPath = new ArrayList<>(calculateSimpleWalkToward(playerPos, distance));
-        if (!currentPath.isEmpty()) {
-            log.debug("Walking {} tiles toward nearest node '{}'", distance, nearestNode.getId());
-            pathIndex = 0;
-            
-            // After reaching the node, we'll recalculate with the graph
-            unifiedPath = navResult.getGraphPath();
-            currentEdgeIndex = 0;
-            
-            return true;
+        currentPath = new ArrayList<>(pathFinder.findPath(playerPos, nodePos));
+        if (currentPath.isEmpty()) {
+            fail("Unable to reach nearest navigation node " + nearestNode.getId());
+            return false;
         }
+
+        log.debug("Walking {} tiles toward nearest node '{}'", currentPath.size(), nearestNode.getId());
+        pathIndex = 0;
         
-        return false;
+        // After reaching the node, we'll recalculate with the graph
+        unifiedPath = navResult.getGraphPath();
+        currentEdgeIndex = 0;
+        
+        return true;
     }
     
     /** Last navigation result for debugging/status */
     private NavigationResult lastNavigationResult;
     
-    /**
-     * Simple fallback: create waypoints walking toward destination.
-     * Used when both A* and WebWalker fail (e.g., no graph data for area).
-     * 
-     * @param playerPos current position
-     * @param totalDistance distance to destination
-     * @return list of waypoints toward destination
-     */
-    private List<WorldPoint> calculateSimpleWalkToward(WorldPoint playerPos, int totalDistance) {
-        if (totalDistance < 1) {
-            return Collections.emptyList();
-        }
-        
-        List<WorldPoint> path = new ArrayList<>();
-        path.add(playerPos);
-        
-        // Calculate direction
-        int dx = destination.getX() - playerPos.getX();
-        int dy = destination.getY() - playerPos.getY();
-        double dist = Math.sqrt(dx * dx + dy * dy);
-        
-        // Normalize direction
-        double dirX = dx / dist;
-        double dirY = dy / dist;
-        
-        // Create waypoints every 10-15 tiles toward destination
-        int stepSize = 12;
-        int steps = Math.min(3, (int) Math.ceil(dist / stepSize)); // Max 3 waypoints at a time
-        
-        for (int i = 1; i <= steps; i++) {
-            int stepDist = Math.min(i * stepSize, (int) dist);
-            WorldPoint waypoint = new WorldPoint(
-                    playerPos.getX() + (int) Math.round(dirX * stepDist),
-                    playerPos.getY() + (int) Math.round(dirY * stepDist),
-                    playerPos.getPlane()
-            );
-            path.add(waypoint);
-            
-            // If this waypoint is at or past destination, we're done
-            if (stepDist >= dist) {
-                break;
-            }
-        }
-        
-        // Always add destination as final waypoint if not already there
-        WorldPoint lastWaypoint = path.get(path.size() - 1);
-        if (!lastWaypoint.equals(destination)) {
-            path.add(destination);
-        }
-        
-        log.debug("Simple path: {} waypoints from {} toward {}", path.size(), playerPos, destination);
-        return path;
-    }
-
     /**
      * Apply random deviation to path for humanization.
      * Implements REQUIREMENTS.md 5.4.3: "occasional 2-10 tile detours (10% of walks)"
@@ -1025,7 +958,7 @@ public class WalkToTask extends AbstractTask {
         // Only apply if deviation is walkable
         if (pathFinder.isWalkable(deviated)) {
             currentPath.set(deviationPoint, deviated);
-            log.trace("Applied path deviation at index {}: {} -> {} (distance={})", 
+            log.debug("Applied path deviation at index {}: {} -> {} (distance={})", 
                     deviationPoint, original, deviated, distance);
         }
     }
@@ -1466,6 +1399,14 @@ public class WalkToTask extends AbstractTask {
             return;
         }
 
+        // Validate per-hop obstacles from current position to the click target (if on-path)
+        if (lastClickTargetIndex >= pathIndex && lastClickTargetIndex < currentPath.size()) {
+            boolean segmentClear = ensureSegmentClear(ctx, playerPos, lastClickTargetIndex);
+            if (!segmentClear) {
+                return; // Obstacle handling or replanning has been triggered
+            }
+        }
+
         // Check for obstacles
         if (obstacleHandler != null) {
             var blockingObstacle = obstacleHandler.findBlockingObstacle(playerPos, clickTarget);
@@ -1540,7 +1481,7 @@ public class WalkToTask extends AbstractTask {
         moveFuture.thenCompose(v -> ctx.getMouseController().click())
                 .thenRun(() -> {
                     clickPending = false;
-                    log.trace("Clicked to walk toward {}", finalClickTarget);
+                    log.debug("Clicked to walk toward {}", finalClickTarget);
                 })
                 .exceptionally(e -> {
                     clickPending = false;
@@ -1587,6 +1528,8 @@ public class WalkToTask extends AbstractTask {
      * Determine the best point to click toward.
      */
     private WorldPoint determineClickTarget(WorldPoint playerPos) {
+        lastClickTargetIndex = -1;
+
         if (currentPath.isEmpty()) {
             return destination;
         }
@@ -1612,6 +1555,7 @@ public class WalkToTask extends AbstractTask {
         }
 
         if (targetIndex < currentPath.size()) {
+            lastClickTargetIndex = targetIndex;
             return currentPath.get(targetIndex);
         }
 
@@ -2089,7 +2033,7 @@ public class WalkToTask extends AbstractTask {
         WidgetClickHelper widgetClickHelper = ctx.getWidgetClickHelper();
         if (widgetClickHelper == null) {
             // No widget click helper available - log once and skip
-            log.trace("WidgetClickHelper not available, cannot toggle run");
+            log.debug("WidgetClickHelper not available, cannot toggle run");
             return;
         }
 
@@ -2262,7 +2206,7 @@ public class WalkToTask extends AbstractTask {
             // Get height at tile center (tiles are 128 local units, so offset by 64)
             tileHeight = Perspective.getTileHeight(client, localPoint, target.getPlane());
         } catch (Exception e) {
-            log.trace("Could not get tile height at {}: {}", target, e.getMessage());
+            log.debug("Could not get tile height at {}: {}", target, e.getMessage());
         }
 
         // Use Perspective to get canvas coordinates with proper height offset
@@ -2276,7 +2220,7 @@ public class WalkToTask extends AbstractTask {
         // Verify the point is within the viewport
         java.awt.Rectangle viewport = ctx.getGameStateService().getViewportBounds();
         if (!viewport.contains(canvasPoint.getX(), canvasPoint.getY())) {
-            log.trace("Viewport point {} outside viewport {}", canvasPoint, viewport);
+            log.debug("Viewport point {} outside viewport {}", canvasPoint, viewport);
             return null;
         }
 
@@ -2293,11 +2237,78 @@ public class WalkToTask extends AbstractTask {
         return new Point(x, y);
     }
 
+    /**
+     * Ensure each hop between the player's current position and the chosen click target
+     * is clear of blocking obstacles. If an obstacle is detected, switch to obstacle handling.
+     *
+     * @return true if clear and we can proceed; false if handling/replan was triggered.
+     */
+    private boolean ensureSegmentClear(TaskContext ctx, WorldPoint playerPos, int targetIndex) {
+        if (obstacleHandler == null || currentPath.isEmpty()) {
+            return true;
+        }
+
+        WorldPoint prev = playerPos;
+        for (int i = pathIndex; i <= targetIndex && i < currentPath.size(); i++) {
+            WorldPoint next = currentPath.get(i);
+
+            // Path should be adjacent steps; if not, replan.
+            if (prev.distanceTo(next) > 1) {
+                log.debug("Non-adjacent step detected between {} and {}, recalculating path", prev, next);
+                phase = WalkPhase.CALCULATE_PATH;
+                return false;
+            }
+
+            var blocking = obstacleHandler.findBlockingObstacle(prev, next);
+            if (blocking.isPresent()) {
+                currentObstacle = blocking.get();
+                obstacleTask = null;
+                obstacleAttempts = 0;
+                log.debug("Obstacle detected on path segment {} -> {}, switching to obstacle handling", prev, next);
+                phase = WalkPhase.HANDLE_OBSTACLE;
+                return false;
+            }
+
+            prev = next;
+        }
+
+        return true;
+    }
+
     // ========================================================================
     // Object/NPC Finding
     // ========================================================================
 
+    /**
+     * Find the nearest object by ID for destination resolution.
+     * Uses EntityFinder for centralized finding (distance-based, not interaction).
+     */
     private WorldPoint findNearestObject(TaskContext ctx, int objectId) {
+        WorldPoint playerPos = ctx.getPlayerState().getWorldPosition();
+        if (playerPos == null) {
+            return null;
+        }
+
+        EntityFinder entityFinder = ctx.getEntityFinder();
+        if (entityFinder != null) {
+            Optional<EntityFinder.ObjectSearchResult> result = entityFinder.findNearestReachableObject(
+                    playerPos, Set.of(objectId), 100);
+
+            if (result.isPresent()) {
+                TileObject obj = result.get().getObject();
+                return getObjectWorldPoint(obj);
+            }
+            return null;
+        }
+
+        // Fallback: manual search
+        return findNearestObjectLegacy(ctx, objectId);
+    }
+
+    /**
+     * Legacy object finding (fallback when EntityFinder unavailable).
+     */
+    private WorldPoint findNearestObjectLegacy(TaskContext ctx, int objectId) {
         Client client = ctx.getClient();
         Scene scene = client.getScene();
         Tile[][][] tiles = scene.getTiles();
@@ -2332,7 +2343,54 @@ public class WalkToTask extends AbstractTask {
         return nearest;
     }
 
+    /**
+     * Get world point from a TileObject.
+     */
+    private WorldPoint getObjectWorldPoint(TileObject obj) {
+        if (obj instanceof net.runelite.api.GameObject) {
+            return ((net.runelite.api.GameObject) obj).getWorldLocation();
+        }
+        if (obj instanceof net.runelite.api.WallObject) {
+            return ((net.runelite.api.WallObject) obj).getWorldLocation();
+        }
+        if (obj instanceof net.runelite.api.GroundObject) {
+            return ((net.runelite.api.GroundObject) obj).getWorldLocation();
+        }
+        if (obj instanceof net.runelite.api.DecorativeObject) {
+            return ((net.runelite.api.DecorativeObject) obj).getWorldLocation();
+        }
+        return null;
+    }
+
+    /**
+     * Find the nearest NPC by ID for destination resolution.
+     * Uses EntityFinder for centralized finding (distance-based, not interaction).
+     */
     private WorldPoint findNearestNpc(TaskContext ctx, int npcId) {
+        WorldPoint playerPos = ctx.getPlayerState().getWorldPosition();
+        if (playerPos == null) {
+            return null;
+        }
+
+        EntityFinder entityFinder = ctx.getEntityFinder();
+        if (entityFinder != null) {
+            Optional<EntityFinder.NpcSearchResult> result = entityFinder.findNearestReachableNpc(
+                    playerPos, Set.of(npcId), 100);
+
+            if (result.isPresent()) {
+                return result.get().getNpc().getWorldLocation();
+            }
+            return null;
+        }
+
+        // Fallback: manual search
+        return findNearestNpcLegacy(ctx, npcId);
+    }
+
+    /**
+     * Legacy NPC finding (fallback when EntityFinder unavailable).
+     */
+    private WorldPoint findNearestNpcLegacy(TaskContext ctx, int npcId) {
         Client client = ctx.getClient();
         WorldPoint playerPos = ctx.getPlayerState().getWorldPosition();
         if (playerPos == null) {
@@ -2367,24 +2425,15 @@ public class WalkToTask extends AbstractTask {
         obstacleHandler = ctx.getObstacleHandler();
         planeTransitionHandler = ctx.getPlaneTransitionHandler();
 
-        // If not available in context, create fallback instances
-        if (pathFinder == null) {
-            log.warn("PathFinder not available in TaskContext, creating instance");
-            pathFinder = new PathFinder(ctx.getClient());
-        }
-
-        if (obstacleHandler == null) {
-            log.warn("ObstacleHandler not available in TaskContext, creating instance");
-            obstacleHandler = new ObstacleHandler(ctx.getClient());
+        if (pathFinder == null || obstacleHandler == null) {
+            throw new IllegalStateException("Navigation services unavailable (PathFinder/ObstacleHandler)");
         }
 
         if (planeTransitionHandler == null) {
-            log.warn("PlaneTransitionHandler not available in TaskContext, creating instance");
             planeTransitionHandler = new PlaneTransitionHandler(ctx.getClient());
         }
 
         if (webWalker == null) {
-            log.warn("WebWalker not available in TaskContext, creating instance");
             webWalker = new WebWalker(ctx.getClient(), ctx.getUnlockTracker(), planeTransitionHandler);
         }
 
@@ -2405,6 +2454,11 @@ public class WalkToTask extends AbstractTask {
             if (resourceAwareness != null) {
                 webWalker.setResourceAwareness(resourceAwareness);
                 log.debug("WebWalker configured with ResourceAwareness from TaskContext");
+            }
+
+            // Provide live inventory/equipment for requirement checks
+            if (ctx.getInventoryState() != null) {
+                webWalker.setInventoryState(ctx.getInventoryState());
             }
         }
 

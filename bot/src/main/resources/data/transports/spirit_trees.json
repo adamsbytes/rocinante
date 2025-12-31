@@ -9,8 +9,15 @@
       "y": 3446,
       "plane": 0,
       "type": "TRANSPORT",
-      "tags": ["kandarin", "gnome", "spirit_tree", "members"],
-      "metadata": {"travel_type": "spirit_tree"}
+      "tags": [
+        "kandarin",
+        "gnome",
+        "spirit_tree",
+        "members"
+      ],
+      "metadata": {
+        "travel_type": "spirit_tree"
+      }
     },
     {
       "id": "spirittree_gnomevillage",
@@ -19,8 +26,15 @@
       "y": 3166,
       "plane": 0,
       "type": "TRANSPORT",
-      "tags": ["kandarin", "gnome", "spirit_tree", "members"],
-      "metadata": {"travel_type": "spirit_tree"}
+      "tags": [
+        "kandarin",
+        "gnome",
+        "spirit_tree",
+        "members"
+      ],
+      "metadata": {
+        "travel_type": "spirit_tree"
+      }
     },
     {
       "id": "spirittree_grandexchange",
@@ -29,8 +43,15 @@
       "y": 3510,
       "plane": 0,
       "type": "TRANSPORT",
-      "tags": ["misthalin", "varrock", "spirit_tree", "members"],
-      "metadata": {"travel_type": "spirit_tree"}
+      "tags": [
+        "misthalin",
+        "varrock",
+        "spirit_tree",
+        "members"
+      ],
+      "metadata": {
+        "travel_type": "spirit_tree"
+      }
     },
     {
       "id": "spirittree_ardougne",
@@ -39,8 +60,14 @@
       "y": 3259,
       "plane": 0,
       "type": "TRANSPORT",
-      "tags": ["kandarin", "spirit_tree", "members"],
-      "metadata": {"travel_type": "spirit_tree"}
+      "tags": [
+        "kandarin",
+        "spirit_tree",
+        "members"
+      ],
+      "metadata": {
+        "travel_type": "spirit_tree"
+      }
     },
     {
       "id": "spirittree_corsair",
@@ -49,8 +76,14 @@
       "y": 2850,
       "plane": 0,
       "type": "TRANSPORT",
-      "tags": ["feldip", "spirit_tree", "members"],
-      "metadata": {"travel_type": "spirit_tree"}
+      "tags": [
+        "feldip",
+        "spirit_tree",
+        "members"
+      ],
+      "metadata": {
+        "travel_type": "spirit_tree"
+      }
     },
     {
       "id": "spirittree_laguna_aurorae",
@@ -59,8 +92,14 @@
       "y": 2787,
       "plane": 0,
       "type": "TRANSPORT",
-      "tags": ["varlamore", "spirit_tree", "members"],
-      "metadata": {"travel_type": "spirit_tree"}
+      "tags": [
+        "varlamore",
+        "spirit_tree",
+        "members"
+      ],
+      "metadata": {
+        "travel_type": "spirit_tree"
+      }
     },
     {
       "id": "spirittree_prifddinas",
@@ -69,39 +108,491 @@
       "y": 6124,
       "plane": 0,
       "type": "TRANSPORT",
-      "tags": ["tirannwn", "prifddinas", "spirit_tree", "members"],
-      "metadata": {"travel_type": "spirit_tree"}
+      "tags": [
+        "tirannwn",
+        "prifddinas",
+        "spirit_tree",
+        "members"
+      ],
+      "metadata": {
+        "travel_type": "spirit_tree"
+      }
     }
   ],
   "edges": [
-    {"from": "spirittree_gnomestronghold", "to": "spirittree_gnomevillage", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}], "metadata": {"travel_type": "spirit_tree"}},
-    {"from": "spirittree_gnomestronghold", "to": "spirittree_grandexchange", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}], "metadata": {"travel_type": "spirit_tree"}},
-    {"from": "spirittree_gnomestronghold", "to": "spirittree_ardougne", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}], "metadata": {"travel_type": "spirit_tree"}},
-    {"from": "spirittree_gnomestronghold", "to": "spirittree_corsair", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}, {"type": "QUEST", "identifier": "The Corsair Curse"}], "metadata": {"travel_type": "spirit_tree"}},
-    {"from": "spirittree_gnomestronghold", "to": "spirittree_laguna_aurorae", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}, {"type": "QUEST", "identifier": "Children of the Sun"}], "metadata": {"travel_type": "spirit_tree"}},
-    {"from": "spirittree_gnomestronghold", "to": "spirittree_prifddinas", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}, {"type": "QUEST", "identifier": "Song of the Elves"}], "metadata": {"travel_type": "spirit_tree"}},
-    {"from": "spirittree_gnomevillage", "to": "spirittree_grandexchange", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}], "metadata": {"travel_type": "spirit_tree"}},
-    {"from": "spirittree_gnomevillage", "to": "spirittree_ardougne", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}], "metadata": {"travel_type": "spirit_tree"}},
-    {"from": "spirittree_gnomevillage", "to": "spirittree_corsair", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}, {"type": "QUEST", "identifier": "The Corsair Curse"}], "metadata": {"travel_type": "spirit_tree"}},
-    {"from": "spirittree_gnomevillage", "to": "spirittree_laguna_aurorae", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}, {"type": "QUEST", "identifier": "Children of the Sun"}], "metadata": {"travel_type": "spirit_tree"}},
-    {"from": "spirittree_gnomevillage", "to": "spirittree_prifddinas", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}, {"type": "QUEST", "identifier": "Song of the Elves"}], "metadata": {"travel_type": "spirit_tree"}},
-    {"from": "spirittree_grandexchange", "to": "spirittree_ardougne", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}], "metadata": {"travel_type": "spirit_tree"}},
-    {"from": "spirittree_grandexchange", "to": "spirittree_corsair", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}, {"type": "QUEST", "identifier": "The Corsair Curse"}], "metadata": {"travel_type": "spirit_tree"}},
-    {"from": "spirittree_grandexchange", "to": "spirittree_laguna_aurorae", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}, {"type": "QUEST", "identifier": "Children of the Sun"}], "metadata": {"travel_type": "spirit_tree"}},
-    {"from": "spirittree_grandexchange", "to": "spirittree_prifddinas", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}, {"type": "QUEST", "identifier": "Song of the Elves"}], "metadata": {"travel_type": "spirit_tree"}},
-    {"from": "spirittree_ardougne", "to": "spirittree_corsair", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}, {"type": "QUEST", "identifier": "The Corsair Curse"}], "metadata": {"travel_type": "spirit_tree"}},
-    {"from": "spirittree_ardougne", "to": "spirittree_laguna_aurorae", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}, {"type": "QUEST", "identifier": "Children of the Sun"}], "metadata": {"travel_type": "spirit_tree"}},
-    {"from": "spirittree_ardougne", "to": "spirittree_prifddinas", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}, {"type": "QUEST", "identifier": "Song of the Elves"}], "metadata": {"travel_type": "spirit_tree"}},
-    {"from": "spirittree_corsair", "to": "spirittree_laguna_aurorae", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}, {"type": "QUEST", "identifier": "The Corsair Curse"}, {"type": "QUEST", "identifier": "Children of the Sun"}], "metadata": {"travel_type": "spirit_tree"}},
-    {"from": "spirittree_corsair", "to": "spirittree_prifddinas", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}, {"type": "QUEST", "identifier": "The Corsair Curse"}, {"type": "QUEST", "identifier": "Song of the Elves"}], "metadata": {"travel_type": "spirit_tree"}},
-    {"from": "spirittree_laguna_aurorae", "to": "spirittree_prifddinas", "type": "TRANSPORT", "cost_ticks": 5, "bidirectional": true, "requirements": [{"type": "QUEST", "identifier": "Tree Gnome Village"}, {"type": "QUEST", "identifier": "Children of the Sun"}, {"type": "QUEST", "identifier": "Song of the Elves"}], "metadata": {"travel_type": "spirit_tree"}},
-
-    {"_comment": "=== Walk edges to connect spirit tree network to base web ==="},
-    {"from": "spirittree_gnomestronghold", "to": "tree_gnome_stronghold", "type": "WALK", "cost_ticks": 60, "bidirectional": true, "requirements": [], "metadata": {"notes": "Walk from spirit tree to stronghold bank"}},
-    {"from": "spirittree_gnomevillage", "to": "tree_gnome_village", "type": "WALK", "cost_ticks": 3, "bidirectional": true, "requirements": [], "metadata": {"notes": "Spirit tree is at village center"}},
-    {"from": "spirittree_grandexchange", "to": "varrock_ge", "type": "WALK", "cost_ticks": 35, "bidirectional": true, "requirements": [], "metadata": {"notes": "Walk from GE spirit tree to GE bank"}},
-    {"from": "spirittree_ardougne", "to": "khazard", "type": "WALK", "cost_ticks": 90, "bidirectional": true, "requirements": [], "metadata": {"notes": "Walk from Battlefield of Khazard to Port Khazard"}},
-    {"from": "spirittree_corsair", "to": "corsair_cove", "type": "WALK", "cost_ticks": 95, "bidirectional": true, "requirements": [], "metadata": {"notes": "Walk from spirit tree to Corsair Cove bank"}},
-    {"from": "spirittree_laguna_aurorae", "to": "laguna_aurorae", "type": "WALK", "cost_ticks": 3, "bidirectional": true, "requirements": [], "metadata": {"notes": "Spirit tree at Laguna Aurorae"}}
+    {
+      "from": "spirittree_gnomestronghold",
+      "to": "spirittree_gnomevillage",
+      "type": "TRANSPORT",
+      "cost_ticks": 5,
+      "bidirectional": true,
+      "requirements": [
+        {
+          "type": "QUEST",
+          "identifier": "Tree Gnome Village"
+        }
+      ],
+      "metadata": {
+        "travel_type": "spirit_tree"
+      }
+    },
+    {
+      "from": "spirittree_gnomestronghold",
+      "to": "spirittree_grandexchange",
+      "type": "TRANSPORT",
+      "cost_ticks": 5,
+      "bidirectional": true,
+      "requirements": [
+        {
+          "type": "QUEST",
+          "identifier": "Tree Gnome Village"
+        }
+      ],
+      "metadata": {
+        "travel_type": "spirit_tree"
+      }
+    },
+    {
+      "from": "spirittree_gnomestronghold",
+      "to": "spirittree_ardougne",
+      "type": "TRANSPORT",
+      "cost_ticks": 5,
+      "bidirectional": true,
+      "requirements": [
+        {
+          "type": "QUEST",
+          "identifier": "Tree Gnome Village"
+        }
+      ],
+      "metadata": {
+        "travel_type": "spirit_tree"
+      }
+    },
+    {
+      "from": "spirittree_gnomestronghold",
+      "to": "spirittree_corsair",
+      "type": "TRANSPORT",
+      "cost_ticks": 5,
+      "bidirectional": true,
+      "requirements": [
+        {
+          "type": "QUEST",
+          "identifier": "Tree Gnome Village"
+        },
+        {
+          "type": "QUEST",
+          "identifier": "The Corsair Curse"
+        }
+      ],
+      "metadata": {
+        "travel_type": "spirit_tree"
+      }
+    },
+    {
+      "from": "spirittree_gnomestronghold",
+      "to": "spirittree_laguna_aurorae",
+      "type": "TRANSPORT",
+      "cost_ticks": 5,
+      "bidirectional": true,
+      "requirements": [
+        {
+          "type": "QUEST",
+          "identifier": "Tree Gnome Village"
+        },
+        {
+          "type": "QUEST",
+          "identifier": "Children of the Sun"
+        }
+      ],
+      "metadata": {
+        "travel_type": "spirit_tree"
+      }
+    },
+    {
+      "from": "spirittree_gnomestronghold",
+      "to": "spirittree_prifddinas",
+      "type": "TRANSPORT",
+      "cost_ticks": 5,
+      "bidirectional": true,
+      "requirements": [
+        {
+          "type": "QUEST",
+          "identifier": "Tree Gnome Village"
+        },
+        {
+          "type": "QUEST",
+          "identifier": "Song of the Elves"
+        }
+      ],
+      "metadata": {
+        "travel_type": "spirit_tree"
+      }
+    },
+    {
+      "from": "spirittree_gnomevillage",
+      "to": "spirittree_grandexchange",
+      "type": "TRANSPORT",
+      "cost_ticks": 5,
+      "bidirectional": true,
+      "requirements": [
+        {
+          "type": "QUEST",
+          "identifier": "Tree Gnome Village"
+        }
+      ],
+      "metadata": {
+        "travel_type": "spirit_tree"
+      }
+    },
+    {
+      "from": "spirittree_gnomevillage",
+      "to": "spirittree_ardougne",
+      "type": "TRANSPORT",
+      "cost_ticks": 5,
+      "bidirectional": true,
+      "requirements": [
+        {
+          "type": "QUEST",
+          "identifier": "Tree Gnome Village"
+        }
+      ],
+      "metadata": {
+        "travel_type": "spirit_tree"
+      }
+    },
+    {
+      "from": "spirittree_gnomevillage",
+      "to": "spirittree_corsair",
+      "type": "TRANSPORT",
+      "cost_ticks": 5,
+      "bidirectional": true,
+      "requirements": [
+        {
+          "type": "QUEST",
+          "identifier": "Tree Gnome Village"
+        },
+        {
+          "type": "QUEST",
+          "identifier": "The Corsair Curse"
+        }
+      ],
+      "metadata": {
+        "travel_type": "spirit_tree"
+      }
+    },
+    {
+      "from": "spirittree_gnomevillage",
+      "to": "spirittree_laguna_aurorae",
+      "type": "TRANSPORT",
+      "cost_ticks": 5,
+      "bidirectional": true,
+      "requirements": [
+        {
+          "type": "QUEST",
+          "identifier": "Tree Gnome Village"
+        },
+        {
+          "type": "QUEST",
+          "identifier": "Children of the Sun"
+        }
+      ],
+      "metadata": {
+        "travel_type": "spirit_tree"
+      }
+    },
+    {
+      "from": "spirittree_gnomevillage",
+      "to": "spirittree_prifddinas",
+      "type": "TRANSPORT",
+      "cost_ticks": 5,
+      "bidirectional": true,
+      "requirements": [
+        {
+          "type": "QUEST",
+          "identifier": "Tree Gnome Village"
+        },
+        {
+          "type": "QUEST",
+          "identifier": "Song of the Elves"
+        }
+      ],
+      "metadata": {
+        "travel_type": "spirit_tree"
+      }
+    },
+    {
+      "from": "spirittree_grandexchange",
+      "to": "spirittree_ardougne",
+      "type": "TRANSPORT",
+      "cost_ticks": 5,
+      "bidirectional": true,
+      "requirements": [
+        {
+          "type": "QUEST",
+          "identifier": "Tree Gnome Village"
+        }
+      ],
+      "metadata": {
+        "travel_type": "spirit_tree"
+      }
+    },
+    {
+      "from": "spirittree_grandexchange",
+      "to": "spirittree_corsair",
+      "type": "TRANSPORT",
+      "cost_ticks": 5,
+      "bidirectional": true,
+      "requirements": [
+        {
+          "type": "QUEST",
+          "identifier": "Tree Gnome Village"
+        },
+        {
+          "type": "QUEST",
+          "identifier": "The Corsair Curse"
+        }
+      ],
+      "metadata": {
+        "travel_type": "spirit_tree"
+      }
+    },
+    {
+      "from": "spirittree_grandexchange",
+      "to": "spirittree_laguna_aurorae",
+      "type": "TRANSPORT",
+      "cost_ticks": 5,
+      "bidirectional": true,
+      "requirements": [
+        {
+          "type": "QUEST",
+          "identifier": "Tree Gnome Village"
+        },
+        {
+          "type": "QUEST",
+          "identifier": "Children of the Sun"
+        }
+      ],
+      "metadata": {
+        "travel_type": "spirit_tree"
+      }
+    },
+    {
+      "from": "spirittree_grandexchange",
+      "to": "spirittree_prifddinas",
+      "type": "TRANSPORT",
+      "cost_ticks": 5,
+      "bidirectional": true,
+      "requirements": [
+        {
+          "type": "QUEST",
+          "identifier": "Tree Gnome Village"
+        },
+        {
+          "type": "QUEST",
+          "identifier": "Song of the Elves"
+        }
+      ],
+      "metadata": {
+        "travel_type": "spirit_tree"
+      }
+    },
+    {
+      "from": "spirittree_ardougne",
+      "to": "spirittree_corsair",
+      "type": "TRANSPORT",
+      "cost_ticks": 5,
+      "bidirectional": true,
+      "requirements": [
+        {
+          "type": "QUEST",
+          "identifier": "Tree Gnome Village"
+        },
+        {
+          "type": "QUEST",
+          "identifier": "The Corsair Curse"
+        }
+      ],
+      "metadata": {
+        "travel_type": "spirit_tree"
+      }
+    },
+    {
+      "from": "spirittree_ardougne",
+      "to": "spirittree_laguna_aurorae",
+      "type": "TRANSPORT",
+      "cost_ticks": 5,
+      "bidirectional": true,
+      "requirements": [
+        {
+          "type": "QUEST",
+          "identifier": "Tree Gnome Village"
+        },
+        {
+          "type": "QUEST",
+          "identifier": "Children of the Sun"
+        }
+      ],
+      "metadata": {
+        "travel_type": "spirit_tree"
+      }
+    },
+    {
+      "from": "spirittree_ardougne",
+      "to": "spirittree_prifddinas",
+      "type": "TRANSPORT",
+      "cost_ticks": 5,
+      "bidirectional": true,
+      "requirements": [
+        {
+          "type": "QUEST",
+          "identifier": "Tree Gnome Village"
+        },
+        {
+          "type": "QUEST",
+          "identifier": "Song of the Elves"
+        }
+      ],
+      "metadata": {
+        "travel_type": "spirit_tree"
+      }
+    },
+    {
+      "from": "spirittree_corsair",
+      "to": "spirittree_laguna_aurorae",
+      "type": "TRANSPORT",
+      "cost_ticks": 5,
+      "bidirectional": true,
+      "requirements": [
+        {
+          "type": "QUEST",
+          "identifier": "Tree Gnome Village"
+        },
+        {
+          "type": "QUEST",
+          "identifier": "The Corsair Curse"
+        },
+        {
+          "type": "QUEST",
+          "identifier": "Children of the Sun"
+        }
+      ],
+      "metadata": {
+        "travel_type": "spirit_tree"
+      }
+    },
+    {
+      "from": "spirittree_corsair",
+      "to": "spirittree_prifddinas",
+      "type": "TRANSPORT",
+      "cost_ticks": 5,
+      "bidirectional": true,
+      "requirements": [
+        {
+          "type": "QUEST",
+          "identifier": "Tree Gnome Village"
+        },
+        {
+          "type": "QUEST",
+          "identifier": "The Corsair Curse"
+        },
+        {
+          "type": "QUEST",
+          "identifier": "Song of the Elves"
+        }
+      ],
+      "metadata": {
+        "travel_type": "spirit_tree"
+      }
+    },
+    {
+      "from": "spirittree_laguna_aurorae",
+      "to": "spirittree_prifddinas",
+      "type": "TRANSPORT",
+      "cost_ticks": 5,
+      "bidirectional": true,
+      "requirements": [
+        {
+          "type": "QUEST",
+          "identifier": "Tree Gnome Village"
+        },
+        {
+          "type": "QUEST",
+          "identifier": "Children of the Sun"
+        },
+        {
+          "type": "QUEST",
+          "identifier": "Song of the Elves"
+        }
+      ],
+      "metadata": {
+        "travel_type": "spirit_tree"
+      }
+    },
+    {
+      "from": "spirittree_gnomestronghold",
+      "to": "tree_gnome_stronghold",
+      "type": "WALK",
+      "cost_ticks": 60,
+      "bidirectional": true,
+      "requirements": [],
+      "metadata": {
+        "notes": "Walk from spirit tree to stronghold bank"
+      }
+    },
+    {
+      "from": "spirittree_gnomevillage",
+      "to": "tree_gnome_village",
+      "type": "WALK",
+      "cost_ticks": 3,
+      "bidirectional": true,
+      "requirements": [],
+      "metadata": {
+        "notes": "Spirit tree is at village center"
+      }
+    },
+    {
+      "from": "spirittree_grandexchange",
+      "to": "varrock_ge",
+      "type": "WALK",
+      "cost_ticks": 35,
+      "bidirectional": true,
+      "requirements": [],
+      "metadata": {
+        "notes": "Walk from GE spirit tree to GE bank"
+      }
+    },
+    {
+      "from": "spirittree_ardougne",
+      "to": "khazard",
+      "type": "WALK",
+      "cost_ticks": 90,
+      "bidirectional": true,
+      "requirements": [],
+      "metadata": {
+        "notes": "Walk from Battlefield of Khazard to Port Khazard"
+      }
+    },
+    {
+      "from": "spirittree_corsair",
+      "to": "corsair_cove",
+      "type": "WALK",
+      "cost_ticks": 95,
+      "bidirectional": true,
+      "requirements": [],
+      "metadata": {
+        "notes": "Walk from spirit tree to Corsair Cove bank"
+      }
+    },
+    {
+      "from": "spirittree_laguna_aurorae",
+      "to": "laguna_aurorae",
+      "type": "WALK",
+      "cost_ticks": 3,
+      "bidirectional": true,
+      "requirements": [],
+      "metadata": {
+        "notes": "Spirit tree at Laguna Aurorae"
+      }
+    }
   ]
 }

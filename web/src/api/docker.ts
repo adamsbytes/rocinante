@@ -2,7 +2,18 @@ import Docker from 'dockerode';
 import { join } from 'path';
 import { mkdirSync, existsSync, writeFileSync } from 'fs';
 import type { BotConfig, BotStatus } from '../shared/types';
-import { getStatusDir, ensureStatusDir, resetStatusFile, getMachineIdPath } from './status';
+import {
+  getStatusDir,
+  ensureStatusDir,
+  resetStatusFile,
+  getMachineIdPath,
+  getScreenshotsDir,
+  ensureScreenshotsDir,
+  getSharedCacheDir,
+  ensureSharedCacheDir,
+  getBoltDataDir,
+  ensureBoltDataDir,
+} from './status';
 
 const docker = new Docker({ socketPath: '/var/run/docker.sock' });
 
@@ -186,13 +197,19 @@ export async function startBot(bot: BotConfig): Promise<void> {
   // Add separator for new run
   appendBotLogs(bot.id, ['\n--- New container starting ---\n']);
 
-  // Ensure status directory exists for bind mount
+  // Ensure directories exist for bind mounts
   await ensureStatusDir(bot.id);
+  await ensureScreenshotsDir(bot.id);
+  await ensureSharedCacheDir();
+  await ensureBoltDataDir(bot.id);
   const statusDir = getStatusDir(bot.id);
+  const screenshotsDir = getScreenshotsDir(bot.id);
+  const sharedCacheDir = getSharedCacheDir();
+  const boltDataDir = getBoltDataDir(bot.id);
 
   // Build environment variables for Jagex Launcher authentication
   const env: string[] = [
-    'DISPLAY=:99',
+    'DISPLAY=:0',
     `ACCOUNT_EMAIL=${bot.username}`,
     `ACCOUNT_PASSWORD=${bot.password}`,
   ];
@@ -291,6 +308,7 @@ export async function startBot(bot: BotConfig): Promise<void> {
   // Create and start container
   // Anti-fingerprint: Use realistic hostname instead of Docker's random hex ID
   const hostname = generateHostname(bot.id);
+  const boltLauncherPath = '/home/runelite/.local/share/bolt-launcher/.runelite';
   
   const container = await docker.createContainer({
     Image: BOT_IMAGE,
@@ -298,22 +316,21 @@ export async function startBot(bot: BotConfig): Promise<void> {
     Hostname: hostname,
     Env: env,
     HostConfig: {
-      // NOTE: No VNC port binding - VNC uses Unix socket via status dir bind mount
       Memory: parseMemory(bot.resources.memoryLimit),
       NanoCpus: parseCpu(bot.resources.cpuLimit),
       // Chromium needs more shared memory than Docker's 64MB default
       ShmSize: 256 * 1024 * 1024, // 256MB
       Binds: [
-        // Mount volumes for persistent data
-        `rocinante_profiles_${bot.id}:/home/runelite/.runelite/rocinante/profiles`,
-        `rocinante_logs_${bot.id}:/home/runelite/.runelite/logs`,
-        `rocinante_settings_${bot.id}:/home/runelite/.runelite/settings`,
-        // Bolt launcher stores login session here
-        `rocinante_bolt_${bot.id}:/home/runelite/.local/share/bolt-launcher`,
+        // Bolt launcher data (login session, launcher state)
+        `${boltDataDir}:/home/runelite/.local/share/bolt-launcher`,
         // Status directory for bot-to-web communication (bind mount for file watching)
         // Note: Bolt launcher uses .local/share/bolt-launcher/.runelite instead of ~/.runelite
         // VNC socket is also created here: vnc.sock
-        `${statusDir}:/home/runelite/.local/share/bolt-launcher/.runelite/rocinante`,
+        `${statusDir}:${boltLauncherPath}/rocinante`,
+        // Per-bot screenshots
+        `${screenshotsDir}:${boltLauncherPath}/screenshots`,
+        // Shared wiki cache across all accounts
+        `${sharedCacheDir}:${boltLauncherPath}/rocinante/wiki-cache`,
         // Machine-id file bind mount (anti-fingerprint: unique per account)
         `${machineIdPath}:/etc/machine-id:ro`,
       ],
@@ -322,7 +339,6 @@ export async function startBot(bot: BotConfig): Promise<void> {
         Name: 'unless-stopped',
       },
     },
-    // NOTE: No ExposedPorts - VNC uses Unix socket, not TCP
   });
 
   await container.start();

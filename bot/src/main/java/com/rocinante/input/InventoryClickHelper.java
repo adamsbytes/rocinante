@@ -136,7 +136,7 @@ public class InventoryClickHelper {
                 if (description != null) {
                     log.debug("{} - clicking slot {} at ({}, {})", description, slot, clickX, clickY);
                 } else {
-                    log.trace("Clicking inventory slot {} at ({}, {})", slot, clickX, clickY);
+                    log.debug("Clicking inventory slot {} at ({}, {})", slot, clickX, clickY);
                 }
 
                 coordsFuture.complete(new int[]{clickX, clickY});

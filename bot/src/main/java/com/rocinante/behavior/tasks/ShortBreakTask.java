@@ -152,13 +152,13 @@ public class ShortBreakTask extends BehavioralTask {
         }
         
         String activity = scheduledActivities.get(currentActivityIndex);
-        log.trace("Executing break activity: {}", activity);
+        log.debug("Executing break activity: {}", activity);
         
         try {
             performActivity(ctx, activity);
             playerProfile.reinforceBreakActivity(activity);
         } catch (Exception e) {
-            log.trace("Activity {} interrupted: {}", activity, e.getMessage());
+            log.debug("Activity {} interrupted: {}", activity, e.getMessage());
         }
         
         currentActivityIndex++;

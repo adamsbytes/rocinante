@@ -350,7 +350,7 @@ public class BuryBonesTask extends AbstractTask {
             return;
         }
 
-        log.trace("Waiting for bury response (tick {})", buryWaitTicks);
+        log.debug("Waiting for bury response (tick {})", buryWaitTicks);
     }
 
     // ========================================================================

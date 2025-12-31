@@ -248,7 +248,7 @@ public class QuestService {
                 return questEnum.toString();
             }
         } catch (Exception e) {
-            log.trace("Could not extract quest ID", e);
+            log.debug("Could not extract quest ID", e);
         }
         return questHelper.getClass().getSimpleName();
     }
@@ -387,7 +387,7 @@ public class QuestService {
                 RequirementStatus.QuestRequirementsStatus status = getRequirementsStatus(quest.name());
                 results.add(status);
             } catch (Exception e) {
-                log.trace("Could not get requirements for quest {}: {}", quest.name(), e.getMessage());
+                log.debug("Could not get requirements for quest {}: {}", quest.name(), e.getMessage());
             }
         }
         

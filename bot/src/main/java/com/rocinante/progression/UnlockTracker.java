@@ -277,11 +277,11 @@ public class UnlockTracker {
         try {
             int tutorialProgress = client.getVarpValue(TUTORIAL_ISLAND_PROGRESS_VARP);
             if (tutorialProgress > 0 && tutorialProgress < PRAYER_UNLOCK_PROGRESS) {
-                log.trace("Prayer skill exists but tab not unlocked (tutorial progress: {})", tutorialProgress);
+                log.debug("Prayer skill exists but tab not unlocked (tutorial progress: {})", tutorialProgress);
                 return false;
             }
         } catch (Exception e) {
-            log.trace("Error checking tutorial progress varp: {}", e.getMessage());
+            log.debug("Error checking tutorial progress varp: {}", e.getMessage());
             // If we can't check, assume it's unlocked (safer for main accounts)
         }
         
@@ -299,7 +299,7 @@ public class UnlockTracker {
                 return client.getLocalPlayer().getCombatLevel();
             }
         } catch (Exception e) {
-            log.trace("Error getting combat level: {}", e.getMessage());
+            log.debug("Error getting combat level: {}", e.getMessage());
         }
         return 3; // Default minimum combat level
     }
@@ -428,7 +428,7 @@ public class UnlockTracker {
         boolean met = currentFavour >= requiredPercent;
         
         if (!met) {
-            log.trace("Favour requirement not met: {} requires {}%, player has {}%", 
+            log.debug("Favour requirement not met: {} requires {}%, player has {}%", 
                     houseName, requiredPercent, currentFavour);
         }
         
@@ -522,7 +522,7 @@ public class UnlockTracker {
         boolean met = count >= quantity;
         
         if (!met) {
-            log.trace("Item requirement not met: need {} of item {}, have {}", 
+            log.debug("Item requirement not met: need {} of item {}, have {}", 
                     quantity, itemId, count);
         }
         
@@ -547,7 +547,7 @@ public class UnlockTracker {
         for (EdgeRequirement.RuneCost cost : runeCosts) {
             int count = inventory.countItem(cost.getItemId());
             if (count < cost.getQuantity()) {
-                log.trace("Rune requirement not met: need {} of rune {}, have {}", 
+                log.debug("Rune requirement not met: need {} of rune {}, have {}", 
                         cost.getQuantity(), cost.getItemId(), count);
                 return false;
             }
@@ -906,7 +906,7 @@ public class UnlockTracker {
         }
         
         int pohValue = client.getVarbitValue(VARBIT_POH_OWNED);
-        log.trace("POH ownership varbit {}: {}", VARBIT_POH_OWNED, pohValue);
+        log.debug("POH ownership varbit {}: {}", VARBIT_POH_OWNED, pohValue);
         return pohValue == 1;
     }
 
@@ -1119,14 +1119,14 @@ public class UnlockTracker {
             // For some teleports (e.g., Blast Furnace, Rat Pits), quest only needs to be started
             if (teleport == GroupingTeleport.BLAST_FURNACE || teleport == GroupingTeleport.RAT_PITS) {
                 if (!isQuestStarted(requiredQuest)) {
-                    log.trace("Grouping teleport {} requires quest {} to be started", 
+                    log.debug("Grouping teleport {} requires quest {} to be started", 
                             teleport.name(), requiredQuest.getName());
                     return false;
                 }
             } else {
                 // Others require completion
                 if (!isQuestCompleted(requiredQuest)) {
-                    log.trace("Grouping teleport {} requires quest {} to be completed", 
+                    log.debug("Grouping teleport {} requires quest {} to be completed", 
                             teleport.name(), requiredQuest.getName());
                     return false;
                 }
@@ -1137,7 +1137,7 @@ public class UnlockTracker {
         if (teleport.requiresCombatLevel()) {
             int combatLevel = getCombatLevel();
             if (combatLevel < teleport.getRequiredCombatLevel()) {
-                log.trace("Grouping teleport {} requires combat level {}, player has {}", 
+                log.debug("Grouping teleport {} requires combat level {}, player has {}", 
                         teleport.name(), teleport.getRequiredCombatLevel(), combatLevel);
                 return false;
             }
@@ -1148,7 +1148,7 @@ public class UnlockTracker {
             Skill skill = teleport.getRequiredSkill();
             int level = getSkillLevel(skill);
             if (level < teleport.getRequiredSkillLevel()) {
-                log.trace("Grouping teleport {} requires {} level {}, player has {}", 
+                log.debug("Grouping teleport {} requires {} level {}, player has {}", 
                         teleport.name(), skill.name(), teleport.getRequiredSkillLevel(), level);
                 return false;
             }
@@ -1158,7 +1158,7 @@ public class UnlockTracker {
         if (teleport.requiresFavour()) {
             int favour = getKourendFavour(teleport.getRequiredFavourHouse());
             if (favour < teleport.getRequiredFavourPercent()) {
-                log.trace("Grouping teleport {} requires {} favour {}%, player has {}%", 
+                log.debug("Grouping teleport {} requires {} favour {}%, player has {}%", 
                         teleport.name(), teleport.getRequiredFavourHouse(), 
                         teleport.getRequiredFavourPercent(), favour);
                 return false;
@@ -1167,7 +1167,7 @@ public class UnlockTracker {
 
         // Boss-count gate (e.g., NMZ)
         if (teleport.requiresBossCount() && !hasRequiredBossCount(teleport)) {
-            log.trace("Grouping teleport {} requires {} boss kills", teleport.name(),
+            log.debug("Grouping teleport {} requires {} boss kills", teleport.name(),
                     teleport.getRequiredBossCount());
             return false;
         }
@@ -1223,7 +1223,7 @@ public class UnlockTracker {
             int bossCount = client.getVarbitValue(VARBIT_NMZ_BOSS_COUNT);
             return bossCount >= 5;
         } catch (Exception e) {
-            log.trace("Error checking NMZ boss count: {}", e.getMessage());
+            log.debug("Error checking NMZ boss count: {}", e.getMessage());
             // Fall back to checking some common quest completions
             return isQuestCompleted(Quest.VAMPYRE_SLAYER) 
                     || isQuestCompleted(Quest.TREE_GNOME_VILLAGE)
@@ -1265,7 +1265,7 @@ public class UnlockTracker {
                     // Favour is stored as 0-1000, divide by 10 to get percentage
                     return client.getVarbitValue(KOUREND_FAVOUR_VARBITS[i]) / 10;
                 } catch (Exception e) {
-                    log.trace("Error checking {} favour: {}", houseName, e.getMessage());
+                    log.debug("Error checking {} favour: {}", houseName, e.getMessage());
                     return 0;
                 }
             }
@@ -1372,7 +1372,7 @@ public class UnlockTracker {
                 return RespawnPoint.CIVITAS_ILLA_FORTIS;
             }
         } catch (Exception e) {
-            log.trace("Error checking respawn point varbits: {}", e.getMessage());
+            log.debug("Error checking respawn point varbits: {}", e.getMessage());
         }
         
         // Default is Lumbridge
@@ -1416,7 +1416,7 @@ public class UnlockTracker {
                 // For most spawn points, varbit > 0 means unlocked
                 return client.getVarbitValue(varbitId) > 0;
             } catch (Exception e) {
-                log.trace("Error checking respawn point unlock varbit {}: {}", varbitId, e.getMessage());
+                log.debug("Error checking respawn point unlock varbit {}: {}", varbitId, e.getMessage());
             }
         }
 

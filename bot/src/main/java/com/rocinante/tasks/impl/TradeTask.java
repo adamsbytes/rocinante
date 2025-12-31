@@ -543,7 +543,7 @@ public class TradeTask extends AbstractTask {
                 // Ensure quantity is at least 1
                 quantity = Math.max(1, quantity);
                 items.merge(itemId, quantity, Integer::sum);
-                log.trace("Parsed trade item: {} x{}", itemId, quantity);
+                log.debug("Parsed trade item: {} x{}", itemId, quantity);
             } else if (text != null && !text.trim().isEmpty()) {
                 // Fallback: try to parse from text format "X x Item Name"
                 // This handles edge cases where widget properties aren't set
@@ -576,7 +576,7 @@ public class TradeTask extends AbstractTask {
             try {
                 return Integer.parseInt(quantityStr);
             } catch (NumberFormatException e) {
-                log.trace("Could not parse quantity from '{}': {}", quantityStr, e.getMessage());
+                log.debug("Could not parse quantity from '{}': {}", quantityStr, e.getMessage());
             }
         }
 
@@ -733,7 +733,7 @@ public class TradeTask extends AbstractTask {
                         theirOfferValue += (long) haValue * quantity;
                     }
                 } catch (Exception e) {
-                    log.trace("Could not get HA value for item {}", itemId);
+                    log.debug("Could not get HA value for item {}", itemId);
                 }
             }
         }

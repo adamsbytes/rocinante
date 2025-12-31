@@ -139,7 +139,7 @@ public class QuestHelperBridge {
                 return (String) getNameMethod.invoke(questEnum);
             }
         } catch (Exception e) {
-            log.trace("Could not extract quest name from enum", e);
+            log.debug("Could not extract quest name from enum", e);
         }
         return null;
     }
@@ -173,7 +173,7 @@ public class QuestHelperBridge {
                 }
             }
         } catch (Exception e) {
-            log.trace("Could not extract quest enum", e);
+            log.debug("Could not extract quest enum", e);
         }
         return null;
     }
@@ -235,7 +235,7 @@ public class QuestHelperBridge {
             }
             
         } catch (Exception e) {
-            log.trace("Could not extract varId from QuestHelperQuest enum: {}", e.getMessage());
+            log.debug("Could not extract varId from QuestHelperQuest enum: {}", e.getMessage());
         }
         
         return -1;
@@ -256,7 +256,7 @@ public class QuestHelperBridge {
                 }
             }
         } catch (Exception e) {
-            log.trace("Could not determine var type", e);
+            log.debug("Could not determine var type", e);
         }
         return false;
     }
@@ -278,7 +278,7 @@ public class QuestHelperBridge {
                 }
             }
         } catch (Exception e) {
-            log.trace("Could not extract completion value", e);
+            log.debug("Could not extract completion value", e);
         }
         return -1;
     }
@@ -652,13 +652,13 @@ public class QuestHelperBridge {
                                 }
                             }
                         } catch (Exception e) {
-                            log.trace("Could not call getAllIds on requirement", e);
+                            log.debug("Could not call getAllIds on requirement", e);
                         }
                     }
                 }
             }
         } catch (Exception e) {
-            log.trace("Could not extract itemId from requirements list", e);
+            log.debug("Could not extract itemId from requirements list", e);
         }
 
         // Fallback: try iconItemID from DetailedQuestStep (often set to the item)
@@ -693,7 +693,7 @@ public class QuestHelperBridge {
                 }
             }
         } catch (Exception e) {
-            log.trace("Could not extract itemName from requirements", e);
+            log.debug("Could not extract itemName from requirements", e);
         }
 
         // Parse from step text (e.g., "Grab an egg from the farm" -> "egg")
@@ -1406,7 +1406,7 @@ public class QuestHelperBridge {
                 Method getNameMethod = questObj.getClass().getMethod("getName");
                 questName = (String) getNameMethod.invoke(questObj);
             } catch (Exception e) {
-                log.trace("Could not get quest name from QuestSyncStep", e);
+                log.debug("Could not get quest name from QuestSyncStep", e);
             }
         }
         
@@ -1510,7 +1510,7 @@ public class QuestHelperBridge {
                 }
             }
         } catch (Exception e) {
-            log.trace("Could not extract steps from OwnerStep", e);
+            log.debug("Could not extract steps from OwnerStep", e);
         }
         return null;
     }
@@ -1645,7 +1645,7 @@ public class QuestHelperBridge {
                 }
             }
         } catch (Exception e) {
-            log.trace("Could not extract choices from steps object", e);
+            log.debug("Could not extract choices from steps object", e);
         }
         return Collections.emptyList();
     }
@@ -1685,7 +1685,7 @@ public class QuestHelperBridge {
                     try {
                         pattern = Pattern.compile(patternStr);
                     } catch (Exception e) {
-                        log.trace("Invalid pattern string: {}", patternStr);
+                        log.debug("Invalid pattern string: {}", patternStr);
                     }
                 }
             }
@@ -1720,34 +1720,34 @@ public class QuestHelperBridge {
             if (varbitId != -1 && varbitValueToAnswer != null && !varbitValueToAnswer.isEmpty()) {
                 // Varbit-based dynamic selection
                 resolver = DialogueOptionResolver.varbitBased(varbitId, varbitValueToAnswer);
-                log.trace("Created varbit-based resolver: varbitId={}, options={}", varbitId, varbitValueToAnswer.size());
+                log.debug("Created varbit-based resolver: varbitId={}, options={}", varbitId, varbitValueToAnswer.size());
             } else if (pattern != null) {
                 // Regex pattern matching
                 resolver = DialogueOptionResolver.pattern(pattern);
-                log.trace("Created pattern resolver: {}", pattern.pattern());
+                log.debug("Created pattern resolver: {}", pattern.pattern());
             } else if (choiceById != -1 && choiceText != null) {
                 // Index + text verification (most precise)
                 // Use text-based but with index hint - for now just use text
                 resolver = DialogueOptionResolver.text(choiceText);
-                log.trace("Created text resolver with index hint: text={}, index={}", choiceText, choiceById);
+                log.debug("Created text resolver with index hint: text={}, index={}", choiceText, choiceById);
             } else if (choiceById != -1) {
                 // Pure index-based selection
                 resolver = DialogueOptionResolver.index(choiceById);
-                log.trace("Created index resolver: {}", choiceById);
+                log.debug("Created index resolver: {}", choiceById);
             } else if (choiceText != null && !choiceText.isEmpty()) {
                 // Simple text matching
                 resolver = DialogueOptionResolver.text(choiceText);
-                log.trace("Created text resolver: {}", choiceText);
+                log.debug("Created text resolver: {}", choiceText);
             } else {
                 // No valid selection criteria
-                log.trace("DialogChoiceStep has no valid selection criteria");
+                log.debug("DialogChoiceStep has no valid selection criteria");
                 return null;
             }
 
             // Apply context requirements (DialogChoiceStep specific)
             if (expectedPreviousLine != null && !expectedPreviousLine.isEmpty()) {
                 resolver = resolver.withExpectedPreviousLine(expectedPreviousLine);
-                log.trace("Added context requirement: {}", expectedPreviousLine);
+                log.debug("Added context requirement: {}", expectedPreviousLine);
             }
 
             // Apply exclusions - if multiple, apply each
@@ -1755,7 +1755,7 @@ public class QuestHelperBridge {
                 for (String exclusion : excludedStrings) {
                     if (exclusion != null && !exclusion.isEmpty()) {
                         resolver = resolver.withExclusion(exclusion);
-                        log.trace("Added exclusion: {}", exclusion);
+                        log.debug("Added exclusion: {}", exclusion);
                     }
                 }
             }
@@ -1942,7 +1942,7 @@ public class QuestHelperBridge {
                 return result != null ? result.toString() : "";
             }
         } catch (Exception e) {
-            log.trace("Could not get step text", e);
+            log.debug("Could not get step text", e);
         }
         return "";
     }
@@ -1976,7 +1976,7 @@ public class QuestHelperBridge {
             return null;
         }
         // No location field found - this is normal for some step types
-        log.trace("No WorldPoint field found in {} step", stepClassName);
+        log.debug("No WorldPoint field found in {} step", stepClassName);
         return null;
     }
 
@@ -2017,7 +2017,7 @@ public class QuestHelperBridge {
                 }
             }
         } catch (Exception e) {
-            log.trace("Could not extract explicit menu action: {}", e.getMessage());
+            log.debug("Could not extract explicit menu action: {}", e.getMessage());
         }
         return null;
     }
@@ -2030,10 +2030,10 @@ public class QuestHelperBridge {
             Class<?> clazz = Class.forName(className);
             return clazz.isAssignableFrom(obj.getClass());
         } catch (ClassNotFoundException e) {
-            log.trace("Quest Helper class {} not found on classpath", className);
+            log.debug("Quest Helper class {} not found on classpath", className);
             return false;
         } catch (Exception e) {
-            log.trace("Instanceof check failed for {}: {}", className, e.getMessage());
+            log.debug("Instanceof check failed for {}: {}", className, e.getMessage());
             return false;
         }
     }
@@ -2073,7 +2073,7 @@ public class QuestHelperBridge {
                 }
             }
         } catch (Exception e) {
-            log.trace("Could not extract ship object IDs: {}", e.getMessage());
+            log.debug("Could not extract ship object IDs: {}", e.getMessage());
         }
 
         // Deduplicate
@@ -2102,7 +2102,7 @@ public class QuestHelperBridge {
                 }
             }
         } catch (Exception e) {
-            log.trace("Could not extract child location: {}", e.getMessage());
+            log.debug("Could not extract child location: {}", e.getMessage());
         }
         return null;
     }
@@ -2133,7 +2133,7 @@ public class QuestHelperBridge {
                 return value != null ? value.toString() : null;
             }
         } catch (Exception e) {
-            log.trace("Could not get string field: {}", fieldName);
+            log.debug("Could not get string field: {}", fieldName);
         }
         return null;
     }
@@ -2146,7 +2146,7 @@ public class QuestHelperBridge {
                 return field.get(obj);
             }
         } catch (Exception e) {
-            log.trace("Could not get field value: {}", fieldName);
+            log.debug("Could not get field value: {}", fieldName);
         }
         return null;
     }
@@ -2382,7 +2382,7 @@ public class QuestHelperBridge {
                 return field.getBoolean(obj);
             }
         } catch (Exception e) {
-            log.trace("Could not get boolean field: {}", fieldName);
+            log.debug("Could not get boolean field: {}", fieldName);
         }
         return defaultValue;
     }
@@ -2466,7 +2466,7 @@ public class QuestHelperBridge {
                 }
             }
         } catch (Exception e) {
-            log.trace("Could not get difficulty: {}", e.getMessage());
+            log.debug("Could not get difficulty: {}", e.getMessage());
         }
         return "Unknown";
     }
@@ -2503,7 +2503,7 @@ public class QuestHelperBridge {
                 }
             }
         } catch (Exception e) {
-            log.trace("Could not get general requirements: {}", e.getMessage());
+            log.debug("Could not get general requirements: {}", e.getMessage());
         }
         return descriptions;
     }
@@ -2524,7 +2524,7 @@ public class QuestHelperBridge {
                 }
             }
         } catch (Exception e) {
-            log.trace("Could not check requirements: {}", e.getMessage());
+            log.debug("Could not check requirements: {}", e.getMessage());
         }
         // Default to true if we can't determine
         return true;
@@ -2563,14 +2563,14 @@ public class QuestHelperBridge {
                                 // For now, just capture the requirement
                                 skills.add(new SkillRequirementInfo(skillName, level, false));
                             } catch (Exception e) {
-                                log.trace("Could not extract skill requirement details", e);
+                                log.debug("Could not extract skill requirement details", e);
                             }
                         }
                     }
                 }
             }
         } catch (Exception e) {
-            log.trace("Could not get skill requirements: {}", e.getMessage());
+            log.debug("Could not get skill requirements: {}", e.getMessage());
         }
         return skills;
     }
@@ -2606,14 +2606,14 @@ public class QuestHelperBridge {
                                     quests.add(new QuestRequirementInfo(questId, questName, false));
                                 }
                             } catch (Exception e) {
-                                log.trace("Could not extract quest requirement details", e);
+                                log.debug("Could not extract quest requirement details", e);
                             }
                         }
                     }
                 }
             }
         } catch (Exception e) {
-            log.trace("Could not get quest requirements: {}", e.getMessage());
+            log.debug("Could not get quest requirements: {}", e.getMessage());
         }
         return quests;
     }
@@ -2802,7 +2802,7 @@ public class QuestHelperBridge {
                 return "FINISHED".equalsIgnoreCase(state.toString());
             }
         } catch (Exception e) {
-            log.trace("Quest Helper completion check failed", e);
+            log.debug("Quest Helper completion check failed", e);
         }
         return false;
     }

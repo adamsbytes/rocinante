@@ -126,7 +126,7 @@ public class DiaryTracker {
         try {
             int value = client.getVarbitValue(varbitId);
             boolean complete = value == 1;
-            log.trace("Diary {}/{} = {} (complete={})", region, tier, value, complete);
+            log.debug("Diary {}/{} = {} (complete={})", region, tier, value, complete);
             return complete;
         } catch (Exception e) {
             log.warn("Error checking diary varbit {}: {}", varbitId, e.getMessage());

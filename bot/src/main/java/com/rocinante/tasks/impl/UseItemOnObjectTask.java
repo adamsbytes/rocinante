@@ -23,12 +23,16 @@ import net.runelite.api.TileObject;
 import net.runelite.api.WallObject;
 import net.runelite.api.coords.WorldPoint;
 
+import com.rocinante.navigation.EntityFinder;
 import java.awt.Point;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -453,7 +457,7 @@ public class UseItemOnObjectTask extends AbstractTask {
             ItemComposition def = ctx.getClient().getItemDefinition(itemId);
             return def != null ? def.getName() : null;
         } catch (Exception e) {
-            log.trace("Could not get item name for {}", itemId);
+            log.debug("Could not get item name for {}", itemId);
             return null;
         }
     }
@@ -504,7 +508,7 @@ public class UseItemOnObjectTask extends AbstractTask {
             return;
         }
 
-        log.trace("Waiting for interaction response (tick {})", interactionTicks);
+        log.debug("Waiting for interaction response (tick {})", interactionTicks);
     }
 
     // ========================================================================
@@ -534,9 +538,46 @@ public class UseItemOnObjectTask extends AbstractTask {
     // ========================================================================
 
     /**
-     * Find the nearest instance of the target object.
+     * Find the nearest reachable instance of the target object.
+     * Uses EntityFinder for collision-aware object selection.
+     * Objects behind fences/rivers are rejected.
      */
     private TileObject findNearestObject(TaskContext ctx, WorldPoint playerPos) {
+        EntityFinder entityFinder = ctx.getEntityFinder();
+
+        // Fall back to simple distance-based search if EntityFinder unavailable
+        if (entityFinder == null) {
+            log.warn("EntityFinder unavailable, falling back to distance-based object search");
+            return findNearestObjectByDistance(ctx, playerPos);
+        }
+
+        // Use EntityFinder for reachability-aware object finding
+        Set<Integer> objectIdSet = new HashSet<>(objectIds);
+        Optional<EntityFinder.ObjectSearchResult> result = entityFinder.findNearestReachableObject(
+                playerPos, objectIdSet, searchRadius);
+
+        if (result.isEmpty()) {
+            log.debug("No reachable object found for IDs {} within {} tiles", objectIds, searchRadius);
+            return null;
+        }
+
+        EntityFinder.ObjectSearchResult searchResult = result.get();
+        TileObject obj = searchResult.getObject();
+        resolvedObjectId = obj.getId();
+        
+        log.debug("Found reachable object {} at {} (path cost: {})",
+                resolvedObjectId,
+                getObjectWorldPoint(obj),
+                searchResult.getPathCost());
+
+        return obj;
+    }
+
+    /**
+     * Fallback: find nearest object by distance only (no reachability check).
+     * Used when EntityFinder is unavailable.
+     */
+    private TileObject findNearestObjectByDistance(TaskContext ctx, WorldPoint playerPos) {
         Client client = ctx.getClient();
         Scene scene = client.getScene();
         Tile[][][] tiles = scene.getTiles();

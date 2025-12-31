@@ -300,7 +300,7 @@ public class GrandExchangeStateManager {
                 return itemStats.getGeLimit();
             }
         } catch (Exception e) {
-            log.trace("Failed to get item stats for {}: {}", itemId, e.getMessage());
+            log.debug("Failed to get item stats for {}: {}", itemId, e.getMessage());
         }
         
         return -1;

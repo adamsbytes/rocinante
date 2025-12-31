@@ -17,12 +17,16 @@ import net.runelite.api.NPC;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.widgets.Widget;
 
+import com.rocinante.navigation.EntityFinder;
 import java.awt.Point;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -582,7 +586,7 @@ public class UseItemOnNpcTask extends AbstractTask {
             ItemComposition def = ctx.getClient().getItemDefinition(itemId);
             return def != null ? def.getName() : null;
         } catch (Exception e) {
-            log.trace("Could not get item name for {}", itemId);
+            log.debug("Could not get item name for {}", itemId);
             return null;
         }
     }
@@ -640,7 +644,7 @@ public class UseItemOnNpcTask extends AbstractTask {
             return;
         }
 
-        log.trace("Waiting for interaction response (tick {})", interactionTicks);
+        log.debug("Waiting for interaction response (tick {})", interactionTicks);
     }
 
     // ========================================================================
@@ -648,9 +652,59 @@ public class UseItemOnNpcTask extends AbstractTask {
     // ========================================================================
 
     /**
-     * Find the nearest instance of the target NPC.
+     * Find the nearest reachable instance of the target NPC.
+     * Uses EntityFinder for collision-aware NPC selection.
+     * NPCs behind fences/rivers are rejected.
      */
     private NPC findNearestNpc(TaskContext ctx, WorldPoint playerPos) {
+        EntityFinder entityFinder = ctx.getEntityFinder();
+
+        // Fall back to simple distance-based search if EntityFinder unavailable
+        if (entityFinder == null) {
+            log.warn("EntityFinder unavailable, falling back to distance-based NPC search");
+            return findNearestNpcByDistance(ctx, playerPos);
+        }
+
+        // Build the set of NPC IDs to search for
+        Set<Integer> npcIds = getAllNpcIds();
+        String nameFilter = (npcName != null && !npcName.isEmpty()) ? npcName : null;
+
+        // Use EntityFinder for reachability-aware NPC finding
+        Optional<EntityFinder.NpcSearchResult> result = entityFinder.findNearestReachableNpc(
+                playerPos, npcIds, nameFilter, searchRadius);
+
+        if (result.isEmpty()) {
+            log.debug("No reachable NPC found for IDs {} within {} tiles", npcIds, searchRadius);
+            return null;
+        }
+
+        EntityFinder.NpcSearchResult searchResult = result.get();
+        NPC npc = searchResult.getNpc();
+        resolvedNpcId = npc.getId();
+
+        log.debug("Found reachable NPC {} at {} (path cost: {})",
+                npc.getName(),
+                npc.getWorldLocation(),
+                searchResult.getPathCost());
+
+        return npc;
+    }
+
+    /**
+     * Get all NPC IDs this task targets (primary + alternates).
+     */
+    private Set<Integer> getAllNpcIds() {
+        Set<Integer> ids = new HashSet<>();
+        ids.add(npcId);
+        ids.addAll(alternateNpcIds);
+        return ids;
+    }
+
+    /**
+     * Fallback: find nearest NPC by distance only (no reachability check).
+     * Used when EntityFinder is unavailable.
+     */
+    private NPC findNearestNpcByDistance(TaskContext ctx, WorldPoint playerPos) {
         Client client = ctx.getClient();
 
         NPC nearest = null;

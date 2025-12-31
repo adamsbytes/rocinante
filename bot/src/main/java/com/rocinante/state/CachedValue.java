@@ -158,7 +158,7 @@ public class CachedValue<T> {
      */
     public void invalidate() {
         this.valid = false;
-        log.trace("Cache '{}' invalidated", name);
+        log.debug("Cache '{}' invalidated", name);
     }
 
     /**
@@ -172,7 +172,7 @@ public class CachedValue<T> {
         this.lastUpdateTick = -1;
         hitCount.set(0);
         missCount.set(0);
-        log.trace("Cache '{}' reset", name);
+        log.debug("Cache '{}' reset", name);
     }
 
     /**

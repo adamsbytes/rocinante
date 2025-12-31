@@ -268,14 +268,14 @@ public class QuestExecutor {
 
         // Check step conditions
         if (!currentStep.conditionsMet(taskContext)) {
-            log.trace("Step conditions not met: {}", currentStep.getText());
+            log.debug("Step conditions not met: {}", currentStep.getText());
             return;
         }
 
         // Check if player should be idle
         if (currentStep.isRequiresIdle()) {
             if (!taskContext.getPlayerState().isIdle()) {
-                log.trace("Waiting for player to be idle for step: {}", currentStep.getText());
+                log.debug("Waiting for player to be idle for step: {}", currentStep.getText());
                 return;
             }
         }

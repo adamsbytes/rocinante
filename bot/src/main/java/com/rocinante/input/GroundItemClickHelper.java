@@ -181,7 +181,7 @@ public class GroundItemClickHelper {
         int clickX = canvasPoint.getX() + randomOffset(GROUND_ITEM_CLICK_SIZE);
         int clickY = canvasPoint.getY() + randomOffset(GROUND_ITEM_CLICK_SIZE);
 
-        log.trace("Left-click looting '{}' at canvas ({}, {})", itemName, clickX, clickY);
+        log.debug("Left-click looting '{}' at canvas ({}, {})", itemName, clickX, clickY);
 
         return mouseController.moveToCanvas(clickX, clickY)
                 .thenCompose(v -> mouseController.click())
@@ -203,7 +203,7 @@ public class GroundItemClickHelper {
         int clickX = canvasPoint.getX() + randomOffset(GROUND_ITEM_CLICK_SIZE);
         int clickY = canvasPoint.getY() + randomOffset(GROUND_ITEM_CLICK_SIZE);
 
-        log.trace("Right-click looting '{}' at canvas ({}, {})", itemName, clickX, clickY);
+        log.debug("Right-click looting '{}' at canvas ({}, {})", itemName, clickX, clickY);
 
         // Create hitbox for right-click
         Rectangle hitbox = new Rectangle(
@@ -239,7 +239,7 @@ public class GroundItemClickHelper {
         int clickX = menuEntryBounds.x + randomOffset(menuEntryBounds.width);
         int clickY = menuEntryBounds.y + randomOffset(menuEntryBounds.height);
 
-        log.trace("Clicking menu entry 'Take {}' at ({}, {})", itemName, clickX, clickY);
+        log.debug("Clicking menu entry 'Take {}' at ({}, {})", itemName, clickX, clickY);
 
         return mouseController.moveToCanvas(clickX, clickY)
                 .thenCompose(v -> mouseController.click())
@@ -301,7 +301,7 @@ public class GroundItemClickHelper {
             if (text != null && text.toLowerCase().contains(searchTargetLower)) {
                 Rectangle bounds = child.getBounds();
                 if (bounds != null && bounds.width > 0 && bounds.height > 0) {
-                    log.trace("Found menu entry '{}' with bounds {}", text, bounds);
+                    log.debug("Found menu entry '{}' with bounds {}", text, bounds);
                     return bounds;
                 }
             }
@@ -317,7 +317,7 @@ public class GroundItemClickHelper {
                     if (nestedText != null && nestedText.toLowerCase().contains(searchTargetLower)) {
                         Rectangle bounds = nested.getBounds();
                         if (bounds != null && bounds.width > 0 && bounds.height > 0) {
-                            log.trace("Found nested menu entry '{}' with bounds {}", nestedText, bounds);
+                            log.debug("Found nested menu entry '{}' with bounds {}", nestedText, bounds);
                             return bounds;
                         }
                     }
@@ -362,7 +362,7 @@ public class GroundItemClickHelper {
                     // Calculate approximate bounds
                     int entryY = menuY + 19 + (index * entryHeight); // 19 = menu header
                     Rectangle bounds = new Rectangle(menuX, entryY, menuWidth, entryHeight);
-                    log.trace("Estimated menu entry position for '{}': {}", itemName, bounds);
+                    log.debug("Estimated menu entry position for '{}': {}", itemName, bounds);
                     return bounds;
                 }
             }

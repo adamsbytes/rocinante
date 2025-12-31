@@ -448,10 +448,8 @@ public class NavigationIntegrationTest {
         NavigationWeb web = webWalker.getNavigationWeb();
 
         // Verify edges exist between connected nodes
-        // Note: lumbridge_castle connects to lumbridge_castle_ground (stairs node),
-        // which then connects via plane transitions to the bank
-        WebEdge lumbridgeToStairs = web.getEdge("lumbridge_castle", "lumbridge_castle_ground");
-        assertNotNull("Should have edge from lumbridge castle to ground floor stairs", lumbridgeToStairs);
+        WebEdge lumbridgeToStore = web.getEdge("lumbridge_castle", "lumbridge_general_store");
+        assertNotNull("Should have edge from lumbridge castle to general store", lumbridgeToStore);
     }
 
 }

@@ -1,5 +1,5 @@
 import { createQuery, createMutation, useQueryClient } from '@tanstack/solid-query';
-import type { BotConfig, BotWithStatus, ApiResponse } from '../../shared/types';
+import type { BotConfig, BotWithStatus, ApiResponse, ScreenshotEntry } from '../../shared/types';
 import type { BotFormData } from '../../shared/botSchema';
 
 const API_BASE = '/api';
@@ -23,6 +23,7 @@ async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
 export const botKeys = {
   all: ['bots'] as const,
   detail: (id: string) => ['bots', id] as const,
+  screenshots: (id: string, category: string | null) => ['bots', id, 'screenshots', category ?? 'all'] as const,
 };
 
 // Queries
@@ -38,6 +39,26 @@ export function useBotQuery(id: () => string) {
     queryKey: botKeys.detail(id()),
     queryFn: () => fetchApi<BotWithStatus>(`/bots/${id()}`),
     enabled: !!id(),
+  }));
+}
+
+export function useScreenshotsQuery(id: () => string, category: () => string | null) {
+  return createQuery(() => ({
+    queryKey: botKeys.screenshots(id(), category()),
+    queryFn: () => {
+      const search = new URLSearchParams();
+      const cat = category();
+      if (cat && cat !== 'all') {
+        search.set('category', cat);
+      }
+      const query = search.toString();
+      return fetchApi<ScreenshotEntry[]>(`/bots/${id()}/screenshots${query ? `?${query}` : ''}`);
+    },
+    enabled: !!id(),
+    // Keep fresh without manual interaction
+    refetchInterval: 5000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   }));
 }
 

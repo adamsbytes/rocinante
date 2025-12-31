@@ -504,7 +504,7 @@ public class WintertodtTask extends MinigameTask {
 
         activeSubTask = new InteractObjectTask(BRUMA_ROOT_TREE_ID, "Chop")
                 .withDescription("Chop bruma roots");
-        log.trace("Starting to chop bruma roots");
+        log.debug("Starting to chop bruma roots");
     }
 
     private void startFletching(TaskContext ctx) {
@@ -553,7 +553,7 @@ public class WintertodtTask extends MinigameTask {
                     return null;
                 });
 
-        log.trace("Starting to fletch kindling");
+        log.debug("Starting to fletch kindling");
     }
 
     private void startFeedingBrazier(TaskContext ctx) {
@@ -572,7 +572,7 @@ public class WintertodtTask extends MinigameTask {
         // Update round points with estimated points from feeding
         roundPoints += itemsToFeed * pointsPerItem;
 
-        log.trace("Starting to feed brazier ({} items, {} pts each, total: {})", 
+        log.debug("Starting to feed brazier ({} items, {} pts each, total: {})", 
                 itemsToFeed, pointsPerItem, roundPoints);
     }
 
@@ -582,7 +582,7 @@ public class WintertodtTask extends MinigameTask {
 
         activeSubTask = new InteractObjectTask(BRAZIER_UNLIT_ID, "Light")
                 .withDescription("Light brazier");
-        log.trace("Starting to light brazier");
+        log.debug("Starting to light brazier");
     }
 
     private void startFixingBrazier(TaskContext ctx) {
@@ -591,7 +591,7 @@ public class WintertodtTask extends MinigameTask {
 
         activeSubTask = new InteractObjectTask(BRAZIER_BROKEN_ID, "Fix")
                 .withDescription("Fix brazier");
-        log.trace("Starting to fix brazier");
+        log.debug("Starting to fix brazier");
     }
 
     // ========================================================================

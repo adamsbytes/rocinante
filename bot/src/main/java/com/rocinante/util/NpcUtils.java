@@ -72,7 +72,7 @@ public final class NpcUtils {
             return false;
         }
         boolean result = BOSS_NAMES.contains(npcName);
-        log.trace("isBoss check: name={}, result={}", npcName, result);
+        log.debug("isBoss check: name={}, result={}", npcName, result);
         return result;
     }
 

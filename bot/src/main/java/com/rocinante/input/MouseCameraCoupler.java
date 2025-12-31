@@ -127,6 +127,24 @@ public class MouseCameraCoupler {
      */
     private static final long ZOOM_CHECK_INTERVAL_MS = 10000;
 
+    // === Pitch Preferences ===
+
+    /**
+     * Preferred camera pitch (higher camera) in JAU. 128 is max up; 512 is down.
+     * Use a moderately high view, not fully top-down.
+     */
+    private static final int PREFERRED_PITCH_JAU = 200;
+
+    /**
+     * Allowable tolerance before nudging pitch upward.
+     */
+    private static final int PITCH_TOLERANCE_JAU = 16;
+
+    /**
+     * Minimum interval between pitch preference checks (ms).
+     */
+    private static final long PITCH_CHECK_INTERVAL_MS = 90000;
+
     // === Dependencies ===
     
     private final Client client;
@@ -185,6 +203,11 @@ public class MouseCameraCoupler {
      */
     private Instant lastZoomCheckTime = Instant.EPOCH;
 
+    /**
+     * Last time pitch was checked/adjusted.
+     */
+    private Instant lastPitchCheckTime = Instant.EPOCH;
+
     @Inject
     public MouseCameraCoupler(Client client, CameraController cameraController, Randomization randomization, ClientThread clientThread) {
         this.client = client;
@@ -232,7 +255,7 @@ public class MouseCameraCoupler {
                 rotationDegrees = -rotationDegrees; // Rotate left if moving left
             }
             
-            log.trace("Long movement coupling: {}px movement, rotating {}°", 
+            log.debug("Long movement coupling: {}px movement, rotating {}°", 
                     (int) distance, rotationDegrees);
             
             return cameraController.rotateBy(rotationDegrees, 0);
@@ -456,6 +479,12 @@ public class MouseCameraCoupler {
             checkAndAdjustZoom();
             lastZoomCheckTime = now;
         }
+
+        // Check pitch preference periodically - bias camera to higher angle
+        if (Duration.between(lastPitchCheckTime, now).toMillis() >= PITCH_CHECK_INTERVAL_MS) {
+            checkAndAdjustPitch();
+            lastPitchCheckTime = now;
+        }
         
         // Check for idle drift
         if (now.isAfter(nextDriftCheckTime)) {
@@ -480,7 +509,7 @@ public class MouseCameraCoupler {
     private void checkIdleDrift() {
         // Suppress drift during predictive hover
         if (predictiveHoverManager != null && predictiveHoverManager.shouldSuppressIdleBehavior()) {
-            log.trace("Camera drift suppressed due to active predictive hover");
+            log.debug("Camera drift suppressed due to active predictive hover");
             return;
         }
 
@@ -501,10 +530,10 @@ public class MouseCameraCoupler {
                 predictiveHoverManager.onCameraRotationStart();
             }
 
-            log.trace("Performing idle camera drift");
+            log.debug("Performing idle camera drift");
             cameraController.performIdleDrift()
                 .exceptionally(e -> {
-                    log.trace("Idle drift interrupted: {}", e.getMessage());
+                    log.debug("Idle drift interrupted: {}", e.getMessage());
                     return null;
                 });
             lastDriftTime = Instant.now();
@@ -532,6 +561,39 @@ public class MouseCameraCoupler {
                     return null;
                 });
         }
+    }
+
+    /**
+     * Adjust camera pitch toward preferred high angle.
+     */
+    private void checkAndAdjustPitch() {
+        // Suppress pitch adjustments during predictive hover to avoid invalidating clickboxes
+        if (predictiveHoverManager != null && predictiveHoverManager.shouldSuppressIdleBehavior()) {
+            return;
+        }
+
+        // Don't nudge pitch if we recently moved the camera (human set it)
+        if (cameraController.getTimeSinceLastMovement() < 15_000) {
+            return;
+        }
+
+        int currentPitchJau = client.getCameraPitch();
+        int delta = currentPitchJau - PREFERRED_PITCH_JAU; // positive means too low (looking down)
+        if (delta <= PITCH_TOLERANCE_JAU) {
+            return; // already within preferred band or higher
+        }
+
+        double adjustDegrees = delta * CameraController.DEGREES_PER_JAU;
+
+        log.debug("Adjusting camera pitch upward by ~{}° (current JAU={}, target JAU={})",
+                (int) adjustDegrees, currentPitchJau, PREFERRED_PITCH_JAU);
+
+        // Negative pitch delta raises the camera (look up)
+        cameraController.rotateBy(0, -adjustDegrees)
+                .exceptionally(e -> {
+                    log.debug("Pitch adjust interrupted: {}", e.getMessage());
+                    return null;
+                });
     }
 
     /**

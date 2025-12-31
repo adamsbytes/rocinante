@@ -1,6 +1,8 @@
 package com.rocinante.tasks.impl;
 
 import com.rocinante.input.SafeClickExecutor;
+import com.rocinante.navigation.AdjacentTileHelper;
+import com.rocinante.navigation.Reachability;
 import com.rocinante.state.PlayerState;
 import com.rocinante.tasks.AbstractTask;
 import com.rocinante.tasks.InteractionHelper;
@@ -24,6 +26,7 @@ import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.widgets.Widget;
 
+import com.rocinante.navigation.EntityFinder;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.Shape;
@@ -31,7 +34,10 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -61,7 +67,7 @@ import java.util.concurrent.CompletableFuture;
  * }</pre>
  */
 @Slf4j
-public class InteractObjectTask extends AbstractTask {
+public class InteractObjectTask extends com.rocinante.tasks.AbstractInteractionTask {
 
     // ========================================================================
     // Constants
@@ -94,6 +100,11 @@ public class InteractObjectTask extends AbstractTask {
      * Prevents infinite loops when object is contested or deleted.
      */
     private static final int MAX_DESPAWN_RETRIES = 3;
+
+    /**
+     * Maximum distance (tiles) to treat as "local" for collision/obstacle-aware pathing.
+     */
+    private static final int LOCAL_NAV_MAX_DISTANCE = com.rocinante.navigation.PathFinder.MAX_PATH_LENGTH;
 
     // ========================================================================
     // Configuration
@@ -196,7 +207,7 @@ public class InteractObjectTask extends AbstractTask {
      * Interaction helper for camera rotation and clickbox handling.
      * Provides centralized, human-like interaction behavior.
      */
-    protected InteractionHelper interactionHelper;
+    // protected InteractionHelper interactionHelper; // Use parent class field
 
     /**
      * The object we found and are interacting with.
@@ -212,6 +223,12 @@ public class InteractObjectTask extends AbstractTask {
      * Player position when interaction started.
      */
     protected WorldPoint startPosition;
+
+    /**
+     * Cached reachable adjacent tile (if any) and path for the current target.
+     */
+    protected java.util.List<WorldPoint> adjacentPath = java.util.Collections.emptyList();
+    protected WorldPoint adjacentDestination;
 
     /**
      * Player animation when interaction started.
@@ -234,14 +251,14 @@ public class InteractObjectTask extends AbstractTask {
     protected boolean clickPending = false;
 
     /**
-     * Whether menu selection is currently pending (async).
-     */
-    protected boolean menuSelectionPending = false;
-
-    /**
      * Cached clickbox for menu selection.
      */
     protected java.awt.Rectangle cachedClickbox = null;
+
+    /**
+     * Whether menu selection is currently pending (async).
+     */
+    protected boolean menuSelectionPending = false;
 
     // ========================================================================
     // Constructor
@@ -392,6 +409,8 @@ public class InteractObjectTask extends AbstractTask {
         startPosition = null;
         startAnimation = -1;
         interactionTicks = 0;
+        adjacentPath = java.util.Collections.emptyList();
+        adjacentDestination = null;
         movePending = false;
         clickPending = false;
         menuSelectionPending = false;
@@ -410,6 +429,9 @@ public class InteractObjectTask extends AbstractTask {
                 break;
             case ROTATE_CAMERA:
                 executeRotateCamera(ctx);
+                break;
+            case HANDLE_OBSTACLE:
+                executeHandleObstacle(ctx);
                 break;
             case MOVE_MOUSE:
                 executeMoveMouse(ctx);
@@ -439,11 +461,11 @@ public class InteractObjectTask extends AbstractTask {
     protected void executeFindObject(TaskContext ctx) {
         PlayerState player = ctx.getPlayerState();
         WorldPoint playerPos = player.getWorldPosition();
+        Reachability reachability = ctx.getReachability();
 
         // Reset interaction helper for fresh camera retry counts
-        if (interactionHelper != null) {
-            interactionHelper.reset();
-        }
+        ensureInteractionHelper(ctx);
+        interactionHelper.reset();
 
         // Search for object
         targetObject = findNearestObject(ctx, playerPos);
@@ -461,6 +483,16 @@ public class InteractObjectTask extends AbstractTask {
         // Store object position
         targetPosition = getObjectWorldPoint(targetObject);
         log.debug("Found object {} at {}", objectId, targetPosition);
+        
+        // Validate we have a reachable adjacent tile (only when scene is loaded for both points)
+        if (!validateAdjacentReachability(ctx, playerPos, targetObject, reachability)) {
+            return;
+        }
+
+        // Check path for obstacles (doors/gates) that need handling
+        if (checkForObstacles(ctx)) {
+            return;
+        }
         
         // Notify callback of target position (used for predictive hover exclusion)
         if (targetPositionCallback != null && targetPosition != null) {
@@ -492,16 +524,44 @@ public class InteractObjectTask extends AbstractTask {
             return;
         }
         
-        // Initialize interaction helper if needed
-        if (interactionHelper == null) {
-            interactionHelper = new InteractionHelper(ctx);
-        }
-        
-        // Fire-and-forget camera rotation - like a human holding an arrow key
-        interactionHelper.startCameraRotation(targetPosition);
+        rotateCameraTo(ctx, targetPosition);
         
         // Immediately proceed to mouse movement - don't wait for camera
-            phase = InteractionPhase.MOVE_MOUSE;
+        phase = InteractionPhase.MOVE_MOUSE;
+    }
+
+    // ========================================================================
+    // Phase: Handle Obstacle
+    // ========================================================================
+
+    protected void executeHandleObstacle(TaskContext ctx) {
+        if (executeHandleObstacleImpl(ctx)) {
+            // Still executing
+            return;
+        }
+        // Completed or failed, move to next phase
+        // If successful, we can re-find object. If failed, we can also try to re-find (maybe door opened anyway?)
+        phase = InteractionPhase.FIND_OBJECT;
+    }
+
+    /**
+     * Check if the calculated path contains any blocking obstacles (doors/gates).
+     * If so, switches phase to HANDLE_OBSTACLE and returns true.
+     */
+    protected boolean checkForObstacles(TaskContext ctx) {
+        if (adjacentPath == null || adjacentPath.isEmpty()) {
+            return false;
+        }
+        
+        // Sync parent currentPath with local adjacentPath for shared logic
+        currentPath = adjacentPath;
+
+        if (checkPathForObstacles(ctx, startPosition, adjacentDestination)) {
+            phase = InteractionPhase.HANDLE_OBSTACLE;
+            return true;
+        }
+
+        return false;
     }
 
     // ========================================================================
@@ -518,10 +578,20 @@ public class InteractObjectTask extends AbstractTask {
             return;
         }
 
-        // Initialize interaction helper if needed
-        if (interactionHelper == null) {
-            interactionHelper = new InteractionHelper(ctx);
+        Reachability reachability = ctx.getReachability();
+
+        // Re-validate adjacency when we are now within local range
+        PlayerState player = ctx.getPlayerState();
+        WorldPoint playerPos = player != null ? player.getWorldPosition() : null;
+        if (adjacentDestination == null && targetPosition != null && playerPos != null &&
+                playerPos.distanceTo(targetPosition) <= LOCAL_NAV_MAX_DISTANCE) {
+            if (!validateAdjacentReachability(ctx, playerPos, targetObject, reachability)) {
+                return;
+            }
         }
+
+        // Initialize interaction helper if needed
+        ensureInteractionHelper(ctx);
 
         // Use centralized click point resolution with smart waiting
         InteractionHelper.ClickPointResult result = interactionHelper.getClickPointForObject(
@@ -795,7 +865,7 @@ public class InteractObjectTask extends AbstractTask {
         }
 
         // Not yet successful, continue waiting
-        log.trace("Waiting for interaction response (tick {})", interactionTicks);
+        log.debug("Waiting for interaction response (tick {})", interactionTicks);
     }
 
     /**
@@ -827,16 +897,64 @@ public class InteractObjectTask extends AbstractTask {
     // ========================================================================
 
     /**
-     * Find the nearest instance of the target object.
+     * Find the nearest reachable instance of the target object.
+     * Uses EntityFinder for collision-aware object selection.
+     * Objects behind fences/rivers are rejected.
      */
     protected TileObject findNearestObject(TaskContext ctx, WorldPoint playerPos) {
+        EntityFinder entityFinder = ctx.getEntityFinder();
+
+        // Use EntityFinder if available for centralized reachability-aware finding
+        if (entityFinder != null) {
+            Set<Integer> objectIdSet = new HashSet<>(getAllObjectIds());
+            Optional<EntityFinder.ObjectSearchResult> result = entityFinder.findNearestReachableObject(
+                    playerPos, objectIdSet, searchRadius);
+
+            if (result.isEmpty()) {
+                log.debug("No reachable object found for IDs {} within {} tiles", objectIdSet, searchRadius);
+                return null;
+            }
+
+            EntityFinder.ObjectSearchResult searchResult = result.get();
+            TileObject obj = searchResult.getObject();
+
+            // Cache adjacency data for later validation
+            adjacentPath = searchResult.getPath();
+            adjacentDestination = searchResult.getAdjacentTile();
+
+            log.debug("Found reachable object {} at {} (path cost: {})",
+                    obj.getId(),
+                    getObjectWorldPoint(obj),
+                    searchResult.getPathCost());
+
+            return obj;
+        }
+
+        // Fallback: use original path-cost-based finding (when EntityFinder unavailable)
+        log.debug("EntityFinder unavailable, using fallback object finding");
+        return findNearestObjectLegacy(ctx, playerPos);
+    }
+
+    /**
+     * Legacy object finding with manual path cost calculation.
+     * Used as fallback when EntityFinder is unavailable.
+     */
+    private TileObject findNearestObjectLegacy(TaskContext ctx, WorldPoint playerPos) {
         Client client = ctx.getClient();
         Scene scene = client.getScene();
         Tile[][][] tiles = scene.getTiles();
 
+        com.rocinante.navigation.PathFinder pathFinder = ctx.getPathFinder();
+        com.rocinante.navigation.WebWalker webWalker = ctx.getWebWalker();
+        if (pathFinder == null || webWalker == null) {
+            throw new IllegalStateException("Navigation services unavailable in TaskContext");
+        }
+
         int playerPlane = playerPos.getPlane();
         TileObject nearest = null;
-        int nearestDistance = Integer.MAX_VALUE;
+        int bestPathCost = Integer.MAX_VALUE;
+        boolean bestVisible = false;
+        int bestDistance = Integer.MAX_VALUE;
 
         // Search tiles within radius
         for (int x = 0; x < Constants.SCENE_SIZE; x++) {
@@ -850,17 +968,51 @@ public class InteractObjectTask extends AbstractTask {
                 TileObject obj = findObjectOnTile(tile);
                 if (obj != null) {
                     WorldPoint objPos = getObjectWorldPoint(obj);
-                    int distance = playerPos.distanceTo(objPos);
+                    if (objPos == null) {
+                        continue;
+                    }
 
-                    if (distance <= searchRadius && distance < nearestDistance) {
+                    int tileDistance = playerPos.distanceTo(objPos);
+                    if (tileDistance > searchRadius) {
+                        continue;
+                    }
+
+                    int pathCost = computePathCost(ctx, playerPos, objPos, tileDistance, pathFinder, webWalker, obj);
+                    if (pathCost < 0) {
+                        continue;
+                    }
+
+                    boolean visible = obj.getClickbox() != null; // clickbox available usually means on-screen
+
+                    boolean better =
+                            pathCost < bestPathCost ||
+                            (pathCost == bestPathCost && visible && !bestVisible) ||
+                            (pathCost == bestPathCost && visible == bestVisible && tileDistance < bestDistance);
+
+                    if (better) {
                         nearest = obj;
-                        nearestDistance = distance;
+                        bestPathCost = pathCost;
+                        bestVisible = visible;
+                        bestDistance = tileDistance;
                     }
                 }
             }
         }
 
         return nearest;
+    }
+
+    /**
+     * Get all object IDs this task targets (primary + alternates).
+     */
+    protected Collection<Integer> getAllObjectIds() {
+        if (alternateObjectIds == null || alternateObjectIds.isEmpty()) {
+            return java.util.Collections.singleton(objectId);
+        }
+        Set<Integer> ids = new HashSet<>();
+        ids.add(objectId);
+        ids.addAll(alternateObjectIds);
+        return ids;
     }
 
     /**
@@ -1004,6 +1156,120 @@ public class InteractObjectTask extends AbstractTask {
         return null;
     }
 
+    /**
+     * Compute walking cost (path length) between two points if pathfinder is available.
+     * Returns -1 when unreachable. Falls back to straight-line distance when no pathfinder.
+     */
+    private int getPathCost(TaskContext ctx, WorldPoint start, WorldPoint end) {
+        com.rocinante.navigation.WebWalker webWalker = ctx.getWebWalker();
+        if (webWalker == null) {
+            throw new IllegalStateException("WebWalker unavailable in TaskContext");
+        }
+        com.rocinante.navigation.PathFinder pathFinder = ctx.getPathFinder();
+        if (pathFinder == null) {
+            throw new IllegalStateException("PathFinder unavailable in TaskContext");
+        }
+
+        // If already at the destination, treat cost as 1 tick to avoid unnecessary path lookup failures
+        if (start.equals(end)) {
+            return 1;
+        }
+
+        com.rocinante.navigation.NavigationPath navPath = webWalker.findUnifiedPath(start, end);
+        if (navPath != null && !navPath.isEmpty()) {
+            return Math.max(1, navPath.getTotalCostTicks()); // use graph tick cost as path cost proxy
+        }
+
+        // Fallback: local grid path using collision map (handles fences/gates when graph is sparse)
+        java.util.List<WorldPoint> localPath = pathFinder.findPath(start, end, true);
+        if (!localPath.isEmpty()) {
+            return Math.max(1, localPath.size());
+        }
+
+        throw new IllegalStateException("Unified path unavailable between " + start + " and " + end);
+    }
+
+    private int computePathCost(TaskContext ctx, WorldPoint start, WorldPoint target, int tileDistance,
+                                com.rocinante.navigation.PathFinder pathFinder,
+                                com.rocinante.navigation.WebWalker webWalker,
+                                TileObject targetObject) {
+        if (start.equals(target)) {
+            return 1;
+        }
+
+        // Local pathing for close targets
+        if (tileDistance <= LOCAL_NAV_MAX_DISTANCE) {
+            return localApproachCost(pathFinder, ctx.getReachability(), start, targetObject);
+        }
+
+        // Long-range: use web cost; local validation will happen when near
+        com.rocinante.navigation.NavigationPath navPath = webWalker.findUnifiedPath(start, target);
+        if (navPath == null || navPath.isEmpty()) {
+            throw new IllegalStateException("Unified path unavailable between " + start + " and " + target);
+        }
+
+        return Math.max(1, navPath.getTotalCostTicks());
+    }
+
+    /**
+     * Compute local cost to the nearest touching (adjacent) tile of the target, using obstacle-aware A*.
+     * Returns -1 if no adjacent tile is reachable.
+     */
+    private int localApproachCost(com.rocinante.navigation.PathFinder pathFinder,
+                                  Reachability reachability,
+                                  WorldPoint start,
+                                  TileObject targetObject) {
+        if (reachability == null) {
+            return -1;
+        }
+        java.util.Optional<AdjacentTileHelper.AdjacentPath> adjacent =
+                AdjacentTileHelper.findReachableAdjacent(pathFinder, reachability, start, targetObject);
+        if (adjacent.isEmpty()) {
+            return -1;
+        }
+        return Math.max(1, adjacent.get().getPath().size());
+    }
+
+    /**
+     * Ensure there is a reachable adjacent tile to the target using local A*.
+     * Fails fast when the object is blocked by fences/rivers within the loaded scene.
+     */
+    private boolean validateAdjacentReachability(TaskContext ctx, WorldPoint playerPos, TileObject targetObj, Reachability reachability) {
+        if (playerPos == null || targetObj == null) {
+            return true;
+        }
+
+        // Only validate when the target is within local nav scope; long-range paths are handled by walking tasks
+        WorldPoint targetPos = getObjectWorldPoint(targetObj);
+        if (playerPos.distanceTo(targetPos) > LOCAL_NAV_MAX_DISTANCE) {
+            adjacentPath = java.util.Collections.emptyList();
+            adjacentDestination = null;
+            return true;
+        }
+
+        com.rocinante.navigation.PathFinder pathFinder = ctx.getPathFinder();
+        if (pathFinder == null) {
+            throw new IllegalStateException("PathFinder unavailable in TaskContext");
+        }
+
+        if (reachability == null) {
+            throw new IllegalStateException("Reachability unavailable in TaskContext");
+        }
+
+        java.util.Optional<AdjacentTileHelper.AdjacentPath> adjacent =
+                AdjacentTileHelper.findReachableAdjacent(pathFinder, reachability, playerPos, targetObj);
+
+        if (adjacent.isEmpty()) {
+            log.warn("No reachable adjacent tile for object {} at {} from {}", objectId, targetPos, playerPos);
+            fail("Target is blocked (no reachable adjacent tile)");
+            return false;
+        }
+
+        adjacentPath = adjacent.get().getPath();
+        adjacentDestination = adjacent.get().getDestination();
+        return true;
+    }
+
     // ========================================================================
     // Description
     // ========================================================================
@@ -1026,6 +1292,7 @@ public class InteractObjectTask extends AbstractTask {
     protected enum InteractionPhase {
         FIND_OBJECT,
         ROTATE_CAMERA,
+        HANDLE_OBSTACLE,
         MOVE_MOUSE,
         HOVER_DELAY,
         CHECK_MENU,

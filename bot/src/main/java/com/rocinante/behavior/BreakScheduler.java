@@ -279,7 +279,7 @@ public class BreakScheduler {
         // 4. Micro-pause (action-based)
         if (shouldTakeMicroPause()) {
             pendingBreak = BreakType.MICRO_PAUSE;
-            log.trace("Micro-pause triggered after {} actions", actionsSinceMicroPause);
+            log.debug("Micro-pause triggered after {} actions", actionsSinceMicroPause);
             return;
         }
     }
@@ -462,7 +462,7 @@ public class BreakScheduler {
         int variance = randomization.uniformRandomInt(-10, 10);
         nextMicroPauseThreshold = Math.max(minActions, base + variance);
         
-        log.trace("Next micro-pause scheduled at {} actions", nextMicroPauseThreshold);
+        log.debug("Next micro-pause scheduled at {} actions", nextMicroPauseThreshold);
     }
 
     private void scheduleNextShortBreak() {
@@ -475,7 +475,7 @@ public class BreakScheduler {
         
         nextShortBreakTime = Instant.now().plusSeconds(intervalSeconds);
         
-        log.trace("Next short break scheduled in {} seconds", intervalSeconds);
+        log.debug("Next short break scheduled in {} seconds", intervalSeconds);
     }
 
     private void scheduleNextLongBreak() {
@@ -488,7 +488,7 @@ public class BreakScheduler {
         
         nextLongBreakTime = Instant.now().plusSeconds(intervalSeconds);
         
-        log.trace("Next long break scheduled in {} minutes", intervalSeconds / 60);
+        log.debug("Next long break scheduled in {} minutes", intervalSeconds / 60);
     }
 
     private void scheduleSessionEnd() {

@@ -34,6 +34,7 @@ import {
   getQuests,
   getQuestsFiltered,
 } from './data';
+import { listScreenshots, getScreenshotFile } from './screenshots';
 import type { ApiResponse, BotConfig, BotWithStatus, BotRuntimeStatus, LocationInfo, EnvironmentConfig } from '../shared/types';
 import { botFormSchema, type BotFormData } from '../shared/botSchema';
 
@@ -235,6 +236,56 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
 
     const runtimeStatus = await readBotStatus(botId);
     return success(runtimeStatus);
+  }
+
+  // Screenshots - list
+  const screenshotsMatch = path.match(/^\/api\/bots\/([^/]+)\/screenshots$/);
+  if (screenshotsMatch && method === 'GET') {
+    const botId = screenshotsMatch[1];
+    const bot = await getBot(botId);
+
+    if (!bot) {
+      return error('Bot not found', 404);
+    }
+
+    const category = url.searchParams.get('category');
+    const character = url.searchParams.get('character');
+    const screenshots = await listScreenshots(botId, { category, character });
+    return success(screenshots);
+  }
+
+  // Screenshots - view single file
+  const screenshotViewMatch = path.match(/^\/api\/bots\/([^/]+)\/screenshots\/view$/);
+  if (screenshotViewMatch && method === 'GET') {
+    const botId = screenshotViewMatch[1];
+    const bot = await getBot(botId);
+
+    if (!bot) {
+      return error('Bot not found', 404);
+    }
+
+    const relativePath = url.searchParams.get('path');
+    if (!relativePath) {
+      return error('Missing path', 400);
+    }
+
+    try {
+      const fileResult = await getScreenshotFile(botId, relativePath);
+      if (!fileResult) {
+        return error('Screenshot not found', 404);
+      }
+      const arrayBuffer = await fileResult.file.arrayBuffer();
+      return new Response(arrayBuffer, {
+        status: 200,
+        headers: {
+          'Content-Type': fileResult.contentType,
+          'Cache-Control': 'public, max-age=60',
+        },
+      });
+    } catch (err) {
+      console.error('Failed to load screenshot', err);
+      return error('Failed to load screenshot', 500);
+    }
   }
 
   // REST API to send commands to bot

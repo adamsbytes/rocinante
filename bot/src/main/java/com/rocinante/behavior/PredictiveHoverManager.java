@@ -1,6 +1,7 @@
 package com.rocinante.behavior;
 
 import com.rocinante.input.ClickPointCalculator;
+import com.rocinante.input.MouseCameraCoupler;
 import com.rocinante.input.RobotMouseController;
 import com.rocinante.state.GameObjectSnapshot;
 import com.rocinante.state.NpcSnapshot;
@@ -29,6 +30,7 @@ import java.awt.Shape;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -314,7 +316,7 @@ public class PredictiveHoverManager {
     public void onCameraRotationStart() {
         PredictiveHoverState state = currentHover.get();
         if (state != null) {
-            log.trace("Camera rotation started while hovering - will re-validate screen position");
+            log.debug("Camera rotation started while hovering - will re-validate screen position");
             // Mark as needing re-validation
             currentHover.set(state.withValidation(false));
         }
@@ -351,19 +353,19 @@ public class PredictiveHoverManager {
         // Never hover during AFK
         AttentionState attention = attentionModel.getCurrentState();
         if (attention == AttentionState.AFK) {
-            log.trace("Skipping prediction: AFK state");
+            log.debug("Skipping prediction: AFK state");
             return false;
         }
 
         // Check if we already have a valid hover
         if (hasPendingHover()) {
-            log.trace("Skipping prediction: already hovering");
+            log.debug("Skipping prediction: already hovering");
             return false;
         }
 
         // Rate limit hover attempts
         if (Instant.now().toEpochMilli() - lastHoverAttempt.toEpochMilli() < MIN_HOVER_ATTEMPT_INTERVAL_MS) {
-            log.trace("Skipping prediction: rate limited");
+            log.debug("Skipping prediction: rate limited");
             return false;
         }
 
@@ -374,7 +376,7 @@ public class PredictiveHoverManager {
         boolean shouldPredict = randomization.chance(effectiveRate);
         
         if (shouldPredict) {
-            log.trace("Prediction roll succeeded (effective rate: {}%)",
+            log.debug("Prediction roll succeeded (effective rate: {}%)",
                     String.format("%.3f", effectiveRate * 100));
         }
 
@@ -404,7 +406,7 @@ public class PredictiveHoverManager {
         effectiveRate = Math.max(MIN_EFFECTIVE_PREDICTION_RATE, 
                         Math.min(MAX_EFFECTIVE_PREDICTION_RATE, effectiveRate));
 
-        log.trace(
+        log.debug(
                 "Effective prediction rate: {}% (base={}%, fatigue={}%, attention={})",
                 String.format("%.3f", effectiveRate * 100),
                 String.format("%.3f", baseRate * 100),
@@ -871,21 +873,67 @@ public class PredictiveHoverManager {
             Set<Integer> targetIds,
             @Nullable WorldPoint excludePosition,
             WorldPoint playerPos) {
-        
+
         WorldState world = ctx.getWorldState();
-        
+
         return world.getNearbyObjects().stream()
                 .filter(obj -> targetIds.contains(obj.getId()))
                 .filter(obj -> obj.isWithinDistance(playerPos, MAX_TARGET_DISTANCE))
-                .filter(obj -> excludePosition == null || 
+                .filter(obj -> excludePosition == null ||
                         !obj.getWorldPosition().equals(excludePosition))
-                .min(Comparator.comparingInt(obj -> obj.distanceTo(playerPos)))
-                .map(obj -> new HoverTarget(
-                        obj.getWorldPosition(),
-                        obj.getId(),
+                .map(obj -> buildHoverCandidate(ctx, obj, playerPos))
+                .filter(Objects::nonNull)
+                .min(Comparator
+                        // Prefer shorter walking path
+                        .comparingInt((HoverCandidate c) -> c.pathCost)
+                        // Then prefer visible targets (clickbox available)
+                        .thenComparingInt(c -> c.visible ? 0 : 1)
+                        // Tie-breaker: straight-line distance
+                        .thenComparingInt(c -> c.tileDistance))
+                .map(c -> new HoverTarget(
+                        c.position,
+                        c.id,
                         -1,
-                        findTileObject(ctx, obj)
+                        c.tileObject
                 ));
+    }
+
+    /**
+     * Build a hover candidate with reachability and visibility metadata.
+     */
+    private HoverCandidate buildHoverCandidate(TaskContext ctx, GameObjectSnapshot obj, WorldPoint playerPos) {
+        WorldPoint position = obj.getWorldPosition();
+        if (position == null) {
+            return null;
+        }
+
+        java.util.OptionalInt pathCostOpt = tryPathCost(ctx, playerPos, position);
+        if (pathCostOpt.isEmpty()) {
+            return null; // unreachable
+        }
+        int pathCost = pathCostOpt.getAsInt();
+
+        TileObject tileObject = findTileObject(ctx, obj);
+        boolean visible = tileObject != null && tileObject.getClickbox() != null;
+        int tileDistance = obj.distanceTo(playerPos);
+
+        return new HoverCandidate(obj.getId(), position, pathCost, tileDistance, visible, tileObject);
+    }
+
+    private java.util.OptionalInt tryPathCost(TaskContext ctx, WorldPoint start, WorldPoint end) {
+        if (start.equals(end)) {
+            return java.util.OptionalInt.of(1);
+        }
+        try {
+            int cost = getPathCost(ctx, start, end);
+            if (cost < 0) {
+                return java.util.OptionalInt.empty();
+            }
+            return java.util.OptionalInt.of(cost);
+        } catch (IllegalStateException e) {
+            log.debug("Skipping unreachable hover target between {} and {}: {}", start, end, e.getMessage());
+            return java.util.OptionalInt.empty();
+        }
     }
 
     /**
@@ -1049,7 +1097,7 @@ public class PredictiveHoverManager {
         int varY = randomization.uniformRandomInt(-5, 5);
 
         ctx.getMouseController().moveToCanvas(targetScreen.x + varX, targetScreen.y + varY)
-                .thenAccept(v -> log.trace("Re-hovered target after camera drift"))
+                .thenAccept(v -> log.debug("Re-hovered target after camera drift"))
                 .exceptionally(e -> {
                     log.debug("Failed to re-hover: {}", e.getMessage());
                     return null;
@@ -1137,13 +1185,59 @@ public class PredictiveHoverManager {
             }
             
             return moveToNpc(ctx, foundNpc);
-        } else if (target.tileObject != null) {
-            // Object target
-            return moveToObject(ctx, target.tileObject);
         } else {
-            // Fallback: move to world position (less accurate)
-            return moveToWorldPoint(ctx, target.position);
+            // Object target (may need visibility/camera help)
+            return moveToObject(ctx, target);
         }
+    }
+
+    /**
+     * Calculate walking path cost between two points.
+     * Returns -1 when unreachable. Falls back to straight-line distance if no pathfinder.
+     */
+    private int getPathCost(TaskContext ctx, WorldPoint start, WorldPoint end) {
+        com.rocinante.navigation.WebWalker webWalker = ctx.getWebWalker();
+        com.rocinante.navigation.PathFinder pathFinder = ctx.getPathFinder();
+        if (webWalker == null || pathFinder == null) {
+            throw new IllegalStateException("Navigation services unavailable in TaskContext");
+        }
+
+        if (start.equals(end)) {
+            return 1;
+        }
+
+        int tileDistance = start.distanceTo(end);
+        if (tileDistance <= com.rocinante.navigation.PathFinder.MAX_PATH_LENGTH) {
+            return localApproachCost(pathFinder, start, end);
+        }
+
+        com.rocinante.navigation.NavigationPath navPath = webWalker.findUnifiedPath(start, end);
+        if (navPath == null || navPath.isEmpty()) {
+            throw new IllegalStateException("Unified path unavailable between " + start + " and " + end);
+        }
+
+        return Math.max(1, navPath.getTotalCostTicks());
+    }
+
+    private int localApproachCost(com.rocinante.navigation.PathFinder pathFinder, WorldPoint start, WorldPoint target) {
+        int best = Integer.MAX_VALUE;
+        int plane = target.getPlane();
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dy = -1; dy <= 1; dy++) {
+                if (dx == 0 && dy == 0) {
+                    continue;
+                }
+                WorldPoint adj = new WorldPoint(target.getX() + dx, target.getY() + dy, plane);
+                if (adj.getPlane() != start.getPlane()) {
+                    continue;
+                }
+                java.util.List<WorldPoint> path = pathFinder.findPath(start, adj, true);
+                if (!path.isEmpty()) {
+                    best = Math.min(best, path.size());
+                }
+            }
+        }
+        return best == Integer.MAX_VALUE ? -1 : Math.max(1, best);
     }
 
     /**
@@ -1200,15 +1294,40 @@ public class PredictiveHoverManager {
     }
 
     /**
-     * Move mouse to a TileObject.
+     * Move mouse to a TileObject, rotating camera if needed to reveal the clickbox.
      */
-    private CompletableFuture<Boolean> moveToObject(TaskContext ctx, TileObject object) {
-        Shape clickbox = object.getClickbox();
+    private CompletableFuture<Boolean> moveToObject(TaskContext ctx, HoverTarget target) {
+        TileObject object = target.tileObject != null ? target.tileObject : refetchTileObject(ctx, target);
+        Shape clickbox = object != null ? object.getClickbox() : null;
+
         if (clickbox == null) {
-            log.debug("Object has no clickbox for mouse move");
-            return CompletableFuture.completedFuture(false);
+            // Attempt to rotate camera to make the object visible
+            MouseCameraCoupler coupler = ctx.getMouseCameraCoupler();
+            if (coupler == null) {
+                log.debug("Object has no clickbox and no camera coupler available");
+                return CompletableFuture.completedFuture(false);
+            }
+
+            return coupler.ensureTargetVisible(target.position)
+                    .thenCompose(v -> {
+                        TileObject refreshed = refetchTileObject(ctx, target);
+                        Shape refreshedClickbox = refreshed != null ? refreshed.getClickbox() : null;
+                        if (refreshed == null || refreshedClickbox == null) {
+                            log.debug("Object still not visible after camera adjustment");
+                            return CompletableFuture.completedFuture(false);
+                        }
+                        return moveToObjectWithClickbox(ctx, refreshed, refreshedClickbox);
+                    })
+                    .exceptionally(e -> {
+                        log.debug("Failed to rotate camera for object hover: {}", e.getMessage());
+                        return false;
+                    });
         }
 
+        return moveToObjectWithClickbox(ctx, object, clickbox);
+    }
+
+    private CompletableFuture<Boolean> moveToObjectWithClickbox(TaskContext ctx, TileObject object, Shape clickbox) {
         Rectangle bounds = clickbox.getBounds();
         if (bounds == null || bounds.width <= 0 || bounds.height <= 0) {
             return CompletableFuture.completedFuture(false);
@@ -1225,6 +1344,19 @@ public class PredictiveHoverManager {
                     log.debug("Failed to move mouse to object: {}", e.getMessage());
                     return false;
                 });
+    }
+
+    /**
+     * Re-fetch the TileObject after camera rotation.
+     */
+    @Nullable
+    private TileObject refetchTileObject(TaskContext ctx, HoverTarget target) {
+        GameObjectSnapshot snapshot = GameObjectSnapshot.builder()
+                .id(target.id)
+                .worldPosition(target.position)
+                .plane(target.position.getPlane())
+                .build();
+        return findTileObject(ctx, snapshot);
     }
 
     /**
@@ -1287,6 +1419,28 @@ public class PredictiveHoverManager {
     // ========================================================================
     // Inner Classes
     // ========================================================================
+
+    /**
+     * Internal holder for hover candidate scoring.
+     */
+    private static class HoverCandidate {
+        final int id;
+        final WorldPoint position;
+        final int pathCost;
+        final int tileDistance;
+        final boolean visible;
+        @Nullable
+        final TileObject tileObject;
+
+        HoverCandidate(int id, WorldPoint position, int pathCost, int tileDistance, boolean visible, @Nullable TileObject tileObject) {
+            this.id = id;
+            this.position = position;
+            this.pathCost = pathCost;
+            this.tileDistance = tileDistance;
+            this.visible = visible;
+            this.tileObject = tileObject;
+        }
+    }
 
     /**
      * Internal holder for hover target information.

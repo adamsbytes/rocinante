@@ -250,7 +250,7 @@ public class LogoutHandler {
     public boolean decrementExtraActions() {
         if (extraActionsRemaining > 0) {
             extraActionsRemaining--;
-            log.trace("Extra actions remaining: {}", extraActionsRemaining);
+            log.debug("Extra actions remaining: {}", extraActionsRemaining);
             return extraActionsRemaining <= 0;
         }
         return true;

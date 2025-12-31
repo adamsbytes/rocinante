@@ -147,6 +147,20 @@ public class TargetSelectorConfig {
     @Builder.Default
     int searchRadius = 15;
 
+    /**
+     * Weapon attack range for reachability checks.
+     * Used to determine if targets are attackable:
+     * <ul>
+     *   <li>1 = Melee (most weapons)</li>
+     *   <li>2 = Halberd melee</li>
+     *   <li>7 = Ranged (bows, crossbows)</li>
+     *   <li>10 = Magic (spells)</li>
+     * </ul>
+     * Default: 1 (melee).
+     */
+    @Builder.Default
+    int weaponRange = 1;
+
     // ========================================================================
     // Avoidance Rules (Section 10.5.2)
     // ========================================================================

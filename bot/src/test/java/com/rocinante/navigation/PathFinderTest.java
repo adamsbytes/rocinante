@@ -21,13 +21,17 @@ public class PathFinderTest {
 
     @Mock
     private Client client;
+    @Mock
+    private ObstacleHandler obstacleHandler;
 
+    private CollisionChecker collisionChecker;
     private PathFinder pathFinder;
 
     @Before
     public void setUp() {
         MockitoAnnotations.openMocks(this);
-        pathFinder = new PathFinder(client);
+        collisionChecker = new CollisionChecker();
+        pathFinder = new PathFinder(client, obstacleHandler, collisionChecker);
     }
 
     // ========================================================================

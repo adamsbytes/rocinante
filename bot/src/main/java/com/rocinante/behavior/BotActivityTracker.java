@@ -176,7 +176,7 @@ public class BotActivityTracker {
             // int regionId = client.getLocalPlayer().getWorldLocation().getRegionID();
             // inDangerousArea |= DANGEROUS_REGIONS.contains(regionId);
         } catch (Exception e) {
-            log.trace("Could not determine dangerous area status: {}", e.getMessage());
+            log.debug("Could not determine dangerous area status: {}", e.getMessage());
         }
     }
 

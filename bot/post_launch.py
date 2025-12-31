@@ -216,19 +216,6 @@ def check_template_present(template_name: str) -> bool:
     return find_template(screen, template_name) is not None
 
 
-def save_debug_screenshot(name: str):
-    """Save a screenshot for debugging template creation."""
-    debug_dir = Path("/tmp/debug_screenshots")
-    debug_dir.mkdir(exist_ok=True)
-    timestamp = int(time.time())
-    dest = debug_dir / f"{name}_{timestamp}.png"
-    try:
-        subprocess.run(['cp', SCREENSHOT_PATH, str(dest)], check=True)
-        log_info(f"Debug screenshot saved: {dest}")
-    except Exception as e:
-        log_warn(f"Failed to save debug screenshot: {e}")
-
-
 def main():
     log_info("=" * 50)
     log_info("Post-Launch Automation")
@@ -248,8 +235,6 @@ def main():
     # =========================================
     log_step("Phase 1: Checking for license agreement screen...")
     
-    save_debug_screenshot("phase1_initial")
-    
     screen = take_screenshot()
     if screen is not None:
         coords = find_template(screen, "license_accept_button.png")
@@ -257,7 +242,6 @@ def main():
             log_info(f"License button found at ({coords[0]}, {coords[1]}) - clicking")
             click_at(coords[0], coords[1])
             time.sleep(1)
-            save_debug_screenshot("phase1_after_license")
         else:
             log_info("No license screen visible (not needed)")
     
@@ -266,13 +250,10 @@ def main():
     # =========================================
     log_step("Phase 2: Looking for Play button...")
     
-    save_debug_screenshot("phase2_before_play")
-    
     # Lower threshold (0.6) because dynamic username affects matching
     if wait_and_click("runelite_play_button.png", timeout=30, step_name="Play", threshold=0.6):
         log_info("Play button clicked!")
         time.sleep(5)
-        save_debug_screenshot("phase2_after_play")
     else:
         log_warn("Play button not found on screen")
     
@@ -284,7 +265,6 @@ def main():
     log_step("Phase 2.5: Checking for in-game lobby screen...")
     
     time.sleep(3)  # Wait for lobby to potentially appear
-    save_debug_screenshot("phase2_5_lobby_check")
     
     # Try a few times - the lobby screen may take a moment to appear
     for attempt in range(6):  # 6 attempts over ~15 seconds
@@ -295,7 +275,6 @@ def main():
                 log_info(f"Lobby screen found at ({coords[0]}, {coords[1]}) - clicking")
                 click_at(coords[0], coords[1])
                 time.sleep(3)
-                save_debug_screenshot("phase2_5_after_lobby")
                 break
         time.sleep(2.5)
     else:
@@ -308,7 +287,6 @@ def main():
         log_step("Phase 3: Checking for name entry screen...")
         
         time.sleep(3)
-        save_debug_screenshot("phase3_name_check")
         
         screen = take_screenshot()
         if screen is not None:
@@ -329,7 +307,6 @@ def main():
                     press_key("Return")
                 
                 time.sleep(2)
-                save_debug_screenshot("phase3_after_name")
             else:
                 log_info("No name entry screen visible (may not be needed)")
     else:

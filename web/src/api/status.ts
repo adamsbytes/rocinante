@@ -1,4 +1,4 @@
-import { mkdir, unlink } from 'fs/promises';
+import { mkdir, unlink, chmod } from 'fs/promises';
 import { join } from 'path';
 import type { BotRuntimeStatus, BotCommand, CommandsFile } from '../shared/types';
 
@@ -21,6 +21,31 @@ const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), 'data');
  */
 export function getStatusDir(botId: string): string {
   return join(DATA_DIR, 'status', botId);
+}
+
+/**
+ * Screenshots directory for a bot.
+ * Mounted to /home/runelite/.runelite/screenshots inside the container.
+ */
+export function getScreenshotsDir(botId: string): string {
+  return join(getStatusDir(botId), 'screenshots');
+}
+
+/**
+ * Shared cache directory (shared across all bots).
+ * Used for wiki cache to avoid per-account duplication.
+ */
+export function getSharedCacheDir(): string {
+  return join(DATA_DIR, 'status', 'cache');
+}
+
+/**
+ * Bolt launcher data directory for a bot.
+ * Stores login session and launcher state.
+ * Mounted to /home/runelite/.local/share/bolt-launcher inside the container.
+ */
+export function getBoltDataDir(botId: string): string {
+  return join(getStatusDir(botId), 'bolt-launcher');
 }
 
 /**
@@ -57,10 +82,39 @@ export function getMachineIdPath(botId: string): string {
 /**
  * Ensure status directory exists for a bot with proper permissions.
  * The directory must be writable by the container's runelite user (UID 1000).
+ * We use chmod after mkdir because mkdir's mode is affected by umask.
  */
 export async function ensureStatusDir(botId: string): Promise<void> {
   const dir = getStatusDir(botId);
-  await mkdir(dir, { recursive: true, mode: 0o777 });
+  await mkdir(dir, { recursive: true });
+  await chmod(dir, 0o777);
+}
+
+/**
+ * Ensure the screenshots directory exists for a bot.
+ */
+export async function ensureScreenshotsDir(botId: string): Promise<void> {
+  const dir = getScreenshotsDir(botId);
+  await mkdir(dir, { recursive: true });
+  await chmod(dir, 0o777);
+}
+
+/**
+ * Ensure the shared cache directory exists.
+ */
+export async function ensureSharedCacheDir(): Promise<void> {
+  const dir = getSharedCacheDir();
+  await mkdir(dir, { recursive: true });
+  await chmod(dir, 0o777);
+}
+
+/**
+ * Ensure the bolt launcher data directory exists for a bot.
+ */
+export async function ensureBoltDataDir(botId: string): Promise<void> {
+  const dir = getBoltDataDir(botId);
+  await mkdir(dir, { recursive: true });
+  await chmod(dir, 0o777);
 }
 
 // ============================================================================

@@ -23,17 +23,21 @@ public class WikiCacheManagerTest {
 
     @Before
     public void setUp() throws IOException {
+        // Isolate cache dir per test run
+        testCacheDir = Files.createTempDirectory("wiki-cache-test");
+        System.setProperty("WIKI_CACHE_DIR", testCacheDir.toString());
+
         cacheManager = new WikiCacheManager();
-        // Find the cache directory that was created
-        testCacheDir = Path.of(System.getProperty("user.home"), ".runelite", "rocinante", "wiki-cache");
+        testCacheDir = cacheManager.getCacheDirectory();
     }
 
     @After
     public void tearDown() throws IOException {
-        // Clean up test cache files
-        if (Files.exists(testCacheDir)) {
-            try (Stream<Path> files = Files.list(testCacheDir)) {
-                files.forEach(p -> {
+        System.clearProperty("WIKI_CACHE_DIR");
+        Path cleanupDir = cacheManager.getCacheDirectory();
+        if (Files.exists(cleanupDir)) {
+            try (Stream<Path> files = Files.walk(cleanupDir)) {
+                files.sorted(Comparator.reverseOrder()).forEach(p -> {
                     try {
                         Files.deleteIfExists(p);
                     } catch (IOException ignored) {

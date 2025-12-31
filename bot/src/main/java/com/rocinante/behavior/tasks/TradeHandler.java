@@ -189,7 +189,7 @@ public class TradeHandler {
 
         // Check if handling is enabled
         if (!enabled) {
-            log.trace("Trade request ignored - handling disabled");
+            log.debug("Trade request ignored - handling disabled");
             return;
         }
 
@@ -198,7 +198,7 @@ public class TradeHandler {
         Matcher matcher = TRADE_REQUEST_PATTERN.matcher(message);
 
         if (!matcher.matches()) {
-            log.trace("Trade message didn't match pattern: {}", message);
+            log.debug("Trade message didn't match pattern: {}", message);
             return;
         }
 

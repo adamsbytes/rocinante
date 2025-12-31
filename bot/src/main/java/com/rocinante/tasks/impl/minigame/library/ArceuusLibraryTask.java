@@ -485,7 +485,7 @@ public class ArceuusLibraryTask extends MinigameTask {
 
         activeSubTask = new InteractNpcTask(customer.get().getId(), "Talk-to")
                 .withDescription("Talk to library customer");
-        log.trace("Talking to customer: {}", customer.get().getName());
+        log.debug("Talking to customer: {}", customer.get().getName());
     }
 
     private void startFindingBook(TaskContext ctx) {
@@ -526,7 +526,7 @@ public class ArceuusLibraryTask extends MinigameTask {
         activeSubTask = new InteractObjectTask(BOOKCASE_OBJECT_ID, "Search")
                 .withDescription("Search bookcase");
         libraryState.recordSearch();
-        log.trace("Searching bookcase at {}", targetBookcase);
+        log.debug("Searching bookcase at {}", targetBookcase);
     }
 
     private void startDeliveringBook(TaskContext ctx) {
@@ -543,7 +543,7 @@ public class ArceuusLibraryTask extends MinigameTask {
 
         activeSubTask = new InteractNpcTask(customer.get().getId(), "Talk-to")
                 .withDescription("Deliver book to customer");
-        log.trace("Delivering {} to customer", libraryState.getRequestedBook().getShortName());
+        log.debug("Delivering {} to customer", libraryState.getRequestedBook().getShortName());
     }
 
     // ========================================================================

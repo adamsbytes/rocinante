@@ -96,7 +96,7 @@ public class XpTracker {
                 currentXp.put(skill, xp);
                 sessionXpGained.put(skill, 0);
             } catch (Exception e) {
-                log.trace("Could not get XP for {}: {}", skill, e.getMessage());
+                log.debug("Could not get XP for {}: {}", skill, e.getMessage());
             }
         }
 
@@ -164,7 +164,7 @@ public class XpTracker {
             // Update total
             totalSessionXp += xpGain;
 
-            log.trace("{} XP: +{} (session total: {})", 
+            log.debug("{} XP: +{} (session total: {})", 
                     skill.getName(), xpGain, sessionXpGained.get(skill));
         }
     }

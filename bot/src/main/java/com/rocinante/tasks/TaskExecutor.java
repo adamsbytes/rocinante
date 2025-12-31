@@ -575,7 +575,7 @@ public class TaskExecutor {
         if (idleTaskSupplier != null) {
             Task idleTask = idleTaskSupplier.get();
             if (idleTask != null) {
-                log.trace("Injecting idle task: {}", idleTask.getDescription());
+                log.debug("Injecting idle task: {}", idleTask.getDescription());
                 return idleTask;
             }
         }

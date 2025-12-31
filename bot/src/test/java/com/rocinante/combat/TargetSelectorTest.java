@@ -2,6 +2,7 @@ package com.rocinante.combat;
 
 import com.rocinante.core.GameStateService;
 import com.rocinante.navigation.PathFinder;
+import com.rocinante.navigation.Reachability;
 import com.rocinante.state.AggressorInfo;
 import com.rocinante.state.CombatState;
 import com.rocinante.state.NpcSnapshot;
@@ -39,6 +40,9 @@ public class TargetSelectorTest {
     @Mock
     private PathFinder pathFinder;
 
+    @Mock
+    private Reachability reachability;
+
     private TargetSelector targetSelector;
 
     private WorldPoint playerPos;
@@ -47,7 +51,7 @@ public class TargetSelectorTest {
     @Before
     public void setUp() {
         MockitoAnnotations.openMocks(this);
-        targetSelector = new TargetSelector(client, gameStateService, pathFinder);
+        targetSelector = new TargetSelector(client, gameStateService, pathFinder, reachability);
         
         playerPos = new WorldPoint(3200, 3200, 0);
         validPlayerState = PlayerState.builder()
@@ -58,6 +62,10 @@ public class TargetSelectorTest {
 
         // Default: paths are reachable
         when(pathFinder.hasPath(any(WorldPoint.class), any(WorldPoint.class))).thenReturn(true);
+        when(reachability.canInteract(any(WorldPoint.class), any(WorldPoint.class))).thenReturn(true);
+        when(reachability.hasLineOfSight(any(WorldPoint.class), any(WorldPoint.class))).thenReturn(true);
+        when(reachability.findAttackablePosition(any(WorldPoint.class), any(WorldPoint.class), anyInt()))
+                .thenReturn(Optional.empty());
         
         // Default: no aggressive NPCs (empty combat state)
         when(gameStateService.getCombatState()).thenReturn(CombatState.EMPTY);

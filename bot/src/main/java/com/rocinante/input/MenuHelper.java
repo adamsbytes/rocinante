@@ -190,7 +190,7 @@ public class MenuHelper {
         int clickX = menuEntryBounds.x + randomOffset(menuEntryBounds.width);
         int clickY = menuEntryBounds.y + randomOffset(menuEntryBounds.height);
 
-        log.trace("Clicking menu entry '{}' at ({}, {})", action, clickX, clickY);
+        log.debug("Clicking menu entry '{}' at ({}, {})", action, clickX, clickY);
 
         return mouseController.moveToCanvas(clickX, clickY)
                 .thenCompose(v -> mouseController.click())
@@ -276,9 +276,14 @@ public class MenuHelper {
             return null;
         }
 
-        String searchAction = action.toLowerCase();
-        String searchTarget = targetName != null ? targetName.toLowerCase() : null;
+        String searchAction = normalize(action);
+        String searchTarget = targetName != null ? normalize(targetName) : null;
 
+        return findMenuEntryInWidget(children, searchAction, searchTarget);
+    }
+
+    @Nullable
+    private Rectangle findMenuEntryInWidget(Widget[] children, String searchAction, @Nullable String searchTarget) {
         for (Widget child : children) {
             if (child == null || child.isHidden()) {
                 continue;
@@ -286,40 +291,25 @@ public class MenuHelper {
 
             String text = child.getText();
             if (text != null) {
-                String textLower = text.toLowerCase();
-                boolean actionMatches = textLower.contains(searchAction);
-                boolean targetMatches = searchTarget == null || textLower.contains(searchTarget);
+                String textNorm = normalize(text);
+                boolean actionMatches = textNorm.equals(searchAction);
+                boolean targetMatches = searchTarget == null ||
+                        textNorm.equals(searchTarget);
 
                 if (actionMatches && targetMatches) {
                     Rectangle bounds = child.getBounds();
                     if (bounds != null && bounds.width > 0 && bounds.height > 0) {
-                        log.trace("Found menu entry '{}' with bounds {}", text, bounds);
+                        log.debug("Found menu entry '{}' with bounds {}", text, bounds);
                         return bounds;
                     }
                 }
             }
 
-            // Check nested children
             Widget[] nestedChildren = child.getDynamicChildren();
             if (nestedChildren != null) {
-                for (Widget nested : nestedChildren) {
-                    if (nested == null || nested.isHidden()) {
-                        continue;
-                    }
-                    String nestedText = nested.getText();
-                    if (nestedText != null) {
-                        String nestedLower = nestedText.toLowerCase();
-                        boolean actionMatches = nestedLower.contains(searchAction);
-                        boolean targetMatches = searchTarget == null || nestedLower.contains(searchTarget);
-
-                        if (actionMatches && targetMatches) {
-                            Rectangle bounds = nested.getBounds();
-                            if (bounds != null && bounds.width > 0 && bounds.height > 0) {
-                                log.trace("Found nested menu entry '{}' with bounds {}", nestedText, bounds);
-                                return bounds;
-                            }
-                        }
-                    }
+                Rectangle nested = findMenuEntryInWidget(nestedChildren, searchAction, searchTarget);
+                if (nested != null) {
+                    return nested;
                 }
             }
         }
@@ -337,8 +327,8 @@ public class MenuHelper {
             return null;
         }
 
-        String searchAction = action.toLowerCase();
-        String searchTarget = targetName != null ? targetName.toLowerCase() : null;
+        String searchAction = normalize(action);
+        String searchTarget = targetName != null ? normalize(targetName) : null;
 
         int menuX = client.getMenuX();
         int menuY = client.getMenuY();
@@ -357,14 +347,17 @@ public class MenuHelper {
             String target = entry.getTarget();
 
             if (option != null) {
-                boolean actionMatches = option.toLowerCase().contains(searchAction);
-                boolean targetMatches = searchTarget == null || 
-                        (target != null && target.toLowerCase().contains(searchTarget));
+                String optNorm = normalize(option);
+                String targetNorm = target != null ? normalize(target) : null;
+
+                boolean actionMatches = optNorm.equals(searchAction);
+                boolean targetMatches = searchTarget == null ||
+                        (targetNorm != null && targetNorm.equals(searchTarget));
 
                 if (actionMatches && targetMatches) {
                     int entryY = menuY + MENU_HEADER_OFFSET + (displayIndex * MENU_ENTRY_HEIGHT);
                     Rectangle bounds = new Rectangle(menuX, entryY, menuWidth, MENU_ENTRY_HEIGHT);
-                    log.trace("Estimated menu entry position for '{}': {}", action, bounds);
+                    log.debug("Estimated menu entry position for '{}': {}", searchAction, bounds);
                     return bounds;
                 }
             }
@@ -387,6 +380,11 @@ public class MenuHelper {
      */
     private int randomOffset(int dimension) {
         return ClickPointCalculator.calculateGaussianOffset(dimension);
+    }
+
+    private String normalize(String text) {
+        String noTags = text.replaceAll("<.*?>", "");
+        return noTags.trim().toLowerCase();
     }
 }
 

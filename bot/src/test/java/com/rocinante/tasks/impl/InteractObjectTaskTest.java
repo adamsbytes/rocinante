@@ -5,6 +5,11 @@ import com.rocinante.input.MenuHelper;
 import com.rocinante.input.RobotKeyboardController;
 import com.rocinante.input.RobotMouseController;
 import com.rocinante.input.SafeClickExecutor;
+import com.rocinante.navigation.PathFinder;
+import com.rocinante.navigation.NavigationEdge;
+import com.rocinante.navigation.NavigationPath;
+import com.rocinante.navigation.Reachability;
+import com.rocinante.navigation.WebWalker;
 import com.rocinante.state.PlayerState;
 import com.rocinante.tasks.TaskContext;
 import com.rocinante.tasks.TaskState;
@@ -24,6 +29,7 @@ import java.awt.*;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 import static org.junit.Assert.*;
@@ -62,6 +68,15 @@ public class InteractObjectTaskTest {
     private MenuHelper menuHelper;
 
     @Mock
+    private WebWalker webWalker;
+
+    @Mock
+    private PathFinder pathFinder;
+
+    @Mock
+    private Reachability reachability;
+
+    @Mock
     private Scene scene;
 
     @Mock
@@ -95,6 +110,9 @@ public class InteractObjectTaskTest {
         when(taskContext.getRandomization()).thenReturn(randomization);
         when(taskContext.getSafeClickExecutor()).thenReturn(safeClickExecutor);
         when(taskContext.getMenuHelper()).thenReturn(menuHelper);
+        when(taskContext.getWebWalker()).thenReturn(webWalker);
+        when(taskContext.getPathFinder()).thenReturn(pathFinder);
+        when(taskContext.getReachability()).thenReturn(reachability);
         when(taskContext.isLoggedIn()).thenReturn(true);
         when(taskContext.getPlayerState()).thenReturn(playerState);
 
@@ -107,6 +125,30 @@ public class InteractObjectTaskTest {
         when(client.getCanvas()).thenReturn(canvas);
         when(canvas.getSize()).thenReturn(new Dimension(800, 600));
 
+        // Default reachability behavior: object footprint is its world point; all adjacencies allowed.
+        when(reachability.getObjectFootprint(any())).thenAnswer(inv -> {
+            Object arg = inv.getArgument(0);
+            if (arg instanceof GameObject) {
+                WorldPoint wp = ((GameObject) arg).getWorldLocation();
+                return wp != null ? Set.of(wp) : Set.of();
+            }
+            if (arg instanceof WallObject) {
+                WorldPoint wp = ((WallObject) arg).getWorldLocation();
+                return wp != null ? Set.of(wp) : Set.of();
+            }
+            if (arg instanceof DecorativeObject) {
+                WorldPoint wp = ((DecorativeObject) arg).getWorldLocation();
+                return wp != null ? Set.of(wp) : Set.of();
+            }
+            if (arg instanceof GroundObject) {
+                WorldPoint wp = ((GroundObject) arg).getWorldLocation();
+                return wp != null ? Set.of(wp) : Set.of();
+            }
+            return Set.of();
+        });
+        when(reachability.canInteract(any(WorldPoint.class), any(TileObject.class))).thenReturn(true);
+        when(reachability.canInteract(any(WorldPoint.class), any(WorldPoint.class))).thenReturn(true);
+
         // Randomization defaults (no camera rotation by default)
         when(randomization.chance(anyDouble())).thenReturn(false);
         when(randomization.uniformRandomInt(anyInt(), anyInt())).thenReturn(200);
@@ -117,6 +159,35 @@ public class InteractObjectTaskTest {
                 .thenReturn(CompletableFuture.completedFuture(null));
         when(mouseController.click())
                 .thenReturn(CompletableFuture.completedFuture(null));
+
+        // WebWalker default path: non-empty with minimal cost
+        NavigationEdge edge = NavigationEdge.builder()
+                .fromNodeId("start")
+                .toNodeId("end")
+                .type(com.rocinante.navigation.WebEdgeType.WALK)
+                .costTicks(5)
+                .bidirectional(true)
+                .build();
+        NavigationPath path = NavigationPath.builder()
+                .edges(List.of(edge))
+                .nodeIds(List.of("start", "end"))
+                .totalCostTicks(5)
+                .startPoint(playerPos)
+                .endPoint(playerPos)
+                .build();
+        when(webWalker.findUnifiedPath(any(WorldPoint.class), any(WorldPoint.class)))
+                .thenReturn(path);
+
+        // PathFinder default local path (start->end)
+        when(pathFinder.findPath(any(WorldPoint.class), any(WorldPoint.class), anyBoolean()))
+                .thenAnswer(inv -> {
+                    WorldPoint s = inv.getArgument(0);
+                    WorldPoint e = inv.getArgument(1);
+                    if (s == null || e == null || s.getPlane() != e.getPlane()) {
+                        return List.of();
+                    }
+                    return List.of(s, e);
+                });
 
         // SafeClickExecutor default
         when(safeClickExecutor.clickObject(any(), anyString()))
@@ -155,6 +226,23 @@ public class InteractObjectTaskTest {
         assertEquals(2, task.getAlternateObjectIds().size());
         assertTrue(task.getAlternateObjectIds().contains(ObjectID.DOOR_1536));
         assertTrue(task.getAlternateObjectIds().contains(1537));
+    }
+
+    @Test
+    public void testFailsWhenNoAdjacentReachableInLocalRange() {
+        // Object within local range
+        WorldPoint objPos = new WorldPoint(3202, 3202, 0);
+        setupSceneWithObject(ObjectID.BANK_BOOTH_10355, objPos);
+
+        // PathFinder returns no path to any adjacent tile
+        when(pathFinder.findPath(any(WorldPoint.class), any(WorldPoint.class), anyBoolean()))
+                .thenReturn(List.of());
+
+        InteractObjectTask task = new InteractObjectTask(ObjectID.BANK_BOOTH_10355, "Bank");
+
+        task.execute(taskContext);
+
+        assertEquals(TaskState.FAILED, task.getState());
     }
 
     @Test(expected = IllegalArgumentException.class)
@@ -778,6 +866,7 @@ public class InteractObjectTaskTest {
         
         when(scene.getTiles()).thenReturn(tiles);
     }
+
 
     private Tile[][][] createEmptyTileGrid() {
         Tile[][][] tiles = new Tile[4][Constants.SCENE_SIZE][Constants.SCENE_SIZE];

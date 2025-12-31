@@ -345,7 +345,7 @@ public class AttentionModel {
         
         if (randomization.chance(CHAT_DISTRACTION_PROBABILITY)) {
             triggerExternalDistraction();
-            log.trace("Chat message triggered distraction");
+            log.debug("Chat message triggered distraction");
         }
     }
 

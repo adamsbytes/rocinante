@@ -14,6 +14,7 @@ import net.runelite.api.NPC;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.widgets.Widget;
 
+import com.rocinante.navigation.EntityFinder;
 import java.awt.Dimension;
 import java.awt.Point;
 import java.awt.Rectangle;
@@ -21,7 +22,10 @@ import java.awt.Shape;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -58,7 +62,7 @@ import java.util.concurrent.CompletableFuture;
  * }</pre>
  */
 @Slf4j
-public class InteractNpcTask extends AbstractTask {
+public class InteractNpcTask extends com.rocinante.tasks.AbstractInteractionTask {
 
     // ========================================================================
     // Constants
@@ -190,7 +194,7 @@ public class InteractNpcTask extends AbstractTask {
     /**
      * Interaction helper for camera rotation and clickbox handling.
      */
-    private InteractionHelper interactionHelper;
+    // private InteractionHelper interactionHelper; // Use parent class field
 
     /**
      * The NPC we found and are interacting with.
@@ -233,14 +237,14 @@ public class InteractNpcTask extends AbstractTask {
     private static final int MAX_RETARGET_ATTEMPTS = 3;
 
     /**
+     * Cached clickbox for menu selection.
+     */
+    private java.awt.Rectangle cachedClickbox = null;
+
+    /**
      * Whether menu selection is currently pending (async).
      */
     private boolean menuSelectionPending = false;
-
-    /**
-     * Cached clickbox for menu selection.
-     */
-    private Rectangle cachedClickbox = null;
 
     // ========================================================================
     // Constructor
@@ -444,6 +448,9 @@ public class InteractNpcTask extends AbstractTask {
             case ROTATE_CAMERA:
                 executeRotateCamera(ctx);
                 break;
+            case HANDLE_OBSTACLE:
+                executeHandleObstacle(ctx);
+                break;
             case MOVE_MOUSE:
                 executeMoveMouse(ctx);
                 break;
@@ -474,9 +481,8 @@ public class InteractNpcTask extends AbstractTask {
         WorldPoint playerPos = player.getWorldPosition();
 
         // Reset interaction helper for fresh camera retry counts
-        if (interactionHelper != null) {
-            interactionHelper.reset();
-        }
+        ensureInteractionHelper(ctx);
+        interactionHelper.reset();
 
         // Search for NPC
         targetNpc = findNearestNpc(ctx, playerPos);
@@ -507,6 +513,11 @@ public class InteractNpcTask extends AbstractTask {
             targetPositionCallback.accept(lastNpcPosition);
         }
 
+        // Check path for obstacles (doors/gates) that need handling
+        if (checkForObstacles(ctx)) {
+            return;
+        }
+
         // Store starting state for success detection
         startPosition = playerPos;
 
@@ -528,16 +539,40 @@ public class InteractNpcTask extends AbstractTask {
             return;
         }
         
-        // Initialize interaction helper if needed
-        if (interactionHelper == null) {
-            interactionHelper = new InteractionHelper(ctx);
-        }
-        
-        // Fire-and-forget camera rotation - like a human holding an arrow key
-        interactionHelper.startCameraRotation(lastNpcPosition);
+        rotateCameraTo(ctx, lastNpcPosition);
         
         // Immediately proceed to mouse movement - don't wait for camera
-            phase = NpcInteractionPhase.MOVE_MOUSE;
+        phase = NpcInteractionPhase.MOVE_MOUSE;
+    }
+
+    // ========================================================================
+    // Phase: Handle Obstacle
+    // ========================================================================
+
+    protected void executeHandleObstacle(TaskContext ctx) {
+        if (executeHandleObstacleImpl(ctx)) {
+            // Still executing
+            return;
+        }
+        // Completed or failed, move to next phase
+        // If successful, we can re-find NPC. If failed, we can also try to re-find (maybe door opened anyway?)
+        phase = NpcInteractionPhase.FIND_NPC;
+    }
+
+    /**
+     * Check if the calculated path contains any blocking obstacles (doors/gates).
+     * If so, switches phase to HANDLE_OBSTACLE and returns true.
+     */
+    protected boolean checkForObstacles(TaskContext ctx) {
+        // Path checking for NPCs is dynamic because they move
+        // We check path from player to NPC's current position
+        if (startPosition != null && lastNpcPosition != null) {
+            if (checkPathForObstacles(ctx, startPosition, lastNpcPosition)) {
+                phase = NpcInteractionPhase.HANDLE_OBSTACLE;
+                return true;
+            }
+        }
+        return false;
     }
 
     // ========================================================================
@@ -563,14 +598,17 @@ public class InteractNpcTask extends AbstractTask {
                 if (movement > MAX_NPC_MOVEMENT) {
                     log.debug("NPC moved significantly ({} tiles), re-targeting", movement);
                     lastNpcPosition = currentNpcPos;
+                    
+                    // Re-check path for obstacles if NPC moved significantly
+                    if (checkForObstacles(ctx)) {
+                        return;
+                    }
                 }
             }
         }
 
         // Initialize interaction helper if needed
-        if (interactionHelper == null) {
-            interactionHelper = new InteractionHelper(ctx);
-        }
+        ensureInteractionHelper(ctx);
 
         // Use centralized click point resolution with smart waiting
         InteractionHelper.ClickPointResult result = interactionHelper.getClickPointForNpc(targetNpc);
@@ -824,7 +862,7 @@ public class InteractNpcTask extends AbstractTask {
         }
 
         // Not yet successful, continue waiting
-        log.trace("Waiting for NPC interaction response (tick {})", interactionTicks);
+        log.debug("Waiting for NPC interaction response (tick {})", interactionTicks);
     }
 
     // ========================================================================
@@ -832,10 +870,55 @@ public class InteractNpcTask extends AbstractTask {
     // ========================================================================
 
     /**
-     * Find the nearest instance of the target NPC.
-     * Checks both primary npcId and any alternate IDs.
+     * Find the nearest reachable instance of the target NPC.
+     * Uses EntityFinder for collision-aware NPC selection.
+     * NPCs behind fences/rivers are rejected.
      */
     private NPC findNearestNpc(TaskContext ctx, WorldPoint playerPos) {
+        EntityFinder entityFinder = ctx.getEntityFinder();
+        
+        // Fall back to simple distance-based search if EntityFinder unavailable
+        if (entityFinder == null) {
+            log.warn("EntityFinder unavailable, falling back to distance-based NPC search");
+            return findNearestNpcByDistance(ctx, playerPos);
+        }
+
+        // Build the set of NPC IDs to search for
+        Set<Integer> npcIds = getAllNpcIds();
+
+        // Use EntityFinder for reachability-aware NPC finding
+        Optional<EntityFinder.NpcSearchResult> result = entityFinder.findNearestReachableNpc(
+                playerPos, npcIds, npcName, searchRadius);
+
+        if (result.isEmpty()) {
+            log.debug("No reachable NPC found for IDs {} within {} tiles", npcIds, searchRadius);
+            return null;
+        }
+
+        EntityFinder.NpcSearchResult searchResult = result.get();
+        log.debug("Found reachable NPC {} at {} (path cost: {})",
+                searchResult.getNpc().getName(),
+                searchResult.getNpc().getWorldLocation(),
+                searchResult.getPathCost());
+
+        return searchResult.getNpc();
+    }
+
+    /**
+     * Get all NPC IDs this task targets (primary + alternates).
+     */
+    private Set<Integer> getAllNpcIds() {
+        Set<Integer> ids = new HashSet<>();
+        ids.add(npcId);
+        ids.addAll(alternateNpcIds);
+        return ids;
+    }
+
+    /**
+     * Fallback: find nearest NPC by distance only (no reachability check).
+     * Used when EntityFinder is unavailable.
+     */
+    private NPC findNearestNpcByDistance(TaskContext ctx, WorldPoint playerPos) {
         Client client = ctx.getClient();
         NPC nearest = null;
         int nearestDistance = Integer.MAX_VALUE;
@@ -941,6 +1024,7 @@ public class InteractNpcTask extends AbstractTask {
     private enum NpcInteractionPhase {
         FIND_NPC,
         ROTATE_CAMERA,
+        HANDLE_OBSTACLE,
         MOVE_MOUSE,
         HOVER_DELAY,
         CHECK_MENU,

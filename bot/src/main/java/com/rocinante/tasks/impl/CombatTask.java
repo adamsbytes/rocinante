@@ -375,7 +375,7 @@ public class CombatTask extends AbstractTask {
         // Coordinate with CombatManager: skip if a click is already in progress
         // This prevents race conditions on the same game tick
         if (ctx.getMouseController().isClickInProgress()) {
-            log.trace("Deferring CombatTask action - click already in progress");
+            log.debug("Deferring CombatTask action - click already in progress");
             return;
         }
 

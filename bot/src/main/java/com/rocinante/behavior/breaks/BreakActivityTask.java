@@ -247,7 +247,7 @@ public class BreakActivityTask extends AbstractTask {
                 break;
         }
         
-        log.trace("Starting activity {} for {}ms", activity, currentActivityDuration);
+        log.debug("Starting activity {} for {}ms", activity, currentActivityDuration);
     }
 
     private void executeCurrentActivity(TaskContext ctx) {

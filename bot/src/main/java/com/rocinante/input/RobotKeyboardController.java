@@ -219,7 +219,7 @@ public class RobotKeyboardController {
                     if (!inBurst && randomization.chance(BURST_PROBABILITY)) {
                         burstRemaining = randomization.uniformRandomInt(MIN_BURST_LENGTH, MAX_BURST_LENGTH);
                         inBurst = true;
-                        log.trace("Entering burst mode for {} chars", burstRemaining);
+                        log.debug("Entering burst mode for {} chars", burstRemaining);
                     }
 
                     // Simulate typo
@@ -240,7 +240,7 @@ public class RobotKeyboardController {
                             inBurst = false;
                             // Post-burst pause
                             delay += randomization.uniformRandomLong(MIN_POST_BURST_PAUSE_MS, MAX_POST_BURST_PAUSE_MS);
-                            log.trace("Burst complete, pausing");
+                            log.debug("Burst complete, pausing");
                         }
                     } else {
                         // Normal typing with bigram adjustment
@@ -309,7 +309,7 @@ public class RobotKeyboardController {
             Double speedMultiplier = BIGRAM_SPEEDS.get(bigram);
             if (speedMultiplier != null) {
                 delay = Math.round(delay * speedMultiplier);
-                log.trace("Bigram '{}' speedup applied", bigram);
+                log.debug("Bigram '{}' speedup applied", bigram);
             }
         }
 
@@ -361,7 +361,7 @@ public class RobotKeyboardController {
         // Get a neighboring key for realistic typo
         char typoChar = getTypoCharacter(correctChar);
 
-        log.trace("Simulating typo: '{}' instead of '{}'", typoChar, correctChar);
+        log.debug("Simulating typo: '{}' instead of '{}'", typoChar, correctChar);
 
         // Type the wrong character
         typeCharacter(typoChar);
@@ -584,7 +584,7 @@ public class RobotKeyboardController {
                     // Apply speedup for subsequent uses
                     double speedup = randomization.uniformRandom(MIN_FKEY_SPEEDUP, MAX_FKEY_SPEEDUP);
                     baseReaction = Math.round(baseReaction * speedup);
-                    log.trace("F{} speedup applied (usage #{}): {}ms", fKeyNumber, usageCount + 1, baseReaction);
+                    log.debug("F{} speedup applied (usage #{}): {}ms", fKeyNumber, usageCount + 1, baseReaction);
                 }
 
                 Thread.sleep(baseReaction);

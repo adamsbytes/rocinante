@@ -104,7 +104,7 @@ public class IdleHabitSupplier implements Supplier<Task> {
             // AFK state - return idle behavior if enough time has passed
             if (Duration.between(lastIdleBehavior, now).toSeconds() > 5) {
                 lastIdleBehavior = now;
-                log.trace("Providing idle behavior task (AFK state)");
+                log.debug("Providing idle behavior task (AFK state)");
                 return new IdleBehaviorTask(randomization);
             }
             return null;
@@ -115,7 +115,7 @@ public class IdleHabitSupplier implements Supplier<Task> {
             if (playerProfile.getPlayerInspectionFrequency() > 0) {
                 lastPlayerInspection = now;
                 scheduleNextPlayerInspection();
-                log.trace("Providing player inspection task");
+                log.debug("Providing player inspection task");
                 return new PlayerInspectionBehavior(playerProfile, randomization);
             }
         }
@@ -125,7 +125,7 @@ public class IdleHabitSupplier implements Supplier<Task> {
             if (playerProfile.getXpCheckFrequency() > 0) {
                 lastXpCheck = now;
                 scheduleNextXpCheck();
-                log.trace("Providing XP check task");
+                log.debug("Providing XP check task");
                 return new XpCheckBehavior(playerProfile, randomization);
             }
         }
@@ -157,7 +157,7 @@ public class IdleHabitSupplier implements Supplier<Task> {
         
         nextPlayerInspection = Instant.now().plusSeconds((long) intervalSeconds);
         
-        log.trace("Scheduled next player inspection in {} seconds", (long) intervalSeconds);
+        log.debug("Scheduled next player inspection in {} seconds", (long) intervalSeconds);
     }
 
     /**
@@ -183,7 +183,7 @@ public class IdleHabitSupplier implements Supplier<Task> {
         
         nextXpCheck = Instant.now().plusSeconds((long) intervalSeconds);
         
-        log.trace("Scheduled next XP check in {} seconds", (long) intervalSeconds);
+        log.debug("Scheduled next XP check in {} seconds", (long) intervalSeconds);
     }
 
     /**

@@ -263,7 +263,7 @@ public class InefficiencyInjector {
         if (should) {
             lastHesitation = clock.instant();
             hesitationCount.incrementAndGet();
-            log.trace("Hesitation triggered");
+            log.debug("Hesitation triggered");
         }
         
         return should;

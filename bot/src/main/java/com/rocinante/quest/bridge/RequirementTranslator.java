@@ -989,7 +989,7 @@ public class RequirementTranslator {
                     Object result = checkMethod.invoke(requirement, ctx.getClient());
                     return Boolean.TRUE.equals(result);
                 } catch (Exception e) {
-                    log.trace("Requirement check failed for {}: {}", requirement.getClass().getSimpleName(), e.getMessage());
+                    log.debug("Requirement check failed for {}: {}", requirement.getClass().getSimpleName(), e.getMessage());
                     return false;
                 }
             };

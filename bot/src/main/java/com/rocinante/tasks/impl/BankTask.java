@@ -1297,7 +1297,7 @@ public class BankTask extends AbstractTask {
         // Press Escape to close bank (more human-like than clicking X)
         return ctx.getKeyboardController().pressKey(java.awt.event.KeyEvent.VK_ESCAPE)
                 .exceptionally(e -> {
-                    log.trace("Failed to close bank via ESC: {}", e.getMessage());
+                    log.debug("Failed to close bank via ESC: {}", e.getMessage());
                     return null;
                 });
     }

@@ -279,7 +279,7 @@ public class RobotMouseController {
             cachedViewportBounds = new Rectangle(areaX, areaY, areaWidth, areaHeight);
             lastViewportRefresh = System.currentTimeMillis();
         } catch (Exception e) {
-            log.trace("Could not refresh display info: {}", e.getMessage());
+            log.debug("Could not refresh display info: {}", e.getMessage());
         }
     }
     
@@ -512,7 +512,7 @@ public class RobotMouseController {
                 cameraCoupler.onBeforeMouseMove(start.x, start.y, targetX, targetY);
                 // Note: Camera rotation happens concurrently, we don't wait
             } catch (Exception e) {
-                log.trace("Camera coupling failed: {}", e.getMessage());
+                log.debug("Camera coupling failed: {}", e.getMessage());
             }
         }
 
@@ -707,7 +707,7 @@ public class RobotMouseController {
         robot.mouseMove(target.x, target.y);
         currentPosition = target;
 
-        log.trace("Overshoot: {} pixels, corrected after {}ms", overshootPixels, delay);
+        log.debug("Overshoot: {} pixels, corrected after {}ms", overshootPixels, delay);
     }
 
     /**
@@ -737,7 +737,7 @@ public class RobotMouseController {
         robot.mouseMove(clampedCorrection.x, clampedCorrection.y);
         currentPosition = clampedCorrection;
 
-        log.trace("Micro-correction: {} pixels after {}ms", correctionPixels, delay);
+        log.debug("Micro-correction: {} pixels after {}ms", correctionPixels, delay);
     }
 
     // ========================================================================
@@ -844,7 +844,7 @@ public class RobotMouseController {
                 // Check for hesitation before click (5% chance, 500-1500ms hover)
                 if (inefficiencyInjector != null && inefficiencyInjector.shouldHesitate()) {
                     long hesitationDelay = inefficiencyInjector.getAdjustedHesitationDelay();
-                    log.trace("Hesitating for {}ms before click", hesitationDelay);
+                    log.debug("Hesitating for {}ms before click", hesitationDelay);
                     Thread.sleep(hesitationDelay);
                 }
                 
@@ -992,7 +992,7 @@ public class RobotMouseController {
         int misclickX = intendedPos[0] + (int) (Math.cos(angle) * offsetDistance);
         int misclickY = intendedPos[1] + (int) (Math.sin(angle) * offsetDistance);
 
-        log.trace("Simulating misclick: intended ({}, {}), actual ({}, {})",
+        log.debug("Simulating misclick: intended ({}, {}), actual ({}, {})",
                 intendedPos[0], intendedPos[1], misclickX, misclickY);
 
         // Move to misclick position and click (already in screen coordinates)
@@ -1064,7 +1064,7 @@ public class RobotMouseController {
         // Generate session-specific speed multiplier for consistency
         double speedMultiplier = 1.0 + randomization.uniformRandom(-SCROLL_SPEED_VARIANCE, SCROLL_SPEED_VARIANCE);
 
-        log.trace("Scrolling {} notches with speed multiplier {}", amount, speedMultiplier);
+        log.debug("Scrolling {} notches with speed multiplier {}", amount, speedMultiplier);
 
         int scrolled = 0;
         while (scrolled < remaining) {
@@ -1086,13 +1086,13 @@ public class RobotMouseController {
                 // Occasional pause mid-scroll (simulates human hesitation)
                 if (randomization.chance(SCROLL_PAUSE_PROBABILITY)) {
                     int pauseDuration = randomization.uniformRandomInt(MIN_SCROLL_PAUSE_MS, MAX_SCROLL_PAUSE_MS);
-                    log.trace("Scroll pause for {}ms at notch {}/{}", pauseDuration, scrolled, remaining);
+                    log.debug("Scroll pause for {}ms at notch {}/{}", pauseDuration, scrolled, remaining);
                     Thread.sleep(pauseDuration);
                 }
             }
         }
 
-        log.trace("Scroll completed: {} notches", amount);
+        log.debug("Scroll completed: {} notches", amount);
     }
 
     /**
@@ -1221,7 +1221,7 @@ public class RobotMouseController {
         Point target = new Point(targetX, targetY);
         double distance = start.distance(target);
 
-        log.trace("Executing drag from ({}, {}) to ({}, {}), distance={}", 
+        log.debug("Executing drag from ({}, {}) to ({}, {}), distance={}", 
                 start.x, start.y, targetX, targetY, distance);
 
         // Press mouse button
@@ -1243,7 +1243,7 @@ public class RobotMouseController {
         // Release mouse button
         robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
 
-        log.trace("Drag completed");
+        log.debug("Drag completed");
     }
 
     /**
@@ -1324,7 +1324,7 @@ public class RobotMouseController {
     public CompletableFuture<Void> performIdleBehavior() {
         // Check if predictive hover should suppress mouse movement
         if (predictiveHoverManager != null && predictiveHoverManager.shouldSuppressIdleBehavior()) {
-            log.trace("Idle: suppressed due to active predictive hover");
+            log.debug("Idle: suppressed due to active predictive hover");
             return CompletableFuture.completedFuture(null);
         }
 
@@ -1332,7 +1332,7 @@ public class RobotMouseController {
 
         if (roll < IDLE_STATIONARY_PROBABILITY) {
             // Stationary - do nothing
-            log.trace("Idle: stationary");
+            log.debug("Idle: stationary");
             return CompletableFuture.completedFuture(null);
         } else if (roll < IDLE_STATIONARY_PROBABILITY + IDLE_DRIFT_PROBABILITY) {
             // Small drift
@@ -1353,7 +1353,7 @@ public class RobotMouseController {
         int targetX = currentPosition.x + (int) (Math.cos(angle) * driftPixels);
         int targetY = currentPosition.y + (int) (Math.sin(angle) * driftPixels);
 
-        log.trace("Idle: drift {} pixels", driftPixels);
+        log.debug("Idle: drift {} pixels", driftPixels);
 
         // Execute slow drift movement
         return executeSlowDrift(targetX, targetY);
@@ -1406,7 +1406,7 @@ public class RobotMouseController {
         ScreenRegion restRegion = playerProfile.selectIdlePosition();
         int[] restPos = restRegion.getGaussianPoint(randomization);
 
-        log.trace("Idle: move to rest position ({})", restRegion.name());
+        log.debug("Idle: move to rest position ({})", restRegion.name());
 
         // ScreenRegion uses canvas-relative coordinates
         return moveToCanvas(restPos[0], restPos[1]);

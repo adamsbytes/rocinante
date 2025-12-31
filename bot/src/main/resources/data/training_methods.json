@@ -1267,7 +1267,7 @@
       "ironmanViable": true,
       "locations": [
         {"id": "lumbridge", "name": "Lumbridge Castle Range", "locationId": "lumbridge_castle_range", "bankLocationId": "lumbridge_castle_bank", "actionsPerHour": 1300, "notes": "Lumbridge castle range reduces burn rate"},
-        {"id": "barbarian_village_fire", "name": "Barbarian Village (Fire)", "locationId": "barbarian_village_fishing", "bankLocationId": null, "actionsPerHour": 1200, "notes": "Permanent fire next to fishing spot. Power fish, cook, drop."}
+        {"id": "barbarian_village_fire", "name": "Barbarian Village (Fire)", "locationId": "barbarian_village_fishing", "actionsPerHour": 1200, "notes": "Permanent fire next to fishing spot. Power fish, cook, drop."}
       ]
     },
     {
@@ -1293,7 +1293,7 @@
       "requirements": {"members": true},
       "locations": [
         {"id": "rogues_den", "name": "Rogues' Den Fire", "locationId": "rogues_den_fire", "bankLocationId": "rogues_den_bank", "actionsPerHour": 1300},
-        {"id": "barbarian_village_fire", "name": "Barbarian Village (Fire)", "locationId": "barbarian_village_fishing", "bankLocationId": null, "actionsPerHour": 1200, "notes": "Permanent fire next to fishing spot. Power fish, cook, drop."}
+        {"id": "barbarian_village_fire", "name": "Barbarian Village (Fire)", "locationId": "barbarian_village_fishing", "actionsPerHour": 1200, "notes": "Permanent fire next to fishing spot. Power fish, cook, drop."}
       ]
     },
     {
@@ -1319,7 +1319,7 @@
       "requirements": {"members": true},
       "locations": [
         {"id": "rogues_den", "name": "Rogues' Den Fire", "locationId": "rogues_den_fire", "bankLocationId": "rogues_den_bank", "actionsPerHour": 1300, "notes": "Closest bank to fire"},
-        {"id": "barbarian_village_fire", "name": "Barbarian Village (Fire)", "locationId": "barbarian_village_fishing", "bankLocationId": null, "actionsPerHour": 1200, "notes": "Permanent fire next to fishing spot. Power fish, cook, drop."}
+        {"id": "barbarian_village_fire", "name": "Barbarian Village (Fire)", "locationId": "barbarian_village_fishing", "actionsPerHour": 1200, "notes": "Permanent fire next to fishing spot. Power fish, cook, drop."}
       ]
     },
     {
@@ -1345,7 +1345,7 @@
       "requirements": {"members": true},
       "locations": [
         {"id": "rogues_den", "name": "Rogues' Den Fire", "locationId": "rogues_den_fire", "bankLocationId": "rogues_den_bank", "actionsPerHour": 1300},
-        {"id": "barbarian_village_fire", "name": "Barbarian Village (Fire)", "locationId": "barbarian_village_fishing", "bankLocationId": null, "actionsPerHour": 1200, "notes": "Permanent fire next to fishing spot. Power fish, cook, drop."}
+        {"id": "barbarian_village_fire", "name": "Barbarian Village (Fire)", "locationId": "barbarian_village_fishing", "actionsPerHour": 1200, "notes": "Permanent fire next to fishing spot. Power fish, cook, drop."}
       ]
     },
     {
@@ -1371,7 +1371,7 @@
       "requirements": {"members": true},
       "locations": [
         {"id": "rogues_den", "name": "Rogues' Den Fire", "locationId": "rogues_den_fire", "bankLocationId": "rogues_den_bank", "actionsPerHour": 1300},
-        {"id": "barbarian_village_fire", "name": "Barbarian Village (Fire)", "locationId": "barbarian_village_fishing", "bankLocationId": null, "actionsPerHour": 1200, "notes": "Permanent fire next to fishing spot. Power fish, cook, drop."}
+        {"id": "barbarian_village_fire", "name": "Barbarian Village (Fire)", "locationId": "barbarian_village_fishing", "actionsPerHour": 1200, "notes": "Permanent fire next to fishing spot. Power fish, cook, drop."}
       ]
     },
     {
@@ -1397,7 +1397,7 @@
       "requirements": {"members": true, "quests": ["Tai Bwo Wannai Trio"]},
       "locations": [
         {"id": "rogues_den", "name": "Rogues' Den Fire", "locationId": "rogues_den_fire", "bankLocationId": "rogues_den_bank", "actionsPerHour": 1300, "notes": "Can be 1-tick cooked"},
-        {"id": "barbarian_village_fire", "name": "Barbarian Village (Fire)", "locationId": "barbarian_village_fishing", "bankLocationId": null, "actionsPerHour": 1200, "notes": "Permanent fire next to fishing spot. Power fish, cook, drop."}
+        {"id": "barbarian_village_fire", "name": "Barbarian Village (Fire)", "locationId": "barbarian_village_fishing", "actionsPerHour": 1200, "notes": "Permanent fire next to fishing spot. Power fish, cook, drop."}
       ]
     },
     {

@@ -370,7 +370,7 @@ public class CameraController {
         // Release middle mouse button
         robot.mouseRelease(InputEvent.BUTTON2_DOWN_MASK);
         
-        log.trace("Camera drag completed: ({}, {}) over {}ms", totalDragX, totalDragY, duration);
+        log.debug("Camera drag completed: ({}, {}) over {}ms", totalDragX, totalDragY, duration);
     }
 
     // ========================================================================
@@ -457,7 +457,7 @@ public class CameraController {
                     int rotatedJau = Math.abs(calculateShortestRotation(startYaw, currentYaw));
                     
                     if (rotatedJau >= maxJau) {
-                        log.trace("Camera hold reached max rotation: {} JAU", rotatedJau);
+                        log.debug("Camera hold reached max rotation: {} JAU", rotatedJau);
                         break;
                     }
                     
@@ -572,7 +572,7 @@ public class CameraController {
             try {
                 rotating = true;
                 
-                log.trace("Performing idle drift: {}° over {}ms", degrees, duration);
+                log.debug("Performing idle drift: {}° over {}ms", degrees, duration);
                 
                 // Calculate hold time needed for desired rotation
                 HoldSpeed speed = HoldSpeed.SLOW;

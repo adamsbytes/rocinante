@@ -113,7 +113,7 @@ public class BuyLimitTracker {
                 return stats.getGeLimit();
             }
         } catch (Exception e) {
-            log.trace("Failed to get item stats for {}: {}", itemId, e.getMessage());
+            log.debug("Failed to get item stats for {}: {}", itemId, e.getMessage());
         }
 
         return -1;

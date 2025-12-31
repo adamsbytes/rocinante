@@ -1,13 +1,22 @@
 package com.rocinante.navigation;
 
 import com.rocinante.progression.UnlockTracker;
+import com.rocinante.navigation.TileObjectUtils;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
+import net.runelite.api.CollisionData;
+import net.runelite.api.Constants;
+import net.runelite.api.GameObject;
+import net.runelite.api.ItemID;
 import net.runelite.api.Quest;
 import net.runelite.api.Skill;
+import net.runelite.api.TileObject;
+import net.runelite.api.WallObject;
+import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
+import com.rocinante.state.InventoryState;
 
 import javax.annotation.Nullable;
 import javax.inject.Inject;
@@ -101,6 +110,14 @@ public class WebWalker {
     private ResourceAwareness resourceAwareness;
 
     /**
+     * Live inventory snapshot for item/gold checks.
+     */
+    @Setter
+    @Nullable
+    private InventoryState inventoryState;
+
+
+    /**
      * Primary constructor for dependency injection.
      * Uses the full constructor with all optional dependencies.
      */
@@ -120,6 +137,19 @@ public class WebWalker {
             log.info("WebWalker using unified graph with {} nodes, {} edges",
                     unifiedGraph.getNodeCount(), unifiedGraph.getEdgeCount());
         }
+
+        // Allow runtime overrides via system properties
+        int configuredNear = Integer.getInteger("rsbot.nav.nearNodeThreshold", DEFAULT_NEAR_NODE_THRESHOLD);
+        if (configuredNear > 0) {
+            this.nearNodeThreshold = configuredNear;
+        }
+        int configuredIsolated = Integer.getInteger("rsbot.nav.isolatedThreshold", DEFAULT_ISOLATED_THRESHOLD);
+        if (configuredIsolated > 0) {
+            this.isolatedThreshold = configuredIsolated;
+        }
+
+        // Validate critical teleport metadata to avoid runtime surprises
+        validateTeleportEdges();
     }
 
     // ========================================================================
@@ -279,6 +309,24 @@ public class WebWalker {
      */
     public void setAvoidWilderness(boolean avoid) {
         this.avoidWilderness = avoid;
+    }
+
+    /**
+     * Adjust near-node detection threshold (tiles).
+     */
+    public void setNearNodeThreshold(int threshold) {
+        if (threshold > 0) {
+            this.nearNodeThreshold = threshold;
+        }
+    }
+
+    /**
+     * Adjust isolated detection threshold (tiles).
+     */
+    public void setIsolatedThreshold(int threshold) {
+        if (threshold > 0) {
+            this.isolatedThreshold = threshold;
+        }
     }
 
     // ========================================================================
@@ -454,10 +502,14 @@ public class WebWalker {
     // ========================================================================
     
     /** Distance threshold for "near a node" (tiles) */
-    private static final int NEAR_NODE_THRESHOLD = 15;
+    private static final int DEFAULT_NEAR_NODE_THRESHOLD = 15;
     
     /** Distance threshold for "isolated" - too far to reasonably walk (tiles) */
-    private static final int ISOLATED_THRESHOLD = 100;
+    private static final int DEFAULT_ISOLATED_THRESHOLD = 100;
+
+    /** Configurable thresholds for first/last mile handling. */
+    private int nearNodeThreshold = DEFAULT_NEAR_NODE_THRESHOLD;
+    private int isolatedThreshold = DEFAULT_ISOLATED_THRESHOLD;
     
     /**
      * Analyze navigation possibilities between two points.
@@ -493,8 +545,8 @@ public class WebWalker {
                 ? nearestToDestination.distanceTo(destination) : Integer.MAX_VALUE;
         
         // Check for isolation
-        boolean playerIsolated = nearestToPlayer == null || firstMileDistance > ISOLATED_THRESHOLD;
-        boolean destinationIsolated = nearestToDestination == null || lastMileDistance > ISOLATED_THRESHOLD;
+        boolean playerIsolated = nearestToPlayer == null || firstMileDistance > isolatedThreshold;
+        boolean destinationIsolated = nearestToDestination == null || lastMileDistance > isolatedThreshold;
         
         // Complete isolation - both ends far from any node
         if (playerIsolated && destinationIsolated) {
@@ -555,8 +607,8 @@ public class WebWalker {
         NavigationResult.Status status;
         List<NavigationResult.Suggestion> suggestions = new ArrayList<>();
         
-        boolean needsFirstMile = firstMileDistance > NEAR_NODE_THRESHOLD;
-        boolean needsLastMile = lastMileDistance > NEAR_NODE_THRESHOLD;
+        boolean needsFirstMile = firstMileDistance > nearNodeThreshold;
+        boolean needsLastMile = lastMileDistance > nearNodeThreshold;
         
         if (needsFirstMile && needsLastMile) {
             status = NavigationResult.Status.BOTH_ENDS_MANUAL;
@@ -607,7 +659,7 @@ public class WebWalker {
         
         // If completely isolated, check if simple walk is viable
         int directDistance = playerPos.distanceTo(destination);
-        if (directDistance <= ISOLATED_THRESHOLD) {
+        if (directDistance <= isolatedThreshold) {
             // Close enough for simple walk
             return NavigationResult.builder()
                     .status(NavigationResult.Status.BOTH_ENDS_MANUAL)
@@ -824,16 +876,16 @@ public class WebWalker {
 
             @Override
             public int getTotalGold() {
-                // Try to get gold from inventory
-                // Note: Bank gold requires additional tracking
-                return getInventoryGold();
+                int inventoryGold = getInventoryGold();
+                // Future: add bank gold when available. For now return inventory only.
+                return inventoryGold;
             }
 
             @Override
             public int getInventoryGold() {
-                // Gold coins item ID is 995
-                // Without direct inventory access, return 0
-                // This would be populated by TaskContext or GameStateService
+                if (inventoryState != null) {
+                    return inventoryState.countItem(ItemID.COINS_995);
+                }
                 return 0;
             }
 
@@ -844,6 +896,9 @@ public class WebWalker {
 
             @Override
             public boolean hasItem(int itemId, int quantity) {
+                if (inventoryState != null) {
+                    return inventoryState.countItem(itemId) >= quantity;
+                }
                 if (unlockTracker != null) {
                     return unlockTracker.hasItem(itemId, quantity);
                 }
@@ -969,6 +1024,25 @@ public class WebWalker {
     }
 
     /**
+     * Validate teleport edges have required metadata for resource/rule checks.
+     * Logs warnings only; does not fail initialization.
+     */
+    private void validateTeleportEdges() {
+        if (navigationWeb == null) {
+            return;
+        }
+
+        List<WebEdge> teleports = navigationWeb.getEdgesByType(WebEdgeType.TELEPORT);
+        for (WebEdge edge : teleports) {
+            Map<String, String> metadata = edge.getMetadata();
+            if (metadata == null || !metadata.containsKey("item_id")) {
+                log.warn("Teleport edge {} -> {} missing item_id metadata (id={})",
+                        edge.getFrom(), edge.getTo(), edge.getType());
+            }
+        }
+    }
+
+    /**
      * Get skill enum by name.
      */
     private Skill getSkillByName(String name) {
@@ -1037,6 +1111,134 @@ public class WebWalker {
      */
     public List<WebNode> getBanks() {
         return navigationWeb != null ? navigationWeb.getBanks() : Collections.emptyList();
+    }
+
+    /**
+     * Early adjacency validation for long-range targets.
+     *
+     * @param targetPos target world point
+     * @param target    tile object to interact with
+     * @return true if at least one adjacent tile appears reachable (boundary not blocked)
+     */
+    public boolean hasReachableAdjacent(WorldPoint targetPos, TileObject target) {
+        if (targetPos == null || target == null) {
+            return true;
+        }
+
+        CollisionData[] collisionData = client.getCollisionMaps();
+        if (collisionData == null) {
+            return true; // cannot verify, do not block
+        }
+
+        int plane = targetPos.getPlane();
+        if (plane < 0 || plane >= collisionData.length || collisionData[plane] == null) {
+            return true;
+        }
+
+        int[][] flags = collisionData[plane].getFlags();
+        Set<WorldPoint> footprint = getObjectFootprint(target);
+        if (footprint.isEmpty()) {
+            return true;
+        }
+
+        CollisionChecker checker = new CollisionChecker();
+
+        for (WorldPoint footprintTile : footprint) {
+            LocalPoint fpLocal = LocalPoint.fromWorld(client, footprintTile);
+            if (fpLocal == null) {
+                continue;
+            }
+            int fx = fpLocal.getSceneX();
+            int fy = fpLocal.getSceneY();
+            if (!isInScene(fx, fy)) {
+                continue;
+            }
+
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dy = -1; dy <= 1; dy++) {
+                    if (dx == 0 && dy == 0) {
+                        continue;
+                    }
+                    WorldPoint adj = new WorldPoint(
+                            footprintTile.getX() + dx,
+                            footprintTile.getY() + dy,
+                            footprintTile.getPlane());
+
+                    if (footprint.contains(adj)) {
+                        continue;
+                    }
+
+                    LocalPoint adjLocal = LocalPoint.fromWorld(client, adj);
+                    if (adjLocal == null) {
+                        continue;
+                    }
+                    int ax = adjLocal.getSceneX();
+                    int ay = adjLocal.getSceneY();
+                    if (!isInScene(ax, ay)) {
+                        continue;
+                    }
+
+                    if (checker.isBoundaryPassable(flags, fx, fy, dx, dy)) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        log.debug("No reachable adjacent tile found for target {} at {}", target.getId(), targetPos);
+        return false;
+    }
+
+    private boolean isInScene(int sceneX, int sceneY) {
+        return sceneX >= 0 && sceneX < Constants.SCENE_SIZE &&
+                sceneY >= 0 && sceneY < Constants.SCENE_SIZE;
+    }
+
+    private Set<WorldPoint> getObjectFootprint(TileObject target) {
+        Set<WorldPoint> tiles = new HashSet<>();
+        if (target == null) {
+            return tiles;
+        }
+
+        WorldPoint origin = TileObjectUtils.getWorldPoint(target);
+        if (origin == null) {
+            return tiles;
+        }
+
+        int sizeX = 1;
+        int sizeY = 1;
+        try {
+            if (target.getId() > 0 && client.getObjectDefinition(target.getId()) != null) {
+                sizeX = Math.max(1, client.getObjectDefinition(target.getId()).getSizeX());
+                sizeY = Math.max(1, client.getObjectDefinition(target.getId()).getSizeY());
+            }
+        } catch (Exception ignored) {
+            // Fallback to 1x1
+        }
+
+        int orientation = getOrientation(target);
+        if ((orientation & 1) == 1) {
+            int tmp = sizeX;
+            sizeX = sizeY;
+            sizeY = tmp;
+        }
+
+        for (int dx = 0; dx < sizeX; dx++) {
+            for (int dy = 0; dy < sizeY; dy++) {
+                tiles.add(new WorldPoint(origin.getX() + dx, origin.getY() + dy, origin.getPlane()));
+            }
+        }
+        return tiles;
+    }
+
+    private int getOrientation(TileObject target) {
+        if (target instanceof GameObject) {
+            return ((GameObject) target).getOrientation();
+        }
+        if (target instanceof WallObject) {
+            return ((WallObject) target).getOrientationA();
+        }
+        return 0;
     }
 
     // ========================================================================

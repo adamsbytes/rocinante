@@ -208,7 +208,7 @@ public class PlayerInspectionBehavior extends AbstractTask {
             return;
         }
         
-        log.trace("Selected target: {} (lvl {})", 
+        log.debug("Selected target: {} (lvl {})", 
                  selectedTarget.getName(), selectedTarget.getCombatLevel());
         
         phase = Phase.MOVING_TO_TARGET;
@@ -280,12 +280,12 @@ public class PlayerInspectionBehavior extends AbstractTask {
         java.awt.Point canvasPoint = getPlayerCanvasPoint(ctx, selectedTarget);
         
         if (canvasPoint == null) {
-            log.trace("Could not get canvas point for target player, completing");
+            log.debug("Could not get canvas point for target player, completing");
             phase = Phase.COMPLETED;
             return;
         }
         
-        log.trace("Moving mouse to player at ({}, {})", canvasPoint.x, canvasPoint.y);
+        log.debug("Moving mouse to player at ({}, {})", canvasPoint.x, canvasPoint.y);
         
         pendingOperation = ctx.getMouseController().moveToCanvas(canvasPoint.x, canvasPoint.y)
             .thenCompose(v -> ctx.getHumanTimer().sleep(randomization.uniformRandomLong(100, 300)))
@@ -297,12 +297,12 @@ public class PlayerInspectionBehavior extends AbstractTask {
         java.awt.Point canvasPoint = getPlayerCanvasPoint(ctx, selectedTarget);
         
         if (canvasPoint == null) {
-            log.trace("Lost target player position, completing");
+            log.debug("Lost target player position, completing");
             phase = Phase.COMPLETED;
             return;
         }
         
-        log.trace("Right-clicking player at ({}, {})", canvasPoint.x, canvasPoint.y);
+        log.debug("Right-clicking player at ({}, {})", canvasPoint.x, canvasPoint.y);
         
         // Create a small hitbox around the target point for right-click
         Rectangle clickBox = new Rectangle(canvasPoint.x - 5, canvasPoint.y - 5, 10, 10);
@@ -371,7 +371,7 @@ public class PlayerInspectionBehavior extends AbstractTask {
             dismissX = Math.max(50, Math.min(dismissX, 700));
             dismissY = Math.max(50, Math.min(dismissY, 450));
             
-            log.trace("Dismissing menu by clicking at ({}, {})", dismissX, dismissY);
+            log.debug("Dismissing menu by clicking at ({}, {})", dismissX, dismissY);
             
             pendingOperation = ctx.getMouseController().moveToCanvas(dismissX, dismissY)
                 .thenCompose(v -> ctx.getMouseController().click())

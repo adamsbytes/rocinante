@@ -57,11 +57,6 @@ import java.util.stream.Stream;
 public class WikiCacheManager {
 
     /**
-     * Directory for wiki cache persistence.
-     */
-    private static final String WIKI_CACHE_DIR = ".runelite/rocinante/wiki-cache";
-
-    /**
      * Cache entry TTL in hours.
      */
     private static final int CACHE_TTL_HOURS = 24;
@@ -104,6 +99,13 @@ public class WikiCacheManager {
     private volatile long fileHits = 0;
     @Getter
     private volatile long fileMisses = 0;
+
+    /**
+     * Expose cache directory for testing/monitoring.
+     */
+    Path getCacheDirectory() {
+        return cacheDirectory;
+    }
 
     /**
      * Cache entry wrapper with metadata.
@@ -186,9 +188,21 @@ public class WikiCacheManager {
                 .recordStats()
                 .build();
 
-        this.cacheDirectory = Paths.get(System.getProperty("user.home"), WIKI_CACHE_DIR);
+        this.cacheDirectory = Paths.get(System.getProperty("user.home"), resolveCacheDir());
 
         initialize();
+    }
+
+    private static String resolveCacheDir() {
+        String prop = System.getProperty("WIKI_CACHE_DIR");
+        if (prop != null && !prop.isEmpty()) {
+            return prop;
+        }
+        String env = System.getenv("WIKI_CACHE_DIR");
+        if (env != null && !env.isEmpty()) {
+            return env;
+        }
+        return "/home/runelite/.local/share/bolt-launcher/.runelite/rocinante/wiki-cache";
     }
 
     /**
@@ -227,7 +241,7 @@ public class WikiCacheManager {
         // Check memory cache first
         CacheEntry memoryEntry = memoryCache.getIfPresent(cacheKey);
         if (memoryEntry != null && !memoryEntry.isStale()) {
-            log.trace("Memory cache hit for key: {}", cacheKey);
+            log.debug("Memory cache hit for key: {}", cacheKey);
             return Optional.of(memoryEntry.content());
         }
 
@@ -239,7 +253,7 @@ public class WikiCacheManager {
                 // Populate memory cache from file
                 memoryCache.put(cacheKey, entry);
                 fileHits++;
-                log.trace("File cache hit for key: {}", cacheKey);
+                log.debug("File cache hit for key: {}", cacheKey);
                 return Optional.of(entry.content());
             } else {
                 log.debug("File cache entry is stale for key: {}", cacheKey);
@@ -307,7 +321,7 @@ public class WikiCacheManager {
         // Update file cache
         putToFileCache(cacheKey, entry);
 
-        log.trace("Cached content for key: {} (type: {})", cacheKey, contentType);
+        log.debug("Cached content for key: {} (type: {})", cacheKey, contentType);
     }
 
     /**
@@ -488,7 +502,7 @@ public class WikiCacheManager {
             FileCacheEntry fileEntry = FileCacheEntry.from(entry);
             String json = gson.toJson(fileEntry);
             Files.writeString(filePath, json, StandardCharsets.UTF_8);
-            log.trace("Wrote cache file: {}", filePath);
+            log.debug("Wrote cache file: {}", filePath);
         } catch (IOException e) {
             log.warn("Failed to write cache file: {}", filePath, e);
         }

@@ -472,7 +472,7 @@ public class InteractionHelper {
 
         // If camera is still rotating, keep waiting
         if (cameraRotationInProgress.get()) {
-            log.trace("Waiting for clickbox (tick {}/{}, camera rotating)", waitTicks, maxClickboxWaitTicks);
+            log.debug("Waiting for clickbox (tick {}/{}, camera rotating)", waitTicks, maxClickboxWaitTicks);
             return ClickPointResult.waiting("camera rotating");
         }
 
@@ -823,7 +823,7 @@ public class InteractionHelper {
         
         // Debug log to help diagnose issues
         if (log.isTraceEnabled()) {
-            log.trace("Generated click point: center=({}, {}), bias=({}, {}), offset=({}, {}), final=({}, {}), bounds={}",
+            log.debug("Generated click point: center=({}, {}), bias=({}, {}), offset=({}, {}), final=({}, {}), bounds={}",
                     (int)bounds.getCenterX(), (int)bounds.getCenterY(),
                     (int)(centerX - bounds.getCenterX()), (int)(centerY - bounds.getCenterY()),
                     (int)offsetX, (int)offsetY,
@@ -897,7 +897,7 @@ public class InteractionHelper {
         WorldPoint npcPosition = npc.getWorldLocation();
 
         if (cameraRotationInProgress.get()) {
-            log.trace("Waiting for NPC convex hull (tick {}/{}, camera rotating)", waitTicks, maxClickboxWaitTicks);
+            log.debug("Waiting for NPC convex hull (tick {}/{}, camera rotating)", waitTicks, maxClickboxWaitTicks);
             return ClickPointResult.waiting("camera rotating");
         }
 

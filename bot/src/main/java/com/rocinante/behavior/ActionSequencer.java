@@ -197,7 +197,7 @@ public class ActionSequencer {
     public void reinforceBankingSequence(String sequenceType) {
         if (playerProfile != null) {
             playerProfile.reinforceBankingSequence(sequenceType);
-            log.trace("Reinforced banking sequence: {}", sequenceType);
+            log.debug("Reinforced banking sequence: {}", sequenceType);
         }
     }
 
@@ -272,7 +272,7 @@ public class ActionSequencer {
     public void reinforceCombatPrepSequence(String sequenceType) {
         if (playerProfile != null) {
             playerProfile.reinforceCombatPrepSequence(sequenceType);
-            log.trace("Reinforced combat prep sequence: {}", sequenceType);
+            log.debug("Reinforced combat prep sequence: {}", sequenceType);
         }
     }
 

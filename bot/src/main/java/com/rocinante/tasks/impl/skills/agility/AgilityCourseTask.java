@@ -729,7 +729,7 @@ public class AgilityCourseTask extends AbstractTask {
                 .collect(Collectors.toList());
 
         if (!unreachableMarks.isEmpty()) {
-            log.trace("Found {} unreachable marks (completed {} obstacles, on plane {}): {}",
+            log.debug("Found {} unreachable marks (completed {} obstacles, on plane {}): {}",
                     unreachableMarks.size(),
                     obstaclesThisLap,
                     playerPos.getPlane(),

@@ -187,7 +187,7 @@ public class IronmanState {
                 lastVarbitValue = varbitValue;
             }
         } catch (Exception e) {
-            log.trace("Could not read account type varbit: {}", e.getMessage());
+            log.debug("Could not read account type varbit: {}", e.getMessage());
         }
     }
     

@@ -52,6 +52,11 @@ public class ObstacleHandler {
      */
     private final Map<WorldPoint, List<ObstacleDefinition>> obstaclesByLocation = new HashMap<>();
 
+    /**
+     * Telemetry cache for unknown obstacles we have already logged.
+     */
+    private final Set<Integer> loggedUnknownObstacleIds = new HashSet<>();
+
     @Inject
     public ObstacleHandler(Client client, AgilityShortcutData agilityShortcutData) {
         this.client = client;
@@ -672,6 +677,8 @@ public class ObstacleHandler {
                 if (isWallBlockingDirection(wallObject, check, other)) {
                     return Optional.of(new DetectedObstacle(def, wallObject, check, true));
                 }
+            } else if (def == null && isWallBlockingDirection(wallObject, check, other)) {
+                logUnknownObstacle(wallObject.getId(), wallObject.getWorldLocation());
             }
         }
 
@@ -683,6 +690,8 @@ public class ObstacleHandler {
             ObstacleDefinition def = getObstacleDefinition(gameObject.getId());
             if (def != null && def.isBlocked(gameObject.getId())) {
                 return Optional.of(new DetectedObstacle(def, gameObject, check, true));
+            } else if (def == null) {
+                logUnknownObstacle(gameObject.getId(), gameObject.getWorldLocation());
             }
         }
 
@@ -716,6 +725,20 @@ public class ObstacleHandler {
             default:
                 // For corner walls, block diagonal movement
                 return dx != 0 && dy != 0;
+        }
+    }
+
+    /**
+     * Log unknown obstacle IDs once to avoid spam, then debug on subsequent hits.
+     */
+    private void logUnknownObstacle(int objectId, WorldPoint location) {
+        if (objectId <= 0) {
+            return;
+        }
+        if (loggedUnknownObstacleIds.add(objectId)) {
+            log.info("Detected unknown obstacle id={} at {}", objectId, location);
+        } else {
+            log.debug("Detected unknown obstacle id={} at {}", objectId, location);
         }
     }
 

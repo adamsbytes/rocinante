@@ -428,7 +428,7 @@ public class SkillTask extends AbstractTask {
         // Check inventory first
         for (int itemId : requiredItems) {
             if (inventory.hasItem(itemId)) {
-                log.trace("Found required tool {} in inventory", itemId);
+                log.debug("Found required tool {} in inventory", itemId);
                 return true;
             }
         }
@@ -437,7 +437,7 @@ public class SkillTask extends AbstractTask {
         if (equipment != null) {
             for (int itemId : requiredItems) {
                 if (equipment.hasEquipped(itemId)) {
-                    log.trace("Found required tool {} equipped", itemId);
+                    log.debug("Found required tool {} equipped", itemId);
                     return true;
                 }
             }
@@ -484,7 +484,7 @@ public class SkillTask extends AbstractTask {
                 interactionStarted = false;
                 idleTicks = 0;
                 currentTargetPosition = null; // Clear current target
-                log.trace("Action complete, total actions: {}", actionsCompleted);
+                log.debug("Action complete, total actions: {}", actionsCompleted);
 
                 // Check for watched ground items after completing an action
                 if (checkForWatchedGroundItems(ctx, false)) {
@@ -504,7 +504,7 @@ public class SkillTask extends AbstractTask {
                     interactionStarted = true;
                     hoverManager.executePredictedClick(ctx).thenAccept(success -> {
                         if (success) {
-                            log.trace("Predicted click executed successfully");
+                            log.debug("Predicted click executed successfully");
                         } else {
                             // Click failed (abandoned or error) - allow retry on next cycle
                             log.debug("Predicted click failed, will retry with normal interaction");

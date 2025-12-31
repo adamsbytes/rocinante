@@ -77,7 +77,7 @@ public class MicroPauseTask extends BehavioralTask {
             try {
                 ctx.getMouseController().performIdleBehavior().get();
             } catch (Exception e) {
-                log.trace("Idle behavior interrupted: {}", e.getMessage());
+                log.debug("Idle behavior interrupted: {}", e.getMessage());
             }
             driftPerformed = true;
         }

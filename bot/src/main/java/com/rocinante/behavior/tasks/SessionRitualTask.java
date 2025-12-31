@@ -241,15 +241,15 @@ public class SessionRitualTask extends BehavioralTask {
         }
         
         if (tabWidget != null && !tabWidget.isHidden()) {
-            log.trace("Clicking {} tab for ritual {}", tabName, ritual);
+            log.debug("Clicking {} tab for ritual {}", tabName, ritual);
             pendingOperation = clickWidget(ctx, tabWidget)
                 .thenRun(() -> {
-                    log.trace("{} tab clicked", tabName);
+                    log.debug("{} tab clicked", tabName);
                     phase = RitualPhase.VIEWING_CONTENT;
                 });
         } else {
             // Tab not available, skip to viewing
-            log.trace("Tab widget not available for {}, skipping to view", ritual);
+            log.debug("Tab widget not available for {}, skipping to view", ritual);
             phase = RitualPhase.VIEWING_CONTENT;
         }
     }
@@ -280,7 +280,7 @@ public class SessionRitualTask extends BehavioralTask {
                 int x = bounds.x + randomization.uniformRandomInt(5, bounds.width - 5);
                 int y = bounds.y + randomization.uniformRandomInt(5, bounds.height - 5);
                 
-                log.trace("Hovering over {} target at ({}, {})", ritual, x, y);
+                log.debug("Hovering over {} target at ({}, {})", ritual, x, y);
                 pendingOperation = ctx.getMouseController().moveToCanvas(x, y)
                     .thenCompose(v -> humanTimer.sleep(randomization.uniformRandomLong(200, 600)));
             }
@@ -368,7 +368,7 @@ public class SessionRitualTask extends BehavioralTask {
         
         if (inventoryTab != null && !inventoryTab.isHidden() && 
             !ritual.equals("INVENTORY_ORGANIZE")) {
-            log.trace("Returning to inventory tab after {}", ritual);
+            log.debug("Returning to inventory tab after {}", ritual);
             pendingOperation = clickWidget(ctx, inventoryTab)
                 .thenCompose(v -> humanTimer.sleep(randomization.uniformRandomLong(200, 500)))
                 .thenRun(() -> {

@@ -59,7 +59,7 @@ public class IdleBehaviorTask extends BehavioralTask {
         if (!started) {
             startTime = Instant.now();
             started = true;
-            log.trace("Idle behavior started for {} seconds", targetDuration.toSeconds());
+            log.debug("Idle behavior started for {} seconds", targetDuration.toSeconds());
         }
         
         Duration elapsed = Duration.between(startTime, Instant.now());
@@ -86,12 +86,12 @@ public class IdleBehaviorTask extends BehavioralTask {
     @Override
     public void onComplete(TaskContext ctx) {
         Duration actualDuration = Duration.between(startTime, Instant.now());
-        log.trace("Idle behavior completed after {} seconds", actualDuration.toSeconds());
+        log.debug("Idle behavior completed after {} seconds", actualDuration.toSeconds());
     }
 
     @Override
     public void onFail(TaskContext ctx, Exception e) {
-        log.trace("Idle behavior interrupted");
+        log.debug("Idle behavior interrupted");
     }
 
     @Override

@@ -118,7 +118,7 @@ public class WidgetClickHelper {
         if (description != null) {
             log.debug("{} - clicking widget at ({}, {})", description, clickX, clickY);
         } else {
-            log.trace("Clicking widget at ({}, {})", clickX, clickY);
+            log.debug("Clicking widget at ({}, {})", clickX, clickY);
         }
 
         return mouseController.moveToCanvas(clickX, clickY)

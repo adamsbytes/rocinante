@@ -4,6 +4,7 @@ import com.rocinante.behavior.BreakScheduler;
 import com.rocinante.behavior.FatigueModel;
 import com.rocinante.core.GameStateService;
 import com.rocinante.quest.QuestService;
+import com.rocinante.quest.bridge.RequirementStatus;
 import com.rocinante.state.PlayerState;
 import com.rocinante.tasks.Task;
 import com.rocinante.tasks.TaskExecutor;
@@ -53,10 +54,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class StatusPublisher {
 
     /**
-     * Default status file location within the RuneLite directory.
+     * Status file location (hardcoded to bolt-launcher RuneLite path).
      */
-    private static final String DEFAULT_STATUS_DIR = System.getProperty("user.home") 
-            + "/.runelite/rocinante";
+    private static final String DEFAULT_STATUS_DIR = "/home/runelite/.local/share/bolt-launcher/.runelite/rocinante";
     private static final String STATUS_FILE_NAME = "status.json";
 
     /**
@@ -112,7 +112,7 @@ public class StatusPublisher {
      * Cached quest data (expensive to compute, refreshed on demand).
      */
     @Nullable
-    private volatile BotStatus.QuestsData cachedQuestsData;
+    private volatile BotStatus.QuestsData cachedQuestsData = BotStatus.QuestsData.empty();
 
     /**
      * Flag to trigger quest data refresh on next tick.
@@ -179,12 +179,7 @@ public class StatusPublisher {
      * Initialize the status directory and file path.
      */
     private void initializeStatusDirectory() {
-        String statusDir = System.getenv("ROCINANTE_STATUS_DIR");
-        if (statusDir == null || statusDir.isEmpty()) {
-            statusDir = DEFAULT_STATUS_DIR;
-        }
-
-        Path dirPath = Paths.get(statusDir);
+        Path dirPath = Paths.get(DEFAULT_STATUS_DIR);
         try {
             Files.createDirectories(dirPath);
             statusFilePath = dirPath.resolve(STATUS_FILE_NAME);
@@ -326,10 +321,16 @@ public class StatusPublisher {
             return;
         }
 
-        log.debug("Refreshing quest data from QuestService (off-thread)...");
-        cachedQuestsData = buildQuestsData(snapshot);
-        log.info("Quest data refreshed: {} quests available",
-                cachedQuestsData.getAvailable() != null ? cachedQuestsData.getAvailable().size() : 0);
+        log.debug("Refreshing quest data from QuestService (off-thread), snapshot has {} entries...", 
+                snapshot.entries().size());
+        try {
+            cachedQuestsData = buildQuestsData(snapshot);
+            log.info("Quest data refreshed: {} quests available",
+                    cachedQuestsData.getAvailable() != null ? cachedQuestsData.getAvailable().size() : 0);
+        } catch (Exception e) {
+            log.error("Exception in buildQuestsData", e);
+            cachedQuestsData = BotStatus.QuestsData.empty();
+        }
     }
 
     /**
@@ -348,6 +349,7 @@ public class StatusPublisher {
         List<String> inProgress = new ArrayList<>();
         int totalQuestPoints = snapshot.questPoints();
 
+        int processed = 0;
         for (QuestEntry entry : snapshot.entries()) {
             QuestState state = entry.state();
 
@@ -357,12 +359,23 @@ public class StatusPublisher {
                 inProgress.add(entry.id());
             }
 
-            BotStatus.QuestSummary summary = buildQuestSummary(entry.quest(), state);
-            if (summary != null) {
-                available.add(summary);
+            try {
+                log.debug("Building summary for quest: {}", entry.id());
+                BotStatus.QuestSummary summary = buildQuestSummary(entry);
+                if (summary != null) {
+                    available.add(summary);
+                }
+            } catch (Exception e) {
+                log.debug("Failed to build summary for quest {}: {}", entry.id(), e.getMessage());
+            }
+            
+            processed++;
+            if (processed % 50 == 0) {
+                log.debug("Processed {}/{} quests...", processed, snapshot.entries().size());
             }
         }
 
+        log.debug("Finished processing all {} quests, building result", processed);
         return BotStatus.QuestsData.builder()
                 .lastUpdated(System.currentTimeMillis())
                 .available(available)
@@ -373,83 +386,81 @@ public class StatusPublisher {
     }
 
     /**
-     * Build a QuestSummary for a single quest.
-     * All logic is delegated to QuestService - StatusPublisher just formats.
+     * Build a QuestSummary from pre-captured data.
+     * Requirements were already fetched on the client thread - this just formats.
      */
-    private BotStatus.QuestSummary buildQuestSummary(net.runelite.api.Quest quest, QuestState state) {
-        try {
-            // Get complete requirements status from QuestService
-            var reqStatus = questService.getRequirementsStatus(quest.name());
-            
-            // Convert to BotStatus format
-            List<BotStatus.SkillRequirementStatus> skillReqs = new ArrayList<>();
-            for (var sr : reqStatus.getSkillRequirements()) {
-                skillReqs.add(BotStatus.SkillRequirementStatus.builder()
-                        .skill(sr.getSkillName())
-                        .required(sr.getRequired())
-                        .current(sr.getCurrent())
-                        .met(sr.isMet())
-                        .boostable(sr.isBoostable())
-                        .build());
-            }
-            
-            List<BotStatus.QuestRequirementStatus> questReqs = new ArrayList<>();
-            for (var qr : reqStatus.getQuestRequirements()) {
-                questReqs.add(BotStatus.QuestRequirementStatus.builder()
-                        .questId(qr.getQuestId())
-                        .questName(qr.getQuestName())
-                        .met(qr.isMet())
-                        .build());
-            }
-            
-            List<BotStatus.ItemRequirementStatus> itemReqs = new ArrayList<>();
-            for (var ir : reqStatus.getItemRequirements()) {
-                itemReqs.add(BotStatus.ItemRequirementStatus.builder()
-                        .itemId(ir.getItemId())
-                        .itemName(ir.getName())
-                        .quantity(ir.getQuantityRequired())
-                        .inInventory(ir.getInInventory())
-                        .equipped(ir.getEquipped())
-                        .inBank(ir.getInBank())
-                        .met(ir.isMet())
-                        .obtainableDuringQuest(ir.isObtainableDuringQuest())
-                        .recommended(ir.isRecommended())
-                        .build());
-            }
-            
+    private BotStatus.QuestSummary buildQuestSummary(QuestEntry entry) {
+        var reqStatus = entry.requirements();
+        
+        // If no requirements were captured, return basic info
+        if (reqStatus == null) {
             return BotStatus.QuestSummary.builder()
-                    .id(reqStatus.getQuestId())
-                    .name(reqStatus.getQuestName())
-                    .difficulty(reqStatus.getDifficulty())
-                    .members(reqStatus.isMembers())
-                    .questPoints(reqStatus.getQuestPoints())
-                    .state(reqStatus.getState())
-                    .canStart(reqStatus.isCanStart())
-                    .skillRequirements(skillReqs)
-                    .questRequirements(questReqs)
-                    .itemRequirements(itemReqs)
-                    .build();
-        } catch (Exception e) {
-            // Fallback: basic info only (Quest Helper bridge failed for this quest)
-            log.trace("Could not get full requirements for {}: {}", quest.name(), e.getMessage());
-            return BotStatus.QuestSummary.builder()
-                    .id(quest.name())
-                    .name(quest.getName())
+                    .id(entry.id())
+                    .name(entry.name())
                     .difficulty("Unknown")
                     .members(true)
                     .questPoints(0)
-                    .state(state != null ? state.name() : "NOT_STARTED")
+                    .state(entry.state() != null ? entry.state().name() : "NOT_STARTED")
                     .canStart(false)
                     .skillRequirements(Collections.emptyList())
                     .questRequirements(Collections.emptyList())
                     .itemRequirements(Collections.emptyList())
                     .build();
         }
+        
+        // Convert pre-captured requirements to BotStatus format
+        List<BotStatus.SkillRequirementStatus> skillReqs = new ArrayList<>();
+        for (var sr : reqStatus.getSkillRequirements()) {
+            skillReqs.add(BotStatus.SkillRequirementStatus.builder()
+                    .skill(sr.getSkillName())
+                    .required(sr.getRequired())
+                    .current(sr.getCurrent())
+                    .met(sr.isMet())
+                    .boostable(sr.isBoostable())
+                    .build());
+        }
+        
+        List<BotStatus.QuestRequirementStatus> questReqs = new ArrayList<>();
+        for (var qr : reqStatus.getQuestRequirements()) {
+            questReqs.add(BotStatus.QuestRequirementStatus.builder()
+                    .questId(qr.getQuestId())
+                    .questName(qr.getQuestName())
+                    .met(qr.isMet())
+                    .build());
+        }
+        
+        List<BotStatus.ItemRequirementStatus> itemReqs = new ArrayList<>();
+        for (var ir : reqStatus.getItemRequirements()) {
+            itemReqs.add(BotStatus.ItemRequirementStatus.builder()
+                    .itemId(ir.getItemId())
+                    .itemName(ir.getName())
+                    .quantity(ir.getQuantityRequired())
+                    .inInventory(ir.getInInventory())
+                    .equipped(ir.getEquipped())
+                    .inBank(ir.getInBank())
+                    .met(ir.isMet())
+                    .obtainableDuringQuest(ir.isObtainableDuringQuest())
+                    .recommended(ir.isRecommended())
+                    .build());
+        }
+        
+        return BotStatus.QuestSummary.builder()
+                .id(reqStatus.getQuestId())
+                .name(reqStatus.getQuestName())
+                .difficulty(reqStatus.getDifficulty())
+                .members(reqStatus.isMembers())
+                .questPoints(reqStatus.getQuestPoints())
+                .state(reqStatus.getState())
+                .canStart(reqStatus.isCanStart())
+                .skillRequirements(skillReqs)
+                .questRequirements(questReqs)
+                .itemRequirements(itemReqs)
+                .build();
     }
 
     /**
-     * Capture lightweight quest state on the client thread.
-     * This avoids heavy per-quest work (requirements) on the game thread.
+     * Capture FULL quest state including requirements on the client thread.
+     * All client access happens here so IO thread can safely format the data.
      */
     private QuestStateSnapshot captureQuestStateSnapshot() {
         if (client.getGameState() != GameState.LOGGED_IN) {
@@ -460,16 +471,25 @@ public class StatusPublisher {
         try {
             questPoints = client.getVarpValue(VarPlayer.QUEST_POINTS);
         } catch (Exception e) {
-            log.trace("Could not read quest points: {}", e.getMessage());
+            log.debug("Could not read quest points: {}", e.getMessage());
         }
 
         List<QuestEntry> entries = new ArrayList<>();
         for (net.runelite.api.Quest quest : net.runelite.api.Quest.values()) {
             try {
                 QuestState state = quest.getState(client);
-                entries.add(new QuestEntry(quest.name(), quest.getName(), quest, state));
+                
+                // Capture FULL requirements on client thread (this is the expensive part)
+                RequirementStatus.QuestRequirementsStatus reqStatus = null;
+                try {
+                    reqStatus = questService.getRequirementsStatus(quest.name());
+                } catch (Exception e) {
+                    log.debug("Could not get requirements for {}: {}", quest.name(), e.getMessage());
+                }
+                
+                entries.add(new QuestEntry(quest.name(), quest.getName(), quest, state, reqStatus));
             } catch (Exception e) {
-                log.trace("Error getting state for quest {}: {}", quest.name(), e.getMessage());
+                log.debug("Error getting state for quest {}: {}", quest.name(), e.getMessage());
             }
         }
 
@@ -482,9 +502,15 @@ public class StatusPublisher {
     private record QuestStateSnapshot(int questPoints, List<QuestEntry> entries) {}
 
     /**
-     * Lightweight quest entry (id, name, state) captured on the client thread.
+     * Quest entry with full requirements, captured on the client thread.
      */
-    private record QuestEntry(String id, String name, net.runelite.api.Quest quest, QuestState state) {}
+    private record QuestEntry(
+            String id, 
+            String name, 
+            net.runelite.api.Quest quest, 
+            QuestState state,
+            @Nullable RequirementStatus.QuestRequirementsStatus requirements
+    ) {}
 
     /**
      * Write status if enough time has elapsed since last write.
@@ -523,7 +549,7 @@ public class StatusPublisher {
 
                 lastWriteTime = System.currentTimeMillis();
                 lastStatus = status;
-                log.trace("Status written to {}", statusFilePath);
+                log.debug("Status written to {}", statusFilePath);
             } catch (IOException e) {
                 log.warn("Failed to write status file: {} - {}", statusFilePath, e.toString());
             }
@@ -564,7 +590,7 @@ public class StatusPublisher {
         try {
             questPoints = client.getVarpValue(VarPlayer.QUEST_POINTS);
         } catch (Exception e) {
-            log.trace("Could not read quest points: {}", e.getMessage());
+            log.debug("Could not read quest points: {}", e.getMessage());
         }
 
         return BotStatus.capture(

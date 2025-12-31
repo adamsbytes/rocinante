@@ -559,7 +559,7 @@ public class WikiDataService {
         // Check cache first
         Optional<String> cached = cacheManager.get(cacheKey);
         if (cached.isPresent()) {
-            log.trace("Drop table cache hit for {}", monsterName);
+            log.debug("Drop table cache hit for {}", monsterName);
             return CompletableFuture.completedFuture(
                     templateParser.parseDropTable(cached.get(), monsterName, wikiUrl));
         }
@@ -607,7 +607,7 @@ public class WikiDataService {
         // Check cache first
         Optional<String> cached = cacheManager.get(cacheKey);
         if (cached.isPresent()) {
-            log.trace("Item source cache hit for {}", itemName);
+            log.debug("Item source cache hit for {}", itemName);
             return CompletableFuture.completedFuture(
                     templateParser.parseItemSources(cached.get(), itemName, wikiUrl));
         }
@@ -654,7 +654,7 @@ public class WikiDataService {
         // Check cache first
         Optional<String> cached = cacheManager.get(cacheKey);
         if (cached.isPresent()) {
-            log.trace("Shop inventory cache hit for {}", shopName);
+            log.debug("Shop inventory cache hit for {}", shopName);
             return CompletableFuture.completedFuture(
                     templateParser.parseShopInventory(cached.get(), shopName, wikiUrl));
         }
@@ -703,7 +703,7 @@ public class WikiDataService {
         // Check cache first
         Optional<String> cached = cacheManager.get(cacheKey);
         if (cached.isPresent()) {
-            log.trace("Weapon info cache hit for {}", itemName);
+            log.debug("Weapon info cache hit for {}", itemName);
             return CompletableFuture.completedFuture(
                     templateParser.parseWeaponInfo(cached.get(), itemName, itemId, wikiUrl));
         }
@@ -953,7 +953,7 @@ public class WikiDataService {
                 String pageName = parts[1].replace('_', ' ');
                 log.debug("Refreshing stale cache entry: {}", pageName);
                 fetchPageContent(pageName, Priority.LOW)
-                        .thenAccept(content -> log.trace("Refreshed: {}", pageName))
+                        .thenAccept(content -> log.debug("Refreshed: {}", pageName))
                         .exceptionally(e -> {
                             log.debug("Failed to refresh {}: {}", pageName, e.getMessage());
                             return null;

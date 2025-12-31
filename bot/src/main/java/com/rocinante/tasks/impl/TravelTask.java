@@ -2036,7 +2036,7 @@ public class TravelTask extends AbstractTask {
 
             // Check if this rune type is provided by equipped staff/tome
             if (providedRunes.contains(runeId)) {
-                log.trace("Rune {} provided by equipped staff/tome", runeId);
+                log.debug("Rune {} provided by equipped staff/tome", runeId);
                 continue; // Don't need runes in inventory
             }
 

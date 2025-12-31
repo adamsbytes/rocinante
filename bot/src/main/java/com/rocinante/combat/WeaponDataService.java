@@ -262,7 +262,7 @@ public class WeaponDataService {
             var composition = itemManager.getItemComposition(itemId);
             return composition != null ? composition.getName() : null;
         } catch (Exception e) {
-            log.trace("Failed to get item name for ID {}: {}", itemId, e.getMessage());
+            log.debug("Failed to get item name for ID {}: {}", itemId, e.getMessage());
             return null;
         }
     }

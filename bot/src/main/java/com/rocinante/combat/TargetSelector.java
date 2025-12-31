@@ -2,6 +2,7 @@ package com.rocinante.combat;
 
 import com.rocinante.core.GameStateService;
 import com.rocinante.navigation.PathFinder;
+import com.rocinante.navigation.Reachability;
 import com.rocinante.state.NpcSnapshot;
 import com.rocinante.state.PlayerState;
 import com.rocinante.state.WorldState;
@@ -44,17 +45,20 @@ public class TargetSelector {
     private final Client client;
     private final GameStateService gameStateService;
     private final PathFinder pathFinder;
+    private final Reachability reachability;
 
     @Getter
     @Setter
     private TargetSelectorConfig config = TargetSelectorConfig.DEFAULT;
 
     @Inject
-    public TargetSelector(Client client, GameStateService gameStateService, PathFinder pathFinder) {
+    public TargetSelector(Client client, GameStateService gameStateService, PathFinder pathFinder,
+                          Reachability reachability) {
         this.client = client;
         this.gameStateService = gameStateService;
         this.pathFinder = pathFinder;
-        log.info("TargetSelector initialized");
+        this.reachability = reachability;
+        log.info("TargetSelector initialized with reachability support");
     }
 
     // ========================================================================
@@ -171,26 +175,26 @@ public class TargetSelector {
     private boolean passesAvoidanceFilters(NpcSnapshot npc, WorldPoint playerPos) {
         // Skip dead NPCs
         if (config.isSkipDead() && npc.isDead()) {
-            log.trace("Skipping {} - dead", npc.getName());
+            log.debug("Skipping {} - dead", npc.getName());
             return false;
         }
 
         // Skip NPCs above max combat level
         if (config.hasMaxCombatLevel() && !config.isCombatLevelAcceptable(npc.getCombatLevel())) {
-            log.trace("Skipping {} - combat level {} > max {}", 
+            log.debug("Skipping {} - combat level {} > max {}", 
                     npc.getName(), npc.getCombatLevel(), config.getMaxCombatLevel());
             return false;
         }
 
         // Skip NPCs in combat with other players
         if (config.isSkipInCombatWithOthers() && isInCombatWithOtherPlayer(npc)) {
-            log.trace("Skipping {} - in combat with another player", npc.getName());
+            log.debug("Skipping {} - in combat with another player", npc.getName());
             return false;
         }
 
         // Skip unreachable NPCs
         if (config.isSkipUnreachable() && !isReachable(npc, playerPos)) {
-            log.trace("Skipping {} - unreachable", npc.getName());
+            log.debug("Skipping {} - unreachable", npc.getName());
             return false;
         }
 
@@ -263,8 +267,11 @@ public class TargetSelector {
     }
 
     /**
-     * Check if an NPC is reachable (has a valid path).
+     * Check if an NPC is reachable considering weapon range.
      * Per Section 10.5.2: Skip NPCs that are unreachable.
+     *
+     * <p>For melee combat, the player must be able to reach an adjacent tile.
+     * For ranged/magic combat, the player only needs line of sight within weapon range.
      */
     private boolean isReachable(NpcSnapshot npc, WorldPoint playerPos) {
         WorldPoint npcPos = npc.getWorldPosition();
@@ -272,14 +279,31 @@ public class TargetSelector {
             return false;
         }
 
-        // Quick distance check first
+        int weaponRange = config.getWeaponRange();
         int distance = playerPos.distanceTo(npcPos);
-        if (distance <= 1) {
-            // Adjacent tiles - always reachable if we got here
-            return true;
+
+        // Melee combat (range = 1 or 2 for halberds)
+        if (weaponRange <= 2) {
+            // Adjacent - check if boundary is clear (not blocked by fence/river)
+            if (distance <= 1) {
+                return reachability.canInteract(playerPos, npcPos);
+            }
+            // Not adjacent - check if we can path to an adjacent tile
+            return pathFinder.hasPath(playerPos, npcPos);
         }
 
-        // Check if path exists
+        // Ranged/Magic combat - check if we're within range with line of sight
+        if (distance <= weaponRange) {
+            // Within weapon range - check line of sight
+            if (reachability.hasLineOfSight(playerPos, npcPos)) {
+                return true;
+            }
+            // No direct line of sight - try to find attackable position nearby
+            Optional<WorldPoint> attackPos = reachability.findAttackablePosition(playerPos, npcPos, weaponRange);
+            return attackPos.isPresent();
+        }
+
+        // Outside weapon range - check if we can path close enough
         return pathFinder.hasPath(playerPos, npcPos);
     }
 

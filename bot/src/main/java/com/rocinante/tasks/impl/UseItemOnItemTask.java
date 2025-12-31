@@ -401,7 +401,7 @@ public class UseItemOnItemTask extends AbstractTask {
             return;
         }
 
-        log.trace("Waiting for interaction response (tick {})", interactionTicks);
+        log.debug("Waiting for interaction response (tick {})", interactionTicks);
     }
 
     // ========================================================================

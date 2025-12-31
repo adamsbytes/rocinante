@@ -578,14 +578,14 @@ public class DialogueTask extends AbstractTask {
         for (DialogueOptionResolver resolver : optionResolvers) {
             // Check context requirement
             if (!resolver.shouldApply(lastDialogueText)) {
-                log.trace("Resolver {} skipped - context mismatch", resolver);
+                log.debug("Resolver {} skipped - context mismatch", resolver);
                 continue;
             }
 
             // Check exclusions
             String visibleText = getVisibleOptionsText(children);
             if (resolver.shouldExclude(visibleText)) {
-                log.trace("Resolver {} excluded", resolver);
+                log.debug("Resolver {} excluded", resolver);
                 continue;
             }
 

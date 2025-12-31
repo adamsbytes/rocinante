@@ -4,7 +4,6 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.CollisionData;
-import net.runelite.api.CollisionDataFlag;
 import net.runelite.api.Constants;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
@@ -38,10 +37,11 @@ public class PathFinder {
     public static final int MAX_PATH_LENGTH = 100;
 
     /**
-     * Maximum number of iterations before giving up.
+     * Default maximum number of iterations before giving up.
      * Prevents infinite loops on impossible paths.
+     * Exposed via {@link #setMaxIterations(int)} for tuning.
      */
-    private static final int MAX_ITERATIONS = 5000;
+    private static final int DEFAULT_MAX_ITERATIONS = 10_000;
 
     /**
      * Movement directions: N, NE, E, SE, S, SW, W, NW
@@ -68,6 +68,12 @@ public class PathFinder {
     private static final int[] DIAGONAL_INDICES = {1, 3, 5, 7};
 
     private final Client client;
+    private final ObstacleHandler obstacleHandler;
+    private final CollisionChecker collisionChecker;
+    /**
+     * Configurable iteration budget for A*.
+     */
+    private int maxIterations = DEFAULT_MAX_ITERATIONS;
 
     // ========================================================================
     // Path Caching
@@ -80,8 +86,15 @@ public class PathFinder {
     private CachedPath cachedPath;
 
     @Inject
-    public PathFinder(Client client) {
+    public PathFinder(Client client, ObstacleHandler obstacleHandler, CollisionChecker collisionChecker) {
         this.client = client;
+        this.obstacleHandler = obstacleHandler;
+        this.collisionChecker = collisionChecker;
+        // Allow runtime override via system property rsbot.nav.maxIterations
+        int configured = Integer.getInteger("rsbot.nav.maxIterations", DEFAULT_MAX_ITERATIONS);
+        if (configured > 0) {
+            this.maxIterations = configured;
+        }
     }
 
     // ========================================================================
@@ -123,7 +136,7 @@ public class PathFinder {
         // Check cache
         if (!ignoreCache && cachedPath != null &&
                 cachedPath.start.equals(start) && cachedPath.end.equals(end)) {
-            log.trace("PathFinder: returning cached path");
+            log.debug("PathFinder: returning cached path");
             return cachedPath.path;
         }
 
@@ -201,7 +214,7 @@ public class PathFinder {
         int[][] flags = collisionData[plane].getFlags();
         int flag = flags[sceneX][sceneY];
 
-        return !isBlocked(flag);
+        return !collisionChecker.isBlocked(flag);
     }
 
     /**
@@ -209,6 +222,19 @@ public class PathFinder {
      */
     public void invalidateCache() {
         cachedPath = null;
+    }
+
+    /**
+     * Adjust the iteration budget for A* searches.
+     *
+     * @param maxIterations new iteration cap (must be > 0)
+     */
+    public void setMaxIterations(int maxIterations) {
+        if (maxIterations <= 0) {
+            log.warn("PathFinder: ignored non-positive maxIterations {}", maxIterations);
+            return;
+        }
+        this.maxIterations = maxIterations;
     }
 
     // ========================================================================
@@ -267,7 +293,7 @@ public class PathFinder {
 
         int iterations = 0;
 
-        while (!openSet.isEmpty() && iterations < MAX_ITERATIONS) {
+        while (!openSet.isEmpty() && iterations < maxIterations) {
             iterations++;
 
             Node current = openSet.poll();
@@ -284,7 +310,7 @@ public class PathFinder {
             }
             closedSet.add(currentKey);
 
-            // Check all neighbors
+        // Check all neighbors
             for (int i = 0; i < DIRECTIONS.length; i++) {
                 int dx = DIRECTIONS[i][0];
                 int dy = DIRECTIONS[i][1];
@@ -301,15 +327,16 @@ public class PathFinder {
                     continue;
                 }
 
-                // Check if movement is blocked
-                if (!canMove(flags, current.x, current.y, dx, dy)) {
-                    continue;
-                }
+            // Check movement allowance (collision + obstacle traversal)
+            MovementAllowance allowance = movementAllowance(flags, current.x, current.y, dx, dy, plane);
+            if (!allowance.allowed) {
+                continue;
+            }
 
-                // Calculate tentative g score
-                // Diagonal moves cost more (sqrt(2) ≈ 1.41, use 14 vs 10)
-                int moveCost = (dx != 0 && dy != 0) ? 14 : 10;
-                int tentativeG = current.gScore + moveCost;
+            // Calculate tentative g score
+            // Diagonal moves cost more (sqrt(2) ≈ 1.41, use 14 vs 10)
+            int moveCost = (dx != 0 && dy != 0) ? 14 : 10;
+            int tentativeG = current.gScore + moveCost + allowance.extraCost;
 
                 Node neighbor = allNodes.get(neighborKey);
                 if (neighbor == null) {
@@ -331,126 +358,83 @@ public class PathFinder {
             }
         }
 
-        if (iterations >= MAX_ITERATIONS) {
-            log.warn("PathFinder: max iterations reached, path search abandoned");
+        if (iterations >= maxIterations) {
+            log.warn("PathFinder: max iterations ({}) reached, path search abandoned", maxIterations);
         }
 
         return Collections.emptyList();
     }
 
     /**
-     * Check if movement from (x,y) in direction (dx,dy) is allowed.
+     * When movement is blocked by collision, attempt to traverse via an interactable obstacle (door/gate).
+     * Adds traversalCostTicks (converted to movement cost) if successful.
      */
-    private boolean canMove(int[][] flags, int x, int y, int dx, int dy) {
+    private MovementAllowance movementAllowance(int[][] flags, int x, int y, int dx, int dy, int plane) {
+        MovementAllowance base = movementAllowanceBase(flags, x, y, dx, dy);
+        if (base.allowed) {
+            return base;
+        }
+
+        // Check for obstacle between tiles; allow traversal with added cost if interactable
+        WorldPoint from = sceneToWorld(x, y, plane);
+        WorldPoint to = sceneToWorld(x + dx, y + dy, plane);
+        if (from == null || to == null) {
+            return MovementAllowance.blocked();
+        }
+
+        Optional<ObstacleHandler.DetectedObstacle> obstacle = obstacleHandler.findBlockingObstacle(from, to);
+        if (obstacle.isEmpty()) {
+            return MovementAllowance.blocked();
+        }
+
+        ObstacleDefinition def = obstacle.get().getDefinition();
+        if (def.getAction() == null || def.getAction().isEmpty()) {
+            return MovementAllowance.blocked();
+        }
+
+        int extra = Math.max(1, def.getTraversalCostTicks());
+        // Convert ticks to movement cost scale (~10 per tile); multiply by 10 for consistency
+        int extraCost = extra * 10;
+        return MovementAllowance.allowedWithCost(extraCost);
+    }
+
+    private MovementAllowance movementAllowanceBase(int[][] flags, int x, int y, int dx, int dy) {
         int destX = x + dx;
         int destY = y + dy;
 
-        // Check destination is walkable
-        if (isBlocked(flags[destX][destY])) {
-            return false;
+        // For WALKING: destination tile must not be blocked (can't stand on trees, rocks, etc.)
+        if (collisionChecker.isBlocked(flags[destX][destY])) {
+            return MovementAllowance.blocked();
         }
 
-        // For cardinal directions, just check destination
+        // Cardinal movement
         if (dx == 0 || dy == 0) {
-            return !isBlockedDirection(flags[x][y], dx, dy);
+            // Check both leaving the current tile and entering the destination tile
+            if (collisionChecker.isCardinalMovementBlocked(flags, x, y, dx, dy)) {
+                return MovementAllowance.blocked();
+            }
+            return MovementAllowance.allowed();
         }
 
-        // For diagonal moves, check that cardinal components are not blocked
-        // and the diagonal itself isn't blocked
-
-        // Check the two adjacent cardinal tiles
+        // Diagonal: check adjacent cardinals are not blocked
         int cardinalX = x + dx;
-        int cardinalY = y;
-        if (isBlocked(flags[cardinalX][cardinalY])) {
-            return false;
+        if (collisionChecker.isBlocked(flags[cardinalX][y])) {
+            return MovementAllowance.blocked();
         }
 
-        cardinalX = x;
-        cardinalY = y + dy;
-        if (isBlocked(flags[cardinalX][cardinalY])) {
-            return false;
+        int cardinalY = y + dy;
+        if (collisionChecker.isBlocked(flags[x][cardinalY])) {
+            return MovementAllowance.blocked();
         }
 
-        // Check directional blocking flags
-        return !isBlockedDirection(flags[x][y], dx, dy) &&
-               !isBlockedDiagonal(flags, x, y, dx, dy);
-    }
-
-    /**
-     * Check if a tile is fully blocked.
-     */
-    private boolean isBlocked(int flag) {
-        // Check for full blocking
-        return (flag & CollisionDataFlag.BLOCK_MOVEMENT_FULL) != 0;
-    }
-
-    /**
-     * Check if movement in a direction is blocked by flags.
-     */
-    private boolean isBlockedDirection(int flag, int dx, int dy) {
-        // Check directional blocking based on direction
-        if (dx == 0 && dy == 1) {
-            return (flag & CollisionDataFlag.BLOCK_MOVEMENT_NORTH) != 0;
-        }
-        if (dx == 0 && dy == -1) {
-            return (flag & CollisionDataFlag.BLOCK_MOVEMENT_SOUTH) != 0;
-        }
-        if (dx == 1 && dy == 0) {
-            return (flag & CollisionDataFlag.BLOCK_MOVEMENT_EAST) != 0;
-        }
-        if (dx == -1 && dy == 0) {
-            return (flag & CollisionDataFlag.BLOCK_MOVEMENT_WEST) != 0;
+        // Check diagonal blocking flags on both source and destination
+        if (collisionChecker.isBlockedDirection(flags[x][y], dx, dy) ||
+            collisionChecker.isBlockedDirection(flags[destX][destY], -dx, -dy) ||
+            collisionChecker.isBlockedDiagonal(flags, x, y, dx, dy)) {
+            return MovementAllowance.blocked();
         }
 
-        // Diagonal directions
-        if (dx == 1 && dy == 1) {
-            return (flag & CollisionDataFlag.BLOCK_MOVEMENT_NORTH_EAST) != 0;
-        }
-        if (dx == 1 && dy == -1) {
-            return (flag & CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_EAST) != 0;
-        }
-        if (dx == -1 && dy == -1) {
-            return (flag & CollisionDataFlag.BLOCK_MOVEMENT_SOUTH_WEST) != 0;
-        }
-        if (dx == -1 && dy == 1) {
-            return (flag & CollisionDataFlag.BLOCK_MOVEMENT_NORTH_WEST) != 0;
-        }
-
-        return false;
-    }
-
-    /**
-     * Additional diagonal blocking check.
-     */
-    private boolean isBlockedDiagonal(int[][] flags, int x, int y, int dx, int dy) {
-        // For diagonal movement, also check if the cardinal tiles block diagonal passage
-        // E.g., moving NE requires both N and E tiles to allow diagonal exit
-
-        // Check the tile in the X direction
-        int adjX = x + dx;
-        if (dy > 0) {
-            if ((flags[adjX][y] & CollisionDataFlag.BLOCK_MOVEMENT_NORTH) != 0) {
-                return true;
-            }
-        } else {
-            if ((flags[adjX][y] & CollisionDataFlag.BLOCK_MOVEMENT_SOUTH) != 0) {
-                return true;
-            }
-        }
-
-        // Check the tile in the Y direction
-        int adjY = y + dy;
-        if (dx > 0) {
-            if ((flags[x][adjY] & CollisionDataFlag.BLOCK_MOVEMENT_EAST) != 0) {
-                return true;
-            }
-        } else {
-            if ((flags[x][adjY] & CollisionDataFlag.BLOCK_MOVEMENT_WEST) != 0) {
-                return true;
-            }
-        }
-
-        return false;
+        return MovementAllowance.allowed();
     }
 
     /**
@@ -563,6 +547,28 @@ public class PathFinder {
             this.end = end;
             this.path = Collections.unmodifiableList(new ArrayList<>(path));
             this.timestamp = System.currentTimeMillis();
+        }
+    }
+
+    private static class MovementAllowance {
+        final boolean allowed;
+        final int extraCost;
+
+        private MovementAllowance(boolean allowed, int extraCost) {
+            this.allowed = allowed;
+            this.extraCost = extraCost;
+        }
+
+        static MovementAllowance allowed() {
+            return new MovementAllowance(true, 0);
+        }
+
+        static MovementAllowance allowedWithCost(int extraCost) {
+            return new MovementAllowance(true, extraCost);
+        }
+
+        static MovementAllowance blocked() {
+            return new MovementAllowance(false, 0);
         }
     }
 }

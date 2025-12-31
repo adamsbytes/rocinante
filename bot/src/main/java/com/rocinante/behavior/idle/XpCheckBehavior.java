@@ -198,7 +198,7 @@ public class XpCheckBehavior extends AbstractTask {
             phase = Phase.HOVERING_XP_TRACKER;
         }
         
-        log.trace("Selected XP check method: {} (orb={}%, tab={}%, tracker={}%)", 
+        log.debug("Selected XP check method: {} (orb={}%, tab={}%, tracker={}%)", 
                   selectedMethod,
                   String.format("%.0f", orbProb * 100), 
                   String.format("%.0f", tabProb * 100), 
@@ -217,7 +217,7 @@ public class XpCheckBehavior extends AbstractTask {
                 int x = bounds.x + randomization.uniformRandomInt(5, Math.max(6, bounds.width - 5));
                 int y = bounds.y + randomization.uniformRandomInt(5, Math.max(6, bounds.height - 5));
                 
-                log.trace("Hovering XP orb at ({}, {})", x, y);
+                log.debug("Hovering XP orb at ({}, {})", x, y);
                 viewStartTime = System.currentTimeMillis();
                 
                 pendingOperation = ctx.getMouseController().moveToCanvas(x, y)
@@ -229,7 +229,7 @@ public class XpCheckBehavior extends AbstractTask {
             }
         } else {
             // XP orb not visible, try skills tab instead
-            log.trace("XP orb not visible, falling back to skills tab");
+            log.debug("XP orb not visible, falling back to skills tab");
             selectedMethod = CheckMethod.SKILLS_TAB;
             phase = Phase.OPENING_TAB;
         }
@@ -250,7 +250,7 @@ public class XpCheckBehavior extends AbstractTask {
                 int x = bounds.x + randomization.uniformRandomInt(5, Math.max(6, bounds.width - 5));
                 int y = bounds.y + randomization.uniformRandomInt(5, Math.max(6, bounds.height - 5));
                 
-                log.trace("Clicking stats tab at ({}, {})", x, y);
+                log.debug("Clicking stats tab at ({}, {})", x, y);
                 
                 pendingOperation = ctx.getMouseController().moveToCanvas(x, y)
                     .thenCompose(v -> ctx.getMouseController().click())
@@ -263,7 +263,7 @@ public class XpCheckBehavior extends AbstractTask {
                 phase = Phase.CLOSING;
             }
         } else {
-            log.trace("Stats tab not visible, completing");
+            log.debug("Stats tab not visible, completing");
             phase = Phase.CLOSING;
         }
     }
@@ -293,7 +293,7 @@ public class XpCheckBehavior extends AbstractTask {
                             int x = bounds.x + randomization.uniformRandomInt(5, Math.max(6, bounds.width - 5));
                             int y = bounds.y + randomization.uniformRandomInt(5, Math.max(6, bounds.height - 5));
                             
-                            log.trace("Hovering {} skill at ({}, {})", targetSkill, x, y);
+                            log.debug("Hovering {} skill at ({}, {})", targetSkill, x, y);
                             
                             // Hover and wait for remaining duration
                             long remainingDuration = viewDuration - elapsed;
@@ -324,7 +324,7 @@ public class XpCheckBehavior extends AbstractTask {
                 int x = bounds.x + randomization.uniformRandomInt(10, Math.max(11, bounds.width - 10));
                 int y = bounds.y + randomization.uniformRandomInt(5, Math.max(6, bounds.height - 5));
                 
-                log.trace("Hovering XP tracker at ({}, {})", x, y);
+                log.debug("Hovering XP tracker at ({}, {})", x, y);
                 viewStartTime = System.currentTimeMillis();
                 
                 pendingOperation = ctx.getMouseController().moveToCanvas(x, y)
@@ -335,7 +335,7 @@ public class XpCheckBehavior extends AbstractTask {
             }
         } else {
             // XP tracker not visible, fall back to skill orb
-            log.trace("XP tracker not visible, falling back to skill orb");
+            log.debug("XP tracker not visible, falling back to skill orb");
             selectedMethod = CheckMethod.SKILL_ORB;
             phase = Phase.HOVERING_ORB;
         }
@@ -357,7 +357,7 @@ public class XpCheckBehavior extends AbstractTask {
                     int x = bounds.x + randomization.uniformRandomInt(5, Math.max(6, bounds.width - 5));
                     int y = bounds.y + randomization.uniformRandomInt(5, Math.max(6, bounds.height - 5));
                     
-                    log.trace("Returning to inventory tab");
+                    log.debug("Returning to inventory tab");
                     pendingOperation = ctx.getMouseController().moveToCanvas(x, y)
                         .thenCompose(v -> ctx.getMouseController().click())
                         .thenCompose(v -> ctx.getHumanTimer().sleep(randomization.uniformRandomLong(100, 300)))

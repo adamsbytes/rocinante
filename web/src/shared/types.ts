@@ -102,6 +102,31 @@ export interface ApiResponse<T> {
 }
 
 // ============================================================================
+// Screenshots
+// ============================================================================
+
+export interface ScreenshotEntry {
+  /** Bot ID these screenshots belong to */
+  botId: string;
+  /** Character folder (outer directory under screenshots) */
+  character: string;
+  /** Category folder (e.g., Collection Log, Levels, Quests) */
+  category: string;
+  /** Title derived from filename (e.g., Skill(Level) or Quest name) */
+  title: string;
+  /** Original filename */
+  filename: string;
+  /** Relative path under the screenshots directory (character/category/filename) */
+  path: string;
+  /** Capture timestamp in ms since epoch (parsed from filename or file mtime) */
+  capturedAt: number;
+  /** ISO string for display */
+  capturedAtIso: string;
+  /** File size in bytes */
+  sizeBytes: number;
+}
+
+// ============================================================================
 // Runtime Status Types (from bot status.json)
 // ============================================================================
 

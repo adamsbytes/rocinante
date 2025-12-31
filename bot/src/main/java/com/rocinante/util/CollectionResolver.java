@@ -94,16 +94,16 @@ public final class CollectionResolver {
                     if (!map.containsKey(id)) {
                         map.put(id, collection);
                     } else {
-                        log.trace("ID {} appears in multiple collections, using first match", id);
+                        log.debug("ID {} appears in multiple collections, using first match", id);
                     }
                 }
                 
-                log.trace("Mapped {} IDs from collection: {}", collection.size(), field.getName());
+                log.debug("Mapped {} IDs from collection: {}", collection.size(), field.getName());
                 
             } catch (IllegalAccessException e) {
                 log.warn("Failed to access collection field: {}", field.getName(), e);
             } catch (ClassCastException e) {
-                log.trace("Skipping non-Integer list field: {}", field.getName());
+                log.debug("Skipping non-Integer list field: {}", field.getName());
             }
         }
         
@@ -167,7 +167,7 @@ public final class CollectionResolver {
                 processedCollections.add(collection);
                 foundAnyCollection = true;
                 
-                log.trace("Expanded {} ID {} to collection with {} variants", 
+                log.debug("Expanded {} ID {} to collection with {} variants", 
                         type, id, collection.size());
             } else if (collection == null) {
                 // ID not in any collection - add it directly

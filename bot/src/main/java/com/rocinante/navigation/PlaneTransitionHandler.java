@@ -4,6 +4,7 @@ import com.rocinante.tasks.impl.InteractObjectTask;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
+import net.runelite.api.ObjectComposition;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
 
@@ -55,6 +56,15 @@ public class PlaneTransitionHandler {
      */
     @Getter
     private final List<PlaneTransition> allTransitions = new ArrayList<>();
+
+    /**
+     * Telemetry cache for potential transition objects not yet registered.
+     */
+    private final Set<Integer> loggedDynamicCandidates = new HashSet<>();
+    /**
+     * Potential transition objects detected at runtime.
+     */
+    private final Set<DynamicTransitionCandidate> dynamicCandidates = new HashSet<>();
 
     @Inject
     public PlaneTransitionHandler(Client client) {
@@ -558,6 +568,8 @@ public class PlaneTransitionHandler {
                     if (def != null) {
                         WorldPoint location = tile.getWorldLocation();
                         transitions.add(new DetectedTransition(def, gameObject, location));
+                    } else {
+                        maybeLogDynamicTransitionCandidate(gameObject.getId(), tile.getWorldLocation());
                     }
                 }
 
@@ -568,6 +580,8 @@ public class PlaneTransitionHandler {
                     if (def != null) {
                         WorldPoint location = tile.getWorldLocation();
                         transitions.add(new DetectedTransition(def, groundObject, location));
+                    } else {
+                        maybeLogDynamicTransitionCandidate(groundObject.getId(), tile.getWorldLocation());
                     }
                 }
             }
@@ -667,6 +681,78 @@ public class PlaneTransitionHandler {
 
         // Use the defined action
         return def.getAction();
+    }
+
+    /**
+     * Log potential transition objects that are not yet registered (stairs/ladders/trapdoors).
+     */
+    private void maybeLogDynamicTransitionCandidate(int objectId, WorldPoint location) {
+        try {
+            ObjectComposition comp = client.getObjectDefinition(objectId);
+            if (comp == null || comp.getActions() == null) {
+                return;
+            }
+            if (!isLikelyTransition(comp.getActions())) {
+                return;
+            }
+            String name = comp.getName();
+            if (loggedDynamicCandidates.add(objectId)) {
+                log.info("Detected potential plane transition candidate id={} name={} at {}", objectId, name, location);
+            } else {
+                log.debug("Potential plane transition candidate id={} name={} at {}", objectId, name, location);
+            }
+            dynamicCandidates.add(new DynamicTransitionCandidate(objectId, location, pickAction(comp.getActions())));
+        } catch (Exception e) {
+            log.debug("Unable to inspect object {} for transition detection: {}", objectId, e.getMessage());
+        }
+    }
+
+    private boolean isLikelyTransition(String[] actions) {
+        for (String action : actions) {
+            if (action == null) {
+                continue;
+            }
+            String lower = action.toLowerCase();
+            if (lower.contains("climb") || lower.contains("descend") || lower.contains("ascend") || lower.contains("enter")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String pickAction(String[] actions) {
+        for (String action : actions) {
+            if (action == null) continue;
+            String lower = action.toLowerCase();
+            if (lower.contains("climb-up")) return "Climb-up";
+            if (lower.contains("climb-down")) return "Climb-down";
+            if (lower.contains("climb")) return "Climb";
+            if (lower.contains("ascend")) return "Ascend";
+            if (lower.contains("descend")) return "Descend";
+            if (lower.contains("enter")) return "Enter";
+        }
+        return "Climb";
+    }
+
+    /**
+     * Accessor for dynamically detected transition candidates.
+     */
+    public java.util.List<DynamicTransitionCandidate> getDynamicCandidates() {
+        return java.util.List.copyOf(dynamicCandidates);
+    }
+
+    /**
+     * Register a dynamic transition candidate (testing or manual seeding).
+     */
+    public void registerDynamicCandidate(int objectId, WorldPoint location, String action) {
+        dynamicCandidates.add(new DynamicTransitionCandidate(objectId, location, action));
+    }
+
+    @lombok.Value
+    public static class DynamicTransitionCandidate {
+        int objectId;
+        WorldPoint location;
+        String action;
     }
 
     // ========================================================================

@@ -130,6 +130,7 @@ public class UnifiedNavigationGraph {
         // Add plane transition edges
         if (planeTransitionHandler != null) {
             addPlaneTransitionEdges();
+            addDynamicCandidateTransitions();
         }
 
         log.info("UnifiedNavigationGraph built: {} nodes, {} edges ({} any_location edges for FREE_TELEPORT)",
@@ -232,6 +233,133 @@ public class UnifiedNavigationGraph {
         // Add transitions registered in PlaneTransitionHandler that don't overlap
         // with existing web.json edges
         addExplicitTransitions();
+    }
+
+    /**
+     * Add temporary transitions from dynamically detected candidates.
+     * These provide best-effort cross-plane navigation until registry is updated.
+     */
+    private void addDynamicCandidateTransitions() {
+        if (planeTransitionHandler == null) {
+            return;
+        }
+        List<PlaneTransitionHandler.DynamicTransitionCandidate> candidates = planeTransitionHandler.getDynamicCandidates();
+        if (candidates == null || candidates.isEmpty()) {
+            return;
+        }
+
+        for (PlaneTransitionHandler.DynamicTransitionCandidate candidate : candidates) {
+            WorldPoint loc = candidate.getLocation();
+            int plane = loc.getPlane();
+            String baseNodeId = getDynamicNodeId(loc);
+            ensureDynamicNode(baseNodeId, loc);
+
+            // Upwards edge if possible
+            int upPlane = plane + 1;
+            if (upPlane <= 3) {
+                WorldPoint upPoint = new WorldPoint(loc.getX(), loc.getY(), upPlane);
+                String upNodeId = getDynamicNodeId(upPoint);
+                ensureDynamicNode(upNodeId, upPoint);
+
+                NavigationEdge upEdge = NavigationEdge.builder()
+                        .fromNodeId(baseNodeId)
+                        .toNodeId(upNodeId)
+                        .type(WebEdgeType.STAIRS)
+                        .costTicks(5)
+                        .bidirectional(false)
+                        .fromPlane(plane)
+                        .toPlane(upPlane)
+                        .objectId(candidate.getObjectId())
+                        .action(normalizeAction(candidate.getAction(), true))
+                        .fromLocation(loc)
+                        .toLocation(upPoint)
+                        .build();
+                addIfMissing(upEdge);
+
+                NavigationEdge downEdge = NavigationEdge.builder()
+                        .fromNodeId(upNodeId)
+                        .toNodeId(baseNodeId)
+                        .type(WebEdgeType.STAIRS)
+                        .costTicks(5)
+                        .bidirectional(false)
+                        .fromPlane(upPlane)
+                        .toPlane(plane)
+                        .objectId(candidate.getObjectId())
+                        .action(normalizeAction(candidate.getAction(), false))
+                        .fromLocation(upPoint)
+                        .toLocation(loc)
+                        .build();
+                addIfMissing(downEdge);
+            }
+
+            // Downwards edge if possible
+            int downPlane = plane - 1;
+            if (downPlane >= 0) {
+                WorldPoint downPoint = new WorldPoint(loc.getX(), loc.getY(), downPlane);
+                String downNodeId = getDynamicNodeId(downPoint);
+                ensureDynamicNode(downNodeId, downPoint);
+
+                NavigationEdge downEdge = NavigationEdge.builder()
+                        .fromNodeId(baseNodeId)
+                        .toNodeId(downNodeId)
+                        .type(WebEdgeType.STAIRS)
+                        .costTicks(5)
+                        .bidirectional(false)
+                        .fromPlane(plane)
+                        .toPlane(downPlane)
+                        .objectId(candidate.getObjectId())
+                        .action(normalizeAction(candidate.getAction(), false))
+                        .fromLocation(loc)
+                        .toLocation(downPoint)
+                        .build();
+                addIfMissing(downEdge);
+
+                NavigationEdge upEdge = NavigationEdge.builder()
+                        .fromNodeId(downNodeId)
+                        .toNodeId(baseNodeId)
+                        .type(WebEdgeType.STAIRS)
+                        .costTicks(5)
+                        .bidirectional(false)
+                        .fromPlane(downPlane)
+                        .toPlane(plane)
+                        .objectId(candidate.getObjectId())
+                        .action(normalizeAction(candidate.getAction(), true))
+                        .fromLocation(downPoint)
+                        .toLocation(loc)
+                        .build();
+                addIfMissing(upEdge);
+            }
+        }
+    }
+
+    /**
+     * Only add edge if we don't already have a direct edge for the same from->to.
+     */
+    private void addIfMissing(NavigationEdge edge) {
+        NavigationEdge existing = getEdge(edge.getFromNodeId(), edge.getToNodeId());
+        if (existing == null) {
+            addEdge(edge);
+        }
+    }
+
+    private String normalizeAction(String action, boolean up) {
+        if (action == null || action.isEmpty()) {
+            return up ? "Climb-up" : "Climb-down";
+        }
+        String lower = action.toLowerCase();
+        if (lower.contains("up")) {
+            return "Climb-up";
+        }
+        if (lower.contains("down")) {
+            return "Climb-down";
+        }
+        if (lower.contains("ascend")) {
+            return "Climb-up";
+        }
+        if (lower.contains("descend")) {
+            return "Climb-down";
+        }
+        return up ? "Climb-up" : "Climb-down";
     }
 
     /**

@@ -314,7 +314,7 @@ public class InventoryInteractTask extends AbstractTask {
             return;
         }
 
-        log.trace("Waiting for interaction response (tick {}/{}, animating={}, count={})",
+        log.debug("Waiting for interaction response (tick {}/{}, animating={}, count={})",
                 interactionTicks, INTERACTION_TIMEOUT_TICKS, player.isAnimating(),
                 inventory.countItem(resolvedItemId));
     }

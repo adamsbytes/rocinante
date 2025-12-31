@@ -93,7 +93,7 @@ public class LongBreakTask extends BehavioralTask {
             try {
                 ctx.getMouseController().performIdleBehavior().get();
             } catch (Exception e) {
-                log.trace("Idle behavior interrupted: {}", e.getMessage());
+                log.debug("Idle behavior interrupted: {}", e.getMessage());
             }
         }
     }
@@ -118,7 +118,7 @@ public class LongBreakTask extends BehavioralTask {
             try {
                 ctx.getMouseController().performIdleBehavior().get();
             } catch (Exception e) {
-                log.trace("Initial idle behavior failed: {}", e.getMessage());
+                log.debug("Initial idle behavior failed: {}", e.getMessage());
             }
         }
     }

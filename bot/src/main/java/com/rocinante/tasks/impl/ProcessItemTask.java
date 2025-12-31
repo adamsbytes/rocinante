@@ -429,7 +429,7 @@ public class ProcessItemTask extends AbstractTask {
             return;
         }
 
-        log.trace("Waiting for interface (tick {})", waitTicks);
+        log.debug("Waiting for interface (tick {})", waitTicks);
     }
 
     // ========================================================================
@@ -530,7 +530,7 @@ public class ProcessItemTask extends AbstractTask {
         // Check if player is still animating
         if (player.isAnimating()) {
             idleTicks = 0;
-            log.trace("Player animating (tick {})", waitTicks);
+            log.debug("Player animating (tick {})", waitTicks);
             return;
         }
 
@@ -538,7 +538,7 @@ public class ProcessItemTask extends AbstractTask {
         idleTicks++;
 
         if (idleTicks < IDLE_CONFIRMATION_TICKS) {
-            log.trace("Player idle, confirming... ({}/{})", idleTicks, IDLE_CONFIRMATION_TICKS);
+            log.debug("Player idle, confirming... ({}/{})", idleTicks, IDLE_CONFIRMATION_TICKS);
             return;
         }
 

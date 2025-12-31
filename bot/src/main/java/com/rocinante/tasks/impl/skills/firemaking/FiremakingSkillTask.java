@@ -345,7 +345,7 @@ public class FiremakingSkillTask extends AbstractTask {
                 return;
             }
 
-            log.trace("Clicking tinderbox in slot {}", tinderboxSlot);
+            log.debug("Clicking tinderbox in slot {}", tinderboxSlot);
             clickPending = true;
 
             clickHelper.executeClick(tinderboxSlot, "Use tinderbox")
@@ -369,7 +369,7 @@ public class FiremakingSkillTask extends AbstractTask {
                 return;
             }
 
-            log.trace("Clicking logs in slot {}", logSlot);
+            log.debug("Clicking logs in slot {}", logSlot);
             clickPending = true;
 
             clickHelper.executeClick(logSlot, "Use on logs")
@@ -418,7 +418,7 @@ public class FiremakingSkillTask extends AbstractTask {
         // Check for fire lighting animation
         PlayerState player = ctx.getPlayerState();
         if (player.getAnimationId() == FIRE_LIGHTING_ANIMATION) {
-            log.trace("Fire lighting animation detected");
+            log.debug("Fire lighting animation detected");
             // Continue waiting for completion
             return;
         }
@@ -431,7 +431,7 @@ public class FiremakingSkillTask extends AbstractTask {
         }
 
         // Still waiting
-        log.trace("Waiting for fire... tick {}", waitTicks);
+        log.debug("Waiting for fire... tick {}", waitTicks);
     }
 
     /**

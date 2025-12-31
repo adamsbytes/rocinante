@@ -20,6 +20,8 @@ import com.rocinante.input.RobotKeyboardController;
 import com.rocinante.input.RobotMouseController;
 import com.rocinante.input.SafeClickExecutor;
 import com.rocinante.input.WidgetClickHelper;
+import com.rocinante.navigation.CollisionChecker;
+import com.rocinante.navigation.EntityFinder;
 import com.rocinante.navigation.ResourceAwareness;
 import com.rocinante.agility.AgilityCourseRepository;
 import com.rocinante.progression.UnlockTracker;
@@ -165,6 +167,18 @@ public class TaskContext {
     @Nullable
     private final com.rocinante.navigation.PlaneTransitionHandler planeTransitionHandler;
 
+    @Getter
+    @Nullable
+    private final com.rocinante.navigation.Reachability reachability;
+
+    @Getter
+    @Nullable
+    private final CollisionChecker collisionChecker;
+
+    @Getter
+    @Nullable
+    private final EntityFinder entityFinder;
+
     // ========================================================================
     // Behavioral System
     // ========================================================================
@@ -302,6 +316,9 @@ public class TaskContext {
             @Nullable com.rocinante.navigation.WebWalker webWalker,
             @Nullable com.rocinante.navigation.ObstacleHandler obstacleHandler,
             @Nullable com.rocinante.navigation.PlaneTransitionHandler planeTransitionHandler,
+            @Nullable com.rocinante.navigation.Reachability reachability,
+            @Nullable CollisionChecker collisionChecker,
+            @Nullable EntityFinder entityFinder,
             @Nullable com.rocinante.inventory.InventoryPreparation inventoryPreparation,
             @Nullable QuestService questService) {
         this.client = client;
@@ -334,9 +351,56 @@ public class TaskContext {
         this.webWalker = webWalker;
         this.obstacleHandler = obstacleHandler;
         this.planeTransitionHandler = planeTransitionHandler;
+        this.reachability = reachability;
+        this.collisionChecker = collisionChecker;
+        this.entityFinder = entityFinder;
         this.inventoryPreparation = inventoryPreparation;
         this.questService = questService;
         log.debug("TaskContext created");
+    }
+
+    /**
+     * Compatibility constructor (pre-reachability). Reachability, CollisionChecker, EntityFinder default to null.
+     */
+    public TaskContext(
+            Client client,
+            Provider<GameStateService> gameStateServiceProvider,
+            RobotMouseController mouseController,
+            RobotKeyboardController keyboardController,
+            HumanTimer humanTimer,
+            @Nullable TargetSelector targetSelector,
+            @Nullable CombatManager combatManager,
+            @Nullable GearSwitcher gearSwitcher,
+            @Nullable FoodManager foodManager,
+            @Nullable InventoryClickHelper inventoryClickHelper,
+            @Nullable GroundItemClickHelper groundItemClickHelper,
+            @Nullable WidgetClickHelper widgetClickHelper,
+            @Nullable MenuHelper menuHelper,
+            @Nullable SafeClickExecutor safeClickExecutor,
+            @Nullable UnlockTracker unlockTracker,
+            @Nullable AgilityCourseRepository agilityCourseRepository,
+            @Nullable PlayerProfile playerProfile,
+            @Nullable PuzzleSolverRegistry puzzleSolverRegistry,
+            @Nullable CameraController cameraController,
+            @Nullable MouseCameraCoupler mouseCameraCoupler,
+            @Nullable ActionSequencer actionSequencer,
+            @Nullable InefficiencyInjector inefficiencyInjector,
+            @Nullable com.rocinante.behavior.PredictiveHoverManager predictiveHoverManager,
+            @Nullable LogoutHandler logoutHandler,
+            @Nullable BreakScheduler breakScheduler,
+            @Nullable Randomization randomization,
+            @Nullable com.rocinante.navigation.PathFinder pathFinder,
+            @Nullable com.rocinante.navigation.WebWalker webWalker,
+            @Nullable com.rocinante.navigation.ObstacleHandler obstacleHandler,
+            @Nullable com.rocinante.navigation.PlaneTransitionHandler planeTransitionHandler,
+            @Nullable com.rocinante.inventory.InventoryPreparation inventoryPreparation,
+            @Nullable QuestService questService) {
+        this(client, gameStateServiceProvider, mouseController, keyboardController, humanTimer,
+                targetSelector, combatManager, gearSwitcher, foodManager, inventoryClickHelper, groundItemClickHelper,
+                widgetClickHelper, menuHelper, safeClickExecutor, unlockTracker, agilityCourseRepository, playerProfile,
+                puzzleSolverRegistry, cameraController, mouseCameraCoupler, actionSequencer, inefficiencyInjector,
+                predictiveHoverManager, logoutHandler, breakScheduler, randomization, pathFinder, webWalker,
+                obstacleHandler, planeTransitionHandler, null, null, null, inventoryPreparation, questService);
     }
 
     /**
@@ -352,8 +416,36 @@ public class TaskContext {
             @Nullable TargetSelector targetSelector,
             @Nullable CombatManager combatManager) {
         this(client, () -> gameStateService, mouseController, keyboardController, humanTimer, 
-                targetSelector, combatManager, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+                targetSelector, combatManager,
+                null, // gearSwitcher
+                null, // foodManager
+                null, // inventoryClickHelper
+                null, // groundItemClickHelper
+                null, // widgetClickHelper
+                null, // menuHelper
+                null, // safeClickExecutor
+                null, // unlockTracker
+                null, // agilityCourseRepository
+                null, // playerProfile
+                null, // puzzleSolverRegistry
+                null, // cameraController
+                null, // mouseCameraCoupler
+                null, // actionSequencer
+                null, // inefficiencyInjector
+                null, // predictiveHoverManager
+                null, // logoutHandler
+                null, // breakScheduler
+                null, // randomization
+                null, // pathFinder
+                null, // webWalker
+                null, // obstacleHandler
+                null, // planeTransitionHandler
+                null, // reachability
+                null, // collisionChecker
+                null, // entityFinder
+                null, // inventoryPreparation
+                null  // questService
+        );
     }
 
     /**
@@ -367,8 +459,36 @@ public class TaskContext {
             RobotKeyboardController keyboardController,
             HumanTimer humanTimer) {
         this(client, () -> gameStateService, mouseController, keyboardController, humanTimer, 
-                null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+                null, null,
+                null, // gearSwitcher
+                null, // foodManager
+                null, // inventoryClickHelper
+                null, // groundItemClickHelper
+                null, // widgetClickHelper
+                null, // menuHelper
+                null, // safeClickExecutor
+                null, // unlockTracker
+                null, // agilityCourseRepository
+                null, // playerProfile
+                null, // puzzleSolverRegistry
+                null, // cameraController
+                null, // mouseCameraCoupler
+                null, // actionSequencer
+                null, // inefficiencyInjector
+                null, // predictiveHoverManager
+                null, // logoutHandler
+                null, // breakScheduler
+                null, // randomization
+                null, // pathFinder
+                null, // webWalker
+                null, // obstacleHandler
+                null, // planeTransitionHandler
+                null, // reachability
+                null, // collisionChecker
+                null, // entityFinder
+                null, // inventoryPreparation
+                null  // questService
+        );
     }
 
     /**
@@ -382,8 +502,36 @@ public class TaskContext {
             HumanTimer humanTimer,
             Randomization randomization) {
         this(client, () -> gameStateService, mouseController, keyboardController, humanTimer, 
-                null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null, randomization, null, null, null, null, null, null);
+                null, null,
+                null, // gearSwitcher
+                null, // foodManager
+                null, // inventoryClickHelper
+                null, // groundItemClickHelper
+                null, // widgetClickHelper
+                null, // menuHelper
+                null, // safeClickExecutor
+                null, // unlockTracker
+                null, // agilityCourseRepository
+                null, // playerProfile
+                null, // puzzleSolverRegistry
+                null, // cameraController
+                null, // mouseCameraCoupler
+                null, // actionSequencer
+                null, // inefficiencyInjector
+                null, // predictiveHoverManager
+                null, // logoutHandler
+                null, // breakScheduler
+                randomization,
+                null, // pathFinder
+                null, // webWalker
+                null, // obstacleHandler
+                null, // planeTransitionHandler
+                null, // reachability
+                null, // collisionChecker
+                null, // entityFinder
+                null, // inventoryPreparation
+                null  // questService
+        );
     }
 
     // ========================================================================
@@ -531,6 +679,173 @@ public class TaskContext {
         );
     }
     
+    // ========================================================================
+    // Combat Context
+    // ========================================================================
+
+    /**
+     * Get combat context for the current weapon/style configuration.
+     *
+     * <p>CombatContext models the player's current combat capabilities:
+     * <ul>
+     *   <li>Weapon type and ID</li>
+     *   <li>Attack style (melee, ranged, magic)</li>
+     *   <li>Effective weapon range for target selection</li>
+     * </ul>
+     *
+     * <p>This is computed fresh each call from current equipment state.
+     *
+     * @return CombatContext computed from current state
+     */
+    public CombatContext getCombatContext() {
+        EquipmentState equipment = getEquipmentState();
+        if (equipment == null) {
+            return CombatContext.defaultMelee();
+        }
+
+        int weaponId = equipment.getWeaponId();
+        AttackStyle style = determineAttackStyle(weaponId, equipment);
+        int range = determineWeaponRange(weaponId, style);
+
+        return new CombatContext(weaponId, style, range);
+    }
+
+    /**
+     * Determine the attack style based on equipped weapon.
+     */
+    private AttackStyle determineAttackStyle(int weaponId, EquipmentState equipment) {
+        if (weaponId == -1) {
+            return AttackStyle.MELEE; // Unarmed
+        }
+
+        // Check for ranged weapons
+        if (isRangedWeapon(weaponId)) {
+            return AttackStyle.RANGED;
+        }
+
+        // Check for magic weapons (staves, wands)
+        if (isMagicWeapon(weaponId)) {
+            return AttackStyle.MAGIC;
+        }
+
+        return AttackStyle.MELEE;
+    }
+
+    /**
+     * Determine the effective attack range for the weapon.
+     */
+    private int determineWeaponRange(int weaponId, AttackStyle style) {
+        if (style == AttackStyle.MELEE) {
+            // Most melee weapons have range 1, halberds have range 2
+            if (isHalberd(weaponId)) {
+                return 2;
+            }
+            return 1;
+        }
+
+        if (style == AttackStyle.RANGED) {
+            // Most ranged weapons have effective range 7
+            // Longbows can hit further but we use practical combat range
+            return 7;
+        }
+
+        if (style == AttackStyle.MAGIC) {
+            // Magic has effective range of ~10 tiles
+            return 10;
+        }
+
+        return 1;
+    }
+
+    /**
+     * Check if the weapon is a ranged weapon.
+     */
+    private boolean isRangedWeapon(int weaponId) {
+        // Common ranged weapon categories (bows, crossbows, thrown weapons)
+        // This is a simplified check; a more robust implementation would use item definitions
+        String name = getWeaponName(weaponId);
+        if (name == null) return false;
+        
+        String lower = name.toLowerCase();
+        return lower.contains("bow") || lower.contains("crossbow") || 
+               lower.contains("dart") || lower.contains("knife") ||
+               lower.contains("thrownaxe") || lower.contains("javelin") ||
+               lower.contains("chinchompa") || lower.contains("blowpipe") ||
+               lower.contains("ballista");
+    }
+
+    /**
+     * Check if the weapon is a magic weapon (staff, wand).
+     */
+    private boolean isMagicWeapon(int weaponId) {
+        String name = getWeaponName(weaponId);
+        if (name == null) return false;
+        
+        String lower = name.toLowerCase();
+        return lower.contains("staff") || lower.contains("wand") ||
+               lower.contains("trident") || lower.contains("sanguinesti") ||
+               lower.contains("nightmare") || lower.contains("tumeken");
+    }
+
+    /**
+     * Check if the weapon is a halberd (2-tile melee range).
+     */
+    private boolean isHalberd(int weaponId) {
+        String name = getWeaponName(weaponId);
+        if (name == null) return false;
+        
+        return name.toLowerCase().contains("halberd");
+    }
+
+    /**
+     * Get weapon name from item definition.
+     */
+    @Nullable
+    private String getWeaponName(int weaponId) {
+        if (weaponId == -1 || client == null) return null;
+        try {
+            net.runelite.api.ItemComposition comp = client.getItemDefinition(weaponId);
+            return comp != null ? comp.getName() : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Combat context containing weapon and attack style information.
+     */
+    @lombok.Value
+    public static class CombatContext {
+        int weaponId;
+        AttackStyle attackStyle;
+        int weaponRange;
+
+        public static CombatContext defaultMelee() {
+            return new CombatContext(-1, AttackStyle.MELEE, 1);
+        }
+
+        public boolean isMelee() {
+            return attackStyle == AttackStyle.MELEE;
+        }
+
+        public boolean isRanged() {
+            return attackStyle == AttackStyle.RANGED;
+        }
+
+        public boolean isMagic() {
+            return attackStyle == AttackStyle.MAGIC;
+        }
+    }
+
+    /**
+     * Attack style categories.
+     */
+    public enum AttackStyle {
+        MELEE,
+        RANGED,
+        MAGIC
+    }
+
     /**
      * Check if player has fairy ring access based on having a dramen/lunar staff.
      * 

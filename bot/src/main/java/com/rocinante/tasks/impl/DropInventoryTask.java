@@ -404,7 +404,7 @@ public class DropInventoryTask extends AbstractTask {
         Optional<Item> itemOpt = inventory.getItemInSlot(slot);
         if (itemOpt.isEmpty() || !itemIdsToDrop.contains(itemOpt.get().getId())) {
             // Item moved or already dropped, skip to next
-            log.trace("Slot {} no longer contains target item, skipping", slot);
+            log.debug("Slot {} no longer contains target item, skipping", slot);
             return;
         }
 
@@ -426,7 +426,7 @@ public class DropInventoryTask extends AbstractTask {
                 .thenAccept(success -> {
                     if (success) {
                         droppedCount++;
-                        log.trace("Dropped item in slot {} ({} total)", slot, droppedCount);
+                        log.debug("Dropped item in slot {} ({} total)", slot, droppedCount);
 
                         // Schedule next drop with humanized delay
                         long delay = random.uniformRandomLong(MIN_DROP_DELAY_MS, MAX_DROP_DELAY_MS);
@@ -435,7 +435,7 @@ public class DropInventoryTask extends AbstractTask {
                         if (random.chance(MICRO_PAUSE_CHANCE) && !slotsToDropQueue.isEmpty()) {
                             long pause = random.uniformRandomLong(MIN_MICRO_PAUSE_MS, MAX_MICRO_PAUSE_MS);
                             delay += pause;
-                            log.trace("Adding micro-pause of {}ms", pause);
+                            log.debug("Adding micro-pause of {}ms", pause);
                         }
 
                         ctx.getHumanTimer().sleep(delay)

@@ -49,7 +49,9 @@ dependencies {
 group = 'com.rocinante'
 
 // Allow overriding version from Gradle property or env.VERSION (CI)
-def resolvedVersion = (findProperty('version') ?: System.getenv('VERSION')) ?: '0.1.0-SNAPSHOT'
+// Note: findProperty('version') returns 'unspecified' (not null) when not set
+def versionProp = findProperty('version')
+def resolvedVersion = (versionProp && versionProp != 'unspecified' ? versionProp : null) ?: System.getenv('VERSION') ?: '0.1.0-SNAPSHOT'
 version = resolvedVersion
 
 tasks.withType(JavaCompile).configureEach {

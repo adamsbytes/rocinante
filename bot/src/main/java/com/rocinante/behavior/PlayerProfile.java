@@ -611,7 +611,7 @@ public class PlayerProfile {
         // Cancel previous save task if it exists
         if (saveTask != null && !saveTask.isCancelled()) {
             saveTask.cancel(false);
-            log.trace("Cancelled previous save task");
+            log.debug("Cancelled previous save task");
         }
         
         // Schedule new save task
@@ -698,7 +698,7 @@ public class PlayerProfile {
             profileData.checksum = computeChecksum(profileData);
             String json = gson.toJson(profileData);
             Files.writeString(path, json);
-            log.trace("Saved profile to: {}", path);
+            log.debug("Saved profile to: {}", path);
         } catch (IOException e) {
             log.error("Failed to save profile: {}", e.getMessage());
         }
@@ -820,9 +820,10 @@ public class PlayerProfile {
      * Called periodically and on logout.
      */
     public void saveProfile() {
-        if (accountHash != null && !accountHash.isEmpty()) {
-            saveProfile(getProfilePath());
+        if (accountHash == null || accountHash.isEmpty()) {
+            throw new IllegalStateException("Account hash not initialized for profile save");
         }
+        saveProfile(getProfilePath());
     }
 
     private void migrateProfile(ProfileData data) {
@@ -833,15 +834,9 @@ public class PlayerProfile {
     }
 
     private Path getProfilePath() {
-        // Use ROCINANTE_STATUS_DIR if available (same as status files), else default
-        String statusDir = System.getenv("ROCINANTE_STATUS_DIR");
-        if (statusDir != null && !statusDir.isEmpty()) {
-            // Status dir is like /home/runelite/.runelite/rocinante/<botId>
-            // Profile dir should be sibling: /home/runelite/.runelite/rocinante/profiles
-            Path statusPath = Paths.get(statusDir);
-            return statusPath.getParent().resolve(PROFILE_SUBDIR).resolve(accountHash + ".json");
-        }
-        return Paths.get(DEFAULT_PROFILE_DIR, accountHash + ".json");
+        // Hardcoded bolt-launcher RuneLite path (required environment)
+        Path base = Paths.get("/home/runelite/.local/share/bolt-launcher/.runelite/rocinante/profiles");
+        return base.resolve(accountHash + ".json");
     }
 
     // ========================================================================

@@ -235,7 +235,7 @@ public class FatigueModel {
         setFatigueLevelInternal(clampFatigue(getFatigueLevel() + fatigueIncrease));
         sessionActionCount.incrementAndGet();
         
-        log.trace("Action recorded: fatigue now {} (+{} with {}x intensity)",
+        log.debug("Action recorded: fatigue now {} (+{} with {}x intensity)",
                 String.format("%.4f", getFatigueLevel()),
                 String.format("%.5f", fatigueIncrease),
                 String.format("%.1f", intensityMultiplier));

@@ -699,7 +699,7 @@ public class AltarOfferTask extends AbstractTask {
             ItemComposition def = ctx.getClient().getItemDefinition(boneId);
             return def != null ? def.getName() : null;
         } catch (Exception e) {
-            log.trace("Could not get bone name for {}", boneId);
+            log.debug("Could not get bone name for {}", boneId);
             return null;
         }
     }

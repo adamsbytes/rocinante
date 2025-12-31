@@ -307,7 +307,7 @@ public class WaitForConditionTask extends AbstractTask {
         }
 
         if (verboseLogging) {
-            log.trace("Waiting for condition (tick {})", waitTicks);
+            log.debug("Waiting for condition (tick {})", waitTicks);
         }
     }
 
@@ -359,7 +359,7 @@ public class WaitForConditionTask extends AbstractTask {
         newX = Math.max(0, Math.min(newX, 1920));
         newY = Math.max(0, Math.min(newY, 1080));
 
-        log.trace("Idle mouse drift: ({}, {}) -> ({}, {})", mousePos.x, mousePos.y, newX, newY);
+        log.debug("Idle mouse drift: ({}, {}) -> ({}, {})", mousePos.x, mousePos.y, newX, newY);
 
         // Perform idle movement (these are screen coordinates from getCurrentPosition)
         idleMousePending = true;

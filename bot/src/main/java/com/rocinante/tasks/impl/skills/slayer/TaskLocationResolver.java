@@ -274,7 +274,7 @@ public class TaskLocationResolver {
 
         for (SlayerLocation location : locations) {
             int score = scoreLocation(location, playerLocation, options);
-            log.trace("Location {} score: {}", location.getName(), score);
+            log.debug("Location {} score: {}", location.getName(), score);
             
             if (score > bestScore) {
                 bestScore = score;
@@ -373,7 +373,7 @@ public class TaskLocationResolver {
 
         // Return total cost in ticks as distance estimate
         int cost = path.getTotalCostTicks();
-        log.trace("Path distance from {} to {}: {} ticks ({} edges)", 
+        log.debug("Path distance from {} to {}: {} ticks ({} edges)", 
                 from, to, cost, path.size());
         
         return cost;

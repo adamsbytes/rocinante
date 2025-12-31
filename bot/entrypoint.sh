@@ -202,31 +202,57 @@ fi
 chmod 777 "$VNC_SOCKET_PATH"
 echo "VNC server started on socket: $VNC_SOCKET_PATH"
 
-# Ensure Quest Helper is configured for Plugin Hub install
-# Write to BOTH settings locations (HOME and BOLT) to cover all launch modes
-SETTINGS_FILE="$HOME/.runelite/settings.properties"
-BOLT_SETTINGS="$HOME/.local/share/bolt-launcher/.runelite/settings.properties"
+# =============================================================================
+# Install RuneLite settings from template
+# =============================================================================
+# The template contains all plugin settings including Quest Helper and Screenshot.
+# Settings are applied to:
+#   1. Main settings.properties files
+#   2. User profile files in profiles2/
 
-for settings in "$SETTINGS_FILE" "$BOLT_SETTINGS"; do
-    mkdir -p "$(dirname "$settings")"
-    echo "Configuring Quest Helper in: $settings"
+SETTINGS_TEMPLATE="/home/runelite/settings.template.properties"
+
+# Apply template settings to a properties file (merge, don't overwrite)
+apply_settings() {
+    local dest="$1"
+    mkdir -p "$(dirname "$dest")"
     
-    # Ensure externalPlugins includes quest-helper
-    if [ ! -f "$settings" ] || ! grep -q "runelite.externalPlugins=.*quest-helper" "$settings" 2>/dev/null; then
-        if [ -f "$settings" ]; then
-            sed -i '/^runelite\.externalPlugins=/d' "$settings" 2>/dev/null || true
-        fi
-        echo "runelite.externalPlugins=quest-helper" >> "$settings"
+    # If file doesn't exist, copy template directly
+    if [ ! -f "$dest" ]; then
+        cp "$SETTINGS_TEMPLATE" "$dest"
+        echo "Created settings: $dest"
+        return
     fi
     
-    # Enable Quest Helper plugin
-    if ! grep -q "^runelite\.questhelperplugin=true" "$settings" 2>/dev/null; then
-        sed -i '/^runelite\.questhelperplugin=/d' "$settings" 2>/dev/null || true
-        sed -i '/^questhelpervars\./d' "$settings" 2>/dev/null || true
-        cat >> "$settings" << EOF
-runelite.questhelperplugin=true
-questhelpervars.selected-assist-level=true
-EOF
+    # File exists - merge template settings (template wins for duplicates)
+    while IFS= read -r line || [ -n "$line" ]; do
+        # Skip comments and empty lines
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        [[ -z "$line" ]] && continue
+        
+        # Extract key (everything before first =)
+        key="${line%%=*}"
+        [ -z "$key" ] && continue
+        
+        # Remove existing key if present, then append new value
+        sed -i "/^${key}=/d" "$dest" 2>/dev/null || true
+        echo "$line" >> "$dest"
+    done < "$SETTINGS_TEMPLATE"
+    
+    echo "Updated settings: $dest"
+}
+
+# Apply to main settings files
+for settings in "$HOME/.runelite/settings.properties" "$HOME/.local/share/bolt-launcher/.runelite/settings.properties"; do
+    apply_settings "$settings"
+done
+
+# Apply to all user profile files in profiles2/
+for profiles_dir in "$HOME/.runelite/profiles2" "$HOME/.local/share/bolt-launcher/.runelite/profiles2"; do
+    if [ -d "$profiles_dir" ]; then
+        for profile in "$profiles_dir"/*.properties; do
+            [ -f "$profile" ] && apply_settings "$profile"
+        done
     fi
 done
 

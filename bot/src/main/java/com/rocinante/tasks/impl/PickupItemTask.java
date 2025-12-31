@@ -406,13 +406,13 @@ public class PickupItemTask extends AbstractTask {
         // Check for pickup animation (bending down)
         if (!success && player.isAnimating()) {
             // Wait for animation to complete - don't mark success yet
-            log.trace("Player animating, waiting for pickup to complete");
+            log.debug("Player animating, waiting for pickup to complete");
             return;
         }
 
         // Check if player moved toward item (walking to pick up)
         if (!success && player.isMoving()) {
-            log.trace("Player moving toward item, waiting...");
+            log.debug("Player moving toward item, waiting...");
             return;
         }
 
@@ -422,7 +422,7 @@ public class PickupItemTask extends AbstractTask {
             return;
         }
 
-        log.trace("Waiting for pickup response (tick {})", pickupTicks);
+        log.debug("Waiting for pickup response (tick {})", pickupTicks);
     }
 
     // ========================================================================
