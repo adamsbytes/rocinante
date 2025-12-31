@@ -2,6 +2,7 @@ package com.rocinante.tasks;
 
 import com.rocinante.behavior.BreakScheduler;
 import com.rocinante.behavior.EmergencyHandler;
+import com.rocinante.navigation.ShortestPathBridge;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -134,6 +135,12 @@ public class TaskExecutor {
     private final EmergencyHandler emergencyHandler;
 
     /**
+     * Navigation bridge - required for task execution.
+     * Tasks depend on pathfinding and collision checking.
+     */
+    private final ShortestPathBridge shortestPathBridge;
+
+    /**
      * Stack of tasks paused for behavioral interruptions (to resume after).
      * Using a stack allows nested behavioral breaks to preserve all paused tasks.
      */
@@ -157,10 +164,12 @@ public class TaskExecutor {
     // ========================================================================
 
     @Inject
-    public TaskExecutor(TaskContext taskContext, BreakScheduler breakScheduler, EmergencyHandler emergencyHandler) {
+    public TaskExecutor(TaskContext taskContext, BreakScheduler breakScheduler, 
+                        EmergencyHandler emergencyHandler, ShortestPathBridge shortestPathBridge) {
         this.taskContext = taskContext;
         this.breakScheduler = breakScheduler;
         this.emergencyHandler = emergencyHandler;
+        this.shortestPathBridge = shortestPathBridge;
         this.taskQueue = new PriorityBlockingQueue<>(100, Comparator
                 .comparingInt((QueuedTask qt) -> qt.task.getPriority().getOrdinalValue())
                 .thenComparingLong(qt -> qt.sequence));
@@ -282,8 +291,16 @@ public class TaskExecutor {
 
     /**
      * Enable task execution.
+     * Requires ShortestPath navigation to be initialized - tasks cannot execute without pathfinding.
+     *
+     * @throws IllegalStateException if ShortestPath navigation is not available
      */
     public void start() {
+        if (!shortestPathBridge.isAvailable()) {
+            throw new IllegalStateException(
+                "Cannot start TaskExecutor: ShortestPath navigation not ready. " +
+                "Ensure ShortestPath plugin is installed and loaded.");
+        }
         enabled.set(true);
         log.info("TaskExecutor started");
     }

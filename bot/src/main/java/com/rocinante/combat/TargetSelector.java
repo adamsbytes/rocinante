@@ -1,8 +1,8 @@
 package com.rocinante.combat;
 
 import com.rocinante.core.GameStateService;
-import com.rocinante.navigation.PathFinder;
 import com.rocinante.navigation.Reachability;
+import com.rocinante.navigation.ShortestPathBridge;
 import com.rocinante.state.NpcSnapshot;
 import com.rocinante.state.PlayerState;
 import com.rocinante.state.WorldState;
@@ -44,7 +44,7 @@ public class TargetSelector {
 
     private final Client client;
     private final GameStateService gameStateService;
-    private final PathFinder pathFinder;
+    private final ShortestPathBridge shortestPathBridge;
     private final Reachability reachability;
 
     @Getter
@@ -52,11 +52,11 @@ public class TargetSelector {
     private TargetSelectorConfig config = TargetSelectorConfig.DEFAULT;
 
     @Inject
-    public TargetSelector(Client client, GameStateService gameStateService, PathFinder pathFinder,
+    public TargetSelector(Client client, GameStateService gameStateService, ShortestPathBridge shortestPathBridge,
                           Reachability reachability) {
         this.client = client;
         this.gameStateService = gameStateService;
-        this.pathFinder = pathFinder;
+        this.shortestPathBridge = shortestPathBridge;
         this.reachability = reachability;
         log.info("TargetSelector initialized with reachability support");
     }
@@ -288,8 +288,8 @@ public class TargetSelector {
             if (distance <= 1) {
                 return reachability.canInteract(playerPos, npcPos);
             }
-            // Not adjacent - check if we can path to an adjacent tile
-            return pathFinder.hasPath(playerPos, npcPos);
+            // Not adjacent - check if target isn't blocked
+            return !shortestPathBridge.isBlocked(npcPos);
         }
 
         // Ranged/Magic combat - check if we're within range with line of sight
@@ -303,8 +303,8 @@ public class TargetSelector {
             return attackPos.isPresent();
         }
 
-        // Outside weapon range - check if we can path close enough
-        return pathFinder.hasPath(playerPos, npcPos);
+        // Outside weapon range - check if target isn't blocked
+        return !shortestPathBridge.isBlocked(npcPos);
     }
 
     // ========================================================================

@@ -5,6 +5,8 @@ import com.rocinante.input.MenuHelper;
 import com.rocinante.input.RobotKeyboardController;
 import com.rocinante.input.RobotMouseController;
 import com.rocinante.input.SafeClickExecutor;
+import com.rocinante.navigation.EntityFinder;
+import com.rocinante.navigation.NavigationService;
 import com.rocinante.state.PlayerState;
 import com.rocinante.tasks.TaskContext;
 import com.rocinante.tasks.TaskState;
@@ -19,6 +21,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import java.util.Collections;
 
 import java.awt.*;
 import java.util.ArrayList;
@@ -65,6 +68,9 @@ public class InteractNpcTaskTest {
     @Mock
     private Canvas canvas;
 
+    @Mock
+    private NavigationService navigationService;
+
     private TaskContext taskContext;
     private WorldPoint playerPos;
     private PlayerState playerState;
@@ -98,6 +104,7 @@ public class InteractNpcTaskTest {
         when(taskContext.getMenuHelper()).thenReturn(menuHelper);
         when(taskContext.isLoggedIn()).thenReturn(true);
         when(taskContext.getPlayerState()).thenReturn(playerState);
+        when(taskContext.getNavigationService()).thenReturn(navigationService);
 
         // GameStateService
         when(gameStateService.isLoggedIn()).thenReturn(true);
@@ -129,6 +136,20 @@ public class InteractNpcTaskTest {
                 .thenReturn(CompletableFuture.completedFuture(true));
         when(menuHelper.selectMenuEntry(any(Rectangle.class), anyString(), anyString()))
                 .thenReturn(CompletableFuture.completedFuture(true));
+
+        // NavigationService: by default return empty (no reachable NPC)
+        // Individual tests can use setupNavigationForNpc() to make NPCs reachable
+        when(navigationService.findNearestReachableNpc(any(), any(), anySet(), anyInt()))
+                .thenReturn(java.util.Optional.empty());
+    }
+
+    /**
+     * Helper to make NavigationService return a specific NPC as reachable.
+     */
+    private void setupNavigationForNpc(NPC npc, int pathCost) {
+        EntityFinder.NpcSearchResult result = new EntityFinder.NpcSearchResult(npc, Collections.emptyList(), null, pathCost);
+        when(navigationService.findNearestReachableNpc(any(), any(), anySet(), anyInt()))
+                .thenReturn(java.util.Optional.of(result));
     }
 
     // ========================================================================
@@ -219,7 +240,7 @@ public class InteractNpcTaskTest {
 
     @Test
     public void testFindNpc_NpcFound_TransitionsToNextPhase() {
-        addNpcToScene(NpcID.BANKER_1618, "Banker", new WorldPoint(3202, 3202, 0));
+        addReachableNpcToScene(NpcID.BANKER_1618, "Banker", new WorldPoint(3202, 3202, 0));
 
         InteractNpcTask task = new InteractNpcTask(NpcID.BANKER_1618, "Talk-to");
         task.execute(taskContext);
@@ -242,6 +263,7 @@ public class InteractNpcTaskTest {
     @Test
     public void testFindNpc_NpcOutOfRadius_Fails() {
         // NPC at 50 tiles away (beyond default 15 tile radius)
+        // Use addNpcToScene (not reachable) - NavigationService returns empty
         addNpcToScene(NpcID.BANKER_1618, "Banker", new WorldPoint(3250, 3250, 0));
 
         InteractNpcTask task = new InteractNpcTask(NpcID.BANKER_1618, "Talk-to");
@@ -253,7 +275,7 @@ public class InteractNpcTaskTest {
     @Test
     public void testFindNpc_CustomRadius_FindsDistantNpc() {
         // NPC at 20 tiles away
-        addNpcToScene(NpcID.BANKER_1618, "Banker", new WorldPoint(3220, 3200, 0));
+        addReachableNpcToScene(NpcID.BANKER_1618, "Banker", new WorldPoint(3220, 3200, 0));
 
         InteractNpcTask task = new InteractNpcTask(NpcID.BANKER_1618, "Talk-to")
                 .withSearchRadius(25);
@@ -265,7 +287,7 @@ public class InteractNpcTaskTest {
     @Test
     public void testFindNpc_AlternateIdFound_Succeeds() {
         // Primary ID not present, but alternate is
-        addNpcToScene(NpcID.GOBLIN_3030, "Goblin", new WorldPoint(3202, 3202, 0));
+        addReachableNpcToScene(NpcID.GOBLIN_3030, "Goblin", new WorldPoint(3202, 3202, 0));
 
         InteractNpcTask task = new InteractNpcTask(NpcID.GOBLIN_3029, "Attack")
                 .withAlternateIds(NpcID.GOBLIN_3030);
@@ -277,8 +299,8 @@ public class InteractNpcTaskTest {
     @Test
     public void testFindNpc_ClosestNpcSelected() {
         // Setup two NPCs - one close, one far
-        addNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3201, 3200, 0)); // 1 tile
-        addNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3210, 3200, 0)); // 10 tiles
+        addReachableNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3201, 3200, 0)); // 1 tile
+        addReachableNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3210, 3200, 0)); // 10 tiles
 
         InteractNpcTask task = new InteractNpcTask(NpcID.GOBLIN_3029, "Attack");
         task.execute(taskContext);
@@ -290,8 +312,8 @@ public class InteractNpcTaskTest {
     @Test
     public void testFindNpc_NameFilterApplied() {
         // Two NPCs with same ID but different names
-        addNpcToScene(NpcID.MAN_3108, "Man", new WorldPoint(3201, 3200, 0));
-        addNpcToScene(NpcID.MAN_3108, "Guard", new WorldPoint(3202, 3200, 0));
+        addReachableNpcToScene(NpcID.MAN_3108, "Man", new WorldPoint(3201, 3200, 0));
+        addReachableNpcToScene(NpcID.MAN_3108, "Guard", new WorldPoint(3202, 3200, 0));
 
         InteractNpcTask task = new InteractNpcTask(NpcID.MAN_3108, "Talk-to")
                 .withNpcName("Guard");
@@ -308,7 +330,7 @@ public class InteractNpcTaskTest {
         npcList.add(deadNpc);
         
         // Add a living goblin farther away
-        addNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3205, 3200, 0));
+        addReachableNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3205, 3200, 0));
 
         InteractNpcTask task = new InteractNpcTask(NpcID.GOBLIN_3029, "Attack");
         task.execute(taskContext);
@@ -323,7 +345,7 @@ public class InteractNpcTaskTest {
 
     @Test
     public void testNpcMovement_SmallMovement_ContinuesInteraction() {
-        NPC npc = addNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3202, 3202, 0));
+        NPC npc = addReachableNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3202, 3202, 0));
 
         InteractNpcTask task = new InteractNpcTask(NpcID.GOBLIN_3029, "Attack")
                 .withTrackMovement(true);
@@ -345,7 +367,7 @@ public class InteractNpcTaskTest {
 
     @Test
     public void testNpcMovement_LargeMovement_UpdatesLastPosition() {
-        NPC npc = addNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3202, 3202, 0));
+        NPC npc = addReachableNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3202, 3202, 0));
 
         InteractNpcTask task = new InteractNpcTask(NpcID.GOBLIN_3029, "Attack")
                 .withTrackMovement(true);
@@ -368,7 +390,7 @@ public class InteractNpcTaskTest {
 
     @Test
     public void testNpcMovement_TrackingDisabled_IgnoresMovement() {
-        NPC npc = addNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3202, 3202, 0));
+        NPC npc = addReachableNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3202, 3202, 0));
 
         InteractNpcTask task = new InteractNpcTask(NpcID.GOBLIN_3029, "Attack")
                 .withTrackMovement(false);
@@ -393,7 +415,7 @@ public class InteractNpcTaskTest {
 
     @Test
     public void testNpcDeath_BeforeClick_TriggersRetarget() {
-        NPC npc = addNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3202, 3202, 0));
+        NPC npc = addReachableNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3202, 3202, 0));
 
         InteractNpcTask task = new InteractNpcTask(NpcID.GOBLIN_3029, "Attack");
 
@@ -402,7 +424,7 @@ public class InteractNpcTaskTest {
 
         // NPC dies - add another living one
         when(npc.isDead()).thenReturn(true);
-        NPC newNpc = addNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3205, 3205, 0));
+        NPC newNpc = addReachableNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3205, 3205, 0));
 
         // Should retarget to new NPC
         for (int i = 0; i < 10; i++) {
@@ -415,7 +437,7 @@ public class InteractNpcTaskTest {
 
     @Test
     public void testNpcDeath_MaxRetargetsExceeded_Fails() {
-        NPC npc = addNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3202, 3202, 0));
+        NPC npc = addReachableNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3202, 3202, 0));
 
         InteractNpcTask task = new InteractNpcTask(NpcID.GOBLIN_3029, "Attack");
 
@@ -437,7 +459,7 @@ public class InteractNpcTaskTest {
 
     @Test
     public void testNpcDespawn_DuringMoveMouse_TriggersRetarget() {
-        NPC npc = addNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3202, 3202, 0));
+        NPC npc = addReachableNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3202, 3202, 0));
 
         InteractNpcTask task = new InteractNpcTask(NpcID.GOBLIN_3029, "Attack");
 
@@ -448,7 +470,7 @@ public class InteractNpcTaskTest {
         npcList.remove(npc);
         
         // Add new one
-        addNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3203, 3203, 0));
+        addReachableNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3203, 3203, 0));
 
         // Continue - should attempt retarget
         for (int i = 0; i < 15; i++) {
@@ -466,14 +488,14 @@ public class InteractNpcTaskTest {
     @Test
     public void testRetarget_MultipleAttempts_SucceedsEventually() {
         // Start with one goblin
-        NPC npc1 = addNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3202, 3202, 0));
+        NPC npc1 = addReachableNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3202, 3202, 0));
 
         InteractNpcTask task = new InteractNpcTask(NpcID.GOBLIN_3029, "Attack");
         task.execute(taskContext);
 
         // First goblin dies, add second
         when(npc1.isDead()).thenReturn(true);
-        NPC npc2 = addNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3204, 3204, 0));
+        NPC npc2 = addReachableNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3204, 3204, 0));
 
         // Execute some ticks
         for (int i = 0; i < 5; i++) {
@@ -483,7 +505,7 @@ public class InteractNpcTaskTest {
 
         // Second goblin dies, add third
         when(npc2.isDead()).thenReturn(true);
-        addNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3206, 3206, 0));
+        addReachableNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3206, 3206, 0));
 
         // Should eventually succeed or fail after MAX_RETARGET_ATTEMPTS
         for (int i = 0; i < 15; i++) {
@@ -494,7 +516,7 @@ public class InteractNpcTaskTest {
 
     @Test
     public void testRetarget_MaxAttemptsReached_Fails() {
-        NPC npc = addNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3202, 3202, 0));
+        NPC npc = addReachableNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3202, 3202, 0));
 
         InteractNpcTask task = new InteractNpcTask(NpcID.GOBLIN_3029, "Attack");
         task.execute(taskContext);
@@ -519,7 +541,7 @@ public class InteractNpcTaskTest {
 
     @Test
     public void testDialogue_ExpectedAndOpened_Completes() {
-        addNpcToScene(NpcID.BANKER_1618, "Banker", new WorldPoint(3202, 3202, 0));
+        addReachableNpcToScene(NpcID.BANKER_1618, "Banker", new WorldPoint(3202, 3202, 0));
         
         // Mock dialogue widget visible
         Widget dialogueWidget = mock(Widget.class);
@@ -540,7 +562,7 @@ public class InteractNpcTaskTest {
 
     @Test
     public void testDialogue_ExpectedButNotOpened_TimesOut() {
-        addNpcToScene(NpcID.BANKER_1618, "Banker", new WorldPoint(3202, 3202, 0));
+        addReachableNpcToScene(NpcID.BANKER_1618, "Banker", new WorldPoint(3202, 3202, 0));
         
         // No dialogue widget visible
         when(client.getWidget(anyInt(), anyInt())).thenReturn(null);
@@ -560,7 +582,7 @@ public class InteractNpcTaskTest {
 
     @Test
     public void testDialogue_NotExpected_CompletesOnAnimation() {
-        addNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3202, 3202, 0));
+        addReachableNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3202, 3202, 0));
 
         InteractNpcTask task = new InteractNpcTask(NpcID.GOBLIN_3029, "Attack")
                 .withDialogueExpected(false);
@@ -581,7 +603,7 @@ public class InteractNpcTaskTest {
 
     @Test
     public void testMenuAction_LeftClickAvailable() {
-        addNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3202, 3202, 0));
+        addReachableNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3202, 3202, 0));
         when(menuHelper.isLeftClickActionContains("Attack")).thenReturn(true);
 
         InteractNpcTask task = new InteractNpcTask(NpcID.GOBLIN_3029, "Attack");
@@ -597,7 +619,7 @@ public class InteractNpcTaskTest {
 
     @Test
     public void testMenuAction_RightClickRequired() {
-        addNpcToScene(NpcID.MAN_3108, "Man", new WorldPoint(3202, 3202, 0));
+        addReachableNpcToScene(NpcID.MAN_3108, "Man", new WorldPoint(3202, 3202, 0));
         when(menuHelper.isLeftClickActionContains("Pickpocket")).thenReturn(false);
 
         InteractNpcTask task = new InteractNpcTask(NpcID.MAN_3108, "Pickpocket");
@@ -617,7 +639,7 @@ public class InteractNpcTaskTest {
 
     @Test
     public void testSuccess_SpecificAnimation() {
-        addNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3202, 3202, 0));
+        addReachableNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3202, 3202, 0));
 
         InteractNpcTask task = new InteractNpcTask(NpcID.GOBLIN_3029, "Attack")
                 .withSuccessAnimation(422);
@@ -636,7 +658,7 @@ public class InteractNpcTaskTest {
 
     @Test
     public void testSuccess_AnyAnimation_WhenNoSpecificExpected() {
-        addNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3202, 3202, 0));
+        addReachableNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3202, 3202, 0));
 
         InteractNpcTask task = new InteractNpcTask(NpcID.GOBLIN_3029, "Attack");
         // No specific animation set (default -1)
@@ -653,7 +675,7 @@ public class InteractNpcTaskTest {
 
     @Test
     public void testSuccess_PlayerInteracting() {
-        addNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3202, 3202, 0));
+        addReachableNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3202, 3202, 0));
 
         InteractNpcTask task = new InteractNpcTask(NpcID.GOBLIN_3029, "Attack");
 
@@ -672,7 +694,7 @@ public class InteractNpcTaskTest {
 
     @Test
     public void testSuccess_PositionChanged() {
-        addNpcToScene(NpcID.BANKER_1618, "Banker", new WorldPoint(3202, 3202, 0));
+        addReachableNpcToScene(NpcID.BANKER_1618, "Banker", new WorldPoint(3202, 3202, 0));
 
         InteractNpcTask task = new InteractNpcTask(NpcID.BANKER_1618, "Talk-to");
 
@@ -706,7 +728,7 @@ public class InteractNpcTaskTest {
 
     @Test
     public void testTimeout_NoSuccessIndicators_Fails() {
-        addNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3202, 3202, 0));
+        addReachableNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3202, 3202, 0));
 
         InteractNpcTask task = new InteractNpcTask(NpcID.GOBLIN_3029, "Attack");
 
@@ -761,7 +783,7 @@ public class InteractNpcTaskTest {
 
     @Test
     public void testResetImpl_ClearsAllState() {
-        addNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3202, 3202, 0));
+        addReachableNpcToScene(NpcID.GOBLIN_3029, "Goblin", new WorldPoint(3202, 3202, 0));
 
         InteractNpcTask task = new InteractNpcTask(NpcID.GOBLIN_3029, "Attack");
 
@@ -782,6 +804,15 @@ public class InteractNpcTaskTest {
     private NPC addNpcToScene(int npcId, String name, WorldPoint pos) {
         NPC npc = TaskTestHelper.mockNpc(npcId, name, pos);
         npcList.add(npc);
+        return npc;
+    }
+
+    /**
+     * Add NPC to scene and make it reachable via NavigationService.
+     */
+    private NPC addReachableNpcToScene(int npcId, String name, WorldPoint pos) {
+        NPC npc = addNpcToScene(npcId, name, pos);
+        setupNavigationForNpc(npc, playerPos.distanceTo(pos) + 1);
         return npc;
     }
 }

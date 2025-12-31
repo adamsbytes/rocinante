@@ -23,10 +23,19 @@ import com.rocinante.tasks.impl.minigame.wintertodt.WintertodtStrategy;
 import com.rocinante.tasks.impl.minigame.wintertodt.WintertodtTask;
 import com.rocinante.tasks.impl.skills.agility.AgilityCourseConfig;
 import com.rocinante.tasks.impl.skills.agility.AgilityCourseTask;
+import com.rocinante.tasks.impl.skills.cooking.CookingSkillTask;
+import com.rocinante.tasks.impl.skills.cooking.CookingSkillTaskConfig;
+import com.rocinante.tasks.impl.skills.cooking.GatherAndCookConfig;
+import com.rocinante.tasks.impl.skills.cooking.GatherAndCookTask;
 import com.rocinante.tasks.impl.skills.firemaking.FiremakingConfig;
 import com.rocinante.tasks.impl.skills.firemaking.FiremakingSkillTask;
+import com.rocinante.tasks.impl.skills.firemaking.GatherAndFiremakeConfig;
+import com.rocinante.tasks.impl.skills.firemaking.GatherAndFiremakeTask;
+import com.rocinante.tasks.impl.skills.fletching.GatherAndFletchConfig;
+import com.rocinante.tasks.impl.skills.fletching.GatherAndFletchTask;
 import com.rocinante.tasks.impl.skills.prayer.PrayerSkillTask;
 import com.rocinante.tasks.impl.skills.thieving.ThievingSkillTask;
+import com.rocinante.navigation.RankedCandidate;
 import com.rocinante.util.CollectionResolver;
 import lombok.Getter;
 import lombok.Setter;
@@ -37,6 +46,7 @@ import net.runelite.api.coords.WorldPoint;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -207,6 +217,17 @@ public class SkillTask extends AbstractTask {
      * Menu action for predictive hover clicks.
      */
     private String hoverMenuAction;
+
+    /**
+     * Ranked training candidates ordered by efficiency (best first).
+     * Computed on arrival at training location if banking is required.
+     */
+    private List<RankedCandidate> rankedCandidates;
+
+    /**
+     * Whether we've computed ranked candidates for this session.
+     */
+    private boolean rankedCandidatesComputed = false;
 
     // ========================================================================
     // Constructor
@@ -382,22 +403,46 @@ public class SkillTask extends AbstractTask {
         PlayerState player = ctx.getPlayerState();
         WorldPoint playerPos = player.getWorldPosition();
 
-        // If method has a location with an exact position, check if we're there
+        // Enforce location proximity
+        // - exactPosition: use exact coords
+        // - trainingArea: use specific coords
+        // - null trainingArea ("any_bank"): dynamically find nearest bank
         MethodLocation location = getSelectedLocation();
-        if (location != null && location.getExactPosition() != null) {
-            WorldPoint targetPos = location.getExactPosition();
-            if (playerPos.distanceTo(targetPos) > 5) {
-                log.debug("Traveling to training location: {} at {}", location.getName(), targetPos);
-                activeSubTask = new WalkToTask(targetPos)
-                        .withDescription("Walk to " + location.getName());
+        if (location != null) {
+            WorldPoint targetLocation;
+            String targetDescription;
+            
+            if (location.getExactPosition() != null) {
+                targetLocation = location.getExactPosition();
+                targetDescription = location.getName();
+            } else if (location.getTrainingArea() != null) {
+                targetLocation = location.getTrainingArea();
+                targetDescription = location.getName();
+            } else {
+                // "any_bank" - find nearest bank dynamically
+                targetLocation = ctx.getNavigationService().findNearestBank(playerPos);
+                targetDescription = "nearest bank";
+            }
+            
+            if (targetLocation != null && playerPos.distanceTo(targetLocation) > 15) {
+                log.info("Player is {} tiles from training area, traveling to {}",
+                        playerPos.distanceTo(targetLocation), targetDescription);
+                activeSubTask = new WalkToTask(targetLocation)
+                        .withDescription("Travel to " + targetDescription);
                 return;
             }
         }
 
-        // Store training position for return after banking
+        // Only set training position AFTER validating location
         trainingPosition = playerPos;
 
-        // Phase 3: Verify we have required tools (legacy fallback if no InventoryPreparation)
+        // Phase 3: Compute ranked training candidates (for banking methods only)
+        // Power methods (dropWhenFull=true) skip ranking - they use on-demand nearest object finding
+        if (!rankedCandidatesComputed && method.getMethodType() == MethodType.GATHER && config.shouldBank()) {
+            computeRankedCandidates(ctx, method);
+        }
+
+        // Phase 4: Verify we have required tools (legacy fallback if no InventoryPreparation)
         if (inventoryPrep == null && !hasRequiredTools(ctx)) {
             log.warn("Missing required tools for {}", method.getName());
             fail("Missing required tools");
@@ -445,6 +490,69 @@ public class SkillTask extends AbstractTask {
 
         log.debug("Missing required tools. Needed one of: {}", requiredItems);
         return false;
+    }
+
+    /**
+     * Compute and cache ranked training candidates for smart object selection.
+     *
+     * <p>For gathering methods that require banking, this ranks nearby objects by
+     * roundtrip efficiency (object → bank → object). Objects with shorter roundtrips
+     * are preferred, resulting in better XP/hour.
+     *
+     * <p>For power training (drop when full), objects are ranked by simple distance.
+     *
+     * <p>Results are cached both in this task instance and in the global cache
+     * (TrainingSpotCache) for reuse across sessions.
+     */
+    private void computeRankedCandidates(TaskContext ctx, TrainingMethod method) {
+        rankedCandidatesComputed = true;
+        
+        // Get object IDs (expanded via CollectionResolver)
+        List<Integer> objectIds;
+        if (method.hasTargetObjects()) {
+            objectIds = CollectionResolver.expandObjectIds(method.getTargetObjectIds());
+        } else if (method.hasTargetNpcs()) {
+            // NPCs move, so ranking is less useful - skip
+            log.debug("Skipping ranked candidates for NPC-based method");
+            return;
+        } else {
+            return;
+        }
+        
+        if (objectIds.isEmpty()) {
+            return;
+        }
+        
+        // Determine if banking is required
+        boolean bankRequired = config.shouldBank();
+        
+        com.rocinante.navigation.NavigationService navService = ctx.getNavigationService();
+        WorldPoint playerPos = ctx.getPlayerState().getWorldPosition();
+        
+        if (navService == null || playerPos == null) {
+            log.debug("NavigationService or player position not available for ranking");
+            return;
+        }
+        
+        // Compute ranked candidates
+        log.debug("Computing ranked training candidates: {} objects, banking={}", 
+                objectIds.size(), bankRequired);
+        
+        rankedCandidates = navService.rankTrainingCandidates(
+                ctx,
+                objectIds,
+                playerPos,
+                bankRequired
+        );
+        
+        if (rankedCandidates != null && !rankedCandidates.isEmpty()) {
+            log.info("Ranked {} training candidates (best cost: {}, worst: {})",
+                    rankedCandidates.size(),
+                    rankedCandidates.get(0).cost(),
+                    rankedCandidates.get(rankedCandidates.size() - 1).cost());
+        } else {
+            log.debug("No ranked candidates computed (scene may not be loaded yet)");
+        }
     }
 
     // ========================================================================
@@ -649,8 +757,14 @@ public class SkillTask extends AbstractTask {
                 break;
 
             case PROCESS:
-                log.debug("Processing method, switching to process phase");
-                phase = SkillPhase.PROCESS;
+                // Check if this is cooking (object-based processing)
+                if (method.hasTargetObjects() && method.getSkill() == Skill.COOKING) {
+                    startCookingTraining(ctx, method);
+                } else {
+                    // Existing item-on-item processing (fletching, herblore, etc.)
+                    log.debug("Processing method, switching to process phase");
+                    phase = SkillPhase.PROCESS;
+                }
                 break;
 
             case AGILITY:
@@ -671,6 +785,10 @@ public class SkillTask extends AbstractTask {
 
             case THIEVING:
                 startThievingTraining(ctx, method);
+                break;
+
+            case GATHER_AND_PROCESS:
+                startGatherAndProcessTraining(ctx, method);
                 break;
 
             default:
@@ -945,6 +1063,160 @@ public class SkillTask extends AbstractTask {
         log.info("Starting thieving training: {}", method.getName());
     }
 
+    /**
+     * Start cooking training using CookingSkillTask.
+     * 
+     * <p>Cooking uses item-on-object interactions (raw food on fire/range)
+     * which requires specialized handling. CookingSkillTask manages:
+     * <ul>
+     *   <li>Finding fires/ranges at the training location</li>
+     *   <li>Using raw food on the cooking object</li>
+     *   <li>Handling the make-all interface</li>
+     *   <li>Dropping or banking products based on configuration</li>
+     * </ul>
+     *
+     * @param ctx    the task context
+     * @param method the cooking training method
+     */
+    private void startCookingTraining(TaskContext ctx, TrainingMethod method) {
+        log.debug("Cooking method, delegating to CookingSkillTask");
+
+        // Determine product handling mode
+        CookingSkillTaskConfig.ProductHandling productHandling;
+        if (config.shouldDrop()) {
+            productHandling = CookingSkillTaskConfig.ProductHandling.DROP_ALL;
+        } else if (config.getBankInsteadOfDrop() != null && config.getBankInsteadOfDrop()) {
+            // Bank mode - drop burnt, bank cooked
+            productHandling = CookingSkillTaskConfig.ProductHandling.BANK_BUT_DROP_BURNT;
+        } else {
+            // Default bank mode
+            productHandling = CookingSkillTaskConfig.ProductHandling.BANK_ALL;
+        }
+
+        MethodLocation selectedLocation = getSelectedLocation();
+        
+        CookingSkillTaskConfig cookingConfig = CookingSkillTaskConfig.builder()
+                .method(method)
+                .locationId(selectedLocation != null ? selectedLocation.getId() : null)
+                .productHandling(productHandling)
+                .targetLevel(config.getTargetLevel())
+                .targetXp(config.getTargetXp())
+                .maxDuration(config.getMaxDuration())
+                .build();
+
+        activeSubTask = new CookingSkillTask(cookingConfig);
+        log.info("Starting cooking training: {}", method.getName());
+    }
+
+    /**
+     * Start gather-and-process training.
+     *
+     * <p>Delegates to the appropriate specialized task based on the secondary skill:
+     * <ul>
+     *   <li>COOKING: GatherAndCookTask (powerfish/cook)</li>
+     *   <li>FLETCHING: GatherAndFletchTask (powerchop/fletch)</li>
+     *   <li>FIREMAKING: GatherAndFiremakeTask (powerchop/firemake)</li>
+     * </ul>
+     *
+     * @param ctx    the task context
+     * @param method the gather-and-process training method
+     */
+    private void startGatherAndProcessTraining(TaskContext ctx, TrainingMethod method) {
+        Skill secondarySkill = method.getSecondarySkill();
+        if (secondarySkill == null) {
+            log.warn("GATHER_AND_PROCESS method {} has no secondary skill defined", method.getId());
+            fail("No secondary skill defined for method: " + method.getId());
+            return;
+        }
+
+        MethodLocation selectedLocation = getSelectedLocation();
+
+        switch (secondarySkill) {
+            case COOKING:
+                startGatherAndCookTraining(ctx, method, selectedLocation);
+                break;
+
+            case FLETCHING:
+                startGatherAndFletchTraining(ctx, method, selectedLocation);
+                break;
+
+            case FIREMAKING:
+                startGatherAndFiremakeTraining(ctx, method, selectedLocation);
+                break;
+
+            default:
+                log.warn("Unsupported secondary skill for GATHER_AND_PROCESS: {}", secondarySkill);
+                fail("Unsupported secondary skill: " + secondarySkill);
+        }
+    }
+
+    private void startGatherAndCookTraining(TaskContext ctx, TrainingMethod method, MethodLocation location) {
+        log.debug("Gather-and-cook method, delegating to GatherAndCookTask");
+
+        // Determine product handling mode
+        CookingSkillTaskConfig.ProductHandling productHandling;
+        if (config.shouldDrop()) {
+            productHandling = CookingSkillTaskConfig.ProductHandling.DROP_ALL;
+        } else if (config.getBankInsteadOfDrop() != null && config.getBankInsteadOfDrop()) {
+            productHandling = CookingSkillTaskConfig.ProductHandling.BANK_BUT_DROP_BURNT;
+        } else {
+            productHandling = CookingSkillTaskConfig.ProductHandling.BANK_ALL;
+        }
+
+        GatherAndCookConfig gatherCookConfig = GatherAndCookConfig.builder()
+                .method(method)
+                .location(location)
+                .productHandling(productHandling)
+                .targetFishingLevel(config.getTargetLevel())
+                // TODO: Add secondary target level support to SkillTaskConfig
+                .targetCookingLevel(-1)
+                .maxDuration(config.getMaxDuration())
+                .build();
+
+        activeSubTask = new GatherAndCookTask(gatherCookConfig);
+        log.info("Starting gather-and-cook training: {}", method.getName());
+    }
+
+    private void startGatherAndFletchTraining(TaskContext ctx, TrainingMethod method, MethodLocation location) {
+        log.debug("Gather-and-fletch method, delegating to GatherAndFletchTask");
+
+        // Determine product handling mode
+        GatherAndFletchConfig.ProductHandling productHandling;
+        if (config.shouldDrop()) {
+            productHandling = GatherAndFletchConfig.ProductHandling.DROP;
+        } else {
+            // For fletching, RETAIN is the efficient option (arrow shafts stack)
+            productHandling = GatherAndFletchConfig.ProductHandling.RETAIN;
+        }
+
+        GatherAndFletchConfig gatherFletchConfig = GatherAndFletchConfig.builder()
+                .method(method)
+                .location(location)
+                .productHandling(productHandling)
+                .targetWoodcuttingLevel(config.getTargetLevel())
+                .targetFletchingLevel(-1) // TODO: Add secondary target level support
+                .maxDuration(config.getMaxDuration())
+                .build();
+
+        activeSubTask = new GatherAndFletchTask(gatherFletchConfig);
+        log.info("Starting gather-and-fletch training: {}", method.getName());
+    }
+
+    private void startGatherAndFiremakeTraining(TaskContext ctx, TrainingMethod method, MethodLocation location) {
+        log.debug("Gather-and-firemake method, delegating to GatherAndFiremakeTask");
+
+        GatherAndFiremakeConfig gatherFiremakeConfig = GatherAndFiremakeConfig.builder()
+                .method(method)
+                .location(location)
+                .targetWoodcuttingLevel(config.getTargetLevel())
+                .targetFiremakingLevel(-1) // TODO: Add secondary target level support
+                .maxDuration(config.getMaxDuration())
+                .build();
+
+        activeSubTask = new GatherAndFiremakeTask(gatherFiremakeConfig);
+        log.info("Starting gather-and-firemake training: {}", method.getName());
+    }
+
     // ========================================================================
     // Ground Item Watching
     // ========================================================================
@@ -1047,69 +1319,17 @@ public class SkillTask extends AbstractTask {
     private void executeBank(TaskContext ctx) {
         // Create banking sub-task using ResupplyTask
         if (activeSubTask == null) {
-            TrainingMethod method = config.getMethod();
-
-            // Look up bank location from the selected location
+            // Use trainingArea or current position as reference for finding nearest bank
             MethodLocation location = getSelectedLocation();
-            String bankLocationId = location != null ? location.getBankLocationId() : null;
-            WorldPoint bankPosition = lookupBankLocation(ctx, bankLocationId);
+            WorldPoint referencePoint = location != null && location.getTrainingArea() != null
+                    ? location.getTrainingArea()
+                    : trainingPosition;
             
-            if (bankPosition != null) {
-                log.debug("Using configured bank location: {} at {}", bankLocationId, bankPosition);
-            } else {
-                log.debug("No configured bank location, ResupplyTask will find nearest bank");
-            }
+            log.debug("Banking from training area, ResupplyTask will find nearest bank from {}", referencePoint);
 
             // Use ResupplyTask which handles the complete banking flow
-            activeSubTask = createResupplyTask(bankPosition);
-        }
-    }
-
-    /**
-     * Look up bank location from NavigationWeb by ID.
-     * This allows training methods to specify preferred banks (e.g., closest to training spot).
-     *
-     * @param ctx            the task context
-     * @param bankLocationId the bank node ID from TrainingMethod
-     * @return the bank WorldPoint, or null if not found
-     */
-    private WorldPoint lookupBankLocation(TaskContext ctx, String bankLocationId) {
-        if (bankLocationId == null || bankLocationId.isEmpty()) {
-            return null;
-        }
-
-        try {
-            // Get NavigationWeb from WebWalker
-            com.rocinante.navigation.WebWalker webWalker = ctx.getWebWalker();
-            if (webWalker == null) {
-                log.warn("WebWalker not available for bank lookup");
-                return null;
-            }
-
-            com.rocinante.navigation.NavigationWeb navigationWeb = webWalker.getNavigationWeb();
-            if (navigationWeb == null) {
-                log.warn("NavigationWeb not available for bank lookup");
-                return null;
-            }
-
-            // Look up the bank node by ID
-            com.rocinante.navigation.WebNode bankNode = navigationWeb.getNode(bankLocationId);
-            if (bankNode == null) {
-                log.warn("Bank location ID '{}' not found in NavigationWeb", bankLocationId);
-                return null;
-            }
-
-            // Verify it's actually a bank
-            if (bankNode.getType() != com.rocinante.navigation.WebNodeType.BANK) {
-                log.warn("Node '{}' is not a bank (type={})", bankLocationId, bankNode.getType());
-                return null;
-            }
-
-            log.debug("Resolved bank '{}' to position {}", bankLocationId, bankNode.getWorldPoint());
-            return bankNode.getWorldPoint();
-        } catch (Exception e) {
-            log.warn("Error looking up bank location '{}': {}", bankLocationId, e.getMessage());
-            return null;
+            // Pass null for bank position - ResupplyTask auto-finds nearest bank
+            activeSubTask = createResupplyTask(null);
         }
     }
 

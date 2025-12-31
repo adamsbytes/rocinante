@@ -5,6 +5,8 @@ import com.rocinante.input.InventoryClickHelper;
 import com.rocinante.input.RobotKeyboardController;
 import com.rocinante.input.RobotMouseController;
 import com.rocinante.input.SafeClickExecutor;
+import com.rocinante.navigation.EntityFinder;
+import com.rocinante.navigation.NavigationService;
 import com.rocinante.state.InventoryState;
 import com.rocinante.state.PlayerState;
 import com.rocinante.tasks.TaskContext;
@@ -74,6 +76,9 @@ public class UseItemOnNpcTaskTest {
     @Mock
     private Canvas canvas;
 
+    @Mock
+    private NavigationService navigationService;
+
     private TaskContext taskContext;
     private WorldPoint playerPos;
     private PlayerState playerState;
@@ -106,6 +111,7 @@ public class UseItemOnNpcTaskTest {
         when(taskContext.isLoggedIn()).thenReturn(true);
         when(taskContext.getPlayerState()).thenReturn(playerState);
         when(taskContext.getInventoryState()).thenReturn(inventoryState);
+        when(taskContext.getNavigationService()).thenReturn(navigationService);
 
         // GameStateService
         when(gameStateService.isLoggedIn()).thenReturn(true);
@@ -147,6 +153,20 @@ public class UseItemOnNpcTaskTest {
 
         // No dialogue by default
         when(client.getWidget(anyInt(), anyInt())).thenReturn(null);
+
+        // NavigationService: by default return empty (no reachable NPC)
+        // Individual tests can use setupNavigationForNpc() to make NPCs reachable
+        when(navigationService.findNearestReachableNpc(any(), any(), anySet(), anyInt()))
+                .thenReturn(java.util.Optional.empty());
+    }
+
+    /**
+     * Helper to make NavigationService return a specific NPC as reachable.
+     */
+    private void setupNavigationForNpc(NPC npc, int pathCost) {
+        EntityFinder.NpcSearchResult result = new EntityFinder.NpcSearchResult(npc, Collections.emptyList(), null, pathCost);
+        when(navigationService.findNearestReachableNpc(any(), any(), anySet(), anyInt()))
+                .thenReturn(java.util.Optional.of(result));
     }
 
     // ========================================================================
@@ -668,6 +688,8 @@ public class UseItemOnNpcTaskTest {
     private NPC addNpcToScene(int npcId, String name, WorldPoint pos) {
         NPC npc = TaskTestHelper.mockNpc(npcId, name, pos);
         npcList.add(npc);
+        // Make this NPC reachable via NavigationService
+        setupNavigationForNpc(npc, playerPos.distanceTo(pos) + 1);
         return npc;
     }
 }

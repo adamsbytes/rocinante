@@ -40,6 +40,14 @@ export function getSharedCacheDir(): string {
 }
 
 /**
+ * Training spot cache directory (shared across all bots).
+ * Used for caching ranked training object positions.
+ */
+export function getTrainingSpotCacheDir(): string {
+  return join(DATA_DIR, 'status', 'training-cache');
+}
+
+/**
  * Bolt launcher data directory for a bot.
  * Stores login session and launcher state.
  * Mounted to /home/runelite/.local/share/bolt-launcher inside the container.
@@ -104,6 +112,15 @@ export async function ensureScreenshotsDir(botId: string): Promise<void> {
  */
 export async function ensureSharedCacheDir(): Promise<void> {
   const dir = getSharedCacheDir();
+  await mkdir(dir, { recursive: true });
+  await chmod(dir, 0o777);
+}
+
+/**
+ * Ensure the training spot cache directory exists.
+ */
+export async function ensureTrainingSpotCacheDir(): Promise<void> {
+  const dir = getTrainingSpotCacheDir();
   await mkdir(dir, { recursive: true });
   await chmod(dir, 0o777);
 }

@@ -6,6 +6,7 @@ import lombok.Value;
 import net.runelite.api.ItemID;
 import net.runelite.api.coords.WorldPoint;
 
+import javax.annotation.Nullable;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -13,23 +14,37 @@ import java.util.Map;
 /**
  * Configuration for firemaking training.
  *
- * <p>Supports both line-based firemaking (traditional) and location-based
- * firemaking at the Grand Exchange or other popular spots.
+ * <p>Supports three modes of operation:
+ * <ul>
+ *   <li><b>Fixed line mode</b>: Traditional firemaking at a fixed start position</li>
+ *   <li><b>Location-based</b>: Firemaking at the GE or other popular spots</li>
+ *   <li><b>Dynamic burn mode</b>: Burns from current position (for cut-and-burn)</li>
+ * </ul>
  *
  * <p>Example usage:
  * <pre>{@code
- * // Simple oak logs training
+ * // Simple oak logs training (defaults to no start position - dynamic mode)
  * FiremakingConfig config = FiremakingConfig.builder()
  *     .logItemId(ItemID.OAK_LOGS)
  *     .targetLevel(45)
  *     .build();
  *
- * // GE training with banking
+ * // GE training with banking (fixed start position)
  * FiremakingConfig geConfig = FiremakingConfig.builder()
  *     .logItemId(ItemID.WILLOW_LOGS)
  *     .startPosition(FiremakingConfig.GE_START_POINT)
  *     .bankForLogs(true)
  *     .targetLevel(60)
+ *     .build();
+ *
+ * // Dynamic burn mode for cut-and-burn (no start position)
+ * FiremakingConfig burnHere = FiremakingConfig.builder()
+ *     .logItemId(ItemID.WILLOW_LOGS)
+ *     .startPosition(null)  // Dynamic mode - burn wherever we are
+ *     .burnHereSearchRadius(15)
+ *     .burnHereWalkThreshold(20)
+ *     .targetLogsBurned(27)
+ *     .bankForLogs(false)
  *     .build();
  * }</pre>
  *
@@ -141,10 +156,12 @@ public class FiremakingConfig {
     /**
      * Starting position for firemaking line.
      * Should be the east end of a clear line.
-     * Defaults to GE if not specified.
+     * 
+     * <p>If null, operates in "burn here" mode - burns dynamically from
+     * current player position. This is ideal for cut-and-burn workflows.
      */
-    @Builder.Default
-    WorldPoint startPosition = GE_START_POINT;
+    @Nullable
+    WorldPoint startPosition;
 
     /**
      * Direction to move when making fires.
@@ -161,19 +178,35 @@ public class FiremakingConfig {
     int minLineTiles = 10;
 
     // ========================================================================
+    // Dynamic Burn Mode Configuration
+    // ========================================================================
+
+    /**
+     * Search radius for finding burn locations in burn-here mode.
+     * Only used when startPosition is null (dynamic burn mode).
+     * Tiles are searched within this radius of the current position.
+     */
+    @Builder.Default
+    int burnHereSearchRadius = 10;
+
+    /**
+     * Maximum path cost (in tiles) to walk to a burn spot.
+     * If no spot is available within this cost, a new line will be started nearby.
+     * Only used when startPosition is null (dynamic burn mode).
+     */
+    @Builder.Default
+    int burnHereWalkThreshold = 15;
+
+    // ========================================================================
     // Banking Configuration
     // ========================================================================
 
     /**
      * Whether to bank for more logs when inventory is empty.
+     * When true, the nearest bank will be automatically found.
      */
     @Builder.Default
     boolean bankForLogs = true;
-
-    /**
-     * Bank location ID (from web.json) or null to auto-detect nearest.
-     */
-    String bankLocationId;
 
     // ========================================================================
     // Tinderbox Configuration
@@ -271,6 +304,16 @@ public class FiremakingConfig {
      */
     public boolean hasTimeLimit() {
         return maxDuration != null && !maxDuration.isZero();
+    }
+
+    /**
+     * Check if operating in dynamic burn mode (burn here).
+     * Dynamic mode burns from current position rather than a fixed location.
+     *
+     * @return true if startPosition is null (dynamic mode)
+     */
+    public boolean isDynamicBurnMode() {
+        return startPosition == null;
     }
 }
 

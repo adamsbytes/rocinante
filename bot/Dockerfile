@@ -13,7 +13,21 @@ WORKDIR /build/quest-helper
 RUN chmod +x gradlew && ./gradlew jar --no-daemon
 
 # =============================================================================
-# Stage 2: Build Rocinante plugin
+# Stage 2: Build Shorest Path dependency
+# =============================================================================
+FROM eclipse-temurin:17-jdk-noble AS shortest-path-builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+RUN git clone --depth 1 https://github.com/Skretzo/shortest-path.git
+
+WORKDIR /build/shortest-path
+RUN chmod +x gradlew && ./gradlew jar --no-daemon
+
+# =============================================================================
+# Stage 3: Build Rocinante plugin
 # =============================================================================
 FROM eclipse-temurin:17-jdk-noble AS rocinante-builder
 
@@ -21,6 +35,9 @@ WORKDIR /build
 
 # Copy Quest Helper JAR as compile dependency
 COPY --from=quest-helper-builder /build/quest-helper/build/libs/quest-helper-*.jar /deps/quest-helper.jar
+
+# Copy Shortest Path JAR as compile dependency
+COPY --from=shortest-path-builder /build/shortest-path/build/libs/shortest-path-*.jar /deps/shortest-path.jar
 
 # Copy Gradle wrapper and build files first (better layer caching)
 COPY gradlew gradlew.bat settings.gradle build.gradle ./
@@ -37,7 +54,7 @@ COPY runelite-plugin.properties ./
 RUN ./gradlew jar --no-daemon
 
 # =============================================================================
-# Stage 3: Runtime image
+# Stage 4: Runtime image
 # =============================================================================
 FROM eclipse-temurin:17-jdk-noble AS runtime
 
@@ -220,6 +237,9 @@ COPY --from=rocinante-builder --chown=runelite:runelite /build/build/libs/rocina
 # Copy Quest Helper plugin (built in stage 1, required for quest data)
 # Rename to consistent name for entrypoint.sh to find it
 COPY --from=quest-helper-builder --chown=runelite:runelite /build/quest-helper/build/libs/quest-helper-*.jar .runelite/plugins/quest-helper.jar
+
+# Copy Shortest Path plugin (built in stage 2, required for pathfinding)
+COPY --from=shortest-path-builder --chown=runelite:runelite /build/shortest-path/build/libs/shortest-path-*.jar .runelite/plugins/shortest-path.jar
 
 # Copy automation scripts, templates, and settings
 COPY --chown=runelite:runelite entrypoint.sh /home/runelite/

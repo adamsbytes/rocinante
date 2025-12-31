@@ -3,9 +3,11 @@ package com.rocinante.navigation;
 import lombok.Value;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.TileObject;
 import net.runelite.api.coords.WorldPoint;
 
-import java.util.ArrayList;
+import javax.annotation.Nullable;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -13,8 +15,12 @@ import java.util.Set;
 /**
  * Utilities for finding a reachable adjacent tile to an interactable target.
  *
- * <p>Used to ensure we never attempt to interact with an object/NPC that
- * is separated by fences, rivers, or other collision that blocks adjacency.
+ * <p>Uses {@link CollisionService}'s global collision data to ensure we never attempt
+ * to interact with objects/NPCs that are separated by fences, rivers, or other
+ * blocking terrain.
+ *
+ * @see CollisionService
+ * @see Reachability
  */
 @Slf4j
 @UtilityClass
@@ -27,17 +33,25 @@ public class AdjacentTileHelper {
     };
 
     /**
-     * Find a reachable adjacent tile to the target and the path to it using A*.
+     * Find a reachable adjacent tile to the target with optional footprint.
      *
-     * @param pathFinder pathfinder for local collision-aware routing
-     * @param start      player start position
-     * @param target     target world point
-     * @return best adjacent path if one exists
+     * <p>Uses CollisionService's collision data to validate adjacency.
+     *
+     * @param collision   CollisionService for collision checks
+     * @param reachability optional reachability checker for boundary validation
+     * @param start        player start position
+     * @param target       target world point
+     * @param footprint    optional set of world points representing the target's footprint
+     * @return best adjacent tile if one exists
      */
-    public static Optional<AdjacentPath> findReachableAdjacent(PathFinder pathFinder,
-                                                                WorldPoint start,
-                                                                WorldPoint target) {
-        if (pathFinder == null || start == null || target == null) {
+    public static Optional<AdjacentPath> findReachableAdjacent(
+            CollisionService collision,
+            @Nullable Reachability reachability,
+            WorldPoint start,
+            WorldPoint target,
+            @Nullable Set<WorldPoint> footprint) {
+
+        if (collision == null || start == null || target == null) {
             return Optional.empty();
         }
 
@@ -45,69 +59,59 @@ public class AdjacentTileHelper {
             return Optional.empty();
         }
 
-        AdjacentPath best = null;
+        Set<WorldPoint> effectiveFootprint = (footprint != null && !footprint.isEmpty())
+                ? footprint
+                : Collections.singleton(target);
 
-        for (int[] delta : ADJACENT_DELTAS) {
-            WorldPoint adj = new WorldPoint(target.getX() + delta[0], target.getY() + delta[1], target.getPlane());
-            if (adj.getPlane() != start.getPlane()) {
-                continue;
-            }
-
-            List<WorldPoint> path = pathFinder.findPath(start, adj, true);
-            if (path.isEmpty()) {
-                continue;
-            }
-
-            if (best == null || path.size() < best.path.size()) {
-                best = new AdjacentPath(adj, new ArrayList<>(path));
-            }
-        }
-
-        return Optional.ofNullable(best);
+        return findBestAdjacentTile(collision, reachability, start, effectiveFootprint);
     }
 
     /**
-     * Find a reachable adjacent tile to a multi-tile object using collision-aware reachability.
-     *
-     * <p>This method understands object footprint and verifies that the interaction boundary
-     * is not blocked (fence/river) using {@link Reachability}.</p>
+     * Find a reachable adjacent tile to a simple single-tile target.
      */
-    public static Optional<AdjacentPath> findReachableAdjacent(PathFinder pathFinder,
-                                                                Reachability reachability,
-                                                                WorldPoint start,
-                                                                net.runelite.api.TileObject target) {
-        Set<WorldPoint> footprint = reachability != null ? reachability.getObjectFootprint(target) : null;
-        return findReachableAdjacent(pathFinder, reachability, start, target, footprint);
+    public static Optional<AdjacentPath> findReachableAdjacent(
+            CollisionService collision,
+            WorldPoint start,
+            WorldPoint target) {
+        return findReachableAdjacent(collision, null, start, target, null);
     }
 
     /**
-     * Cache-aware overload using a precomputed footprint.
+     * Find a reachable adjacent tile to a TileObject.
      */
-    public static Optional<AdjacentPath> findReachableAdjacent(PathFinder pathFinder,
-                                                                Reachability reachability,
-                                                                WorldPoint start,
-                                                                net.runelite.api.TileObject target,
-                                                                Set<WorldPoint> precomputedFootprint) {
-        if (pathFinder == null || reachability == null || start == null || target == null) {
+    public static Optional<AdjacentPath> findReachableAdjacent(
+            CollisionService collision,
+            Reachability reachability,
+            WorldPoint start,
+            TileObject target) {
+        if (reachability == null || target == null) {
             return Optional.empty();
         }
-
-        WorldPoint targetOrigin = getObjectOrigin(target);
-        if (targetOrigin == null || targetOrigin.getPlane() != start.getPlane()) {
+        Set<WorldPoint> footprint = reachability.getObjectFootprint(target);
+        WorldPoint origin = TileObjectUtils.getWorldPoint(target);
+        if (origin == null) {
             return Optional.empty();
         }
+        return findReachableAdjacent(collision, reachability, start, origin, footprint);
+    }
 
-        Set<WorldPoint> footprint = precomputedFootprint;
-        if (footprint == null || footprint.isEmpty()) {
-            footprint = reachability.getObjectFootprint(target);
-        }
-        if (footprint == null || footprint.isEmpty()) {
-            return Optional.empty();
-        }
+    /**
+     * Core logic - finds best adjacent tile to any tile in footprint.
+     */
+    private static Optional<AdjacentPath> findBestAdjacentTile(
+            CollisionService collision,
+            @Nullable Reachability reachability,
+            WorldPoint start,
+            Set<WorldPoint> footprint) {
 
-        AdjacentPath best = null;
+        WorldPoint bestTile = null;
+        int bestDistance = Integer.MAX_VALUE;
 
         for (WorldPoint footprintTile : footprint) {
+            if (footprintTile.getPlane() != start.getPlane()) {
+                continue;
+            }
+
             for (int[] delta : ADJACENT_DELTAS) {
                 WorldPoint adj = new WorldPoint(
                         footprintTile.getX() + delta[0],
@@ -119,45 +123,44 @@ public class AdjacentTileHelper {
                     continue;
                 }
 
-                List<WorldPoint> path = pathFinder.findPath(start, adj, true);
-                if (path.isEmpty()) {
+                // Check if tile is blocked
+                if (collision.isBlocked(adj)) {
                     continue;
                 }
 
-                if (!reachability.canInteract(adj, target)) {
-                    log.debug("Rejected adjacent {} for target at {}: boundary blocked", adj, footprintTile);
+                // Check if we can move from adjacent to footprint tile (no fence/wall)
+                if (!collision.canMoveTo(adj, footprintTile)) {
+                    log.debug("Rejected adjacent {} for {}: boundary blocked", adj, footprintTile);
                     continue;
                 }
 
-                if (best == null || path.size() < best.path.size()) {
-                    best = new AdjacentPath(adj, new ArrayList<>(path));
+                // Check boundary with reachability
+                if (!reachability.canInteract(adj, footprintTile)) {
+                    log.debug("Rejected adjacent {} for {}: reachability blocked", adj, footprintTile);
+                    continue;
+                }
+
+                // Keep closest
+                int dist = start.distanceTo(adj);
+                if (dist < bestDistance) {
+                    bestDistance = dist;
+                    bestTile = adj;
                 }
             }
         }
 
-        return Optional.ofNullable(best);
+        if (bestTile != null) {
+            return Optional.of(new AdjacentPath(bestTile, Collections.emptyList()));
+        }
+        return Optional.empty();
     }
 
-    private static WorldPoint getObjectOrigin(net.runelite.api.TileObject target) {
-        if (target instanceof net.runelite.api.GameObject) {
-            return ((net.runelite.api.GameObject) target).getWorldLocation();
-        }
-        if (target instanceof net.runelite.api.WallObject) {
-            return ((net.runelite.api.WallObject) target).getWorldLocation();
-        }
-        if (target instanceof net.runelite.api.DecorativeObject) {
-            return ((net.runelite.api.DecorativeObject) target).getWorldLocation();
-        }
-        if (target instanceof net.runelite.api.GroundObject) {
-            return ((net.runelite.api.GroundObject) target).getWorldLocation();
-        }
-        return null;
-    }
-
+    /**
+     * Result of adjacent tile search.
+     */
     @Value
     public static class AdjacentPath {
         WorldPoint destination;
-        List<WorldPoint> path;
+        List<WorldPoint> path; // Empty - path computed separately by NavigationService
     }
 }
-

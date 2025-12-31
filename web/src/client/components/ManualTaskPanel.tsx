@@ -1,6 +1,6 @@
 import { type Component, createSignal, Show, For, Switch, Match, Suspense } from 'solid-js';
 import type { StatusStore } from '../lib/statusStore';
-import type { TaskSpec } from '../../shared/types';
+import type { TaskSpec, QuestsData } from '../../shared/types';
 import { SkillTaskForm } from './task-forms/SkillTaskForm';
 import { CombatTaskForm } from './task-forms/CombatTaskForm';
 import { NavigationTaskForm } from './task-forms/NavigationTaskForm';
@@ -26,6 +26,8 @@ interface ManualTaskPanelProps {
   statusStore?: StatusStore;
   /** Current player level (for skill method filtering) */
   playerSkills?: Record<string, { level: number }>;
+  /** Live quest data from runtime status */
+  questsData?: QuestsData | null;
   /** Class name for the container */
   class?: string;
   /** When true, shows a disabled/offline state */
@@ -100,6 +102,16 @@ export const ManualTaskPanel: Component<ManualTaskPanelProps> = (props) => {
     if (props.disabled || !props.statusStore) return;
     props.statusStore.sendCommand({ type: 'FORCE_BREAK' });
     setFeedback({ type: 'success', message: 'Break scheduled' });
+    setTimeout(() => setFeedback(null), 3000);
+  };
+
+  /**
+   * Request the bot to refresh quest data.
+   */
+  const handleRefreshQuests = () => {
+    if (props.disabled || !props.statusStore) return;
+    props.statusStore.sendCommand({ type: 'REFRESH_QUESTS' });
+    setFeedback({ type: 'success', message: 'Requested quest data refresh' });
     setTimeout(() => setFeedback(null), 3000);
   };
 
@@ -216,6 +228,8 @@ export const ManualTaskPanel: Component<ManualTaskPanelProps> = (props) => {
             <QuestTaskForm
               onSubmit={handleSubmitTask}
               submitting={submitting()}
+              liveQuestData={props.questsData}
+              onRefreshQuests={handleRefreshQuests}
             />
               </Match>
             </Switch>

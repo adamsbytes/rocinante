@@ -51,7 +51,7 @@
         "methodType": {
           "type": "string",
           "description": "Type of training method",
-          "enum": ["GATHER", "PROCESS", "COMBAT", "RUNECRAFT", "AGILITY", "THIEVING", "FIREMAKING", "MINIGAME"]
+          "enum": ["GATHER", "PROCESS", "COMBAT", "RUNECRAFT", "AGILITY", "THIEVING", "PRAYER", "FIREMAKING", "MINIGAME", "GATHER_AND_PROCESS"]
         },
         "minLevel": {
           "type": "integer",
@@ -79,16 +79,12 @@
           "type": "integer",
           "description": "Estimated GP profit/loss per hour (negative = cost)"
         },
-        "locationId": {
-          "type": "string",
-          "description": "Reference to a node in web.json"
-        },
-        "exactPosition": {
-          "$ref": "#/definitions/worldPoint"
-        },
-        "bankLocationId": {
-          "type": "string",
-          "description": "Bank node ID for banking methods"
+        "locations": {
+          "type": "array",
+          "description": "Available training locations for this method",
+          "items": {
+            "$ref": "#/definitions/location"
+          }
         },
         "targetObjectIds": {
           "type": "array",
@@ -190,6 +186,20 @@
           "type": "integer",
           "description": "Log item ID (for FIREMAKING method type)"
         },
+        "secondarySkill": {
+          "type": "string",
+          "description": "Secondary skill trained (for GATHER_AND_PROCESS methods)",
+          "enum": ["COOKING", "FLETCHING", "FIREMAKING"]
+        },
+        "secondaryXpPerAction": {
+          "type": "number",
+          "description": "XP per processing action (secondary skill)",
+          "minimum": 0
+        },
+        "processingToolId": {
+          "type": "integer",
+          "description": "Processing tool item ID (e.g., knife for fletching, tinderbox for firemaking)"
+        },
         "watchedGroundItems": {
           "type": "array",
           "description": "Ground items to watch for and pick up during training",
@@ -245,6 +255,54 @@
           "default": 0,
           "minimum": 0,
           "maximum": 3
+        }
+      }
+    },
+    "location": {
+      "type": "object",
+      "required": ["id", "name", "actionsPerHour"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique location ID within the method (e.g., 'draynor', 'lumbridge')"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable location name"
+        },
+        "trainingArea": {
+          "$ref": "#/definitions/worldPoint",
+          "description": "Center point of the training area. Bot travels here if player is >15 tiles away. If omitted, training can happen at any bank (no travel enforcement)."
+        },
+        "exactPosition": {
+          "$ref": "#/definitions/worldPoint",
+          "description": "Optional exact position for precise training (e.g., agility courses)"
+        },
+        "actionsPerHour": {
+          "type": "integer",
+          "description": "Expected actions per hour at this location",
+          "minimum": 1
+        },
+        "requirements": {
+          "type": "object",
+          "description": "Location-specific requirements",
+          "properties": {
+            "members": {
+              "type": "boolean"
+            },
+            "quests": {
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "skills": {
+              "type": "object",
+              "additionalProperties": {"type": "integer"}
+            }
+          }
+        },
+        "notes": {
+          "type": "string",
+          "description": "Tips or notes about this location"
         }
       }
     }

@@ -99,7 +99,9 @@ public class TaskFactoryTest {
     public void createsNavigationTaskFromJson() {
         JsonObject spec = new JsonObject();
         spec.addProperty("taskType", "NAVIGATION");
-        spec.addProperty("locationId", "lumbridge_castle");
+        spec.addProperty("x", 3222);
+        spec.addProperty("y", 3219);
+        spec.addProperty("plane", 0);
         spec.addProperty("description", "Walk to Lumbridge");
 
         Optional<Task> task = factory.createTask(spec);

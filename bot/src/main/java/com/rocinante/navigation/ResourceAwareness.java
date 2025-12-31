@@ -518,5 +518,157 @@ public class ResourceAwareness {
         log.debug("  lawMultiplier={}, preferFree={}", 
                 getLawRuneCostMultiplier(), preferFreeTravelMethods());
     }
+
+    // ========================================================================
+    // Transport Availability Methods (for ShortestPath config overrides)
+    // ========================================================================
+
+    /**
+     * Whether teleportation spells should be used.
+     *
+     * <p>HCIM should never use teleportation spells (law runes too risky to farm).
+     * Ironmen with scarce law runes should also avoid them.
+     *
+     * @return true if teleportation spells can be used
+     */
+    public boolean shouldUseTeleportationSpells() {
+        if (accountType.isHardcore()) {
+            // HCIM should never use teleport spells - law runes too precious
+            return false;
+        }
+        if (accountType.isIronman() && lawRuneCount < IRONMAN_LAW_RUNE_SCARCE_THRESHOLD) {
+            // Ironman with scarce law runes - avoid spell teleports
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Whether wilderness should be avoided in pathfinding.
+     *
+     * <p>HCIM should always avoid wilderness (death is permanent).
+     *
+     * @return true if wilderness should be avoided
+     */
+    public boolean shouldAvoidWilderness() {
+        return accountType.isHardcore();
+    }
+
+    /**
+     * Get the teleportation items setting for ShortestPath config.
+     *
+     * <p>Returns one of: "None", "Inventory", "Inventory (perm)", "All", "All (perm)"
+     *
+     * <p>HCIM: Only use permanent (non-consumable) items from inventory
+     * <p>Ironman: Use non-consumable items from inventory
+     * <p>Normal: Use all items from inventory
+     *
+     * @return the useTeleportationItems config value
+     */
+    public String getTeleportationItemsSetting() {
+        if (accountType.isHardcore()) {
+            // HCIM: Only permanent items, never consume charges
+            return "Inventory (perm)";
+        }
+        if (accountType.isIronman()) {
+            // Ironman: Prefer permanent items but allow consumables if resources allow
+            if (jewelryCharges < 5) {
+                return "Inventory (perm)";
+            }
+            return "Inventory";
+        }
+        // Normal accounts: Use whatever is in inventory
+        return "Inventory";
+    }
+
+    /**
+     * Whether charter ships should be used.
+     *
+     * <p>Charter ships cost significant gold. Avoid when broke or on ironman
+     * with limited funds.
+     *
+     * @return true if charter ships should be used
+     */
+    public boolean shouldUseCharterShips() {
+        // Charter ships can cost up to 3200gp - avoid if broke
+        if (goldAmount < BROKE_GOLD_THRESHOLD) {
+            return false;
+        }
+        if (accountType.isIronman() && goldAmount < RICH_GOLD_THRESHOLD) {
+            // Ironmen should be more conservative with gold
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Whether magic carpets should be used.
+     *
+     * <p>Magic carpets cost 200gp per trip. More affordable than charter ships.
+     *
+     * @return true if magic carpets should be used
+     */
+    public boolean shouldUseMagicCarpets() {
+        // 200gp is affordable for most, but avoid if very broke
+        if (goldAmount < 1000) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Whether canoes should be used.
+     *
+     * <p>Canoes are free but require Woodcutting level. Generally safe to enable.
+     *
+     * @return true if canoes should be used
+     */
+    public boolean shouldUseCanoes() {
+        // Canoes are free - always allow
+        return true;
+    }
+
+    /**
+     * Whether grapple shortcuts should be used.
+     *
+     * <p>Grapple shortcuts consume crossbow bolts. Ironmen may want to avoid
+     * to conserve resources.
+     *
+     * @return true if grapple shortcuts should be used
+     */
+    public boolean shouldUseGrappleShortcuts() {
+        if (accountType.isHardcore()) {
+            // HCIM: Avoid risky shortcuts
+            return false;
+        }
+        // Generally allow - the shortcut filtering in ShortestPath handles level requirements
+        return true;
+    }
+
+    /**
+     * Whether wilderness obelisks should be used.
+     *
+     * <p>Wilderness obelisks teleport to random wilderness locations.
+     * HCIM should never use these.
+     *
+     * @return true if wilderness obelisks should be used
+     */
+    public boolean shouldUseWildernessObelisks() {
+        // Never use wilderness obelisks for HCIM
+        return !accountType.isHardcore();
+    }
+
+    /**
+     * Whether teleportation levers should be used.
+     *
+     * <p>Some teleportation levers go to/through wilderness.
+     * Be careful for HCIM.
+     *
+     * @return true if teleportation levers should be used
+     */
+    public boolean shouldUseTeleportationLevers() {
+        // Allow but avoidWilderness setting will prevent dangerous ones
+        return true;
+    }
 }
 

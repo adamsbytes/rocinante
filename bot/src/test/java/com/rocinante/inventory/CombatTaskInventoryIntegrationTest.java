@@ -113,10 +113,7 @@ public class CombatTaskInventoryIntegrationTest {
                 null, // logoutHandler
                 null, // breakScheduler
                 null, // randomization
-                null, // pathFinder
-                null, // webWalker
-                null, // obstacleHandler
-                null, // planeTransitionHandler
+                null, // navigationService
                 inventoryPreparation,
                 null  // questService
         );

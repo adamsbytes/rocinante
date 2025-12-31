@@ -653,32 +653,22 @@ public class UseItemOnNpcTask extends AbstractTask {
 
     /**
      * Find the nearest reachable instance of the target NPC.
-     * Uses EntityFinder for collision-aware NPC selection.
+     * Uses NavigationService for collision-aware NPC selection.
      * NPCs behind fences/rivers are rejected.
      */
     private NPC findNearestNpc(TaskContext ctx, WorldPoint playerPos) {
-        EntityFinder entityFinder = ctx.getEntityFinder();
-
-        // Fall back to simple distance-based search if EntityFinder unavailable
-        if (entityFinder == null) {
-            log.warn("EntityFinder unavailable, falling back to distance-based NPC search");
-            return findNearestNpcByDistance(ctx, playerPos);
-        }
-
-        // Build the set of NPC IDs to search for
+        com.rocinante.navigation.NavigationService navService = ctx.getNavigationService();
         Set<Integer> npcIds = getAllNpcIds();
-        String nameFilter = (npcName != null && !npcName.isEmpty()) ? npcName : null;
 
-        // Use EntityFinder for reachability-aware NPC finding
-        Optional<EntityFinder.NpcSearchResult> result = entityFinder.findNearestReachableNpc(
-                playerPos, npcIds, nameFilter, searchRadius);
+        Optional<com.rocinante.navigation.EntityFinder.NpcSearchResult> result = 
+                navService.findNearestReachableNpc(ctx, playerPos, npcIds, searchRadius);
 
         if (result.isEmpty()) {
             log.debug("No reachable NPC found for IDs {} within {} tiles", npcIds, searchRadius);
             return null;
         }
 
-        EntityFinder.NpcSearchResult searchResult = result.get();
+        com.rocinante.navigation.EntityFinder.NpcSearchResult searchResult = result.get();
         NPC npc = searchResult.getNpc();
         resolvedNpcId = npc.getId();
 
@@ -698,52 +688,6 @@ public class UseItemOnNpcTask extends AbstractTask {
         ids.add(npcId);
         ids.addAll(alternateNpcIds);
         return ids;
-    }
-
-    /**
-     * Fallback: find nearest NPC by distance only (no reachability check).
-     * Used when EntityFinder is unavailable.
-     */
-    private NPC findNearestNpcByDistance(TaskContext ctx, WorldPoint playerPos) {
-        Client client = ctx.getClient();
-
-        NPC nearest = null;
-        int nearestDistance = Integer.MAX_VALUE;
-
-        for (NPC npc : client.getNpcs()) {
-            if (npc == null || npc.isDead()) {
-                continue;
-            }
-
-            // Check ID match - accept primary or alternate IDs
-            int id = npc.getId();
-            if (id != npcId && !alternateNpcIds.contains(id)) {
-                continue;
-            }
-
-            // Check name filter if specified
-            if (npcName != null && !npcName.isEmpty()) {
-                String name = npc.getName();
-                if (name == null || !name.equalsIgnoreCase(npcName)) {
-                    continue;
-                }
-            }
-
-            // Check distance
-            WorldPoint npcPos = npc.getWorldLocation();
-            if (npcPos == null) {
-                continue;
-            }
-
-            int distance = playerPos.distanceTo(npcPos);
-            if (distance <= searchRadius && distance < nearestDistance) {
-                nearest = npc;
-                nearestDistance = distance;
-                resolvedNpcId = id; // Track which NPC ID was resolved
-            }
-        }
-
-        return nearest;
     }
 
     /**

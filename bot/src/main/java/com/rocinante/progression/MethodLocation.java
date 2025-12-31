@@ -11,6 +11,10 @@ import net.runelite.api.coords.WorldPoint;
  * efficiency rates and requirements. The UI allows users to select
  * which location to use.
  *
+ * <p>The {@code trainingArea} field specifies the center of the training area.
+ * The bot will travel to this location before starting training if the player
+ * is more than 15 tiles away.
+ *
  * <p>Examples:
  * <ul>
  *   <li>Willows at Draynor (80 actions/hr) vs Prifddinas (95 actions/hr, requires SotE)</li>
@@ -35,23 +39,23 @@ public class MethodLocation {
     String name;
 
     /**
-     * Reference to a node in web.json for navigation.
-     * Used by WebWalker to path to this location.
+     * Center/optimal spot for training at this location.
+     * The bot will travel here before starting training if not nearby.
+     * Required for all locations.
      */
-    String locationId;
+    WorldPoint trainingArea;
 
     /**
      * Exact position to stand at for optimal training.
      * May be null if general area is sufficient.
+     * When set, used instead of trainingArea for positioning.
+     * 
+     * @deprecated Prefer using {@link #trainingArea} for location enforcement.
+     *             This field is kept for backwards compatibility with methods
+     *             that require precise positioning (e.g., agility courses).
      */
+    @Deprecated
     WorldPoint exactPosition;
-
-    /**
-     * Bank location for methods that require banking.
-     * References a bank node in web.json.
-     * Null for power training methods.
-     */
-    String bankLocationId;
 
     /**
      * Actions per hour achievable at this location.

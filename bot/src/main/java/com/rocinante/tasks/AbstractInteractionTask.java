@@ -1,8 +1,5 @@
 package com.rocinante.tasks;
 
-import com.rocinante.navigation.ObstacleHandler;
-import com.rocinante.navigation.PathFinder;
-import com.rocinante.navigation.Reachability;
 import com.rocinante.tasks.impl.InteractObjectTask;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.coords.WorldPoint;
@@ -26,9 +23,8 @@ import java.util.Optional;
 public abstract class AbstractInteractionTask extends AbstractTask {
 
     /**
-     * Obstacle handling state.
+     * Obstacle handling task (set by checkPathForObstacles).
      */
-    protected ObstacleHandler.DetectedObstacle pendingObstacle;
     protected InteractObjectTask obstacleTask;
 
     /**
@@ -56,40 +52,47 @@ public abstract class AbstractInteractionTask extends AbstractTask {
             return false;
         }
 
+        com.rocinante.navigation.NavigationService navService = ctx.getNavigationService();
+
         // Calculate path if not already available or valid for current positions
         if (currentPath.isEmpty() || !isPathValidFor(start, target)) {
-            PathFinder pathFinder = ctx.getPathFinder();
-            if (pathFinder == null) {
-                return false;
+            // Request path from NavigationService and wait for it
+            navService.requestPath(ctx, start, target);
+            // Wait briefly for path computation
+            int waitAttempts = 0;
+            while (!navService.isPathReady() && waitAttempts < 10) {
+                try {
+                    Thread.sleep(50);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return false;
+                }
+                waitAttempts++;
             }
-            // Use A* to find path (ignoring obstacles to see what blocks us)
-            // Note: We use 'true' for ignoreCache to ensure fresh check
-            currentPath = pathFinder.findPath(start, target, true);
+            currentPath = navService.getCurrentPath();
         }
 
         if (currentPath.isEmpty()) {
             return false;
         }
 
-        ObstacleHandler obstacleHandler = ctx.getObstacleHandler();
-        if (obstacleHandler == null) {
-            return false;
-        }
-
-        // Check path segments for obstacles
+        // Check path segments for obstacles using NavigationService
         WorldPoint previous = start;
         for (WorldPoint point : currentPath) {
             if (previous != null) {
-                Optional<ObstacleHandler.DetectedObstacle> obstacle = 
-                        obstacleHandler.findBlockingObstacle(previous, point);
+                Optional<com.rocinante.navigation.ObstacleHandler.DetectedObstacle> obstacle = 
+                        navService.findBlockingObstacle(previous, point);
                 
                 if (obstacle.isPresent()) {
-                    pendingObstacle = obstacle.get();
-                    log.debug("Found blocking obstacle in path: {} at {}", 
-                            pendingObstacle.getDefinition().getName(), pendingObstacle.getLocation());
+                    log.debug("Found blocking obstacle in path: {} between {} and {}", 
+                            obstacle.get().getDefinition().getName(), previous, point);
                     
-                    // Signal to subclass that obstacle handling is needed
-                    return true;
+                    // Create obstacle task through NavigationService
+                    Optional<InteractObjectTask> obstacleTaskOpt = navService.createHandleTask(obstacle.get());
+                    if (obstacleTaskOpt.isPresent()) {
+                        obstacleTask = obstacleTaskOpt.get();
+                        return true;
+                    }
                 }
             }
             previous = point;
@@ -120,27 +123,9 @@ public abstract class AbstractInteractionTask extends AbstractTask {
      * @return true if obstacle handling is in progress, false if completed or failed
      */
     protected boolean executeHandleObstacleImpl(TaskContext ctx) {
-        if (pendingObstacle == null) {
-            return false;
-        }
-
-        // Create obstacle handling task if needed
+        // obstacleTask is now set directly by checkPathForObstacles
         if (obstacleTask == null) {
-            ObstacleHandler obstacleHandler = ctx.getObstacleHandler();
-            if (obstacleHandler == null) {
-                log.warn("ObstacleHandler not available to handle {}", pendingObstacle.getDefinition().getName());
-                pendingObstacle = null;
-                return false;
-            }
-
-            Optional<InteractObjectTask> taskOpt = obstacleHandler.createHandleTask(pendingObstacle);
-            if (taskOpt.isEmpty()) {
-                log.warn("Could not create task for obstacle: {}", pendingObstacle.getDefinition().getName());
-                pendingObstacle = null;
-                return false;
-            }
-            obstacleTask = taskOpt.get();
-            log.debug("Created obstacle task: {}", obstacleTask.getDescription());
+            return false;
         }
 
         // Execute the obstacle task
@@ -151,10 +136,9 @@ public abstract class AbstractInteractionTask extends AbstractTask {
         }
 
         if (taskState == TaskState.COMPLETED) {
-            log.debug("Successfully handled obstacle: {}", pendingObstacle.getDefinition().getName());
+            log.debug("Successfully handled obstacle: {}", obstacleTask.getDescription());
             
             // Clear obstacle state
-            pendingObstacle = null;
             obstacleTask = null;
             currentPath = Collections.emptyList(); // Clear path to force re-evaluation
             
@@ -164,8 +148,7 @@ public abstract class AbstractInteractionTask extends AbstractTask {
         }
 
         // Failed to handle obstacle
-        log.warn("Failed to handle obstacle: {}", pendingObstacle.getDefinition().getName());
-        pendingObstacle = null;
+        log.warn("Failed to handle obstacle: {}", obstacleTask.getDescription());
         obstacleTask = null;
         return false; // Handling failed (but we're done trying)
     }
@@ -190,4 +173,3 @@ public abstract class AbstractInteractionTask extends AbstractTask {
         interactionHelper.startCameraRotation(target);
     }
 }
-

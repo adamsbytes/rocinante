@@ -22,10 +22,8 @@
 - [X] `Task` interface, `TaskContext`, `TaskExecutor`
 - [X] `CompositeTask`, `ConditionalTask` - Task composition
 - [X] Basic tasks: `WalkToTask`, `InteractObjectTask`, `InteractNpcTask`, `WaitForConditionTask`
-- [X] `PathFinder` - A* on collision maps
-- [X] `WebWalker` - Long-distance navigation via web graph
-- [X] `ObstacleHandler` - Doors, gates
-- [X] `data/web.json` - Initial navigation graph (major cities/banks)
+- [X] `NavigationService` and its dependencies
+- [X] `ShortestPathBridge` - access to tons of transportation info and pathing utils
 
 **Test**: Queue "walk to Varrock bank, open bank, close bank" - executes with humanized behavior.
 

@@ -539,29 +539,22 @@ public class UseItemOnObjectTask extends AbstractTask {
 
     /**
      * Find the nearest reachable instance of the target object.
-     * Uses EntityFinder for collision-aware object selection.
+     * Uses NavigationService for collision-aware object selection.
      * Objects behind fences/rivers are rejected.
      */
     private TileObject findNearestObject(TaskContext ctx, WorldPoint playerPos) {
-        EntityFinder entityFinder = ctx.getEntityFinder();
-
-        // Fall back to simple distance-based search if EntityFinder unavailable
-        if (entityFinder == null) {
-            log.warn("EntityFinder unavailable, falling back to distance-based object search");
-            return findNearestObjectByDistance(ctx, playerPos);
-        }
-
-        // Use EntityFinder for reachability-aware object finding
+        com.rocinante.navigation.NavigationService navService = ctx.getNavigationService();
         Set<Integer> objectIdSet = new HashSet<>(objectIds);
-        Optional<EntityFinder.ObjectSearchResult> result = entityFinder.findNearestReachableObject(
-                playerPos, objectIdSet, searchRadius);
+        
+        Optional<com.rocinante.navigation.EntityFinder.ObjectSearchResult> result = 
+                navService.findNearestReachableObject(ctx, playerPos, objectIdSet, searchRadius);
 
         if (result.isEmpty()) {
             log.debug("No reachable object found for IDs {} within {} tiles", objectIds, searchRadius);
             return null;
         }
 
-        EntityFinder.ObjectSearchResult searchResult = result.get();
+        com.rocinante.navigation.EntityFinder.ObjectSearchResult searchResult = result.get();
         TileObject obj = searchResult.getObject();
         resolvedObjectId = obj.getId();
         
@@ -571,42 +564,6 @@ public class UseItemOnObjectTask extends AbstractTask {
                 searchResult.getPathCost());
 
         return obj;
-    }
-
-    /**
-     * Fallback: find nearest object by distance only (no reachability check).
-     * Used when EntityFinder is unavailable.
-     */
-    private TileObject findNearestObjectByDistance(TaskContext ctx, WorldPoint playerPos) {
-        Client client = ctx.getClient();
-        Scene scene = client.getScene();
-        Tile[][][] tiles = scene.getTiles();
-
-        int playerPlane = playerPos.getPlane();
-        TileObject nearest = null;
-        int nearestDistance = Integer.MAX_VALUE;
-
-        for (int x = 0; x < Constants.SCENE_SIZE; x++) {
-            for (int y = 0; y < Constants.SCENE_SIZE; y++) {
-                Tile tile = tiles[playerPlane][x][y];
-                if (tile == null) {
-                    continue;
-                }
-
-                TileObject obj = findObjectOnTile(tile);
-                if (obj != null) {
-                    WorldPoint objPos = getObjectWorldPoint(obj);
-                    int distance = playerPos.distanceTo(objPos);
-
-                    if (distance <= searchRadius && distance < nearestDistance) {
-                        nearest = obj;
-                        nearestDistance = distance;
-                    }
-                }
-            }
-        }
-
-        return nearest;
     }
 
     /**

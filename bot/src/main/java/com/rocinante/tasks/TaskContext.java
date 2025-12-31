@@ -20,8 +20,7 @@ import com.rocinante.input.RobotKeyboardController;
 import com.rocinante.input.RobotMouseController;
 import com.rocinante.input.SafeClickExecutor;
 import com.rocinante.input.WidgetClickHelper;
-import com.rocinante.navigation.CollisionChecker;
-import com.rocinante.navigation.EntityFinder;
+import com.rocinante.navigation.NavigationService;
 import com.rocinante.navigation.ResourceAwareness;
 import com.rocinante.agility.AgilityCourseRepository;
 import com.rocinante.progression.UnlockTracker;
@@ -151,33 +150,13 @@ public class TaskContext {
     // Navigation System
     // ========================================================================
 
+    /**
+     * Centralized navigation service providing path cost calculation, collision detection,
+     * and entity finding. All navigation operations should go through this service.
+     */
     @Getter
     @Nullable
-    private final com.rocinante.navigation.PathFinder pathFinder;
-
-    @Getter
-    @Nullable
-    private final com.rocinante.navigation.WebWalker webWalker;
-
-    @Getter
-    @Nullable
-    private final com.rocinante.navigation.ObstacleHandler obstacleHandler;
-
-    @Getter
-    @Nullable
-    private final com.rocinante.navigation.PlaneTransitionHandler planeTransitionHandler;
-
-    @Getter
-    @Nullable
-    private final com.rocinante.navigation.Reachability reachability;
-
-    @Getter
-    @Nullable
-    private final CollisionChecker collisionChecker;
-
-    @Getter
-    @Nullable
-    private final EntityFinder entityFinder;
+    private final com.rocinante.navigation.NavigationService navigationService;
 
     // ========================================================================
     // Behavioral System
@@ -312,13 +291,7 @@ public class TaskContext {
             @Nullable LogoutHandler logoutHandler,
             @Nullable BreakScheduler breakScheduler,
             @Nullable Randomization randomization,
-            @Nullable com.rocinante.navigation.PathFinder pathFinder,
-            @Nullable com.rocinante.navigation.WebWalker webWalker,
-            @Nullable com.rocinante.navigation.ObstacleHandler obstacleHandler,
-            @Nullable com.rocinante.navigation.PlaneTransitionHandler planeTransitionHandler,
-            @Nullable com.rocinante.navigation.Reachability reachability,
-            @Nullable CollisionChecker collisionChecker,
-            @Nullable EntityFinder entityFinder,
+            @Nullable com.rocinante.navigation.NavigationService navigationService,
             @Nullable com.rocinante.inventory.InventoryPreparation inventoryPreparation,
             @Nullable QuestService questService) {
         this.client = client;
@@ -347,61 +320,12 @@ public class TaskContext {
         this.logoutHandler = logoutHandler;
         this.breakScheduler = breakScheduler;
         this.randomization = randomization;
-        this.pathFinder = pathFinder;
-        this.webWalker = webWalker;
-        this.obstacleHandler = obstacleHandler;
-        this.planeTransitionHandler = planeTransitionHandler;
-        this.reachability = reachability;
-        this.collisionChecker = collisionChecker;
-        this.entityFinder = entityFinder;
+        this.navigationService = navigationService;
         this.inventoryPreparation = inventoryPreparation;
         this.questService = questService;
         log.debug("TaskContext created");
     }
 
-    /**
-     * Compatibility constructor (pre-reachability). Reachability, CollisionChecker, EntityFinder default to null.
-     */
-    public TaskContext(
-            Client client,
-            Provider<GameStateService> gameStateServiceProvider,
-            RobotMouseController mouseController,
-            RobotKeyboardController keyboardController,
-            HumanTimer humanTimer,
-            @Nullable TargetSelector targetSelector,
-            @Nullable CombatManager combatManager,
-            @Nullable GearSwitcher gearSwitcher,
-            @Nullable FoodManager foodManager,
-            @Nullable InventoryClickHelper inventoryClickHelper,
-            @Nullable GroundItemClickHelper groundItemClickHelper,
-            @Nullable WidgetClickHelper widgetClickHelper,
-            @Nullable MenuHelper menuHelper,
-            @Nullable SafeClickExecutor safeClickExecutor,
-            @Nullable UnlockTracker unlockTracker,
-            @Nullable AgilityCourseRepository agilityCourseRepository,
-            @Nullable PlayerProfile playerProfile,
-            @Nullable PuzzleSolverRegistry puzzleSolverRegistry,
-            @Nullable CameraController cameraController,
-            @Nullable MouseCameraCoupler mouseCameraCoupler,
-            @Nullable ActionSequencer actionSequencer,
-            @Nullable InefficiencyInjector inefficiencyInjector,
-            @Nullable com.rocinante.behavior.PredictiveHoverManager predictiveHoverManager,
-            @Nullable LogoutHandler logoutHandler,
-            @Nullable BreakScheduler breakScheduler,
-            @Nullable Randomization randomization,
-            @Nullable com.rocinante.navigation.PathFinder pathFinder,
-            @Nullable com.rocinante.navigation.WebWalker webWalker,
-            @Nullable com.rocinante.navigation.ObstacleHandler obstacleHandler,
-            @Nullable com.rocinante.navigation.PlaneTransitionHandler planeTransitionHandler,
-            @Nullable com.rocinante.inventory.InventoryPreparation inventoryPreparation,
-            @Nullable QuestService questService) {
-        this(client, gameStateServiceProvider, mouseController, keyboardController, humanTimer,
-                targetSelector, combatManager, gearSwitcher, foodManager, inventoryClickHelper, groundItemClickHelper,
-                widgetClickHelper, menuHelper, safeClickExecutor, unlockTracker, agilityCourseRepository, playerProfile,
-                puzzleSolverRegistry, cameraController, mouseCameraCoupler, actionSequencer, inefficiencyInjector,
-                predictiveHoverManager, logoutHandler, breakScheduler, randomization, pathFinder, webWalker,
-                obstacleHandler, planeTransitionHandler, null, null, null, inventoryPreparation, questService);
-    }
 
     /**
      * Constructor for TaskContext without click helpers.
@@ -415,80 +339,33 @@ public class TaskContext {
             HumanTimer humanTimer,
             @Nullable TargetSelector targetSelector,
             @Nullable CombatManager combatManager) {
+        // Main constructor has 29 params: 5 required + 24 nullable
         this(client, () -> gameStateService, mouseController, keyboardController, humanTimer, 
                 targetSelector, combatManager,
-                null, // gearSwitcher
-                null, // foodManager
-                null, // inventoryClickHelper
-                null, // groundItemClickHelper
-                null, // widgetClickHelper
-                null, // menuHelper
-                null, // safeClickExecutor
-                null, // unlockTracker
-                null, // agilityCourseRepository
-                null, // playerProfile
-                null, // puzzleSolverRegistry
-                null, // cameraController
-                null, // mouseCameraCoupler
-                null, // actionSequencer
-                null, // inefficiencyInjector
-                null, // predictiveHoverManager
-                null, // logoutHandler
-                null, // breakScheduler
-                null, // randomization
-                null, // pathFinder
-                null, // webWalker
-                null, // obstacleHandler
-                null, // planeTransitionHandler
-                null, // reachability
-                null, // collisionChecker
-                null, // entityFinder
-                null, // inventoryPreparation
-                null  // questService
-        );
+                null, null, null, null, null, null, null, // gearSwitcher -> safeClickExecutor (7)
+                null, null, null, null, null, null, null, null, // unlockTracker -> inefficiencyInjector (8)
+                null, null, null, null, // predictiveHoverManager -> randomization (4)
+                null, null, null); // navigationService -> questService (3)
     }
 
     /**
      * Constructor for basic TaskContext without combat system.
-     * Used for testing or non-combat tasks.
+     * Used for testing or non-combat tasks - DEPRECATED, use main constructor.
      */
+    @Deprecated
     public TaskContext(
             Client client,
             GameStateService gameStateService,
             RobotMouseController mouseController,
             RobotKeyboardController keyboardController,
             HumanTimer humanTimer) {
+        // Main constructor has 29 params: 5 required + 24 nullable
         this(client, () -> gameStateService, mouseController, keyboardController, humanTimer, 
-                null, null,
-                null, // gearSwitcher
-                null, // foodManager
-                null, // inventoryClickHelper
-                null, // groundItemClickHelper
-                null, // widgetClickHelper
-                null, // menuHelper
-                null, // safeClickExecutor
-                null, // unlockTracker
-                null, // agilityCourseRepository
-                null, // playerProfile
-                null, // puzzleSolverRegistry
-                null, // cameraController
-                null, // mouseCameraCoupler
-                null, // actionSequencer
-                null, // inefficiencyInjector
-                null, // predictiveHoverManager
-                null, // logoutHandler
-                null, // breakScheduler
-                null, // randomization
-                null, // pathFinder
-                null, // webWalker
-                null, // obstacleHandler
-                null, // planeTransitionHandler
-                null, // reachability
-                null, // collisionChecker
-                null, // entityFinder
-                null, // inventoryPreparation
-                null  // questService
-        );
+                null, null, // targetSelector, combatManager
+                null, null, null, null, null, null, null, // gearSwitcher -> safeClickExecutor (7)
+                null, null, null, null, null, null, null, null, // unlockTracker -> inefficiencyInjector (8)
+                null, null, null, null, // predictiveHoverManager -> randomization (4)
+                null, null, null); // navigationService -> questService (3)
     }
 
     /**
@@ -501,37 +378,13 @@ public class TaskContext {
             RobotKeyboardController keyboardController,
             HumanTimer humanTimer,
             Randomization randomization) {
+        // Main constructor has 29 params: 5 required + 24 nullable
         this(client, () -> gameStateService, mouseController, keyboardController, humanTimer, 
-                null, null,
-                null, // gearSwitcher
-                null, // foodManager
-                null, // inventoryClickHelper
-                null, // groundItemClickHelper
-                null, // widgetClickHelper
-                null, // menuHelper
-                null, // safeClickExecutor
-                null, // unlockTracker
-                null, // agilityCourseRepository
-                null, // playerProfile
-                null, // puzzleSolverRegistry
-                null, // cameraController
-                null, // mouseCameraCoupler
-                null, // actionSequencer
-                null, // inefficiencyInjector
-                null, // predictiveHoverManager
-                null, // logoutHandler
-                null, // breakScheduler
-                randomization,
-                null, // pathFinder
-                null, // webWalker
-                null, // obstacleHandler
-                null, // planeTransitionHandler
-                null, // reachability
-                null, // collisionChecker
-                null, // entityFinder
-                null, // inventoryPreparation
-                null  // questService
-        );
+                null, null, // targetSelector, combatManager
+                null, null, null, null, null, null, null, // gearSwitcher -> safeClickExecutor (7)
+                null, null, null, null, null, null, null, null, // unlockTracker -> inefficiencyInjector (8)
+                null, null, null, randomization, // predictiveHoverManager -> randomization (4)
+                null, null, null); // navigationService -> questService (3)
     }
 
     // ========================================================================

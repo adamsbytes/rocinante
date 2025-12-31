@@ -157,6 +157,7 @@ public class PredictiveHoverManager {
     private final FatigueModel fatigueModel;
     private final AttentionModel attentionModel;
     private final Randomization randomization;
+    private final com.rocinante.navigation.NavigationService navigationService;
 
     // ========================================================================
     // State
@@ -227,11 +228,13 @@ public class PredictiveHoverManager {
             PlayerProfile playerProfile,
             FatigueModel fatigueModel,
             AttentionModel attentionModel,
-            Randomization randomization) {
+            Randomization randomization,
+            com.rocinante.navigation.NavigationService navigationService) {
         this.playerProfile = playerProfile;
         this.fatigueModel = fatigueModel;
         this.attentionModel = attentionModel;
         this.randomization = randomization;
+        this.navigationService = navigationService;
         log.info("PredictiveHoverManager initialized");
     }
 
@@ -243,8 +246,9 @@ public class PredictiveHoverManager {
             FatigueModel fatigueModel,
             AttentionModel attentionModel,
             Randomization randomization,
+            com.rocinante.navigation.NavigationService navigationService,
             @Nullable PredictiveHoverState initialState) {
-        this(playerProfile, fatigueModel, attentionModel, randomization);
+        this(playerProfile, fatigueModel, attentionModel, randomization, navigationService);
         if (initialState != null) {
             currentHover.set(initialState);
         }
@@ -1192,52 +1196,23 @@ public class PredictiveHoverManager {
     }
 
     /**
-     * Calculate walking path cost between two points.
-     * Returns -1 when unreachable. Falls back to straight-line distance if no pathfinder.
+     * Calculate actual walking path cost between two points using NavigationService.
+     * Falls back to straight-line distance if path calculation fails.
      */
     private int getPathCost(TaskContext ctx, WorldPoint start, WorldPoint end) {
-        com.rocinante.navigation.WebWalker webWalker = ctx.getWebWalker();
-        com.rocinante.navigation.PathFinder pathFinder = ctx.getPathFinder();
-        if (webWalker == null || pathFinder == null) {
-            throw new IllegalStateException("Navigation services unavailable in TaskContext");
-        }
-
         if (start.equals(end)) {
             return 1;
         }
-
-        int tileDistance = start.distanceTo(end);
-        if (tileDistance <= com.rocinante.navigation.PathFinder.MAX_PATH_LENGTH) {
-            return localApproachCost(pathFinder, start, end);
+        
+        // Use NavigationService for actual path cost (considers fences, rivers, etc.)
+        java.util.OptionalInt pathCost = navigationService.getPathCost(ctx, start, end);
+        if (pathCost.isPresent()) {
+            return pathCost.getAsInt();
         }
-
-        com.rocinante.navigation.NavigationPath navPath = webWalker.findUnifiedPath(start, end);
-        if (navPath == null || navPath.isEmpty()) {
-            throw new IllegalStateException("Unified path unavailable between " + start + " and " + end);
-        }
-
-        return Math.max(1, navPath.getTotalCostTicks());
-    }
-
-    private int localApproachCost(com.rocinante.navigation.PathFinder pathFinder, WorldPoint start, WorldPoint target) {
-        int best = Integer.MAX_VALUE;
-        int plane = target.getPlane();
-        for (int dx = -1; dx <= 1; dx++) {
-            for (int dy = -1; dy <= 1; dy++) {
-                if (dx == 0 && dy == 0) {
-                    continue;
-                }
-                WorldPoint adj = new WorldPoint(target.getX() + dx, target.getY() + dy, plane);
-                if (adj.getPlane() != start.getPlane()) {
-                    continue;
-                }
-                java.util.List<WorldPoint> path = pathFinder.findPath(start, adj, true);
-                if (!path.isEmpty()) {
-                    best = Math.min(best, path.size());
-                }
-            }
-        }
-        return best == Integer.MAX_VALUE ? -1 : Math.max(1, best);
+        
+        // Path unreachable - fall back to distance estimate with large penalty
+        log.debug("Path unreachable from {} to {}, using distance fallback with penalty", start, end);
+        return Math.max(1, start.distanceTo(end) * 2); // Penalize unreachable paths
     }
 
     /**

@@ -90,6 +90,9 @@ public class GameStateServiceTest {
     @Mock
     private com.rocinante.status.XpTracker xpTracker;
 
+    @Mock
+    private com.rocinante.navigation.PathCostCache pathCostCache;
+
     private GameStateService gameStateService;
 
     @Before
@@ -100,7 +103,8 @@ public class GameStateServiceTest {
                 ironmanState,
                 playerProfile, fatigueModel, breakScheduler, attentionModel,
                 xpTracker,
-                weaponDataService, npcCombatDataLoader, projectileDataLoader);
+                weaponDataService, npcCombatDataLoader, projectileDataLoader,
+                pathCostCache);
         // Wire SlayerPluginService via setter (optional)
         gameStateService.setSlayerPluginService(slayerPluginService);
     }

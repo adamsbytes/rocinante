@@ -14,6 +14,7 @@ package com.rocinante.progression;
  *   <li>PRAYER - Bury bones or offer bones at altars</li>
  *   <li>FIREMAKING - Line-based log burning</li>
  *   <li>MINIGAME - Delegate to MinigameTask implementations</li>
+ *   <li>GATHER_AND_PROCESS - Gather, then process all, then drop/bank</li>
  * </ul>
  */
 public enum MethodType {
@@ -72,6 +73,22 @@ public enum MethodType {
      * Minigame-based training (Wintertodt, Tempoross, Guardians of the Rift, etc.).
      * Pattern: Delegate to specific MinigameTask implementation.
      */
-    MINIGAME
+    MINIGAME,
+
+    /**
+     * Combined gathering and processing training.
+     * Pattern: Gather resources until inventory full → Process all → Drop/Bank/Retain → Repeat.
+     * 
+     * <p>Examples:
+     * <ul>
+     *   <li>Powerfish/Cook: Fish until full, cook all on fire, drop all</li>
+     *   <li>Powerchop/Fletch: Chop until full, fletch all to arrow shafts, retain (stackable)</li>
+     *   <li>Powerchop/Firemake: Chop until full, burn all logs (logs consumed)</li>
+     * </ul>
+     * 
+     * <p>Tracks XP for both primary (gathering) and secondary (processing) skills.
+     * Delegates to specialized tasks: GatherAndCookTask, GatherAndFletchTask, GatherAndFiremakeTask.
+     */
+    GATHER_AND_PROCESS
 }
 

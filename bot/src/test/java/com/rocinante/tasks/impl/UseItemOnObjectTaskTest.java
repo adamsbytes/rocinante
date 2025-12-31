@@ -5,6 +5,8 @@ import com.rocinante.input.InventoryClickHelper;
 import com.rocinante.input.RobotKeyboardController;
 import com.rocinante.input.RobotMouseController;
 import com.rocinante.input.SafeClickExecutor;
+import com.rocinante.navigation.EntityFinder;
+import com.rocinante.navigation.NavigationService;
 import com.rocinante.state.InventoryState;
 import com.rocinante.state.PlayerState;
 import com.rocinante.tasks.TaskContext;
@@ -70,6 +72,9 @@ public class UseItemOnObjectTaskTest {
     @Mock
     private Canvas canvas;
 
+    @Mock
+    private NavigationService navigationService;
+
     private TaskContext taskContext;
     private WorldPoint playerPos;
     private PlayerState playerState;
@@ -99,6 +104,7 @@ public class UseItemOnObjectTaskTest {
         when(taskContext.isLoggedIn()).thenReturn(true);
         when(taskContext.getPlayerState()).thenReturn(playerState);
         when(taskContext.getInventoryState()).thenReturn(inventoryState);
+        when(taskContext.getNavigationService()).thenReturn(navigationService);
 
         // GameStateService
         when(gameStateService.isLoggedIn()).thenReturn(true);
@@ -137,6 +143,20 @@ public class UseItemOnObjectTaskTest {
         when(inventoryState.hasItem(anyInt())).thenReturn(false);
         when(inventoryState.getSlotOf(anyInt())).thenReturn(-1);
         when(inventoryState.getNonEmptyItems()).thenReturn(Collections.emptyList());
+
+        // NavigationService: by default return empty (no reachable object)
+        // Individual tests can use setupNavigationForObject() to make objects reachable
+        when(navigationService.findNearestReachableObject(any(), any(), anySet(), anyInt()))
+                .thenReturn(java.util.Optional.empty());
+    }
+
+    /**
+     * Helper to make NavigationService return a specific object as reachable.
+     */
+    private void setupNavigationForObject(TileObject obj, WorldPoint objPos, int pathCost) {
+        EntityFinder.ObjectSearchResult result = new EntityFinder.ObjectSearchResult(obj, Collections.emptyList(), objPos, pathCost);
+        when(navigationService.findNearestReachableObject(any(), any(), anySet(), anyInt()))
+                .thenReturn(java.util.Optional.of(result));
     }
 
     // ========================================================================
@@ -411,6 +431,10 @@ public class UseItemOnObjectTaskTest {
         Tile[][][] emptyTiles = new Tile[4][Constants.SCENE_SIZE][Constants.SCENE_SIZE];
         when(scene.getTiles()).thenReturn(emptyTiles);
 
+        // Also clear NavigationService result (object is no longer reachable)
+        when(navigationService.findNearestReachableObject(any(), any(), anySet(), anyInt()))
+                .thenReturn(java.util.Optional.empty());
+
         // Execute FIND_OBJECT
         task.execute(taskContext);
 
@@ -615,6 +639,9 @@ public class UseItemOnObjectTaskTest {
         when(tile.getWallObject()).thenReturn(null);
         when(tile.getDecorativeObject()).thenReturn(null);
         when(tile.getGroundObject()).thenReturn(null);
+
+        // Make this object reachable via NavigationService
+        setupNavigationForObject(obj, pos, playerPos.distanceTo(pos) + 1);
         
         return tile;
     }

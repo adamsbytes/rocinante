@@ -11,9 +11,7 @@ import com.rocinante.tasks.TaskState;
 import com.rocinante.tasks.impl.BankTask;
 import com.rocinante.tasks.impl.WalkToTask;
 import com.rocinante.util.ItemCollections;
-import com.rocinante.util.Randomization;
 import lombok.Getter;
-import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.Skill;
@@ -22,9 +20,16 @@ import net.runelite.api.coords.WorldPoint;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 /**
- * Task for line-based firemaking training.
+ * Task for firemaking training supporting both fixed-location and dynamic modes.
+ *
+ * <p>Supports two modes of operation:
+ * <ul>
+ *   <li><b>Fixed mode:</b> Traditional line-based firemaking at a fixed start position</li>
+ *   <li><b>Dynamic mode:</b> Burns from current position, ideal for cut-and-burn workflows</li>
+ * </ul>
  *
  * <p>Implements traditional OSRS firemaking:
  * <ul>
@@ -32,21 +37,34 @@ import java.util.List;
  *   <li>Detects successful fire lighting via animation (ID: 733)</li>
  *   <li>Tracks player movement west after each fire</li>
  *   <li>Repositions to new line start when blocked</li>
- *   <li>Integrates with BankTask for log resupply</li>
+ *   <li>Integrates with BankTask for log resupply (fixed mode only)</li>
  * </ul>
  *
  * <p>Example usage:
  * <pre>{@code
+ * // Fixed mode - traditional GE firemaking
  * FiremakingConfig config = FiremakingConfig.builder()
  *     .logItemId(ItemID.WILLOW_LOGS)
+ *     .startPosition(FiremakingConfig.GE_START_POINT)
  *     .targetLevel(45)
  *     .bankForLogs(true)
+ *     .build();
+ *
+ * // Dynamic mode - burn here (for cut-and-burn)
+ * FiremakingConfig dynamicConfig = FiremakingConfig.builder()
+ *     .logItemId(ItemID.WILLOW_LOGS)
+ *     .startPosition(null)  // Dynamic mode
+ *     .burnHereSearchRadius(15)
+ *     .burnHereWalkThreshold(20)
+ *     .targetLogsBurned(27)
+ *     .bankForLogs(false)
  *     .build();
  *
  * FiremakingSkillTask task = new FiremakingSkillTask(config);
  * }</pre>
  *
  * @see FiremakingConfig
+ * @see BurnLocationFinder
  */
 @Slf4j
 public class FiremakingSkillTask extends AbstractTask {
@@ -265,7 +283,14 @@ public class FiremakingSkillTask extends AbstractTask {
             return;
         }
 
-        // Check if at start position
+        // Dynamic mode: skip movement to start, burn from current position
+        if (config.isDynamicBurnMode()) {
+            log.debug("Dynamic burn mode - starting from current position");
+            transitionToPhase(FiremakingPhase.LIGHTING_FIRE);
+            return;
+        }
+
+        // Fixed mode: Check if at start position
         PlayerState player = ctx.getPlayerState();
         WorldPoint currentPos = player.getWorldPosition();
         WorldPoint startPos = config.getStartPosition();
@@ -448,15 +473,26 @@ public class FiremakingSkillTask extends AbstractTask {
         PlayerState player = ctx.getPlayerState();
         WorldPoint currentPos = player.getWorldPosition();
 
-        // If we've moved significantly west, we might be at end of line
-        int distanceFromStart = Math.abs(currentPos.getX() - config.getStartPosition().getX());
-        if (distanceFromStart >= config.getMinLineTiles()) {
-            log.debug("Reached end of line (distance {}), repositioning", distanceFromStart);
-            transitionToPhase(FiremakingPhase.REPOSITIONING);
-        } else {
-            // Continue with next fire
+        // Dynamic mode: always check if current position is good, reposition if needed
+        if (config.isDynamicBurnMode()) {
+            // In dynamic mode, just try to continue - will reposition if blocked
             transitionToPhase(FiremakingPhase.LIGHTING_FIRE);
+            return;
         }
+
+        // Fixed mode: If we've moved significantly west, we might be at end of line
+        WorldPoint startPos = config.getStartPosition();
+        if (startPos != null) {
+            int distanceFromStart = Math.abs(currentPos.getX() - startPos.getX());
+            if (distanceFromStart >= config.getMinLineTiles()) {
+                log.debug("Reached end of line (distance {}), repositioning", distanceFromStart);
+                transitionToPhase(FiremakingPhase.REPOSITIONING);
+                return;
+            }
+        }
+
+        // Continue with next fire
+        transitionToPhase(FiremakingPhase.LIGHTING_FIRE);
     }
 
     // ========================================================================
@@ -468,8 +504,18 @@ public class FiremakingSkillTask extends AbstractTask {
             // Find new line start position
             WorldPoint newStart = findNewLineStart(ctx);
             if (newStart == null) {
-                // Fall back to configured start
-                newStart = config.getStartPosition();
+                // Fall back to current position in dynamic mode, or configured start in fixed mode
+                newStart = config.isDynamicBurnMode()
+                        ? ctx.getPlayerState().getWorldPosition()
+                        : config.getStartPosition();
+            }
+
+            // If we're already at the target position, just transition to lighting
+            WorldPoint currentPos = ctx.getPlayerState().getWorldPosition();
+            if (currentPos.equals(newStart)) {
+                log.debug("Already at reposition target, continuing to light fire");
+                transitionToPhase(FiremakingPhase.LIGHTING_FIRE);
+                return;
             }
 
             activeSubTask = new WalkToTask(newStart)
@@ -480,10 +526,52 @@ public class FiremakingSkillTask extends AbstractTask {
 
     /**
      * Find a new clear line start position.
-     * Tries to find a position north or south of the current line.
+     * In dynamic mode, uses BurnLocationFinder to find optimal burn spot.
+     * In fixed mode, tries positions north/south of configured start.
      */
     private WorldPoint findNewLineStart(TaskContext ctx) {
+        if (config.isDynamicBurnMode()) {
+            return findDynamicBurnLocation(ctx);
+        } else {
+            return findFixedLineBurnLocation(ctx);
+        }
+    }
+
+    /**
+     * Find a burn location in dynamic mode using path cost optimization.
+     */
+    private WorldPoint findDynamicBurnLocation(TaskContext ctx) {
+        WorldPoint currentPos = ctx.getPlayerState().getWorldPosition();
+
+        Optional<BurnLocationFinder.BurnLocation> burnLoc = BurnLocationFinder.findOptimalBurnLocation(
+                ctx,
+                currentPos,
+                config.getBurnHereSearchRadius(),
+                config.getBurnHereWalkThreshold()
+        );
+
+        if (burnLoc.isPresent()) {
+            BurnLocationFinder.BurnLocation loc = burnLoc.get();
+            log.debug("Found dynamic burn location {} tiles away (on same line: {})",
+                    loc.getPathCost(), loc.isOnSameLine());
+            return loc.getPosition();
+        }
+
+        // Fallback: find any clear spot nearby
+        log.debug("No optimal burn location found, using fallback");
+        return BurnLocationFinder.findClearSpotNearby(ctx, currentPos);
+    }
+
+    /**
+     * Find a burn location in fixed mode using Y-offset search.
+     */
+    private WorldPoint findFixedLineBurnLocation(TaskContext ctx) {
         WorldPoint currentStart = config.getStartPosition();
+        if (currentStart == null) {
+            // Shouldn't happen in fixed mode, but handle gracefully
+            return ctx.getPlayerState().getWorldPosition();
+        }
+
         WorldPoint playerPos = ctx.getPlayerState().getWorldPosition();
 
         // Try positions north and south of current start
@@ -498,7 +586,6 @@ public class FiremakingSkillTask extends AbstractTask {
 
             // Basic distance check (don't go too far)
             if (candidate.distanceTo(playerPos) < 30) {
-                // Could add tile collision checking here with WorldState
                 return candidate;
             }
         }

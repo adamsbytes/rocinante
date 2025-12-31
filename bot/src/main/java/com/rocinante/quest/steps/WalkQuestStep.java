@@ -118,7 +118,8 @@ public class WalkQuestStep extends QuestStep {
         WalkToTask walkTask;
 
         if (namedLocation != null) {
-            walkTask = WalkToTask.toLocation(namedLocation);
+            // Named locations no longer supported - this is a data error
+            throw new IllegalStateException("Named locations not supported. WalkQuestStep should use coordinates. namedLocation: " + namedLocation);
         } else if (targetObjectId > 0) {
             walkTask = WalkToTask.toObject(targetObjectId);
         } else if (targetNpcId > 0) {

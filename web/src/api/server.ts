@@ -31,8 +31,6 @@ import {
   getTrainingMethodsBySkill,
   getLocations,
   getLocationsByType,
-  getQuests,
-  getQuestsFiltered,
 } from './data';
 import { listScreenshots, getScreenshotFile } from './screenshots';
 import type { ApiResponse, BotConfig, BotWithStatus, BotRuntimeStatus, LocationInfo, EnvironmentConfig } from '../shared/types';
@@ -504,18 +502,6 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
       }
     } catch (err) {
       return error(err instanceof Error ? err.message : 'Failed to load locations');
-    }
-  }
-
-  // Quests
-  if (path === '/api/data/quests' && method === 'GET') {
-    try {
-      const membersParam = url.searchParams.get('members');
-      const members = membersParam === 'true' ? true : membersParam === 'false' ? false : undefined;
-      const data = getQuestsFiltered(members);
-      return success(data);
-    } catch (err) {
-      return error(err instanceof Error ? err.message : 'Failed to load quests');
     }
   }
 

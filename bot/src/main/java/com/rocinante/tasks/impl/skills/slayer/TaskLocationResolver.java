@@ -1,9 +1,9 @@
 package com.rocinante.tasks.impl.skills.slayer;
 
-import com.rocinante.navigation.NavigationPath;
-import com.rocinante.navigation.WebWalker;
+import com.rocinante.navigation.NavigationService;
 import com.rocinante.progression.UnlockTracker;
 import com.rocinante.state.IronmanState;
+import com.rocinante.tasks.TaskContext;
 import lombok.Builder;
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
@@ -15,6 +15,7 @@ import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.util.*;
+import java.util.OptionalInt;
 import java.util.stream.Collectors;
 
 /**
@@ -57,16 +58,16 @@ public class TaskLocationResolver {
 
     private final SlayerDataLoader dataLoader;
     private final UnlockTracker unlockTracker;
-    private final WebWalker webWalker;
+    private final NavigationService navigationService;
 
     @Inject
     public TaskLocationResolver(
             SlayerDataLoader dataLoader,
             UnlockTracker unlockTracker,
-            WebWalker webWalker) {
+            NavigationService navigationService) {
         this.dataLoader = dataLoader;
         this.unlockTracker = unlockTracker;
-        this.webWalker = webWalker;
+        this.navigationService = navigationService;
     }
 
     /**
@@ -319,7 +320,7 @@ public class TaskLocationResolver {
 
         // Distance penalty (if player location known)
         if (playerLocation != null && options.isConsiderDistance()) {
-            int distance = estimateDistance(playerLocation, location.getCenter());
+            int distance = estimateDistance(null, playerLocation, location.getCenter());
             
             // Unreachable locations get massive penalty
             if (distance == Integer.MAX_VALUE) {
@@ -345,7 +346,7 @@ public class TaskLocationResolver {
     }
 
     /**
-     * Estimate walking distance between two points using WebWalker pathfinding.
+     * Estimate walking distance between two points using ShortestPathBridge.
      * 
      * <p>This provides accurate distance calculations that account for:
      * <ul>
@@ -356,25 +357,22 @@ public class TaskLocationResolver {
      *
      * @param from starting point
      * @param to destination point
-     * @return estimated distance in game ticks, or Integer.MAX_VALUE if unreachable
+     * @return estimated distance in tiles, or Integer.MAX_VALUE if unreachable
      */
-    private int estimateDistance(WorldPoint from, WorldPoint to) {
+    private int estimateDistance(@Nullable TaskContext ctx, WorldPoint from, WorldPoint to) {
         if (from == null || to == null) {
             return Integer.MAX_VALUE;
         }
 
-        // Use WebWalker for accurate pathfinding distance
-        NavigationPath path = webWalker.findUnifiedPath(from, to);
+        OptionalInt pathCost = navigationService.getPathCost(ctx, from, to);
         
-        if (path.isEmpty()) {
+        if (pathCost.isEmpty()) {
             log.debug("No path found from {} to {} - marking as unreachable", from, to);
             return Integer.MAX_VALUE;
         }
 
-        // Return total cost in ticks as distance estimate
-        int cost = path.getTotalCostTicks();
-        log.debug("Path distance from {} to {}: {} ticks ({} edges)", 
-                from, to, cost, path.size());
+        int cost = pathCost.getAsInt();
+        log.debug("Path distance from {} to {}: {} tiles", from, to, cost);
         
         return cost;
     }

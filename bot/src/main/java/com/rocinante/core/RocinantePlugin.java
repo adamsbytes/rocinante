@@ -44,6 +44,7 @@ import com.rocinante.tasks.TaskPriority;
 import com.rocinante.timing.HumanTimer;
 import com.rocinante.quest.QuestExecutor;
 import com.rocinante.quest.QuestService;
+import com.rocinante.navigation.ShortestPathBridge;
 import com.rocinante.util.Randomization;
 import com.rocinante.behavior.tasks.MicroPauseTask;
 import com.rocinante.behavior.tasks.ShortBreakTask;
@@ -141,6 +142,10 @@ public class RocinantePlugin extends Plugin
     @Inject
     @Getter
     private QuestService questService;
+
+    @Inject
+    @Getter
+    private ShortestPathBridge shortestPathBridge;
 
     // === State Components ===
 
@@ -251,6 +256,13 @@ public class RocinantePlugin extends Plugin
     private Instant questHelperWaitStart;
     private boolean questHelperInitialized = false;
     private boolean questHelperTimeoutReported = false;
+
+    // Shortest Path waiting state
+    private static final String SHORTEST_PATH_CLASS = "shortestpath.ShortestPathPlugin";
+    private static final Duration SHORTEST_PATH_TIMEOUT = Duration.ofSeconds(30);
+    private Instant shortestPathWaitStart;
+    private boolean shortestPathInitialized = false;
+    private boolean shortestPathTimeoutReported = false;
 
     @Override
     protected void startUp() throws Exception
@@ -412,6 +424,15 @@ public class RocinantePlugin extends Plugin
             log.info("Waiting for Quest Helper plugin to load (timeout: {}s)...", QUEST_HELPER_TIMEOUT.getSeconds());
         }
 
+        // Try to initialize Shortest Path immediately (might already be loaded)
+        if (tryInitializeShortestPath()) {
+            log.info("Shortest Path navigation integration ready");
+        } else {
+            // Shortest Path not loaded yet, start waiting
+            shortestPathWaitStart = Instant.now();
+            log.info("Waiting for Shortest Path plugin to load (timeout: {}s)...", SHORTEST_PATH_TIMEOUT.getSeconds());
+        }
+
         // Ensure required RuneLite plugins are enabled
         ensureRequiredPluginsEnabled();
 
@@ -427,6 +448,8 @@ public class RocinantePlugin extends Plugin
                 inefficiencyInjector != null, logoutHandler != null);
         log.info("  StatusSystem: {} (waiting for Quest Helper: {})",
                 questHelperInitialized ? "started" : "pending", !questHelperInitialized);
+        log.info("  Navigation: {} (waiting for Shortest Path: {})",
+                shortestPathInitialized ? "SP-backed" : "pending", !shortestPathInitialized);
     }
 
     /**
@@ -491,13 +514,41 @@ public class RocinantePlugin extends Plugin
             return true;
         }
         
-            // Find Quest Helper plugin instance
-            for (Plugin plugin : pluginManager.getPlugins()) {
-                if (plugin.getClass().getName().equals(QUEST_HELPER_CLASS)) {
+        // Find Quest Helper plugin instance
+        for (Plugin plugin : pluginManager.getPlugins()) {
+            if (plugin.getClass().getName().equals(QUEST_HELPER_CLASS)) {
                 questService.initializeQuestHelper(plugin);
                 questHelperInitialized = true;
                 log.info("Quest Helper integration initialized");
                 return true;
+            }
+        }
+        
+        return false;
+    }
+
+    /**
+     * Try to find and initialize Shortest Path plugin.
+     * @return true if Shortest Path was found and initialized, false if not yet loaded
+     */
+    private boolean tryInitializeShortestPath() {
+        if (shortestPathInitialized) {
+            return true;
+        }
+        
+        // Find Shortest Path plugin instance
+        for (Plugin plugin : pluginManager.getPlugins()) {
+            if (plugin.getClass().getName().equals(SHORTEST_PATH_CLASS)) {
+                try {
+                    shortestPathBridge.initialize(plugin);
+                    shortestPathInitialized = true;
+                    log.info("Shortest Path navigation integration initialized");
+                    return true;
+                } catch (Exception e) {
+                    log.error("Failed to initialize Shortest Path bridge: {}", e.getMessage(), e);
+                    shortestPathTimeoutReported = true; // Don't keep trying
+                    return false;
+                }
             }
         }
         
@@ -516,52 +567,69 @@ public class RocinantePlugin extends Plugin
     
     /**
      * Handle external plugins being loaded/changed.
-     * Quest Helper is an external plugin that may load after our plugin.
+     * Quest Helper and Shortest Path are external plugins that may load after our plugin.
      */
     @Subscribe
     public void onExternalPluginsChanged(ExternalPluginsChanged event) {
-        if (questHelperInitialized) {
-            return;
+        // Check Quest Helper
+        if (!questHelperInitialized && tryInitializeQuestHelper()) {
+            startStatusSystems();
         }
         
-        if (tryInitializeQuestHelper()) {
-            startStatusSystems();
+        // Check Shortest Path
+        if (!shortestPathInitialized && tryInitializeShortestPath()) {
+            log.info("Shortest Path navigation integration ready (loaded via external plugins)");
         }
     }
     
     /**
-     * Check for Quest Helper on each game tick during warmup period.
-     * Also enforces timeout - logs error once if Quest Helper not found.
+     * Check for Quest Helper and Shortest Path on each game tick during warmup period.
+     * Also enforces timeout - logs error once if required plugins not found.
      */
     @Subscribe
     public void onGameTick(GameTick tick) {
-        if (questHelperInitialized || questHelperTimeoutReported) {
-            return;
-        }
-        
-        // Check if Quest Helper appeared
-        if (tryInitializeQuestHelper()) {
-            startStatusSystems();
-            return;
-        }
-        
-        // Check timeout
-        if (questHelperWaitStart != null) {
-            Duration elapsed = Duration.between(questHelperWaitStart, Instant.now());
-            if (elapsed.compareTo(QUEST_HELPER_TIMEOUT) > 0) {
-                // Final check before failing
-                if (tryInitializeQuestHelper()) {
-                    startStatusSystems();
-                    return;
+        // Check Quest Helper
+        if (!questHelperInitialized && !questHelperTimeoutReported) {
+            if (tryInitializeQuestHelper()) {
+                startStatusSystems();
+            } else if (questHelperWaitStart != null) {
+                Duration elapsed = Duration.between(questHelperWaitStart, Instant.now());
+                if (elapsed.compareTo(QUEST_HELPER_TIMEOUT) > 0) {
+                    if (tryInitializeQuestHelper()) {
+                        startStatusSystems();
+                    } else {
+                        questHelperTimeoutReported = true;
+                        log.error("Quest Helper plugin not found after {}s timeout. Quest Helper is REQUIRED.", 
+                                QUEST_HELPER_TIMEOUT.getSeconds());
+                        log.error("Status publishing and quest data will NOT be available!");
+                        log.error("Ensure Quest Helper is installed from Plugin Hub and enabled.");
+                    }
                 }
-                
-                // Timeout exceeded - log error ONCE and mark as failed
-                // (Can't throw here - RuneLite catches and ignores exceptions in event handlers)
-                questHelperTimeoutReported = true;
-                log.error("Quest Helper plugin not found after {}s timeout. Quest Helper is REQUIRED.", 
-                        QUEST_HELPER_TIMEOUT.getSeconds());
-                log.error("Status publishing and quest data will NOT be available!");
-                log.error("Ensure Quest Helper is installed from Plugin Hub and enabled.");
+            }
+        }
+        
+        // Check Shortest Path
+        if (!shortestPathInitialized && !shortestPathTimeoutReported) {
+            if (tryInitializeShortestPath()) {
+                log.info("Shortest Path navigation integration ready");
+            } else if (shortestPathWaitStart != null) {
+                Duration elapsed = Duration.between(shortestPathWaitStart, Instant.now());
+                if (elapsed.compareTo(SHORTEST_PATH_TIMEOUT) > 0) {
+                    if (tryInitializeShortestPath()) {
+                        log.info("Shortest Path navigation integration ready");
+                    } else {
+                        shortestPathTimeoutReported = true;
+                        log.error("Shortest Path plugin not found after {}s timeout. Shortest Path is REQUIRED.", 
+                                SHORTEST_PATH_TIMEOUT.getSeconds());
+                        log.error("Navigation will NOT work correctly without Shortest Path!");
+                        log.error("Ensure Shortest Path is installed from Plugin Hub and enabled.");
+                        // Stop TaskExecutor if running - tasks cannot execute without navigation
+                        if (taskExecutor.getEnabled().get()) {
+                            log.error("STOPPING TaskExecutor - navigation unavailable!");
+                            taskExecutor.stop();
+                        }
+                    }
+                }
             }
         }
     }

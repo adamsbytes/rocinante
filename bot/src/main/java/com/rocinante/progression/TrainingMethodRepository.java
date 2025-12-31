@@ -225,6 +225,17 @@ public class TrainingMethodRepository {
             builder.logItemId(obj.get("logItemId").getAsInt());
         }
 
+        // Gather-and-Process configuration
+        if (obj.has("secondarySkill")) {
+            builder.secondarySkill(Skill.valueOf(obj.get("secondarySkill").getAsString().toUpperCase()));
+        }
+        if (obj.has("secondaryXpPerAction")) {
+            builder.secondaryXpPerAction(obj.get("secondaryXpPerAction").getAsDouble());
+        }
+        if (obj.has("processingToolId")) {
+            builder.processingToolId(obj.get("processingToolId").getAsInt());
+        }
+
         // Notes
         if (obj.has("notes")) {
             builder.notes(obj.get("notes").getAsString());
@@ -247,10 +258,16 @@ public class TrainingMethodRepository {
             builder.name(locObj.get("name").getAsString());
             builder.actionsPerHour(locObj.get("actionsPerHour").getAsInt());
 
-            // Optional fields
-            if (locObj.has("locationId")) {
-                builder.locationId(locObj.get("locationId").getAsString());
+            // Training area (required for location enforcement)
+            if (locObj.has("trainingArea")) {
+                JsonObject area = locObj.getAsJsonObject("trainingArea");
+                builder.trainingArea(new WorldPoint(
+                        area.get("x").getAsInt(),
+                        area.get("y").getAsInt(),
+                        area.has("plane") ? area.get("plane").getAsInt() : 0
+                ));
             }
+            // Exact position (optional, for precise positioning)
             if (locObj.has("exactPosition")) {
                 JsonObject pos = locObj.getAsJsonObject("exactPosition");
                 builder.exactPosition(new WorldPoint(
@@ -258,9 +275,6 @@ public class TrainingMethodRepository {
                         pos.get("y").getAsInt(),
                         pos.has("plane") ? pos.get("plane").getAsInt() : 0
                 ));
-            }
-            if (locObj.has("bankLocationId")) {
-                builder.bankLocationId(locObj.get("bankLocationId").getAsString());
             }
             if (locObj.has("requirements")) {
                 builder.requirements(parseRequirements(locObj.getAsJsonObject("requirements")));

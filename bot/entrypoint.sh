@@ -205,7 +205,7 @@ echo "VNC server started on socket: $VNC_SOCKET_PATH"
 # =============================================================================
 # Install RuneLite settings from template
 # =============================================================================
-# The template contains all plugin settings including Quest Helper and Screenshot.
+# The template contains all plugin settings including Quest Helper, Shortest Path, and Screenshot.
 # Settings are applied to:
 #   1. Main settings.properties files
 #   2. User profile files in profiles2/
@@ -315,7 +315,7 @@ echo "2FA Enabled: $([ -n "$TOTP_SECRET" ] && echo 'Yes (TOTP)' || echo 'No')"
 echo "Ironman Mode: ${IRONMAN_MODE:-false}"
 echo "Ironman Type: ${IRONMAN_TYPE:-N/A}"
 echo "Game Size: ${GAME_SIZE:-960x540}"
-echo "Quest Helper: Pre-configured for auto-install"
+echo "Quest Helper / Shortest Path: Pre-configured for auto-install"
 echo "VNC: Enabled (port 5900)"
 echo "Fast Track: $([ -f "$JAGEX_SESSION_FILE" ] && [ -s "$JAGEX_SESSION_FILE" ] && echo 'Available (saved session)' || echo 'Not available (first run)')"
 echo "================================================="
@@ -336,6 +336,7 @@ BOLT_HOME="$HOME/.local/share/bolt-launcher"
 REPO_DIR="$BOLT_HOME/.runelite/repository2"
 PLUGIN_JAR="$BOLT_HOME/.runelite/plugins/rocinante-0.1.0-SNAPSHOT.jar"
 QUEST_HELPER_JAR="$BOLT_HOME/.runelite/plugins/quest-helper.jar"
+SHORT_PATH_JAR="$BOLT_HOME/.runelite/plugins/shortest-path.jar"
 CREDENTIALS_FILE="$BOLT_HOME/.runelite/credentials.properties"
 BOLT_RUNELITE_PLUGINS="$BOLT_HOME/.runelite/plugins"
 # Persistent Jagex session env vars - enables fast track on subsequent launches
@@ -356,6 +357,14 @@ if [ -f "$HOME/.runelite/plugins/quest-helper.jar" ]; then
 else
     echo "WARNING: Quest Helper JAR not found in ~/.runelite/plugins/"
 fi
+
+if [ -f "$HOME/.runelite/plugins/shortest-path.jar" ]; then
+    echo "Copying Shortest Path plugin to Bolt's plugin directory..."
+    cp "$HOME/.runelite/plugins/shortest-path.jar" "$BOLT_RUNELITE_PLUGINS/"
+else
+    echo "WARNING: Shortest Path JAR not found in ~/.runelite/plugins/"
+fi
+
 echo "Plugins in Bolt directory:"
 ls -la "$BOLT_RUNELITE_PLUGINS/"
 
@@ -386,10 +395,13 @@ build_classpath() {
             RUNELITE_CP="$jar"
         fi
     done
-    # Add our plugin and Quest Helper to the classpath
+    # Add our plugin and external plugins to the classpath
     RUNELITE_CP="$RUNELITE_CP:$PLUGIN_JAR"
     if [ -f "$QUEST_HELPER_JAR" ]; then
         RUNELITE_CP="$RUNELITE_CP:$QUEST_HELPER_JAR"
+    fi
+    if [ -f "$SHORT_PATH_JAR" ]; then
+        RUNELITE_CP="$RUNELITE_CP:$SHORT_PATH_JAR"
     fi
     echo "$RUNELITE_CP"
 }
@@ -419,11 +431,11 @@ defaultworld.defaultWorld=$DEFAULT_WORLD
 defaultworld.useLastWorld=false
 EOF
     
-    # Ensure Quest Helper is in externalPlugins
-    if ! grep -q "runelite.externalPlugins=.*quest-helper" "$RUNELITE_SETTINGS" 2>/dev/null; then
+    # Ensure Quest Helper and Shortest Path are in externalPlugins
+    if ! grep -q "runelite.externalPlugins=.*quest-helper,shortest-path" "$RUNELITE_SETTINGS" 2>/dev/null; then
         sed -i '/^runelite\.externalPlugins=/d' "$RUNELITE_SETTINGS" 2>/dev/null || true
-        echo "runelite.externalPlugins=quest-helper" >> "$RUNELITE_SETTINGS"
-        echo "Added Quest Helper to externalPlugins"
+        echo "runelite.externalPlugins=quest-helper,shortest-path" >> "$RUNELITE_SETTINGS"
+        echo "Added Quest Helper and Shortest Path to externalPlugins"
     fi
     
     # Enable Quest Helper plugin in settings.properties (fallback when no profile exists)
@@ -436,6 +448,13 @@ questhelpervars.selected-assist-level=true
 EOF
         echo "Enabled Quest Helper plugin in settings"
     fi
+
+    # Enable Shortest Path plugin in settings.properties (fallback when no profile exists)
+    if ! grep -q "^runelite\.shortestpathplugin=true" "$RUNELITE_SETTINGS" 2>/dev/null; then
+        sed -i '/^runelite\.shortestpathplugin=/d' "$RUNELITE_SETTINGS" 2>/dev/null || true
+        echo "runelite.shortestpathplugin=true" >> "$RUNELITE_SETTINGS"
+        echo "Enabled Shortest Path plugin in settings"
+    fi
     
     # IMPORTANT: RuneLite uses profile-specific config files that override settings.properties
     # Update ALL existing profile files to ensure settings take effect
@@ -447,6 +466,7 @@ EOF
                 # Remove existing settings we're about to set
                 sed -i '/^defaultworld\./d' "$profile_file" 2>/dev/null || true
                 sed -i '/^runelite\.questhelperplugin=/d' "$profile_file" 2>/dev/null || true
+                sed -i '/^runelite\.shortestpathplugin=/d' "$profile_file" 2>/dev/null || true
                 sed -i '/^runelite\.externalPlugins=/d' "$profile_file" 2>/dev/null || true
                 sed -i '/^questhelpervars\./d' "$profile_file" 2>/dev/null || true
                 # Add our settings - enable Quest Helper plugin
@@ -456,8 +476,9 @@ EOF
                 cat >> "$profile_file" << EOF
 defaultworld.defaultWorld=$DEFAULT_WORLD
 defaultworld.useLastWorld=false
-runelite.externalPlugins=quest-helper
+runelite.externalPlugins=quest-helper,shortest-path
 runelite.questhelperplugin=true
+runelite.shortestpathplugin=true
 questhelpervars.selected-assist-level=true
 EOF
             fi
@@ -470,8 +491,9 @@ EOF
         cat > "$DEFAULT_PROFILE" << EOF
 defaultworld.defaultWorld=$DEFAULT_WORLD
 defaultworld.useLastWorld=false
-runelite.externalPlugins=quest-helper
+runelite.externalPlugins=quest-helper,shortest-path
 runelite.questhelperplugin=true
+runelite.shortestpathplugin=true
 questhelpervars.selected-assist-level=true
 EOF
     fi

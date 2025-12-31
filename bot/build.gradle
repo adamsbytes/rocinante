@@ -26,6 +26,11 @@ dependencies {
         compileOnly files('/deps/quest-helper.jar')
     }
 
+    // Shortest Path - built from source in Docker build stage
+    if (file('/deps/shortest-path.jar').exists()) {
+        compileOnly files('/deps/shortest-path.jar')
+    }
+
     // Lombok for boilerplate reduction
     compileOnly 'org.projectlombok:lombok:1.18.34'
     annotationProcessor 'org.projectlombok:lombok:1.18.34'

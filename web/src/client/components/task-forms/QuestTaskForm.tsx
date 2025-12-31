@@ -1,4 +1,4 @@
-import { type Component, createSignal, createResource, For, Show, createMemo, createEffect } from 'solid-js';
+import { type Component, createSignal, For, Show, createMemo } from 'solid-js';
 import type { QuestTaskSpec, QuestInfo, QuestsData, QuestSummary } from '../../../shared/types';
 
 interface QuestTaskFormProps {
@@ -19,16 +19,6 @@ const DIFFICULTIES = [
   { value: 'GRANDMASTER', label: '⭐⭐⭐⭐⭐ Grandmaster' },
   { value: 'MINIQUEST', label: '📜 Miniquest' },
 ] as const;
-
-/**
- * Fetch quests from static API (fallback when no live data).
- */
-async function fetchQuests(): Promise<QuestInfo[]> {
-  const response = await fetch('/api/data/quests');
-  if (!response.ok) throw new Error('Failed to load quests');
-  const data = await response.json();
-  return data.data;
-}
 
 /**
  * Convert live QuestSummary to QuestInfo for unified display.
@@ -56,27 +46,26 @@ function liveQuestToInfo(quest: QuestSummary): QuestInfo & { canStart?: boolean;
  * - Refresh button to update live data
  */
 export const QuestTaskForm: Component<QuestTaskFormProps> = (props) => {
-  // Fallback to static API when no live data
-  const [staticQuests] = createResource(fetchQuests);
-  
   const [searchQuery, setSearchQuery] = createSignal('');
   const [difficultyFilter, setDifficultyFilter] = createSignal<string>('');
   const [membersFilter, setMembersFilter] = createSignal<string>('');
   const [canStartFilter, setCanStartFilter] = createSignal<string>('');
   const [selectedQuest, setSelectedQuest] = createSignal<string>('');
 
-  // Determine if we're using live data
-  const usingLiveData = createMemo(() => {
-    const live = props.liveQuestData;
-    return live && live.available && live.available.length > 0;
+  // Live quest data availability
+  const liveQuestData = createMemo(() => props.liveQuestData);
+  const hasLiveData = createMemo(() => {
+    const live = liveQuestData();
+    return !!(live && live.available && live.available.length > 0);
   });
 
-  // Get quest list (live or static)
+  // Quest list from live data (empty until bot publishes)
   const questList = createMemo(() => {
-    if (usingLiveData()) {
-      return props.liveQuestData!.available.map(liveQuestToInfo);
+    const live = liveQuestData();
+    if (live && live.available.length > 0) {
+      return live.available.map(liveQuestToInfo);
     }
-    return staticQuests() || [];
+    return [];
   });
 
   // Filter quests
@@ -98,7 +87,7 @@ export const QuestTaskForm: Component<QuestTaskFormProps> = (props) => {
     }
 
     // Filter by can-start (only when live data)
-    if (usingLiveData()) {
+    if (hasLiveData()) {
       const canStart = canStartFilter();
       if (canStart === 'ready') {
         result = result.filter(q => (q as any).canStart === true);
@@ -129,10 +118,10 @@ export const QuestTaskForm: Component<QuestTaskFormProps> = (props) => {
 
   // Get live quest details (for requirements display)
   const selectedLiveQuest = createMemo(() => {
-    if (!usingLiveData()) return null;
+    if (!hasLiveData()) return null;
     const id = selectedQuest();
     if (!id) return null;
-    return props.liveQuestData!.available.find(q => q.id === id) || null;
+    return liveQuestData()!.available.find(q => q.id === id) || null;
   });
 
   // Get difficulty color
@@ -179,19 +168,28 @@ export const QuestTaskForm: Component<QuestTaskFormProps> = (props) => {
       {/* Data Source Indicator */}
       <div class="flex items-center justify-between text-xs">
         <Show
-          when={usingLiveData()}
+          when={hasLiveData()}
           fallback={
-            <span class="text-gray-500">
-              📄 Using static quest list ({questList().length} quests)
-            </span>
+            <div class="text-gray-500 flex items-center gap-2">
+              <span>⏳ Waiting for live quest data from bot...</span>
+              <Show when={props.onRefreshQuests}>
+                <button
+                  type="button"
+                  onClick={() => props.onRefreshQuests?.()}
+                  class="text-amber-400 hover:text-amber-300 underline"
+                >
+                  Request refresh
+                </button>
+              </Show>
+            </div>
           }
         >
           <span class="text-green-400">
-            ✓ Live data from bot ({props.liveQuestData!.available.length} quests)
+            ✓ Live data from bot ({questList().length} quests)
           </span>
           <div class="flex items-center gap-2">
             <span class="text-gray-500">
-              Updated: {formatLastUpdated(props.liveQuestData!.lastUpdated)}
+              Updated: {formatLastUpdated(liveQuestData()!.lastUpdated)}
             </span>
             <Show when={props.onRefreshQuests}>
               <button
@@ -250,7 +248,7 @@ export const QuestTaskForm: Component<QuestTaskFormProps> = (props) => {
             <option value="members">Members</option>
           </select>
         </div>
-        <Show when={usingLiveData()}>
+        <Show when={hasLiveData()}>
           <div>
             <label class="block text-sm font-medium text-gray-300 mb-1">
               Requirements
@@ -274,8 +272,21 @@ export const QuestTaskForm: Component<QuestTaskFormProps> = (props) => {
           Quest
         </label>
         <Show
-          when={!staticQuests.loading || usingLiveData()}
-          fallback={<div class="text-gray-400 text-sm">Loading quests...</div>}
+          when={hasLiveData()}
+          fallback={
+            <div class="text-gray-400 text-sm space-y-2">
+              <div>Waiting for quest data from the bot...</div>
+              <Show when={props.onRefreshQuests}>
+                <button
+                  type="button"
+                  onClick={() => props.onRefreshQuests?.()}
+                  class="text-amber-400 hover:text-amber-300 underline"
+                >
+                  Request refresh
+                </button>
+              </Show>
+            </div>
+          }
         >
           <select
             value={selectedQuest()}
@@ -288,9 +299,9 @@ export const QuestTaskForm: Component<QuestTaskFormProps> = (props) => {
               {(quest) => {
                 const canStart = (quest as any).canStart;
                 const state = (quest as any).state;
-                const prefix = usingLiveData() 
+                const prefix = hasLiveData() 
                   ? (state === 'FINISHED' ? '✓ ' : canStart ? '● ' : '○ ')
-                  : (quest.members ? '🔒 ' : '');
+                  : '';
                 return (
                   <option value={quest.id} class={state === 'FINISHED' ? 'text-gray-500' : ''}>
                     {prefix}{quest.name} ({quest.questPoints} QP)
@@ -301,8 +312,9 @@ export const QuestTaskForm: Component<QuestTaskFormProps> = (props) => {
           </select>
         </Show>
         <p class="text-xs text-gray-500 mt-1">
-          {filteredQuests().length} quests available
-          {usingLiveData() && ` • ● = ready to start • ○ = missing requirements • ✓ = completed`}
+          {hasLiveData()
+            ? `${filteredQuests().length} quests available • ● = ready to start • ○ = missing requirements • ✓ = completed`
+            : 'Quest list will appear once the bot publishes live quest data'}
         </p>
       </div>
 
@@ -313,7 +325,7 @@ export const QuestTaskForm: Component<QuestTaskFormProps> = (props) => {
             <div class="flex items-center justify-between">
               <h4 class="font-semibold text-white">{quest().name}</h4>
               <div class="flex items-center gap-2">
-                <Show when={usingLiveData() && selectedLiveQuest()}>
+                <Show when={hasLiveData() && selectedLiveQuest()}>
                   {(liveQuest) => (
                     <span class={`text-xs px-2 py-1 rounded ${
                       liveQuest().state === 'FINISHED' ? 'bg-green-900/50 text-green-400' :
@@ -344,7 +356,7 @@ export const QuestTaskForm: Component<QuestTaskFormProps> = (props) => {
             </div>
 
             {/* Live Requirements Display */}
-            <Show when={usingLiveData() && selectedLiveQuest()}>
+            <Show when={hasLiveData() && selectedLiveQuest()}>
               {(liveQuest) => (
                 <>
                   {/* Skill Requirements */}
@@ -405,25 +417,24 @@ export const QuestTaskForm: Component<QuestTaskFormProps> = (props) => {
               )}
             </Show>
 
-            {/* Warning for static data */}
-            <Show when={!usingLiveData()}>
-            <div class="text-xs text-amber-400/80 flex items-center gap-2 pt-2 border-t border-gray-600">
-              <span>⚠️</span>
-              <span>
-                  Start the bot to see live requirement status from Quest Helper.
-              </span>
-            </div>
-            </Show>
+      {/* Waiting notice */}
+      <Show when={!hasLiveData()}>
+        <div class="text-xs text-amber-400/80 flex items-center gap-2 pt-2 border-t border-gray-600">
+          <span>⚠️</span>
+          <span>
+            Waiting for quest data from the bot. Quest Helper will provide requirements once the bot is running.
+          </span>
+        </div>
+      </Show>
           </div>
         )}
       </Show>
 
       {/* Info Banner */}
-      <Show when={!usingLiveData()}>
-      <div class="bg-blue-900/30 border border-blue-800/50 rounded-lg p-3 text-sm text-blue-300">
-        <strong>Note:</strong> Quest automation integrates with the QuestHelper plugin.
-          Start the bot to see live quest requirements and status.
-      </div>
+      <Show when={!hasLiveData()}>
+        <div class="bg-blue-900/30 border border-blue-800/50 rounded-lg p-3 text-sm text-blue-300">
+          <strong>Note:</strong> Quest data is streamed from the running bot via QuestHelper. Use the refresh button if data seems stale.
+        </div>
       </Show>
 
       {/* Submit Button */}

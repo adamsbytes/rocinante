@@ -280,6 +280,31 @@ public class TrainingMethod {
     int logItemId = -1;
 
     // ========================================================================
+    // Gather-and-Process Configuration
+    // ========================================================================
+
+    /**
+     * Secondary skill trained (for GATHER_AND_PROCESS methods).
+     * Example: COOKING for powerfish/cook, FLETCHING for powerchop/fletch.
+     */
+    Skill secondarySkill;
+
+    /**
+     * XP gained per processing action (secondary skill).
+     * For level-based methods (with secondaryXpMultiplier > 0), this is ignored.
+     */
+    @Builder.Default
+    double secondaryXpPerAction = 0;
+
+    /**
+     * Item ID for processing source tool (e.g., knife for fletching, tinderbox for firemaking).
+     * For GATHER_AND_PROCESS methods that use item-on-item processing.
+     * -1 if processing uses item-on-object (like cooking).
+     */
+    @Builder.Default
+    int processingToolId = -1;
+
+    // ========================================================================
     // Notes
     // ========================================================================
 

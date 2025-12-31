@@ -19,6 +19,9 @@ jobs:
     permissions:
       contents: write
       packages: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      released: ${{ steps.release.outputs.released }}
     env:
       DOCKER_BUILDKIT: 1
     steps:
@@ -30,6 +33,7 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
           set -euo pipefail
           latest="$(curl -sfL \
@@ -45,7 +49,7 @@ jobs:
           base="${latest#v}"
           IFS='.' read -r major minor patch <<< "$base"
 
-          msg="${{ github.event.head_commit.message }}"
+          msg="${COMMIT_MSG}"
           bump="patch"
 
           if echo "$msg" | grep -qiE 'BREAKING CHANGE'; then
@@ -79,6 +83,7 @@ jobs:
         run: docker build -f bot/Dockerfile -t rocinante-bot:ci ./bot
 
       - name: Create release
+        id: release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -86,4 +91,14 @@ jobs:
           gh release create "${{ steps.version.outputs.version }}" \
             --title "${{ steps.version.outputs.version }}" \
             --notes "Automated release for commit ${{ github.sha }}"
+          echo "released=true" >> "$GITHUB_OUTPUT"
 
+  publish:
+    needs: build
+    if: needs.build.outputs.released == 'true'
+    uses: ./.github/workflows/bot-publish.yml
+    with:
+      version: ${{ needs.build.outputs.version }}
+    permissions:
+      contents: read
+      packages: write

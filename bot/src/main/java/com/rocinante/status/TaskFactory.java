@@ -425,19 +425,20 @@ public class TaskFactory {
     private Optional<Task> createNavigationTask(JsonObject spec) {
         WalkToTask task;
 
-        // Named location or coordinates
-        if (spec.has("locationId")) {
-            String locationId = spec.get("locationId").getAsString();
-            task = WalkToTask.toLocation(locationId);
-            log.debug("Navigation task to named location: {}", locationId);
-        } else if (spec.has("x") && spec.has("y")) {
+        // Coordinates are required - named locations no longer supported
+        if (spec.has("x") && spec.has("y")) {
             int x = spec.get("x").getAsInt();
             int y = spec.get("y").getAsInt();
             int plane = spec.has("plane") ? spec.get("plane").getAsInt() : 0;
             task = new WalkToTask(new WorldPoint(x, y, plane));
             log.debug("Navigation task to coordinates: {},{},{}", x, y, plane);
+        } else if (spec.has("locationId")) {
+            // Legacy named locations - log warning and fail
+            String locationId = spec.get("locationId").getAsString();
+            log.warn("Named locations no longer supported. Use x,y,plane coordinates instead. locationId: {}", locationId);
+            return Optional.empty();
         } else {
-            log.warn("Navigation task missing location (need locationId or x,y)");
+            log.warn("Navigation task missing location (need x,y coordinates)");
             return Optional.empty();
         }
 

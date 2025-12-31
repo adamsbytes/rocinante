@@ -152,8 +152,9 @@ public class BehaviorModule extends AbstractModule {
             PlayerProfile playerProfile,
             FatigueModel fatigueModel,
             AttentionModel attentionModel,
-            Randomization randomization) {
-        return new PredictiveHoverManager(playerProfile, fatigueModel, attentionModel, randomization);
+            Randomization randomization,
+            com.rocinante.navigation.NavigationService navigationService) {
+        return new PredictiveHoverManager(playerProfile, fatigueModel, attentionModel, randomization, navigationService);
     }
 
     /**

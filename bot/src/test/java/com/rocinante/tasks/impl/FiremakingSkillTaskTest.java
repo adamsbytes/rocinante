@@ -15,6 +15,7 @@ import com.rocinante.tasks.impl.skills.firemaking.FiremakingSkillTask;
 import com.rocinante.timing.HumanTimer;
 import com.rocinante.util.ItemCollections;
 import com.rocinante.util.Randomization;
+import com.rocinante.navigation.NavigationService;
 import net.runelite.api.AnimationID;
 import net.runelite.api.Client;
 import net.runelite.api.ItemID;
@@ -27,6 +28,7 @@ import org.mockito.MockitoAnnotations;
 
 import java.time.Duration;
 import java.util.Collections;
+import java.util.OptionalInt;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -66,6 +68,9 @@ public class FiremakingSkillTaskTest {
     @Mock
     private WorldState worldState;
 
+    @Mock
+    private NavigationService navigationService;
+
     private TaskContext taskContext;
     private PlayerState playerState;
     private InventoryState inventoryState;
@@ -103,6 +108,11 @@ public class FiremakingSkillTaskTest {
         when(taskContext.isLoggedIn()).thenReturn(true);
         when(taskContext.getPlayerState()).thenReturn(playerState);
         when(taskContext.getInventoryState()).thenReturn(inventoryState);
+        when(taskContext.getNavigationService()).thenReturn(navigationService);
+
+        // Default navigation service returns path costs
+        when(navigationService.isBlocked(any(WorldPoint.class))).thenReturn(false);
+        when(navigationService.getPathCost(any(), any(), any())).thenReturn(OptionalInt.of(1));
 
         // Default click helper returns success
         when(inventoryClickHelper.executeClick(anyInt(), anyString()))
@@ -663,6 +673,133 @@ public class FiremakingSkillTaskTest {
 
         // Task should recognize golden tinderbox
         assertTrue(config.getTinderboxItemIds().contains(ItemID.GOLDEN_TINDERBOX));
+    }
+
+    // ========================================================================
+    // Dynamic Burn Mode Tests
+    // ========================================================================
+
+    @Test
+    public void testConfig_DynamicBurnMode_NullStartPosition() {
+        FiremakingConfig config = FiremakingConfig.builder()
+                .logItemId(ItemID.WILLOW_LOGS)
+                .startPosition(null)
+                .targetLogsBurned(27)
+                .build();
+
+        assertTrue(config.isDynamicBurnMode());
+        assertNull(config.getStartPosition());
+    }
+
+    @Test
+    public void testConfig_FixedMode_HasStartPosition() {
+        FiremakingConfig config = FiremakingConfig.builder()
+                .logItemId(ItemID.WILLOW_LOGS)
+                .startPosition(START_POS)
+                .targetLevel(45)
+                .build();
+
+        assertFalse(config.isDynamicBurnMode());
+        assertEquals(START_POS, config.getStartPosition());
+    }
+
+    @Test
+    public void testConfig_DynamicBurnModeDefaults() {
+        FiremakingConfig config = FiremakingConfig.builder()
+                .logItemId(ItemID.WILLOW_LOGS)
+                .startPosition(null)
+                .targetLogsBurned(27)
+                .build();
+
+        // Check default values for dynamic mode settings
+        assertEquals(10, config.getBurnHereSearchRadius());
+        assertEquals(15, config.getBurnHereWalkThreshold());
+    }
+
+    @Test
+    public void testConfig_DynamicBurnModeCustomValues() {
+        FiremakingConfig config = FiremakingConfig.builder()
+                .logItemId(ItemID.WILLOW_LOGS)
+                .startPosition(null)
+                .burnHereSearchRadius(20)
+                .burnHereWalkThreshold(30)
+                .targetLogsBurned(27)
+                .build();
+
+        assertEquals(20, config.getBurnHereSearchRadius());
+        assertEquals(30, config.getBurnHereWalkThreshold());
+    }
+
+    @Test
+    public void testDynamicMode_SkipsMovingToStart() {
+        when(inventoryState.hasItem(ItemID.TINDERBOX)).thenReturn(true);
+        when(inventoryState.hasItem(ItemID.WILLOW_LOGS)).thenReturn(true);
+        when(inventoryState.getSlotOf(ItemID.TINDERBOX)).thenReturn(0);
+        when(inventoryState.getSlotOf(ItemID.WILLOW_LOGS)).thenReturn(5);
+
+        // Player is far from any "start position" - in dynamic mode this doesn't matter
+        WorldPoint currentPos = new WorldPoint(3000, 3000, 0);
+        PlayerState farPlayer = PlayerState.builder()
+                .animationId(-1)
+                .worldPosition(currentPos)
+                .build();
+        when(taskContext.getPlayerState()).thenReturn(farPlayer);
+
+        FiremakingConfig config = FiremakingConfig.builder()
+                .logItemId(ItemID.WILLOW_LOGS)
+                .startPosition(null)  // Dynamic mode
+                .targetLogsBurned(5)
+                .bankForLogs(false)
+                .build();
+        FiremakingSkillTask task = new FiremakingSkillTask(config);
+
+        // Execute - should NOT create walk task since we're in dynamic mode
+        task.execute(taskContext);
+
+        // In dynamic mode, task should proceed to lighting fire phase immediately
+        assertNotEquals(TaskState.FAILED, task.getState());
+    }
+
+    @Test
+    public void testDynamicMode_CanExecute() {
+        when(client.getRealSkillLevel(Skill.FIREMAKING)).thenReturn(30);
+        when(inventoryState.hasItem(ItemID.TINDERBOX)).thenReturn(true);
+        when(inventoryState.hasItem(ItemID.WILLOW_LOGS)).thenReturn(true);
+
+        FiremakingConfig config = FiremakingConfig.builder()
+                .logItemId(ItemID.WILLOW_LOGS)
+                .startPosition(null)  // Dynamic mode
+                .targetLogsBurned(27)
+                .bankForLogs(false)
+                .build();
+        FiremakingSkillTask task = new FiremakingSkillTask(config);
+
+        assertTrue(task.canExecute(taskContext));
+    }
+
+    @Test
+    public void testScenario_CutAndBurnWorkflow() {
+        when(client.getRealSkillLevel(Skill.FIREMAKING)).thenReturn(30);
+        when(inventoryState.hasItem(ItemID.TINDERBOX)).thenReturn(true);
+        when(inventoryState.hasItem(ItemID.WILLOW_LOGS)).thenReturn(true);
+        when(inventoryState.countItem(ItemID.WILLOW_LOGS)).thenReturn(27);
+
+        // Dynamic mode configuration for cut-and-burn
+        FiremakingConfig config = FiremakingConfig.builder()
+                .logItemId(ItemID.WILLOW_LOGS)
+                .startPosition(null)  // Burn wherever we are
+                .burnHereSearchRadius(15)
+                .burnHereWalkThreshold(20)
+                .targetLogsBurned(27)  // Burn all 27 logs
+                .bankForLogs(false)   // Never bank in cut-and-burn
+                .build();
+
+        FiremakingSkillTask task = new FiremakingSkillTask(config);
+
+        assertTrue(task.canExecute(taskContext));
+        assertTrue(config.isDynamicBurnMode());
+        assertFalse(config.isBankForLogs());
+        assertEquals(27, config.getTargetLogsBurned());
     }
 }
 

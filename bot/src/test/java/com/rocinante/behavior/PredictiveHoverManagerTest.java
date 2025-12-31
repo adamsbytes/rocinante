@@ -1,6 +1,7 @@
 package com.rocinante.behavior;
 
 import com.rocinante.input.RobotMouseController;
+import com.rocinante.navigation.NavigationService;
 import com.rocinante.state.GameObjectSnapshot;
 import com.rocinante.state.NpcSnapshot;
 import com.rocinante.state.PlayerState;
@@ -74,6 +75,9 @@ public class PredictiveHoverManagerTest {
     @Mock
     private PlayerState playerState;
 
+    @Mock
+    private NavigationService navigationService;
+
     private Randomization randomization;
     private PredictiveHoverManager hoverManager;
 
@@ -116,7 +120,7 @@ public class PredictiveHoverManagerTest {
                 .thenReturn(CompletableFuture.completedFuture(null));
 
         // Create the manager
-        hoverManager = new PredictiveHoverManager(playerProfile, fatigueModel, attentionModel, randomization);
+        hoverManager = new PredictiveHoverManager(playerProfile, fatigueModel, attentionModel, randomization, navigationService);
     }
 
     // ========================================================================
@@ -255,7 +259,7 @@ public class PredictiveHoverManagerTest {
                 .build();
 
         hoverManager = new PredictiveHoverManager(
-                playerProfile, fatigueModel, attentionModel, randomization, initialState);
+                playerProfile, fatigueModel, attentionModel, randomization, navigationService, initialState);
 
         assertFalse(hoverManager.shouldPredictiveHover());
     }
@@ -272,7 +276,7 @@ public class PredictiveHoverManagerTest {
         for (int i = 0; i < 100; i++) {
             // Reset rate limiting by waiting
             hoverManager = new PredictiveHoverManager(playerProfile, fatigueModel, attentionModel,
-                    new Randomization(i));
+                    new Randomization(i), navigationService);
             if (hoverManager.shouldPredictiveHover()) {
                 successCount++;
             }
@@ -298,7 +302,7 @@ public class PredictiveHoverManagerTest {
                 .build();
 
         hoverManager = new PredictiveHoverManager(
-                playerProfile, fatigueModel, attentionModel, randomization, initialState);
+                playerProfile, fatigueModel, attentionModel, randomization, navigationService, initialState);
 
         assertTrue(hoverManager.hasPendingHover());
 
@@ -522,7 +526,7 @@ public class PredictiveHoverManagerTest {
                 .build();
 
         hoverManager = new PredictiveHoverManager(
-                playerProfile, fatigueModel, attentionModel, randomization, initialState);
+                playerProfile, fatigueModel, attentionModel, randomization, navigationService, initialState);
 
         // Simulate some activity to generate metrics
         hoverManager.clearHover(); // triggers abandoned count
@@ -570,7 +574,7 @@ public class PredictiveHoverManagerTest {
                 .build();
 
         hoverManager = new PredictiveHoverManager(
-                playerProfile, fatigueModel, attentionModel, randomization, objectState);
+                playerProfile, fatigueModel, attentionModel, randomization, navigationService, objectState);
 
         Set<Integer> targetIds = new HashSet<>(Arrays.asList(TEST_OBJECT_ID));
         hoverManager.validateAndUpdateHover(taskContext, targetIds);
@@ -605,7 +609,7 @@ public class PredictiveHoverManagerTest {
                 .build();
 
         hoverManager = new PredictiveHoverManager(
-                playerProfile, fatigueModel, attentionModel, randomization, npcState);
+                playerProfile, fatigueModel, attentionModel, randomization, navigationService, npcState);
 
         Set<Integer> targetIds = new HashSet<>(Arrays.asList(TEST_NPC_ID));
         hoverManager.validateAndUpdateHover(taskContext, targetIds);
@@ -641,7 +645,7 @@ public class PredictiveHoverManagerTest {
                 .build();
 
         hoverManager = new PredictiveHoverManager(
-                playerProfile, fatigueModel, attentionModel, randomization, npcState);
+                playerProfile, fatigueModel, attentionModel, randomization, navigationService, npcState);
 
         // Mock the client NPCs list for re-hover
         NPC mockNpc = mock(NPC.class);
@@ -678,7 +682,7 @@ public class PredictiveHoverManagerTest {
                 .build();
 
         hoverManager = new PredictiveHoverManager(
-                playerProfile, fatigueModel, attentionModel, randomization, npcState);
+                playerProfile, fatigueModel, attentionModel, randomization, navigationService, npcState);
 
         Set<Integer> targetIds = new HashSet<>(Arrays.asList(TEST_NPC_ID));
         hoverManager.validateAndUpdateHover(taskContext, targetIds);
@@ -757,7 +761,7 @@ public class PredictiveHoverManagerTest {
                 .build();
 
         hoverManager = new PredictiveHoverManager(
-                playerProfile, fatigueModel, attentionModel, randomization, abandonState);
+                playerProfile, fatigueModel, attentionModel, randomization, navigationService, abandonState);
 
         CompletableFuture<Boolean> result = hoverManager.executePredictedClick(taskContext);
 
@@ -808,7 +812,7 @@ public class PredictiveHoverManagerTest {
                     .build();
 
             hoverManager = new PredictiveHoverManager(
-                    playerProfile, fatigueModel, attentionModel, randomization, instantState);
+                    playerProfile, fatigueModel, attentionModel, randomization, navigationService, instantState);
 
             CompletableFuture<Boolean> result = hoverManager.executePredictedClick(taskContext);
 

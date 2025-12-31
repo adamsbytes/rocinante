@@ -11,6 +11,8 @@ import {
   ensureScreenshotsDir,
   getSharedCacheDir,
   ensureSharedCacheDir,
+  getTrainingSpotCacheDir,
+  ensureTrainingSpotCacheDir,
   getBoltDataDir,
   ensureBoltDataDir,
 } from './status';
@@ -201,10 +203,12 @@ export async function startBot(bot: BotConfig): Promise<void> {
   await ensureStatusDir(bot.id);
   await ensureScreenshotsDir(bot.id);
   await ensureSharedCacheDir();
+  await ensureTrainingSpotCacheDir();
   await ensureBoltDataDir(bot.id);
   const statusDir = getStatusDir(bot.id);
   const screenshotsDir = getScreenshotsDir(bot.id);
   const sharedCacheDir = getSharedCacheDir();
+  const trainingSpotCacheDir = getTrainingSpotCacheDir();
   const boltDataDir = getBoltDataDir(bot.id);
 
   // Build environment variables for Jagex Launcher authentication
@@ -331,6 +335,8 @@ export async function startBot(bot: BotConfig): Promise<void> {
         `${screenshotsDir}:${boltLauncherPath}/screenshots`,
         // Shared wiki cache across all accounts
         `${sharedCacheDir}:${boltLauncherPath}/rocinante/wiki-cache`,
+        // Shared training spot cache across all accounts (ranked object positions)
+        `${trainingSpotCacheDir}:${boltLauncherPath}/rocinante/training-spot-cache`,
         // Machine-id file bind mount (anti-fingerprint: unique per account)
         `${machineIdPath}:/etc/machine-id:ro`,
       ],

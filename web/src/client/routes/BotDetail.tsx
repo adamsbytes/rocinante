@@ -245,6 +245,7 @@ export const BotDetail: Component = () => {
                 <ManualTaskPanel 
                   statusStore={statusStore() || undefined}
                   playerSkills={runtimeStatus()?.player?.skills}
+                  questsData={runtimeStatus()?.quests || null}
                   disabled={!isRunning()}
                 />
 

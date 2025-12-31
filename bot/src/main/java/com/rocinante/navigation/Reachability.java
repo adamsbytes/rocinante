@@ -2,13 +2,11 @@ package com.rocinante.navigation;
 
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
-import net.runelite.api.CollisionData;
 import net.runelite.api.DecorativeObject;
 import net.runelite.api.GameObject;
 import net.runelite.api.ObjectComposition;
 import net.runelite.api.TileObject;
 import net.runelite.api.WallObject;
-import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
 
 import javax.inject.Inject;
@@ -23,21 +21,34 @@ import static com.rocinante.navigation.TileObjectUtils.getWorldPoint;
 /**
  * Reachability checks for interaction adjacency.
  *
- * <p>Ensures we do not attempt to interact with objects blocked by fences, rivers,
- * or walls when standing on an adjacent tile. Uses collision flags rather than
- * line-of-sight to avoid "click-through" mistakes.</p>
+ * <p>Uses {@link CollisionService} (backed by ShortestPath plugin's global collision data)
+ * as the primary source for determining whether movement between tiles is allowed.
+ * This provides accurate collision checking for:
+ * <ul>
+ *   <li>Fences and walls</li>
+ *   <li>Rivers and water bodies</li>
+ *   <li>Static barriers anywhere in the game world</li>
+ * </ul>
+ *
+ * <p>Falls back to RuneLite's local scene collision data when CollisionService is
+ * unavailable.
+ *
+ * <p><strong>This class is the key to preventing "click-through" mistakes</strong>
+ * where the bot would attempt to interact with objects across barriers.
+ *
+ * @see CollisionService
  */
 @Slf4j
 @Singleton
 public class Reachability {
 
     private final Client client;
-    private final CollisionChecker collisionChecker;
+    private final CollisionService collisionService;
 
     @Inject
-    public Reachability(Client client, CollisionChecker collisionChecker) {
+    public Reachability(Client client, CollisionService collisionService) {
         this.client = client;
-        this.collisionChecker = collisionChecker;
+        this.collisionService = collisionService;
     }
 
     /**
@@ -119,19 +130,9 @@ public class Reachability {
      * Find the nearest reachable tile from which the player can attack a target
      * within the specified weapon range.
      *
-     * <p>For ranged/magic combat, the player doesn't need to be adjacent - they just
-     * need a clear boundary path from some reachable tile that's within weapon range
-     * of the target.
-     *
-     * <p>OSRS ranged/magic requires:
-     * <ul>
-     *   <li>The attacker tile must be within weapon range of the target</li>
-     *   <li>There must be no full-blocking terrain between attacker and target</li>
-     * </ul>
-     *
      * @param playerPos   current player position
      * @param targetPos   target's position (NPC or other entity)
-     * @param weaponRange the weapon's attack range (e.g., 7 for most ranged, 10 for magic)
+     * @param weaponRange the weapon's attack range
      * @return an Optional containing the attack position if one exists within range
      */
     public Optional<WorldPoint> findAttackablePosition(WorldPoint playerPos, WorldPoint targetPos, int weaponRange) {
@@ -150,10 +151,8 @@ public class Reachability {
             return Optional.of(playerPos);
         }
 
-        // If we're within range but blocked, we could try to find an adjacent tile
-        // that's also in range and has line of sight
+        // If we're within range but blocked, try to find an adjacent tile
         if (distance <= weaponRange + 1) {
-            // Try adjacent tiles to player's current position
             WorldPoint bestTile = null;
             int bestDistance = Integer.MAX_VALUE;
 
@@ -170,10 +169,10 @@ public class Reachability {
                     int adjDistance = adjTile.distanceTo(targetPos);
                     if (adjDistance > weaponRange) continue;
 
-                    // Check if we can walk to this tile from current position
+                    // Check if we can walk to this tile
                     if (isBoundaryBlocked(playerPos, adjTile)) continue;
 
-                    // Check if this tile has line of sight to target
+                    // Check if this tile has line of sight
                     if (!hasLineOfSight(adjTile, targetPos)) continue;
 
                     if (adjDistance < bestDistance) {
@@ -194,13 +193,6 @@ public class Reachability {
     /**
      * Check if there's a clear line of sight between two positions for ranged attacks.
      *
-     * <p>In OSRS, ranged/magic attacks require that no full-blocking terrain exists
-     * along the path. This uses a simple Bresenham-style line check, verifying each
-     * tile along the line isn't fully blocked.
-     *
-     * <p>Note: This is a simplified check. OSRS actual projectile blocking is more
-     * complex, but for target selection purposes this is sufficient.
-     *
      * @param from source position
      * @param to   target position
      * @return true if line of sight is clear
@@ -214,30 +206,17 @@ public class Reachability {
             return false;
         }
 
-        CollisionData[] collisionData = client.getCollisionMaps();
-        if (collisionData == null) {
-            return false;
-        }
+        // Use CollisionService for global blocking check
+        return hasLineOfSightViaCollisionService(from, to);
+    }
 
-        int plane = from.getPlane();
-        if (plane < 0 || plane >= collisionData.length || collisionData[plane] == null) {
-            return false;
-        }
+    private boolean hasLineOfSightViaCollisionService(WorldPoint from, WorldPoint to) {
+        int x0 = from.getX();
+        int y0 = from.getY();
+        int x1 = to.getX();
+        int y1 = to.getY();
+        int z = from.getPlane();
 
-        int[][] flags = collisionData[plane].getFlags();
-
-        LocalPoint fromLocal = LocalPoint.fromWorld(client, from);
-        LocalPoint toLocal = LocalPoint.fromWorld(client, to);
-        if (fromLocal == null || toLocal == null) {
-            return false;
-        }
-
-        int x0 = fromLocal.getSceneX();
-        int y0 = fromLocal.getSceneY();
-        int x1 = toLocal.getSceneX();
-        int y1 = toLocal.getSceneY();
-
-        // Bresenham's line algorithm to check each tile
         int dx = Math.abs(x1 - x0);
         int dy = Math.abs(y1 - y0);
         int sx = x0 < x1 ? 1 : -1;
@@ -248,14 +227,10 @@ public class Reachability {
         int y = y0;
 
         while (true) {
-            // Skip the destination tile - it may be blocked (e.g., NPC standing on it)
-            if (x != x1 || y != y1) {
-                // Also skip the source tile
-                if (x != x0 || y != y0) {
-                    // Check if this intermediate tile is fully blocked
-                    if (isInScene(x, y) && collisionChecker.isBlocked(flags[x][y])) {
-                        return false;
-                    }
+            // Skip source and destination tiles
+            if ((x != x0 || y != y0) && (x != x1 || y != y1)) {
+                if (collisionService.isBlocked(x, y, z)) {
+                    return false;
                 }
             }
 
@@ -278,18 +253,7 @@ public class Reachability {
     }
 
     /**
-     * Check if the given scene coordinates are within the loaded scene bounds.
-     */
-    private boolean isInScene(int sceneX, int sceneY) {
-        return sceneX >= 0 && sceneX < net.runelite.api.Constants.SCENE_SIZE &&
-               sceneY >= 0 && sceneY < net.runelite.api.Constants.SCENE_SIZE;
-    }
-
-    /**
      * Get the set of tiles occupied by the object (its footprint).
-     *
-     * @param target the target TileObject
-     * @return set of world tiles comprising the object's footprint (may be empty)
      */
     public Set<WorldPoint> getObjectFootprint(TileObject target) {
         if (target == null) {
@@ -318,7 +282,6 @@ public class Reachability {
 
         int orientation = getOrientation(target);
         if ((orientation & 1) == 1) {
-            // Swap dimensions for rotated objects
             int tmp = sizeX;
             sizeX = sizeY;
             sizeY = tmp;
@@ -340,62 +303,13 @@ public class Reachability {
         if (target instanceof WallObject) {
             return ((WallObject) target).getOrientationA();
         }
-        // Ground objects don't carry orientation; treat as default.
         return 0;
     }
 
     /**
      * Check if the boundary between two adjacent tiles is blocked.
-     *
-     * @return true if blocked, false if clear or if data unavailable
      */
     private boolean isBoundaryBlocked(WorldPoint from, WorldPoint to) {
-        CollisionData[] collisionData = client.getCollisionMaps();
-        if (collisionData == null) {
-            return true;
-        }
-
-        int plane = from.getPlane();
-        if (plane < 0 || plane >= collisionData.length || collisionData[plane] == null) {
-            return true;
-        }
-
-        LocalPoint fromLocal = LocalPoint.fromWorld(client, from);
-        LocalPoint toLocal = LocalPoint.fromWorld(client, to);
-        if (fromLocal == null || toLocal == null) {
-            return true;
-        }
-
-        int fromX = fromLocal.getSceneX();
-        int fromY = fromLocal.getSceneY();
-        int toX = toLocal.getSceneX();
-        int toY = toLocal.getSceneY();
-
-        int dx = toX - fromX;
-        int dy = toY - fromY;
-
-        if (Math.abs(dx) > 1 || Math.abs(dy) > 1 || (dx == 0 && dy == 0)) {
-            return true;
-        }
-
-        int[][] flags = collisionData[plane].getFlags();
-        return !movementAllowed(flags, fromX, fromY, dx, dy);
-    }
-
-    /**
-     * Check if movement from one tile to an adjacent tile is allowed.
-     *
-     * <p>For INTERACTION reachability, we do NOT check if the destination tile itself
-     * is blocked (e.g., by a tree or rock). We only check if the boundary between
-     * tiles is clear (no fence, wall, or river blocking the way).
-     *
-     * <p>This is semantically different from PathFinder's walking check, which
-     * requires the destination to be a walkable tile.
-     */
-    private boolean movementAllowed(int[][] flags, int x, int y, int dx, int dy) {
-        // Delegate to CollisionChecker for boundary checking only
-        // (isBoundaryPassable already handles cardinal/diagonal logic)
-        return collisionChecker.isBoundaryPassable(flags, x, y, dx, dy);
+        return !collisionService.canMoveTo(from, to);
     }
 }
-

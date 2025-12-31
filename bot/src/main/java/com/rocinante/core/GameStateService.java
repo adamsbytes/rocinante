@@ -143,6 +143,15 @@ public class GameStateService {
 
     private final ProjectileDataLoader projectileDataLoader;
 
+    // ========================================================================
+    // Navigation Components
+    // ========================================================================
+
+    /**
+     * Path cost cache for navigation. Invalidated on each game tick if player moved.
+     */
+    private final com.rocinante.navigation.PathCostCache pathCostCache;
+
     // SlayerPluginService is set via setter - it's a RuneLite plugin service that
     // may not be available if the Slayer plugin isn't loaded
     @Nullable
@@ -391,7 +400,8 @@ public class GameStateService {
                            XpTracker xpTracker,
                            WeaponDataService weaponDataService,
                            NpcCombatDataLoader npcCombatDataLoader,
-                           ProjectileDataLoader projectileDataLoader) {
+                           ProjectileDataLoader projectileDataLoader,
+                           com.rocinante.navigation.PathCostCache pathCostCache) {
         this.client = client;
         this.itemManager = itemManager;
         this.bankStateManager = bankStateManager;
@@ -405,6 +415,7 @@ public class GameStateService {
         this.weaponDataService = weaponDataService;
         this.npcCombatDataLoader = npcCombatDataLoader;
         this.projectileDataLoader = projectileDataLoader;
+        this.pathCostCache = pathCostCache;
 
         // Initialize caches with appropriate policies
         this.playerStateCache = new CachedValue<>("PlayerState", CachePolicy.TICK_CACHED);
@@ -477,6 +488,13 @@ public class GameStateService {
 
         // Always refresh tick-cached state
         refreshPlayerState();
+
+        // Invalidate path cost cache if player moved significantly (>10 tiles)
+        PlayerState currentPlayerState = playerStateCache.getIfValid(currentTick);
+        if (currentPlayerState != null && pathCostCache != null) {
+            WorldPoint playerPos = currentPlayerState.getWorldPosition();
+            pathCostCache.invalidateIfPlayerMoved(playerPos);
+        }
 
         // Refresh event-invalidated caches only if dirty
         if (inventoryDirty) {

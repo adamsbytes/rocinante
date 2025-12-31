@@ -4,7 +4,6 @@ import com.rocinante.state.SlayerState;
 import com.rocinante.combat.CombatManager;
 import com.rocinante.combat.TargetSelector;
 import com.rocinante.core.GameStateService;
-import com.rocinante.navigation.WebWalker;
 import com.rocinante.progression.UnlockTracker;
 import com.rocinante.state.IronmanState;
 import com.rocinante.tasks.AbstractTask;
@@ -104,7 +103,6 @@ public class SlayerManager {
     private final SlayerEquipmentManager equipmentManager;
     private final SlayerDataLoader dataLoader;
     private final UnlockTracker unlockTracker;
-    private final WebWalker webWalker;
     private final CombatManager combatManager;
     private final TargetSelector targetSelector;
     private final TaskExecutor taskExecutor;
@@ -196,7 +194,6 @@ public class SlayerManager {
             SlayerEquipmentManager equipmentManager,
             SlayerDataLoader dataLoader,
             UnlockTracker unlockTracker,
-            WebWalker webWalker,
             CombatManager combatManager,
             TargetSelector targetSelector,
             TaskExecutor taskExecutor,
@@ -208,7 +205,6 @@ public class SlayerManager {
         this.equipmentManager = equipmentManager;
         this.dataLoader = dataLoader;
         this.unlockTracker = unlockTracker;
-        this.webWalker = webWalker;
         this.combatManager = combatManager;
         this.targetSelector = targetSelector;
         this.taskExecutor = taskExecutor;

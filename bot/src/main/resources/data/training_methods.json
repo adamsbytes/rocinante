@@ -25,19 +25,19 @@
         {
           "id": "lumbridge_swamp",
           "name": "Lumbridge Swamp Mine",
-          "locationId": "lumbridge_swamp_mine",
+          "trainingArea": {"x": 3230, "y": 3148, "plane": 0},
           "actionsPerHour": 1400
         },
         {
           "id": "al_kharid",
           "name": "Al Kharid Mine",
-          "locationId": "al_kharid_mine",
+          "trainingArea": {"x": 3298, "y": 3290, "plane": 0},
           "actionsPerHour": 1300
         },
         {
           "id": "varrock_east",
           "name": "Varrock East Mine",
-          "locationId": "varrock_east_mine",
+          "trainingArea": {"x": 3288, "y": 3368, "plane": 0},
           "actionsPerHour": 1200
         }
       ]
@@ -61,14 +61,14 @@
         {
           "id": "al_kharid",
           "name": "Al Kharid Mine (3 rock)",
-          "locationId": "al_kharid_mine",
+          "trainingArea": {"x": 3300, "y": 3310, "plane": 0},
           "actionsPerHour": 1200,
           "notes": "Three rocks in a triangle pattern"
         },
         {
           "id": "mining_guild",
           "name": "Mining Guild",
-          "locationId": "mining_guild",
+          "trainingArea": {"x": 3027, "y": 9739, "plane": 0},
           "actionsPerHour": 1350,
           "requirements": {"members": true, "skills": {"Mining": 60}},
           "notes": "Invisible +7 boost from guild"
@@ -76,7 +76,7 @@
         {
           "id": "legends_guild",
           "name": "Legends Guild Mine",
-          "locationId": "legends_guild_mine",
+          "trainingArea": {"x": 2709, "y": 3332, "plane": 0},
           "actionsPerHour": 1100,
           "requirements": {"members": true, "quests": ["Legends Quest"]}
         }
@@ -102,15 +102,13 @@
         {
           "id": "al_kharid",
           "name": "Al Kharid Mine",
-          "locationId": "al_kharid_mine",
-          "bankLocationId": "al_kharid_bank",
+          "trainingArea": {"x": 3298, "y": 3290, "plane": 0},
           "actionsPerHour": 800
         },
         {
           "id": "mining_guild",
           "name": "Mining Guild",
-          "locationId": "mining_guild",
-          "bankLocationId": "mining_guild_bank",
+          "trainingArea": {"x": 3027, "y": 9739, "plane": 0},
           "actionsPerHour": 950,
           "requirements": {"members": true, "skills": {"Mining": 60}},
           "notes": "Bank chest inside guild"
@@ -139,16 +137,14 @@
         {
           "id": "lower_level",
           "name": "Lower Level",
-          "locationId": "motherlode_mine",
-          "bankLocationId": "motherlode_mine_bank",
+          "trainingArea": {"x": 3760, "y": 5670, "plane": 0},
           "actionsPerHour": 400,
           "notes": "AFK mining, get various ores"
         },
         {
           "id": "upper_level",
           "name": "Upper Level",
-          "locationId": "motherlode_mine_upper",
-          "bankLocationId": "motherlode_mine_bank",
+          "trainingArea": {"x": 3748, "y": 5684, "plane": 0},
           "actionsPerHour": 500,
           "requirements": {"skills": {"Mining": 72}},
           "notes": "Unlock with 100 golden nuggets"
@@ -176,8 +172,7 @@
         {
           "id": "shilo_village",
           "name": "Shilo Village",
-          "locationId": "shilo_gem_rocks",
-          "bankLocationId": "shilo_bank",
+          "trainingArea": {"x": 2825, "y": 2997, "plane": 0},
           "actionsPerHour": 600,
           "requirements": {"quests": ["Shilo Village"]},
           "notes": "Good money and crafting supplies"
@@ -205,8 +200,7 @@
         {
           "id": "mining_guild",
           "name": "Mining Guild",
-          "locationId": "mining_guild",
-          "bankLocationId": "falador_east_bank",
+          "trainingArea": {"x": 3027, "y": 9739, "plane": 0},
           "actionsPerHour": 250,
           "requirements": {"skills": {"Mining": 60}},
           "notes": "Invisible +7 boost from guild"
@@ -234,8 +228,7 @@
         {
           "id": "mining_guild",
           "name": "Mining Guild",
-          "locationId": "mining_guild",
-          "bankLocationId": "falador_east_bank",
+          "trainingArea": {"x": 3027, "y": 9739, "plane": 0},
           "actionsPerHour": 120,
           "requirements": {"skills": {"Mining": 60}},
           "notes": "Invisible +7 boost from guild"
@@ -263,11 +256,10 @@
         {
           "id": "mining_guild",
           "name": "Mining Guild",
-          "locationId": "mining_guild",
-          "bankLocationId": "falador_east_bank",
+          "trainingArea": {"x": 3027, "y": 9739, "plane": 0},
           "actionsPerHour": 60,
           "requirements": {"skills": {"Mining": 60}},
-      "notes": "Very slow but extremely profitable"
+          "notes": "Very slow but extremely profitable"
         }
       ]
     },
@@ -290,13 +282,13 @@
         {
           "id": "lumbridge",
           "name": "Lumbridge Castle",
-          "locationId": "lumbridge_trees",
+          "trainingArea": {"x": 3203, "y": 3225, "plane": 0},
           "actionsPerHour": 1000
         },
         {
           "id": "varrock_west",
           "name": "Varrock West",
-          "locationId": "varrock_west_trees",
+          "trainingArea": {"x": 3167, "y": 3415, "plane": 0},
           "actionsPerHour": 950
         }
       ]
@@ -320,13 +312,13 @@
         {
           "id": "draynor",
           "name": "Draynor Village",
-          "locationId": "draynor_oaks",
+          "trainingArea": {"x": 3101, "y": 3245, "plane": 0},
           "actionsPerHour": 800
         },
         {
           "id": "varrock_west",
           "name": "Varrock West Bank",
-          "locationId": "varrock_west_oaks",
+          "trainingArea": {"x": 3165, "y": 3420, "plane": 0},
           "actionsPerHour": 750
         }
       ]
@@ -357,20 +349,20 @@
         {
           "id": "draynor",
           "name": "Draynor Village",
-          "locationId": "draynor_willows",
+          "trainingArea": {"x": 3087, "y": 3234, "plane": 0},
           "actionsPerHour": 600
         },
         {
           "id": "barbarian_assault",
           "name": "Barbarian Assault",
-          "locationId": "barbarian_assault_willows",
+          "trainingArea": {"x": 2526, "y": 3577, "plane": 0},
           "actionsPerHour": 650,
           "requirements": {"members": true}
         },
         {
           "id": "port_sarim",
           "name": "Port Sarim",
-          "locationId": "port_sarim_willows",
+          "trainingArea": {"x": 3054, "y": 3253, "plane": 0},
           "actionsPerHour": 550
         }
       ]
@@ -395,8 +387,7 @@
         {
           "id": "draynor",
           "name": "Draynor Village",
-          "locationId": "draynor_willows",
-          "bankLocationId": "draynor_bank",
+          "trainingArea": {"x": 3087, "y": 3234, "plane": 0},
           "actionsPerHour": 400,
           "notes": "Bank is very close to willows"
         }
@@ -422,7 +413,7 @@
         {
           "id": "woodcutting_guild",
           "name": "Woodcutting Guild",
-          "locationId": "woodcutting_guild_yews",
+          "trainingArea": {"x": 1593, "y": 3496, "plane": 0},
           "actionsPerHour": 150,
           "requirements": {"skills": {"Woodcutting": 60}},
           "notes": "Invisible +7 boost from guild"
@@ -430,7 +421,7 @@
         {
           "id": "seers_village",
           "name": "Seers' Village",
-          "locationId": "seers_village_yews",
+          "trainingArea": {"x": 2715, "y": 3462, "plane": 0},
           "actionsPerHour": 130
         }
       ]
@@ -456,16 +447,14 @@
         {
           "id": "seers_village",
           "name": "Seers' Village",
-          "locationId": "seers_village_yews",
-          "bankLocationId": "seers_village_bank",
+          "trainingArea": {"x": 2715, "y": 3462, "plane": 0},
           "actionsPerHour": 100,
-      "notes": "Good profit for mid-level woodcutting"
+          "notes": "Good profit for mid-level woodcutting"
         },
         {
           "id": "woodcutting_guild",
           "name": "Woodcutting Guild",
-          "locationId": "woodcutting_guild_yews",
-          "bankLocationId": "woodcutting_guild_bank",
+          "trainingArea": {"x": 1593, "y": 3496, "plane": 0},
           "actionsPerHour": 120,
           "requirements": {"skills": {"Woodcutting": 60}},
           "notes": "Bank inside guild"
@@ -492,10 +481,10 @@
         {
           "id": "woodcutting_guild",
           "name": "Woodcutting Guild",
-          "locationId": "woodcutting_guild",
+          "trainingArea": {"x": 1579, "y": 3495, "plane": 0},
           "actionsPerHour": 80,
           "requirements": {"skills": {"Woodcutting": 60}},
-      "notes": "Very slow but high XP per log"
+          "notes": "Very slow but high XP per log"
         }
       ]
     },
@@ -520,11 +509,10 @@
         {
           "id": "woodcutting_guild",
           "name": "Woodcutting Guild",
-          "locationId": "woodcutting_guild",
-          "bankLocationId": "woodcutting_guild_bank",
+          "trainingArea": {"x": 1579, "y": 3495, "plane": 0},
           "actionsPerHour": 60,
           "requirements": {"skills": {"Woodcutting": 60}},
-      "notes": "Very slow but high profit per log"
+          "notes": "Very slow but high profit per log"
         }
       ]
     },
@@ -548,10 +536,10 @@
         {
           "id": "woodcutting_guild",
           "name": "Woodcutting Guild",
-          "locationId": "woodcutting_guild",
+          "trainingArea": {"x": 1575, "y": 3498, "plane": 0},
           "actionsPerHour": 110,
           "requirements": {"skills": {"Woodcutting": 90}},
-      "notes": "Best XP for AFK woodcutting at 90+"
+          "notes": "Best XP for AFK woodcutting at 90+"
         }
       ]
     },
@@ -574,13 +562,13 @@
         {
           "id": "lumbridge_swamp",
           "name": "Lumbridge Swamp",
-          "locationId": "lumbridge_swamp_fishing",
+          "trainingArea": {"x": 3245, "y": 3151, "plane": 0},
           "actionsPerHour": 500
         },
         {
           "id": "al_kharid",
           "name": "Al Kharid",
-          "locationId": "al_kharid_fishing",
+          "trainingArea": {"x": 3267, "y": 3148, "plane": 0},
           "actionsPerHour": 480
         }
       ]
@@ -604,13 +592,13 @@
         {
           "id": "barbarian_village",
           "name": "Barbarian Village",
-          "locationId": "barbarian_village_fishing",
+          "trainingArea": {"x": 3103, "y": 3433, "plane": 0},
           "actionsPerHour": 450
         },
         {
           "id": "shilo_village",
           "name": "Shilo Village",
-          "locationId": "shilo_fishing",
+          "trainingArea": {"x": 2855, "y": 2974, "plane": 0},
           "actionsPerHour": 500,
           "requirements": {"members": true, "quests": ["Shilo Village"]},
           "notes": "Best spot with Karamja gloves 3+"
@@ -638,15 +626,13 @@
         {
           "id": "karamja",
           "name": "Musa Point (Karamja)",
-          "locationId": "karamja_dock_fishing",
-          "bankLocationId": "port_sarim_deposit_box",
+          "trainingArea": {"x": 2923, "y": 3180, "plane": 0},
           "actionsPerHour": 200
         },
         {
           "id": "fishing_guild",
           "name": "Fishing Guild",
-          "locationId": "fishing_guild",
-          "bankLocationId": "fishing_guild_bank",
+          "trainingArea": {"x": 2604, "y": 3419, "plane": 0},
           "actionsPerHour": 250,
           "requirements": {"skills": {"Fishing": 68}},
           "notes": "Invisible +7 boost from guild"
@@ -674,8 +660,7 @@
         {
           "id": "piscatoris",
           "name": "Piscatoris Fishing Colony",
-          "locationId": "piscatoris_fishing",
-          "bankLocationId": "piscatoris_bank",
+          "trainingArea": {"x": 2342, "y": 3702, "plane": 0},
           "actionsPerHour": 200,
           "notes": "Good AFK fishing with decent XP. Requires Swan Song quest."
         }
@@ -702,11 +687,10 @@
         {
           "id": "fishing_guild",
           "name": "Fishing Guild",
-          "locationId": "fishing_guild",
-          "bankLocationId": "fishing_guild_bank",
+          "trainingArea": {"x": 2604, "y": 3419, "plane": 0},
           "actionsPerHour": 100,
           "requirements": {"skills": {"Fishing": 68}},
-      "notes": "Very AFK, good food for ironmen"
+          "notes": "Very AFK, good food for ironmen"
         }
       ]
     },
@@ -731,8 +715,7 @@
         {
           "id": "karamja",
           "name": "Karamja",
-          "locationId": "karamja_karambwan",
-          "bankLocationId": "zanaris_bank",
+          "trainingArea": {"x": 2899, "y": 3117, "plane": 0},
           "actionsPerHour": 400,
           "notes": "Best tick-manipulation fishing"
         }
@@ -759,8 +742,7 @@
         {
           "id": "piscarilius",
           "name": "Piscarilius",
-          "locationId": "piscarilius_fishing",
-          "bankLocationId": "piscarilius_bank",
+          "trainingArea": {"x": 1824, "y": 3776, "plane": 0},
           "actionsPerHour": 100,
           "notes": "100% Piscarilius favor required. Best healing food"
         }
@@ -1013,7 +995,7 @@
       "requiredItemIds": [436, 438],
       "ironmanViable": true,
       "locations": [
-        {"id": "edgeville", "name": "Edgeville Furnace", "locationId": "edgeville_furnace", "bankLocationId": "edgeville_bank", "actionsPerHour": 900}
+        {"id": "edgeville", "name": "Edgeville Furnace", "trainingArea": {"x": 3109, "y": 3499, "plane": 0}, "actionsPerHour": 900}
       ],
       "notes": "Requires copper ore and tin ore"
     },
@@ -1037,7 +1019,7 @@
       "requiredItemIds": [440],
       "ironmanViable": true,
       "locations": [
-        {"id": "edgeville", "name": "Edgeville Furnace", "locationId": "edgeville_furnace", "bankLocationId": "edgeville_bank", "actionsPerHour": 900}
+        {"id": "edgeville", "name": "Edgeville Furnace", "trainingArea": {"x": 3109, "y": 3499, "plane": 0}, "actionsPerHour": 900}
       ],
       "notes": "50% success rate without ring of forging"
     },
@@ -1062,7 +1044,7 @@
       "requiredItemIds": [440, 453],
       "ironmanViable": true,
       "locations": [
-        {"id": "edgeville", "name": "Edgeville Furnace", "locationId": "edgeville_furnace", "bankLocationId": "edgeville_bank", "actionsPerHour": 450}
+        {"id": "edgeville", "name": "Edgeville Furnace", "trainingArea": {"x": 3109, "y": 3499, "plane": 0}, "actionsPerHour": 450}
       ],
       "notes": "Requires 1 iron ore and 2 coal"
     },
@@ -1088,7 +1070,7 @@
       "ironmanViable": true,
       "requirements": {"members": true},
       "locations": [
-        {"id": "edgeville", "name": "Edgeville Furnace", "locationId": "edgeville_furnace", "bankLocationId": "edgeville_bank", "actionsPerHour": 400}
+        {"id": "edgeville", "name": "Edgeville Furnace", "trainingArea": {"x": 3109, "y": 3499, "plane": 0}, "actionsPerHour": 400}
       ],
       "notes": "Requires 1 mithril ore and 4 coal"
     },
@@ -1114,7 +1096,7 @@
       "ironmanViable": true,
       "requirements": {"members": true},
       "locations": [
-        {"id": "edgeville", "name": "Edgeville Furnace", "locationId": "edgeville_furnace", "bankLocationId": "edgeville_bank", "actionsPerHour": 350}
+        {"id": "edgeville", "name": "Edgeville Furnace", "trainingArea": {"x": 3109, "y": 3499, "plane": 0}, "actionsPerHour": 350}
       ],
       "notes": "Requires 1 adamant ore and 6 coal"
     },
@@ -1139,7 +1121,7 @@
       "requiredItemIds": [2347, 2349],
       "ironmanViable": true,
       "locations": [
-        {"id": "varrock", "name": "Varrock Anvil", "locationId": "varrock_anvil", "bankLocationId": "varrock_west_bank", "actionsPerHour": 250}
+        {"id": "varrock", "name": "Varrock Anvil", "trainingArea": {"x": 3188, "y": 3425, "plane": 0}, "actionsPerHour": 250}
       ],
       "notes": "Requires 5 bronze bars per platebody"
     },
@@ -1164,7 +1146,7 @@
       "requiredItemIds": [2347, 2351],
       "ironmanViable": true,
       "locations": [
-        {"id": "varrock", "name": "Varrock Anvil", "locationId": "varrock_anvil", "bankLocationId": "varrock_west_bank", "actionsPerHour": 250}
+        {"id": "varrock", "name": "Varrock Anvil", "trainingArea": {"x": 3188, "y": 3425, "plane": 0}, "actionsPerHour": 250}
       ],
       "notes": "Requires 5 iron bars per platebody"
     },
@@ -1189,7 +1171,7 @@
       "requiredItemIds": [2347, 2353],
       "ironmanViable": true,
       "locations": [
-        {"id": "varrock", "name": "Varrock Anvil", "locationId": "varrock_anvil", "bankLocationId": "varrock_west_bank", "actionsPerHour": 250}
+        {"id": "varrock", "name": "Varrock Anvil", "trainingArea": {"x": 3188, "y": 3425, "plane": 0}, "actionsPerHour": 250}
       ],
       "notes": "Requires 5 steel bars per platebody"
     },
@@ -1215,7 +1197,7 @@
       "ironmanViable": true,
       "requirements": {"members": true},
       "locations": [
-        {"id": "varrock", "name": "Varrock Anvil", "locationId": "varrock_anvil", "bankLocationId": "varrock_west_bank", "actionsPerHour": 250}
+        {"id": "varrock", "name": "Varrock Anvil", "trainingArea": {"x": 3188, "y": 3425, "plane": 0}, "actionsPerHour": 250}
       ],
       "notes": "Requires 5 mithril bars per platebody"
     },
@@ -1241,7 +1223,7 @@
       "ironmanViable": true,
       "requirements": {"members": true},
       "locations": [
-        {"id": "varrock", "name": "Varrock Anvil", "locationId": "varrock_anvil", "bankLocationId": "varrock_west_bank", "actionsPerHour": 250}
+        {"id": "varrock", "name": "Varrock Anvil", "trainingArea": {"x": 3188, "y": 3425, "plane": 0}, "actionsPerHour": 250}
       ],
       "notes": "Requires 5 adamant bars per platebody"
     },
@@ -1266,8 +1248,8 @@
       "requiredItemIds": [317],
       "ironmanViable": true,
       "locations": [
-        {"id": "lumbridge", "name": "Lumbridge Castle Range", "locationId": "lumbridge_castle_range", "bankLocationId": "lumbridge_castle_bank", "actionsPerHour": 1300, "notes": "Lumbridge castle range reduces burn rate"},
-        {"id": "barbarian_village_fire", "name": "Barbarian Village (Fire)", "locationId": "barbarian_village_fishing", "actionsPerHour": 1200, "notes": "Permanent fire next to fishing spot. Power fish, cook, drop."}
+        {"id": "lumbridge", "name": "Lumbridge Castle Range", "trainingArea": {"x": 3211, "y": 3216, "plane": 0}, "actionsPerHour": 1300, "notes": "Lumbridge castle range reduces burn rate"},
+        {"id": "barbarian_village_fire", "name": "Barbarian Village (Fire)", "trainingArea": {"x": 3103, "y": 3433, "plane": 0}, "actionsPerHour": 1200, "notes": "Permanent fire next to fishing spot. Power fish, cook, drop."}
       ]
     },
     {
@@ -1292,8 +1274,8 @@
       "ironmanViable": true,
       "requirements": {"members": true},
       "locations": [
-        {"id": "rogues_den", "name": "Rogues' Den Fire", "locationId": "rogues_den_fire", "bankLocationId": "rogues_den_bank", "actionsPerHour": 1300},
-        {"id": "barbarian_village_fire", "name": "Barbarian Village (Fire)", "locationId": "barbarian_village_fishing", "actionsPerHour": 1200, "notes": "Permanent fire next to fishing spot. Power fish, cook, drop."}
+        {"id": "rogues_den", "name": "Rogues' Den Fire", "trainingArea": {"x": 3040, "y": 4969, "plane": 1}, "actionsPerHour": 1300},
+        {"id": "barbarian_village_fire", "name": "Barbarian Village (Fire)", "trainingArea": {"x": 3103, "y": 3433, "plane": 0}, "actionsPerHour": 1200, "notes": "Permanent fire next to fishing spot. Power fish, cook, drop."}
       ]
     },
     {
@@ -1318,8 +1300,8 @@
       "ironmanViable": true,
       "requirements": {"members": true},
       "locations": [
-        {"id": "rogues_den", "name": "Rogues' Den Fire", "locationId": "rogues_den_fire", "bankLocationId": "rogues_den_bank", "actionsPerHour": 1300, "notes": "Closest bank to fire"},
-        {"id": "barbarian_village_fire", "name": "Barbarian Village (Fire)", "locationId": "barbarian_village_fishing", "actionsPerHour": 1200, "notes": "Permanent fire next to fishing spot. Power fish, cook, drop."}
+        {"id": "rogues_den", "name": "Rogues' Den Fire", "trainingArea": {"x": 3040, "y": 4969, "plane": 1}, "actionsPerHour": 1300, "notes": "Closest bank to fire"},
+        {"id": "barbarian_village_fire", "name": "Barbarian Village (Fire)", "trainingArea": {"x": 3103, "y": 3433, "plane": 0}, "actionsPerHour": 1200, "notes": "Permanent fire next to fishing spot. Power fish, cook, drop."}
       ]
     },
     {
@@ -1344,8 +1326,8 @@
       "ironmanViable": true,
       "requirements": {"members": true},
       "locations": [
-        {"id": "rogues_den", "name": "Rogues' Den Fire", "locationId": "rogues_den_fire", "bankLocationId": "rogues_den_bank", "actionsPerHour": 1300},
-        {"id": "barbarian_village_fire", "name": "Barbarian Village (Fire)", "locationId": "barbarian_village_fishing", "actionsPerHour": 1200, "notes": "Permanent fire next to fishing spot. Power fish, cook, drop."}
+        {"id": "rogues_den", "name": "Rogues' Den Fire", "trainingArea": {"x": 3040, "y": 4969, "plane": 1}, "actionsPerHour": 1300},
+        {"id": "barbarian_village_fire", "name": "Barbarian Village (Fire)", "trainingArea": {"x": 3103, "y": 3433, "plane": 0}, "actionsPerHour": 1200, "notes": "Permanent fire next to fishing spot. Power fish, cook, drop."}
       ]
     },
     {
@@ -1370,8 +1352,8 @@
       "ironmanViable": true,
       "requirements": {"members": true},
       "locations": [
-        {"id": "rogues_den", "name": "Rogues' Den Fire", "locationId": "rogues_den_fire", "bankLocationId": "rogues_den_bank", "actionsPerHour": 1300},
-        {"id": "barbarian_village_fire", "name": "Barbarian Village (Fire)", "locationId": "barbarian_village_fishing", "actionsPerHour": 1200, "notes": "Permanent fire next to fishing spot. Power fish, cook, drop."}
+        {"id": "rogues_den", "name": "Rogues' Den Fire", "trainingArea": {"x": 3040, "y": 4969, "plane": 1}, "actionsPerHour": 1300},
+        {"id": "barbarian_village_fire", "name": "Barbarian Village (Fire)", "trainingArea": {"x": 3103, "y": 3433, "plane": 0}, "actionsPerHour": 1200, "notes": "Permanent fire next to fishing spot. Power fish, cook, drop."}
       ]
     },
     {
@@ -1396,8 +1378,8 @@
       "ironmanViable": true,
       "requirements": {"members": true, "quests": ["Tai Bwo Wannai Trio"]},
       "locations": [
-        {"id": "rogues_den", "name": "Rogues' Den Fire", "locationId": "rogues_den_fire", "bankLocationId": "rogues_den_bank", "actionsPerHour": 1300, "notes": "Can be 1-tick cooked"},
-        {"id": "barbarian_village_fire", "name": "Barbarian Village (Fire)", "locationId": "barbarian_village_fishing", "actionsPerHour": 1200, "notes": "Permanent fire next to fishing spot. Power fish, cook, drop."}
+        {"id": "rogues_den", "name": "Rogues' Den Fire", "trainingArea": {"x": 3040, "y": 4969, "plane": 1}, "actionsPerHour": 1300, "notes": "Can be 1-tick cooked"},
+        {"id": "barbarian_village_fire", "name": "Barbarian Village (Fire)", "trainingArea": {"x": 3103, "y": 3433, "plane": 0}, "actionsPerHour": 1200, "notes": "Permanent fire next to fishing spot. Power fish, cook, drop."}
       ]
     },
     {
@@ -1444,7 +1426,7 @@
       "requiredItemIds": [1737],
       "ironmanViable": true,
       "locations": [
-        {"id": "lumbridge", "name": "Lumbridge Castle", "locationId": "lumbridge_castle", "bankLocationId": "lumbridge_castle_bank", "actionsPerHour": 800}
+        {"id": "lumbridge", "name": "Lumbridge Castle", "trainingArea": {"x": 3209, "y": 3213, "plane": 1}, "actionsPerHour": 800}
       ],
       "notes": "Wool into ball of wool for stringing amulets"
     },
@@ -1554,7 +1536,7 @@
       "requiredItemIds": [1597, 2357],
       "ironmanViable": true,
       "locations": [
-        {"id": "edgeville", "name": "Edgeville Furnace", "locationId": "edgeville_furnace", "bankLocationId": "edgeville_bank", "actionsPerHour": 1200}
+        {"id": "edgeville", "name": "Edgeville Furnace", "trainingArea": {"x": 3109, "y": 3499, "plane": 0}, "actionsPerHour": 1200}
       ],
       "notes": "Necklace mould + gold bar"
     },
@@ -1579,7 +1561,7 @@
       "requiredItemIds": [1592, 2357],
       "ironmanViable": true,
       "locations": [
-        {"id": "edgeville", "name": "Edgeville Furnace", "locationId": "edgeville_furnace", "bankLocationId": "edgeville_bank", "actionsPerHour": 1200}
+        {"id": "edgeville", "name": "Edgeville Furnace", "trainingArea": {"x": 3109, "y": 3499, "plane": 0}, "actionsPerHour": 1200}
       ],
       "notes": "Bracelet mould + gold bar"
     },
@@ -1670,7 +1652,7 @@
       "requiredItemIds": [1781, 1783],
       "ironmanViable": true,
       "locations": [
-        {"id": "edgeville", "name": "Edgeville Furnace", "locationId": "edgeville_furnace", "bankLocationId": "edgeville_bank", "actionsPerHour": 1000}
+        {"id": "edgeville", "name": "Edgeville Furnace", "trainingArea": {"x": 3109, "y": 3499, "plane": 0}, "actionsPerHour": 1000}
       ],
       "notes": "Bucket of sand + soda ash"
     },
@@ -1818,7 +1800,7 @@
       "requiredItemIds": [590],
       "ironmanViable": true,
       "locations": [
-        {"id": "grand_exchange", "name": "Grand Exchange", "locationId": "grand_exchange", "bankLocationId": "grand_exchange_bank", "actionsPerHour": 500}
+        {"id": "grand_exchange", "name": "Grand Exchange", "trainingArea": {"x": 3165, "y": 3487, "plane": 0}, "actionsPerHour": 500}
       ]
     },
     {
@@ -1833,7 +1815,7 @@
       "requiredItemIds": [590],
       "ironmanViable": true,
       "locations": [
-        {"id": "grand_exchange", "name": "Grand Exchange", "locationId": "grand_exchange", "bankLocationId": "grand_exchange_bank", "actionsPerHour": 500}
+        {"id": "grand_exchange", "name": "Grand Exchange", "trainingArea": {"x": 3165, "y": 3487, "plane": 0}, "actionsPerHour": 500}
       ]
     },
     {
@@ -1848,7 +1830,7 @@
       "requiredItemIds": [590],
       "ironmanViable": true,
       "locations": [
-        {"id": "grand_exchange", "name": "Grand Exchange", "locationId": "grand_exchange", "bankLocationId": "grand_exchange_bank", "actionsPerHour": 500}
+        {"id": "grand_exchange", "name": "Grand Exchange", "trainingArea": {"x": 3165, "y": 3487, "plane": 0}, "actionsPerHour": 500}
       ]
     },
     {
@@ -1864,7 +1846,7 @@
       "ironmanViable": true,
       "requirements": {"members": true},
       "locations": [
-        {"id": "grand_exchange", "name": "Grand Exchange", "locationId": "grand_exchange", "bankLocationId": "grand_exchange_bank", "actionsPerHour": 500}
+        {"id": "grand_exchange", "name": "Grand Exchange", "trainingArea": {"x": 3165, "y": 3487, "plane": 0}, "actionsPerHour": 500}
       ]
     },
     {
@@ -1880,7 +1862,7 @@
       "ironmanViable": true,
       "requirements": {"members": true},
       "locations": [
-        {"id": "grand_exchange", "name": "Grand Exchange", "locationId": "grand_exchange", "bankLocationId": "grand_exchange_bank", "actionsPerHour": 500}
+        {"id": "grand_exchange", "name": "Grand Exchange", "trainingArea": {"x": 3165, "y": 3487, "plane": 0}, "actionsPerHour": 500}
       ]
     },
     {
@@ -1896,7 +1878,7 @@
       "ironmanViable": true,
       "requirements": {"members": true},
       "locations": [
-        {"id": "grand_exchange", "name": "Grand Exchange", "locationId": "grand_exchange", "bankLocationId": "grand_exchange_bank", "actionsPerHour": 500}
+        {"id": "grand_exchange", "name": "Grand Exchange", "trainingArea": {"x": 3165, "y": 3487, "plane": 0}, "actionsPerHour": 500}
       ]
     },
     {
@@ -1913,7 +1895,7 @@
       "ironmanViable": true,
       "requirements": {"members": true},
       "locations": [
-        {"id": "wintertodt", "name": "Wintertodt", "locationId": "wintertodt", "actionsPerHour": 250}
+        {"id": "wintertodt", "name": "Wintertodt", "trainingArea": {"x": 1630, "y": 3944, "plane": 0}, "actionsPerHour": 250}
       ]
     },
     {
@@ -1930,7 +1912,7 @@
       "ironmanViable": true,
       "requirements": {"members": true},
       "locations": [
-        {"id": "wintertodt", "name": "Wintertodt", "locationId": "wintertodt", "actionsPerHour": 180}
+        {"id": "wintertodt", "name": "Wintertodt", "trainingArea": {"x": 1630, "y": 3944, "plane": 0}, "actionsPerHour": 180}
       ]
     },
     {
@@ -2005,7 +1987,7 @@
       "ironmanViable": true,
       "requirements": {"members": true},
       "locations": [
-        {"id": "chaos_altar", "name": "Wilderness Chaos Altar", "locationId": "chaos_altar", "actionsPerHour": 2000, "notes": "3.5x XP with 50% bone save chance. Risk of PKers"}
+        {"id": "chaos_altar", "name": "Wilderness Chaos Altar", "trainingArea": {"x": 2948, "y": 3820, "plane": 0}, "actionsPerHour": 2000, "notes": "3.5x XP with 50% bone save chance. Risk of PKers"}
       ]
     },
     {
@@ -2025,7 +2007,7 @@
       "ironmanViable": true,
       "requirements": {"members": true},
       "locations": [
-        {"id": "chaos_altar", "name": "Wilderness Chaos Altar", "locationId": "chaos_altar", "actionsPerHour": 2000, "notes": "Best XP/bone, risk of PKers"}
+        {"id": "chaos_altar", "name": "Wilderness Chaos Altar", "trainingArea": {"x": 2948, "y": 3820, "plane": 0}, "actionsPerHour": 2000, "notes": "Best XP/bone, risk of PKers"}
       ]
     },
     {
@@ -2043,8 +2025,8 @@
       "dropWhenFull": false,
       "ironmanViable": true,
       "locations": [
-        {"id": "lumbridge", "name": "Lumbridge", "locationId": "lumbridge", "actionsPerHour": 1400},
-        {"id": "edgeville", "name": "Edgeville", "locationId": "edgeville", "actionsPerHour": 1350}
+        {"id": "lumbridge", "name": "Lumbridge", "trainingArea": {"x": 3222, "y": 3219, "plane": 0}, "actionsPerHour": 1400},
+        {"id": "edgeville", "name": "Edgeville", "trainingArea": {"x": 3093, "y": 3493, "plane": 0}, "actionsPerHour": 1350}
       ],
       "notes": "Can be stunned on failure - wear dodgy necklace if available"
     },
@@ -2064,8 +2046,8 @@
       "ironmanViable": true,
       "requirements": {"members": true},
       "locations": [
-        {"id": "ardougne", "name": "Ardougne (safespot)", "locationId": "ardougne_market", "actionsPerHour": 1200, "notes": "Safespot behind baker"},
-        {"id": "hosidius", "name": "Hosidius", "locationId": "hosidius_market", "actionsPerHour": 1100}
+        {"id": "ardougne", "name": "Ardougne (safespot)", "trainingArea": {"x": 2669, "y": 3310, "plane": 0}, "actionsPerHour": 1200, "notes": "Safespot behind baker"},
+        {"id": "hosidius", "name": "Hosidius", "trainingArea": {"x": 1773, "y": 3594, "plane": 0}, "actionsPerHour": 1100}
       ],
       "notes": "Good food source for ironmen"
     },
@@ -2084,7 +2066,7 @@
       "ironmanViable": true,
       "requirements": {"members": true},
       "locations": [
-        {"id": "ardougne", "name": "Ardougne Market", "locationId": "ardougne_market", "bankLocationId": "ardougne_north_bank", "actionsPerHour": 1200}
+        {"id": "ardougne", "name": "Ardougne Market", "trainingArea": {"x": 2669, "y": 3310, "plane": 0}, "actionsPerHour": 1200}
       ],
       "notes": "Sell silk back to shop after 20 mins for 60gp each"
     },
@@ -2104,7 +2086,7 @@
       "ironmanViable": true,
       "requirements": {"members": true},
       "locations": [
-        {"id": "draynor", "name": "Draynor Village", "locationId": "draynor_village", "bankLocationId": "draynor_bank", "actionsPerHour": 1000}
+        {"id": "draynor", "name": "Draynor Village", "trainingArea": {"x": 3080, "y": 3250, "plane": 0}, "actionsPerHour": 1000}
       ],
       "notes": "Best source of herb and allotment seeds for ironmen"
     },
@@ -2124,7 +2106,7 @@
       "ironmanViable": true,
       "requirements": {"members": true},
       "locations": [
-        {"id": "ardougne", "name": "Ardougne Market", "locationId": "ardougne_market", "bankLocationId": "ardougne_north_bank", "actionsPerHour": 1400}
+        {"id": "ardougne", "name": "Ardougne Market", "trainingArea": {"x": 2654, "y": 3306, "plane": 0}, "actionsPerHour": 1400}
       ],
       "notes": "Best long-term thieving training. Use dodgy necklace to reduce stuns"
     },
@@ -2140,7 +2122,7 @@
       "dropWhenFull": false,
       "ironmanViable": true,
       "locations": [
-        {"id": "gnome_stronghold", "name": "Gnome Stronghold", "locationId": "gnome_stronghold", "actionsPerHour": 80, "notes": "Starter course for levels 1-10. No marks of grace."}
+        {"id": "gnome_stronghold", "name": "Gnome Stronghold", "trainingArea": {"x": 2474, "y": 3436, "plane": 0}, "actionsPerHour": 80, "notes": "Starter course for levels 1-10. No marks of grace."}
       ]
     },
     {
@@ -2157,7 +2139,7 @@
       "ironmanViable": true,
       "requirements": {"members": true},
       "locations": [
-        {"id": "draynor", "name": "Draynor Village", "locationId": "draynor_village", "actionsPerHour": 80}
+        {"id": "draynor", "name": "Draynor Village", "trainingArea": {"x": 3104, "y": 3279, "plane": 0}, "actionsPerHour": 80}
       ]
     },
     {
@@ -2174,7 +2156,7 @@
       "ironmanViable": true,
       "requirements": {"members": true},
       "locations": [
-        {"id": "al_kharid", "name": "Al Kharid", "locationId": "al_kharid", "actionsPerHour": 45}
+        {"id": "al_kharid", "name": "Al Kharid", "trainingArea": {"x": 3273, "y": 3195, "plane": 0}, "actionsPerHour": 45}
       ]
     },
     {
@@ -2191,7 +2173,7 @@
       "ironmanViable": true,
       "requirements": {"members": true},
       "locations": [
-        {"id": "varrock", "name": "Varrock", "locationId": "varrock", "actionsPerHour": 40}
+        {"id": "varrock", "name": "Varrock", "trainingArea": {"x": 3223, "y": 3414, "plane": 0}, "actionsPerHour": 40}
       ]
     },
     {
@@ -2208,7 +2190,7 @@
       "ironmanViable": true,
       "requirements": {"members": true, "quests": ["Priest in Peril"]},
       "locations": [
-        {"id": "canifis", "name": "Canifis", "locationId": "canifis", "actionsPerHour": 55, "notes": "Best marks of grace per hour"}
+        {"id": "canifis", "name": "Canifis", "trainingArea": {"x": 3507, "y": 3489, "plane": 0}, "actionsPerHour": 55, "notes": "Best marks of grace per hour"}
       ]
     },
     {
@@ -2225,7 +2207,7 @@
       "ironmanViable": true,
       "requirements": {"members": true},
       "locations": [
-        {"id": "falador", "name": "Falador", "locationId": "falador", "actionsPerHour": 42, "notes": "Longer course with more XP per lap"}
+        {"id": "falador", "name": "Falador", "trainingArea": {"x": 3036, "y": 3341, "plane": 0}, "actionsPerHour": 42, "notes": "Longer course with more XP per lap"}
       ]
     },
     {
@@ -2242,7 +2224,7 @@
       "ironmanViable": true,
       "requirements": {"members": true},
       "locations": [
-        {"id": "seers_village", "name": "Seers' Village", "locationId": "seers_village", "actionsPerHour": 40, "notes": "Teleport shortcut available with Kandarin hard diary"}
+        {"id": "seers_village", "name": "Seers' Village", "trainingArea": {"x": 2729, "y": 3488, "plane": 0}, "actionsPerHour": 40, "notes": "Teleport shortcut available with Kandarin hard diary"}
       ]
     },
     {
@@ -2259,7 +2241,7 @@
       "ironmanViable": true,
       "requirements": {"members": true},
       "locations": [
-        {"id": "pollnivneach", "name": "Pollnivneach", "locationId": "pollnivneach", "actionsPerHour": 42, "notes": "Desert Hard diary improves marks rate"}
+        {"id": "pollnivneach", "name": "Pollnivneach", "trainingArea": {"x": 3351, "y": 2962, "plane": 0}, "actionsPerHour": 42, "notes": "Desert Hard diary improves marks rate"}
       ]
     },
     {
@@ -2276,7 +2258,7 @@
       "ironmanViable": true,
       "requirements": {"members": true, "quests": ["The Fremennik Trials"]},
       "locations": [
-        {"id": "rellekka", "name": "Rellekka", "locationId": "rellekka", "actionsPerHour": 48, "notes": "Best marks per hour at high levels"}
+        {"id": "rellekka", "name": "Rellekka", "trainingArea": {"x": 2625, "y": 3677, "plane": 0}, "actionsPerHour": 48, "notes": "Best marks per hour at high levels"}
       ]
     },
     {
@@ -2293,7 +2275,7 @@
       "ironmanViable": true,
       "requirements": {"members": true},
       "locations": [
-        {"id": "ardougne", "name": "Ardougne", "locationId": "ardougne", "actionsPerHour": 52, "notes": "Best XP/hr rooftop course. Ardougne Elite diary boosts completion rate"}
+        {"id": "ardougne", "name": "Ardougne", "trainingArea": {"x": 2674, "y": 3298, "plane": 0}, "actionsPerHour": 52, "notes": "Best XP/hr rooftop course. Ardougne Elite diary boosts completion rate"}
       ]
     },
     {
@@ -2310,7 +2292,7 @@
       "ironmanViable": true,
       "requirements": {"members": true, "quests": ["Song of the Elves"], "areas": ["Prifddinas"]},
       "locations": [
-        {"id": "prifddinas", "name": "Prifddinas", "locationId": "prifddinas", "actionsPerHour": 40, "notes": "Highest XP per lap. Gives crystal shards instead of marks"}
+        {"id": "prifddinas", "name": "Prifddinas", "trainingArea": {"x": 3255, "y": 6109, "plane": 0}, "actionsPerHour": 40, "notes": "Highest XP per lap. Gives crystal shards instead of marks"}
       ]
     },
     {
@@ -2326,7 +2308,7 @@
       "ironmanViable": true,
       "requirements": {"members": true},
       "locations": [
-        {"id": "arceuus_library", "name": "Arceuus Library", "locationId": "arceuus_library", "actionsPerHour": 45}
+        {"id": "arceuus_library", "name": "Arceuus Library", "trainingArea": {"x": 1632, "y": 3807, "plane": 0}, "actionsPerHour": 45}
       ]
     },
     {
@@ -2342,8 +2324,126 @@
       "ironmanViable": true,
       "requirements": {"members": true},
       "locations": [
-        {"id": "arceuus_library", "name": "Arceuus Library", "locationId": "arceuus_library", "actionsPerHour": 45}
+        {"id": "arceuus_library", "name": "Arceuus Library", "trainingArea": {"x": 1632, "y": 3807, "plane": 0}, "actionsPerHour": 45}
       ]
+    },
+    {
+      "id": "trout_salmon_powerfish_cook",
+      "name": "Trout/Salmon - Powerfish & Cook",
+      "skill": "FISHING",
+      "methodType": "GATHER_AND_PROCESS",
+      "minLevel": 20,
+      "xpPerAction": 60.0,
+      "secondarySkill": "COOKING",
+      "secondaryXpPerAction": 75.0,
+      "targetNpcIds": [1526, 1527],
+      "menuAction": "Lure",
+      "successAnimationIds": [623],
+      "requiresInventorySpace": true,
+      "dropWhenFull": true,
+      "productItemIds": [335, 331],
+      "sourceItemId": 335,
+      "outputItemId": 333,
+      "requiredItemIds": [309, 314],
+      "ironmanViable": true,
+      "locations": [
+        {
+          "id": "barbarian_village",
+          "name": "Barbarian Village",
+          "trainingArea": {"x": 3103, "y": 3433, "plane": 0},
+          "actionsPerHour": 350,
+          "notes": "Permanent fire near fishing spot for cooking"
+        }
+      ],
+      "notes": "Fish trout/salmon, cook on nearby fire, drop all. Trains Fishing and Cooking."
+    },
+    {
+      "id": "willow_powerchop_fletch",
+      "name": "Willow Trees - Powerchop & Fletch",
+      "skill": "WOODCUTTING",
+      "methodType": "GATHER_AND_PROCESS",
+      "minLevel": 30,
+      "xpPerAction": 67.5,
+      "secondarySkill": "FLETCHING",
+      "secondaryXpPerAction": 5.0,
+      "targetObjectIds": [10819, 10829, 10831, 10833],
+      "menuAction": "Chop down",
+      "successAnimationIds": [879],
+      "requiresInventorySpace": true,
+      "dropWhenFull": false,
+      "productItemIds": [1519],
+      "sourceItemId": 1519,
+      "outputItemId": 52,
+      "processingToolId": 946,
+      "requiredItemIds": [1349, 1351, 1353, 1355, 1357, 1359, 6739, 946],
+      "ironmanViable": true,
+      "watchedGroundItems": [
+        {"itemId": 5070, "itemName": "Bird nest (empty)", "priority": 50, "maxPickupDistance": 5, "interruptAction": true},
+        {"itemId": 5071, "itemName": "Bird nest (egg)", "priority": 60, "maxPickupDistance": 5, "interruptAction": true},
+        {"itemId": 5072, "itemName": "Bird nest (egg)", "priority": 60, "maxPickupDistance": 5, "interruptAction": true},
+        {"itemId": 5073, "itemName": "Bird nest (egg)", "priority": 60, "maxPickupDistance": 5, "interruptAction": true},
+        {"itemId": 5074, "itemName": "Bird nest (ring)", "priority": 80, "maxPickupDistance": 5, "interruptAction": true}
+      ],
+      "locations": [
+        {
+          "id": "draynor",
+          "name": "Draynor Village",
+          "trainingArea": {"x": 3087, "y": 3234, "plane": 0},
+          "actionsPerHour": 500
+        },
+        {
+          "id": "seers_village",
+          "name": "Seers' Village",
+          "trainingArea": {"x": 2709, "y": 3463, "plane": 0},
+          "actionsPerHour": 550,
+          "requirements": {"members": true}
+        }
+      ],
+      "notes": "Chop willows, fletch to arrow shafts (stackable). Trains Woodcutting and Fletching."
+    },
+    {
+      "id": "willow_powerchop_firemake",
+      "name": "Willow Trees - Powerchop & Firemake",
+      "skill": "WOODCUTTING",
+      "methodType": "GATHER_AND_PROCESS",
+      "minLevel": 30,
+      "xpPerAction": 67.5,
+      "secondarySkill": "FIREMAKING",
+      "secondaryXpPerAction": 90.0,
+      "targetObjectIds": [10819, 10829, 10831, 10833],
+      "menuAction": "Chop down",
+      "successAnimationIds": [879],
+      "requiresInventorySpace": true,
+      "dropWhenFull": false,
+      "productItemIds": [1519],
+      "sourceItemId": 1519,
+      "logItemId": 1519,
+      "processingToolId": 590,
+      "requiredItemIds": [1349, 1351, 1353, 1355, 1357, 1359, 6739, 590],
+      "ironmanViable": true,
+      "watchedGroundItems": [
+        {"itemId": 5070, "itemName": "Bird nest (empty)", "priority": 50, "maxPickupDistance": 5, "interruptAction": true},
+        {"itemId": 5071, "itemName": "Bird nest (egg)", "priority": 60, "maxPickupDistance": 5, "interruptAction": true},
+        {"itemId": 5072, "itemName": "Bird nest (egg)", "priority": 60, "maxPickupDistance": 5, "interruptAction": true},
+        {"itemId": 5073, "itemName": "Bird nest (egg)", "priority": 60, "maxPickupDistance": 5, "interruptAction": true},
+        {"itemId": 5074, "itemName": "Bird nest (ring)", "priority": 80, "maxPickupDistance": 5, "interruptAction": true}
+      ],
+      "locations": [
+        {
+          "id": "draynor",
+          "name": "Draynor Village",
+          "trainingArea": {"x": 3087, "y": 3234, "plane": 0},
+          "actionsPerHour": 400
+        },
+        {
+          "id": "seers_village",
+          "name": "Seers' Village",
+          "trainingArea": {"x": 2709, "y": 3463, "plane": 0},
+          "actionsPerHour": 450,
+          "requirements": {"members": true}
+        }
+      ],
+      "notes": "Chop willows, burn logs (consumed). Trains Woodcutting and Firemaking."
     }
   ]
 }

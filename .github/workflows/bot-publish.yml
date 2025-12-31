@@ -3,6 +3,12 @@ name: bot-publish
 on:
   release:
     types: [created]
+  workflow_call:
+    inputs:
+      version:
+        description: 'Version to publish (without v prefix)'
+        required: true
+        type: string
   workflow_dispatch:
 
 jobs:
@@ -31,9 +37,13 @@ jobs:
 
       - name: Set release version
         run: |
-          tag="${{ github.event.release.tag_name }}"
+          if [ -n "${{ inputs.version }}" ]; then
+            tag="${{ inputs.version }}"
+          else
+            tag="${{ github.event.release.tag_name }}"
+          fi
           tag="${tag#v}"
-          echo "VERSION=$tag" >> "$GITHUB_ENV"
+          echo "VERSION=${tag}" >> "$GITHUB_ENV"
 
       - name: Publish to GitHub Packages
         env:
