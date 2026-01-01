@@ -15,7 +15,7 @@ import {
 
 const DATA_DIR = process.env.DATA_DIR || './data';
 const AUTH_DB_PATH = join(DATA_DIR, 'auth.db');
-const AUTH_SECRET = process.env.AUTH_SECRET || 'dev-secret-change-in-production';
+const AUTH_SECRET = process.env.AUTH_SECRET!;
 
 const isDev = process.env.NODE_ENV !== 'production';
 
@@ -138,8 +138,7 @@ const magicLinkDeviceValidation = (): BetterAuthPlugin => {
             const stored = getStoredFingerprint(token);
             if (!stored) {
               console.warn(`No device fingerprint found for magic link token: ${token.substring(0, 10)}...`);
-              // Allow through - might be old token or dev mode
-              return { context: ctx };
+              throw new Error('Invalid or expired magic link. Please request a new one.');
             }
 
             // Extract current client fingerprint from header

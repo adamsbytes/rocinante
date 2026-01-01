@@ -57,6 +57,12 @@ const authRateLimiter = new RateLimiterMemory({
   duration: 1,
 });
 
+// Bot commands: 1 per second per bot (commands take time to execute in-game)
+const commandRateLimiter = new RateLimiterMemory({
+  points: 1,
+  duration: 1,
+});
+
 // =============================================================================
 // Bot ID Validation (UUIDv7)
 // =============================================================================
@@ -242,6 +248,8 @@ type VncWebSocketData = {
   browserHandshakeIgnoreBytes: number;
   /** Periodic session re-validation interval */
   sessionValidationInterval: ReturnType<typeof setInterval> | null;
+  /** Stored session headers for periodic re-validation */
+  sessionHeaders: Headers;
 };
 
 type StatusWebSocketData = {
@@ -252,6 +260,8 @@ type StatusWebSocketData = {
   pingInterval: ReturnType<typeof setInterval> | null;
   /** Periodic session re-validation interval */
   sessionValidationInterval: ReturnType<typeof setInterval> | null;
+  /** Stored session headers for periodic re-validation */
+  sessionHeaders: Headers;
 };
 
 type WebSocketData = VncWebSocketData | StatusWebSocketData;
@@ -522,6 +532,7 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
         vncPassword,
         browserHandshakeIgnoreBytes: 0,
         sessionValidationInterval: null,
+        sessionHeaders: new Headers({ cookie: req.headers.get('cookie') || '' }),
       } as VncWebSocketData,
     });
 
@@ -546,6 +557,7 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
         cleanup: null,
         pingInterval: null,
         sessionValidationInterval: null,
+        sessionHeaders: new Headers({ cookie: req.headers.get('cookie') || '' }),
       } as StatusWebSocketData,
     });
 
@@ -614,6 +626,13 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
   if (path.match(/^\/api\/bots\/[^/]+\/command$/) && method === 'POST') {
     const result = await withOwnedBot(session!, path, /^\/api\/bots\/([^/]+)\/command$/);
     if (!result.ok) return result.response;
+
+    // Command-specific rate limit: 1/sec per bot
+    try {
+      await commandRateLimiter.consume(result.botId);
+    } catch {
+      return error({ code: 'RATE_LIMITED', status: 429, details: `Command rate limit exceeded for bot ${result.botId}` });
+    }
 
     try {
       const body = await req.json();
@@ -885,7 +904,7 @@ const SESSION_VALIDATION_INTERVAL_MS = 60_000;
 
 /**
  * Start periodic session validation for a WebSocket connection.
- * Closes the connection if user no longer owns the bot.
+ * Validates both session validity (not logged out/expired) and bot ownership.
  */
 function startSessionValidation(
   ws: ServerWebSocket<WebSocketData>,
@@ -896,10 +915,21 @@ function startSessionValidation(
     if (ws.readyState !== 1) return; // Not open
     
     try {
+      // Validate session is still active using stored headers
+      const sessionHeaders = ws.data.sessionHeaders;
+      const session = await getSession(new Request('http://localhost', { headers: sessionHeaders }));
+      
+      if (!session?.user?.id || session.user.id !== userId) {
+        console.warn(`Session expired for ${ws.data.type} WebSocket: bot ${botId}, user ${userId}`);
+        ws.close(4001, 'Session expired');
+        return;
+      }
+      
+      // Validate user still owns the bot
       const bot = await getBot(botId);
       if (!bot || bot.ownerId !== userId) {
-        console.warn(`Session invalidated for ${ws.data.type} WebSocket: bot ${botId}, user ${userId}`);
-        ws.close(4001, 'Session expired or access revoked');
+        console.warn(`Access revoked for ${ws.data.type} WebSocket: bot ${botId}, user ${userId}`);
+        ws.close(4001, 'Access revoked');
       }
     } catch (err) {
       console.error(`Error validating session for bot ${botId}:`, err);
