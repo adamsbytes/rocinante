@@ -1348,4 +1348,20 @@ public final class NpcCollections {
             NpcID.TZHAARHUR_2165,
             NpcID.TZHAARHUR_2166
     ));
+
+    // ========================================================================
+    // Player Gravestones (death recovery)
+    // ========================================================================
+
+    /**
+     * Player gravestone NPCs that spawn when a player dies.
+     * Yes, gravestones are NPCs, not objects!
+     * Action: "Loot" to open the retrieval interface.
+     */
+    public static final List<Integer> PLAYER_GRAVESTONES = Collections.unmodifiableList(Arrays.asList(
+            NpcID.GRAVE,        // 9856 - Default gravestone
+            NpcID.GRAVE_9857,   // 9857 - Angel gravestone
+            9858,               // Variant (no RuneLite constant)
+            9859                // Variant (no RuneLite constant)
+    ));
 }

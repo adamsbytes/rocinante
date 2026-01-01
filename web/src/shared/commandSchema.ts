@@ -110,10 +110,13 @@ export const botCommandPayloadSchema = z.object({
 
 /**
  * Full command schema (with timestamp - used internally).
+ * Note: Cannot use .extend() on schemas with refinements, so we merge instead.
  */
-export const botCommandSchema = botCommandPayloadSchema.extend({
-  timestamp: z.number().int().positive(),
-});
+export const botCommandSchema = botCommandPayloadSchema.and(
+  z.object({
+    timestamp: z.number().int().positive(),
+  })
+);
 
 // Export types
 export type BotCommandPayload = z.infer<typeof botCommandPayloadSchema>;

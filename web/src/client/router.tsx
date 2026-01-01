@@ -4,15 +4,17 @@ import {
   Outlet,
   Link,
 } from '@tanstack/solid-router';
-import { Show } from 'solid-js';
+import { Show, Switch, Match } from 'solid-js';
 import { createPersistedSignal } from './lib/persistedSignal';
 import type { QueryClient } from '@tanstack/solid-query';
 import { Dashboard } from './routes/Dashboard';
 import { BotDetail } from './routes/BotDetail';
 import { BotNew } from './routes/BotNew';
 import { BotEdit } from './routes/BotEdit';
+import { Login } from './routes/Login';
 import { LogsViewer } from './components/LogsViewer';
 import { getViewingLogsForBot, closeLogs } from './lib/logsStore';
+import { user, loading, isAuthenticated, signOut } from './lib/auth';
 
 interface RouterContext {
   queryClient: QueryClient;
@@ -53,6 +55,26 @@ const rootRoute = createRootRouteWithContext<RouterContext>()({
   component: RootLayout,
 });
 
+// Loading spinner component
+const LoadingSpinner = () => (
+  <div class="min-h-screen flex items-center justify-center bg-[var(--bg-primary)]">
+    <div class="flex flex-col items-center gap-4">
+      <svg class="animate-spin h-8 w-8 text-[var(--accent)]" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none" />
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+      </svg>
+      <span class="text-[var(--text-secondary)]">Loading...</span>
+    </div>
+  </div>
+);
+
+// Sign out icon
+const SignOutIcon = () => (
+  <svg class="w-7 h-7 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+  </svg>
+);
+
 function RootLayout() {
   const viewingBotId = getViewingLogsForBot();
   const [collapsed, setCollapsed] = createPersistedSignal('sidebar-collapsed', false);
@@ -60,7 +82,21 @@ function RootLayout() {
   // Shared styles for nav items
   const navItemBase = "flex items-center rounded-lg hover:bg-[var(--bg-tertiary)] transition-colors";
 
+  // Use Switch/Match for reactive conditional rendering
   return (
+    <Switch>
+      {/* Show loading spinner while checking auth */}
+      <Match when={loading()}>
+        <LoadingSpinner />
+      </Match>
+
+      {/* Show login page if not authenticated */}
+      <Match when={!isAuthenticated()}>
+        <Login />
+      </Match>
+
+      {/* Authenticated - show main app */}
+      <Match when={isAuthenticated()}>
     <>
       <div class="min-h-screen flex">
         {/* Sidebar - fixed height, no scroll */}
@@ -119,11 +155,32 @@ function RootLayout() {
             </Link>
           </nav>
 
-          {/* Spacer to push collapse button to bottom */}
+          {/* Spacer to push buttons to bottom */}
           <div class="flex-1" />
 
-          {/* Collapse button at bottom */}
+          {/* User info (when expanded) */}
+          <Show when={!collapsed() && user()}>
+            <div class="px-3 py-2 mb-2 text-xs text-[var(--text-secondary)] truncate">
+              {user()?.email}
+            </div>
+          </Show>
+
+          {/* Sign out button */}
           <div classList={{ 'w-full flex justify-center': collapsed() }}>
+            <button
+              onClick={() => signOut()}
+              class={`${navItemBase} text-[var(--text-secondary)] hover:text-[var(--danger)] ${collapsed() ? 'w-12 h-12 justify-center' : 'gap-3 px-3 w-full h-12'}`}
+              title="Sign out"
+            >
+              <SignOutIcon />
+              <Show when={!collapsed()}>
+                <span class="whitespace-nowrap">Sign out</span>
+              </Show>
+            </button>
+          </div>
+
+          {/* Collapse button at bottom */}
+          <div classList={{ 'w-full flex justify-center mt-2': collapsed(), 'mt-2': !collapsed() }}>
             <button
               onClick={() => setCollapsed(!collapsed())}
               class={`${navItemBase} text-[var(--text-secondary)] hover:text-[var(--text-primary)] ${collapsed() ? 'w-12 h-12 justify-center' : 'gap-3 px-3 w-full h-12'}`}
@@ -148,6 +205,8 @@ function RootLayout() {
         <LogsViewer botId={viewingBotId()!} onClose={closeLogs} />
       </Show>
     </>
+      </Match>
+    </Switch>
   );
 }
 

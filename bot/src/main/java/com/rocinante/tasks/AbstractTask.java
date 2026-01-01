@@ -501,7 +501,7 @@ public abstract class AbstractTask implements Task {
 
     /**
      * Check if the task has exceeded its timeout.
-     * 
+     *
      * <p>Uses progress-based timeout: times out if no progress for
      * {@link #inactivityTimeoutTicks} ticks (default 100 ≈ 60 seconds).
      * 

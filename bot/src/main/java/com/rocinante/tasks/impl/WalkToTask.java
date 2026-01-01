@@ -504,35 +504,40 @@ public class WalkToTask extends AbstractTask {
         }
 
         Point screenPoint = calculateMinimapPoint(ctx, clickTarget);
+        
+        // If minimap click fails, try intermediate point FIRST before viewport
+        // Viewport clicks are risky - they can accidentally click objects while moving
         if (screenPoint == null) {
+            WorldPoint intermediate = calculateIntermediatePoint(playerPos, clickTarget);
+            if (intermediate != null && !intermediate.equals(clickTarget)) {
+                screenPoint = calculateMinimapPoint(ctx, intermediate);
+                if (screenPoint != null) {
+                    clickTarget = intermediate;
+                    log.debug("Using intermediate minimap point {} toward target", intermediate);
+                }
+            }
+        }
+
+        // Only fall back to viewport if minimap completely fails AND player isn't moving
+        // This prevents clicking objects while running
+        if (screenPoint == null && !ctx.getPlayerState().isMoving()) {
             screenPoint = calculateViewportPoint(ctx, clickTarget);
+            if (screenPoint != null) {
+                log.debug("Using viewport click for {} (player stationary)", clickTarget);
+            }
         }
 
         if (screenPoint == null) {
-            // Target not clickable - start camera rotation if not already in progress
+            // Target not clickable - start camera rotation
             var coupler = ctx.getMouseCameraCoupler();
             if (coupler != null && !cameraRotationPending) {
                 cameraRotationPending = true;
                 log.debug("Target {} not clickable, rotating camera", clickTarget);
                 coupler.ensureTargetVisible(clickTarget)
                         .whenComplete((v, ex) -> cameraRotationPending = false);
-                // Don't return - fall through to try intermediate point immediately
             }
-            
-            // Use intermediate point toward target within minimap range
-            WorldPoint intermediate = calculateIntermediatePoint(playerPos, clickTarget);
-            if (intermediate != null && !intermediate.equals(clickTarget)) {
-                screenPoint = calculateMinimapPoint(ctx, intermediate);
-                if (screenPoint != null) {
-                    clickTarget = intermediate;
-                    log.debug("Using intermediate point {} toward target", intermediate);
-                }
-        }
-
-        if (screenPoint == null) {
             log.debug("Could not calculate click point for {}", clickTarget);
             return;
-            }
         }
 
         final WorldPoint finalTarget = clickTarget;

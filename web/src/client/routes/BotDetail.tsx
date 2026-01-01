@@ -47,6 +47,9 @@ export const BotDetail: Component = () => {
   const isStopping = () => botQuery.data?.status.state === 'stopping' || stopMutation.isPending;
   const isError = () => botQuery.data?.status.state === 'error';
   const isRestarting = () => restartMutation.isPending;
+  
+  // VNC should disconnect immediately when restart/stop is clicked, not wait for state to change
+  const shouldVncConnect = () => isRunning() && !restartMutation.isPending && !stopMutation.isPending;
 
   // Status store - created once on mount, like VncViewer
   // Using refs to avoid effect-based lifecycle which causes disconnects on isRunning() flickers
@@ -225,7 +228,7 @@ export const BotDetail: Component = () => {
                 <div class="relative">
                   <VncViewer 
                     botId={params().id} 
-                    shouldConnect={isRunning}
+                    shouldConnect={shouldVncConnect}
                     onStatusChange={handleVncStatusChange} 
                   />
                   {/* Overlay placeholder when not running */}

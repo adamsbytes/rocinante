@@ -1000,4 +1000,27 @@ public final class ObjectCollections {
             ObjectID.CHAOS_ALTAR_412,
             ObjectID.CHAOS_ALTAR_26258
     ));
+
+    // ========================================================================
+    // Gravestones (for death recovery)
+    // ========================================================================
+
+    /**
+     * Player gravestone objects that spawn when a player dies.
+     * The specific ID depends on which gravestone type the player has selected.
+     * Action: "Loot" to open the retrieval interface.
+     */
+    public static final List<Integer> PLAYER_GRAVESTONES = Collections.unmodifiableList(Arrays.asList(
+            ObjectID.SMALL_GRAVESTONE,     // 400 - Default/basic
+            ObjectID.GRAVE_MARKER,         // 401
+            402,                           // Font of Life (no RuneLite constant)
+            403,                           // Stele (no RuneLite constant)
+            ObjectID.GRAVESTONE,           // 404
+            ObjectID.GRAVESTONE_405,       // 405
+            ObjectID.GRAVESTONE_9359,
+            ObjectID.GRAVESTONE_9360,
+            ObjectID.GRAVESTONE_9361,
+            ObjectID.GRAVESTONE_9362,
+            ObjectID.GRAVESTONE_9363
+    ));
 }

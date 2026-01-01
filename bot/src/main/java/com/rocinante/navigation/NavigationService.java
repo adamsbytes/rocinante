@@ -5,6 +5,7 @@ import com.rocinante.tasks.impl.TravelTask;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
+import net.runelite.api.NPC;
 import net.runelite.api.TileObject;
 import net.runelite.api.coords.WorldPoint;
 
@@ -383,6 +384,38 @@ public class NavigationService {
             Collection<Integer> npcIds,
             int radius) {
         return getEntityFinder().findNearestReachableNpc(ctx, playerPos, npcIds, radius);
+    }
+
+    /**
+     * Find the nearest NPC by straight-line distance only (no pathfinding).
+     * Use this for instanced areas where collision data may be unreliable.
+     *
+     * @param playerPos player's current position
+     * @param npcIds set of acceptable NPC IDs
+     * @param radius maximum search radius in tiles
+     * @return the nearest NPC if found
+     */
+    public Optional<NPC> findNearestNpcByDistance(
+            WorldPoint playerPos,
+            Collection<Integer> npcIds,
+            int radius) {
+        return getEntityFinder().findNearestNpcByDistance(playerPos, npcIds, radius);
+    }
+
+    /**
+     * Find the nearest object by straight-line distance only (no pathfinding).
+     * Use this for instanced areas where collision data may be unreliable.
+     *
+     * @param playerPos player's current position
+     * @param objectIds set of acceptable object IDs
+     * @param radius maximum search radius in tiles
+     * @return the nearest object if found
+     */
+    public Optional<TileObject> findNearestObjectByDistance(
+            WorldPoint playerPos,
+            Collection<Integer> objectIds,
+            int radius) {
+        return getEntityFinder().findNearestObjectByDistance(playerPos, objectIds, radius);
     }
 
     /**

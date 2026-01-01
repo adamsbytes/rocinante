@@ -34,6 +34,7 @@ import {
   getLocationsByType,
 } from './data';
 import { listScreenshots, getScreenshotFile } from './screenshots';
+import { auth, getSession, type Session } from './auth';
 import type { ApiResponse, BotConfig, BotWithStatus, BotConfigDTO, BotWithStatusDTO, ProxyConfigDTO, LocationInfo, EnvironmentConfig, BotStatus } from '../shared/types';
 import { botCreateSchema, botUpdateSchema, type BotFormData, type BotUpdateData } from '../shared/botSchema';
 import { botCommandPayloadSchema } from '../shared/commandSchema';
@@ -70,6 +71,23 @@ async function withBotId(path: string, pattern: RegExp): Promise<BotIdResult> {
   }
   
   return { ok: true, botId, bot };
+}
+
+/**
+ * Fetch bot and check ownership against pre-validated session.
+ * Session must already be validated before calling this.
+ */
+function withOwnedBot(session: NonNullable<Session>, path: string, pattern: RegExp): Promise<BotIdResult> {
+  return withBotId(path, pattern).then(result => {
+    if (!result.ok) return result;
+    
+    if (result.bot.ownerId !== session.user.id) {
+      console.warn(`IDOR blocked: user ${session.user.id} tried to access bot ${result.botId} owned by ${result.bot.ownerId}`);
+      return { ok: false, response: error('Forbidden', 403) };
+    }
+    
+    return result;
+  });
 }
 
 /**
@@ -146,6 +164,7 @@ function toProxyDTO(proxy: BotConfig['proxy']): ProxyConfigDTO | null {
 function toBotDTO(bot: BotConfig): BotConfigDTO {
   return {
     id: bot.id,
+    ownerId: bot.ownerId,
     username: bot.username,
     characterName: bot.characterName,
     preferredWorld: bot.preferredWorld,
@@ -176,6 +195,8 @@ type VncWebSocketData = {
   type: 'vnc';
   botId: string;
   tcpSocket: Socket<{ ws: ServerWebSocket<VncWebSocketData> }> | null;
+  /** Track if we've ever had a successful VNC connection on this WebSocket */
+  hadConnection: boolean;
 };
 
 type StatusWebSocketData = {
@@ -298,9 +319,49 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
   const path = url.pathname;
   const method = req.method;
 
+  // ==========================================================================
+  // PUBLIC ROUTES (no auth required)
+  // ==========================================================================
+  
+  // Authentication routes (handled by better-auth)
+  if (path.startsWith('/api/auth')) {
+    return auth.handler(req);
+  }
+
+  // Health check (public for monitoring)
+  if (path === '/api/health' && method === 'GET') {
+    const dockerOk = await checkDockerConnection();
+    const imageOk = await checkBotImage();
+    return success({
+      status: 'ok',
+      docker: dockerOk,
+      botImage: imageOk,
+    });
+  }
+
+  // ==========================================================================
+  // DEFAULT DENY: All other /api/* routes require authentication
+  // ==========================================================================
+  let session: Session = null;
+  
+  if (path.startsWith('/api')) {
+    session = await getSession(req);
+    if (!session?.user?.id) {
+      console.warn(`Auth failed: ${method} ${path} - no valid session`);
+      return error('Unauthorized', 401);
+    }
+  }
+
+  // From here on, session is guaranteed valid for all /api/* routes
+  // TypeScript doesn't know this, so we use session! where needed
+
+  // ==========================================================================
+  // WEBSOCKET ROUTES (auth already validated above)
+  // ==========================================================================
+
   // VNC WebSocket upgrade
   if (path.match(/^\/api\/vnc\/[^/]+$/) && req.headers.get('upgrade') === 'websocket') {
-    const result = await withBotId(path, /^\/api\/vnc\/([^/]+)$/);
+    const result = await withOwnedBot(session!, path, /^\/api\/vnc\/([^/]+)$/);
     if (!result.ok) return result.response;
     const { botId } = result;
 
@@ -316,6 +377,7 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
         type: 'vnc',
         botId,
         tcpSocket: null,
+        hadConnection: false,
       } as VncWebSocketData,
     });
 
@@ -327,7 +389,7 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
 
   // Status WebSocket upgrade
   if (path.match(/^\/api\/status\/[^/]+$/) && req.headers.get('upgrade') === 'websocket') {
-    const result = await withBotId(path, /^\/api\/status\/([^/]+)$/);
+    const result = await withOwnedBot(session!, path, /^\/api\/status\/([^/]+)$/);
     if (!result.ok) return result.response;
     const { botId } = result;
 
@@ -347,9 +409,13 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
     return error('WebSocket upgrade failed', 500);
   }
 
+  // ==========================================================================
+  // BOT API ROUTES (auth already validated, need ownership checks)
+  // ==========================================================================
+
   // REST API for bot runtime status
   if (path.match(/^\/api\/bots\/[^/]+\/status$/) && method === 'GET') {
-    const result = await withBotId(path, /^\/api\/bots\/([^/]+)\/status$/);
+    const result = await withOwnedBot(session!, path, /^\/api\/bots\/([^/]+)\/status$/);
     if (!result.ok) return result.response;
     
     const runtimeStatus = await readBotStatus(result.botId);
@@ -358,7 +424,7 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
 
   // Screenshots - list
   if (path.match(/^\/api\/bots\/[^/]+\/screenshots$/) && method === 'GET') {
-    const result = await withBotId(path, /^\/api\/bots\/([^/]+)\/screenshots$/);
+    const result = await withOwnedBot(session!, path, /^\/api\/bots\/([^/]+)\/screenshots$/);
     if (!result.ok) return result.response;
 
     const category = url.searchParams.get('category');
@@ -371,7 +437,7 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
 
   // Screenshots - view single file (uses Bun's optimized file streaming)
   if (path.match(/^\/api\/bots\/[^/]+\/screenshots\/view$/) && method === 'GET') {
-    const result = await withBotId(path, /^\/api\/bots\/([^/]+)\/screenshots\/view$/);
+    const result = await withOwnedBot(session!, path, /^\/api\/bots\/([^/]+)\/screenshots\/view$/);
     if (!result.ok) return result.response;
 
     const relativePath = url.searchParams.get('path');
@@ -399,7 +465,7 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
 
   // REST API to send commands to bot
   if (path.match(/^\/api\/bots\/[^/]+\/command$/) && method === 'POST') {
-    const result = await withBotId(path, /^\/api\/bots\/([^/]+)\/command$/);
+    const result = await withOwnedBot(session!, path, /^\/api\/bots\/([^/]+)\/command$/);
     if (!result.ok) return result.response;
 
     try {
@@ -419,22 +485,13 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
     }
   }
 
-  // Health check
-  if (path === '/api/health' && method === 'GET') {
-    const dockerOk = await checkDockerConnection();
-    const imageOk = await checkBotImage();
-    return success({
-      status: 'ok',
-      docker: dockerOk,
-      botImage: imageOk,
-    });
-  }
-
-  // List all bots (returns DTOs - no sensitive fields)
+  // List all bots (returns DTOs - no sensitive fields, filtered by owner)
   if (path === '/api/bots' && method === 'GET') {
-    const bots = await getBots();
+    const allBots = await getBots();
+    // Filter to only show bots owned by this user
+    const userBots = allBots.filter(bot => bot.ownerId === session!.user.id);
     const botsWithStatus: BotWithStatusDTO[] = await Promise.all(
-      bots.map(async (bot) => toBotWithStatusDTO(bot, await getContainerStatus(bot.id)))
+      userBots.map(async (bot) => toBotWithStatusDTO(bot, await getContainerStatus(bot.id)))
     );
     return success(botsWithStatus);
   }
@@ -457,6 +514,7 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
 
       const newBot: BotConfig = {
         id: botId,
+        ownerId: session!.user.id,  // Set owner to authenticated user
         ...botData,
         // Environment fingerprint (auto-generated, deterministic per bot)
         environment,
@@ -482,6 +540,11 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
       if (!bot) {
         return error('Bot not found', 404);
       }
+      // Check ownership
+      if (bot.ownerId !== session!.user.id) {
+        console.warn(`IDOR blocked: user ${session!.user.id} tried to access bot ${botId} owned by ${bot.ownerId}`);
+        return error('Forbidden', 403);
+      }
       return success(toBotWithStatusDTO(bot, await getContainerStatus(bot.id)));
     }
 
@@ -492,6 +555,11 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
         const existingBot = await getBot(botId);
         if (!existingBot) {
           return error('Bot not found', 404);
+        }
+        // Check ownership
+        if (existingBot.ownerId !== session!.user.id) {
+          console.warn(`IDOR blocked: user ${session!.user.id} tried to update bot ${botId} owned by ${existingBot.ownerId}`);
+          return error('Forbidden', 403);
         }
 
         const body = await req.json();
@@ -521,6 +589,16 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
     // Delete bot
     if (method === 'DELETE') {
       try {
+        const existingBot = await getBot(botId);
+        if (!existingBot) {
+          return error('Bot not found', 404);
+        }
+        // Check ownership
+        if (existingBot.ownerId !== session!.user.id) {
+          console.warn(`IDOR blocked: user ${session!.user.id} tried to delete bot ${botId} owned by ${existingBot.ownerId}`);
+          return error('Forbidden', 403);
+        }
+
         // Stop and remove container if running
         await removeContainer(botId);
         const deleted = await deleteBot(botId);
@@ -536,7 +614,7 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
 
   // Bot actions
   if (path.match(/^\/api\/bots\/[^/]+\/(start|stop|restart)$/) && method === 'POST') {
-    const result = await withBotId(path, /^\/api\/bots\/([^/]+)\/(start|stop|restart)$/);
+    const result = await withOwnedBot(session!, path, /^\/api\/bots\/([^/]+)\/(start|stop|restart)$/);
     if (!result.ok) return result.response;
     
     const actionMatch = path.match(/\/(start|stop|restart)$/);
@@ -566,7 +644,7 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
 
   // Bot logs (GET for SSE)
   if (path.match(/^\/api\/bots\/[^/]+\/logs$/) && method === 'GET') {
-    const result = await withBotId(path, /^\/api\/bots\/([^/]+)\/logs$/);
+    const result = await withOwnedBot(session!, path, /^\/api\/bots\/([^/]+)\/logs$/);
     if (!result.ok) return result.response;
 
     try {
@@ -583,9 +661,9 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
     }
   }
 
-  // ============================================================================
-  // Data API endpoints (for Manual Task UI)
-  // ============================================================================
+  // ==========================================================================
+  // DATA API ROUTES (auth already validated, no ownership - shared data)
+  // ==========================================================================
 
   // Training methods
   if (path === '/api/data/training-methods' && method === 'GET') {
@@ -702,64 +780,126 @@ const bunServer = Bun.serve({
     idleTimeout: 120,
     
     // Security: Limit WebSocket message size to prevent DOS attacks
-    // 1MB is more than enough for VNC frames and status updates
-    maxPayloadLength: 1 * 1024 * 1024, // 1MB
+    // 10MB allows for VNC full-screen updates (1280x720 can be ~3.5MB uncompressed)
+    // Status updates are tiny (<1KB), so this is primarily for VNC
+    maxPayloadLength: 10 * 1024 * 1024, // 10MB
     
     // Called when WebSocket connection opens
     async open(ws: ServerWebSocket<WebSocketData>) {
       if (ws.data.type === 'vnc') {
         const vncData = ws.data as VncWebSocketData;
         const { botId } = vncData;
+        console.log(`VNC WebSocket opened for bot ${botId}`);
         
         // Get VNC socket path from status directory
         const vncSocketPath = getVncSocketPath(botId);
-
-        try {
-          // Connect to VNC server via Unix socket (not TCP)
-          const tcpSocket = await Bun.connect({
-            unix: vncSocketPath,
-            socket: {
-              data(socket, data) {
-                // Forward VNC server data to WebSocket client
-                const wsConn = socket.data.ws;
-                if (wsConn.readyState === 1) { // OPEN
-                  wsConn.send(data);
-                }
-              },
-              open(socket) {
-                console.log(`Unix socket connection to VNC established: ${vncSocketPath}`);
-              },
-              close(socket) {
-                console.log(`Unix socket connection to VNC closed: ${vncSocketPath}`);
-                const wsConn = socket.data.ws;
-                if (wsConn.readyState === 1) {
-                  wsConn.close(1000, 'VNC server disconnected');
-                }
-              },
-              error(socket, err) {
-                console.error(`Unix socket error for VNC ${vncSocketPath}:`, err);
-                const wsConn = socket.data.ws;
-                if (wsConn.readyState === 1) {
-                  wsConn.close(1011, 'VNC connection error');
-                }
-              },
-            },
-            data: { ws: ws as ServerWebSocket<VncWebSocketData> },
-          });
-
-          vncData.tcpSocket = tcpSocket;
-        } catch (err: any) {
-          // ENOENT = socket doesn't exist yet (container starting)
-          // ECONNREFUSED = socket exists but nothing listening
-          // EACCES = permission denied
-          if (err?.code === 'ENOENT' || err?.code === 'ECONNREFUSED') {
-            // Container still starting - close gracefully, client will retry
-            ws.close(1000, 'VNC server not ready');
-          } else {
-            console.error(`Failed to connect to VNC socket ${vncSocketPath}:`, err);
-          ws.close(1011, 'Failed to connect to VNC server');
+        
+        // Connection settings - keeps WebSocket open while waiting for VNC server
+        const MAX_RETRIES = 60;  // ~60 seconds max wait per connection attempt
+        const BASE_DELAY_MS = 500;
+        const MAX_DELAY_MS = 2000;
+        
+        // Recursive function to connect to VNC socket with retry
+        const tryConnect = async (attempt: number): Promise<void> => {
+          // Check if WebSocket was closed while we were waiting
+          if (ws.readyState !== 1) {
+            console.log(`VNC WebSocket closed, stopping connection attempts for bot ${botId}`);
+            return;
           }
-        }
+          
+          try {
+            // Connect to VNC server via Unix socket
+            const tcpSocket = await Bun.connect({
+              unix: vncSocketPath,
+              socket: {
+                data(socket, data) {
+                  // Forward VNC server data to WebSocket client
+                  const wsConn = socket.data.ws;
+                  if (wsConn.readyState === 1) { // OPEN
+                    const bytesSent = wsConn.send(data);
+                    if (bytesSent === 0) {
+                      console.warn(`VNC frame dropped for bot ${botId}: send buffer full (frame size: ${data.length} bytes)`);
+                    }
+                  }
+                },
+                open(socket) {
+                  console.log(`Unix socket connection to VNC established: ${vncSocketPath}`);
+                  const wsConn = socket.data.ws;
+                  const wsData = wsConn.data as VncWebSocketData;
+                  
+                  // If this is a REconnection after VNC server restart, we need to close
+                  // the WebSocket so the client can start a fresh VNC session.
+                  // noVNC can't handle receiving a new RFB handshake mid-session.
+                  if (wsData.hadConnection) {
+                    console.log(`VNC reconnected for bot ${botId} - closing WebSocket for fresh client session`);
+                    socket.end(); // Close Unix socket first
+                    wsConn.close(1000, 'VNC session restarted - please reconnect');
+                    return;
+                  }
+                  
+                  // Mark that we've had a successful connection
+                  wsData.hadConnection = true;
+                },
+                close(socket) {
+                  // VNC server disconnected (container restart, etc.)
+                  // Keep WebSocket open and try to reconnect
+                  console.log(`Unix socket connection to VNC closed: ${vncSocketPath}`);
+                  const wsConn = socket.data.ws;
+                  const wsData = wsConn.data as VncWebSocketData;
+                  wsData.tcpSocket = null;
+                  
+                  if (wsConn.readyState === 1) {
+                    // Don't close WebSocket - start reconnection attempts
+                    console.log(`VNC server disconnected for bot ${botId}, waiting for reconnect...`);
+                    // Small delay before starting reconnection to allow server to restart
+                    setTimeout(() => tryConnect(0), 1000);
+                  }
+                },
+                error(socket, err) {
+                  console.error(`Unix socket error for VNC ${vncSocketPath}:`, err);
+                  const wsConn = socket.data.ws;
+                  const wsData = wsConn.data as VncWebSocketData;
+                  wsData.tcpSocket = null;
+                  
+                  if (wsConn.readyState === 1) {
+                    // Don't close WebSocket - try to reconnect
+                    console.log(`VNC connection error for bot ${botId}, attempting reconnect...`);
+                    setTimeout(() => tryConnect(0), 1000);
+                  }
+                },
+              },
+              data: { ws: ws as ServerWebSocket<VncWebSocketData> },
+            });
+            
+            vncData.tcpSocket = tcpSocket;
+          } catch (err: any) {
+            // ENOENT = socket doesn't exist yet (container starting)
+            // ECONNREFUSED = socket exists but nothing listening
+            if (err?.code === 'ENOENT' || err?.code === 'ECONNREFUSED') {
+              if (attempt < MAX_RETRIES) {
+                // Calculate delay with exponential backoff (capped)
+                const delay = Math.min(BASE_DELAY_MS * Math.pow(1.2, attempt), MAX_DELAY_MS);
+                if (attempt === 0) {
+                  console.log(`VNC socket not ready for bot ${botId}, waiting...`);
+                }
+                await new Promise((resolve) => setTimeout(resolve, delay));
+                return tryConnect(attempt + 1);
+              } else {
+                // After max retries, just keep waiting silently with periodic checks
+                console.log(`VNC socket still not ready for bot ${botId}, continuing to wait...`);
+                await new Promise((resolve) => setTimeout(resolve, MAX_DELAY_MS));
+                return tryConnect(0); // Reset attempt counter and keep trying
+              }
+            } else {
+              // Unexpected error (permission denied, etc.)
+              console.error(`Failed to connect to VNC socket ${vncSocketPath}:`, err);
+              ws.close(1011, 'Failed to connect to VNC server');
+            }
+          }
+        };
+        
+        // Start connection attempts (non-blocking)
+        tryConnect(0);
       } else if (ws.data.type === 'status') {
         const statusData = ws.data as StatusWebSocketData;
         const { botId } = statusData;
@@ -795,9 +935,38 @@ const bunServer = Bun.serve({
     // Called when WebSocket receives a message from client
     message(ws: ServerWebSocket<WebSocketData>, message) {
       if (ws.data.type === 'vnc') {
-        // View-only mode: Drop all client→server messages (keyboard, mouse, clipboard)
-        // Only server→client frames are forwarded (screen updates)
-        // This prevents remote control while allowing observation
+        // VNC View-only mode: Defense-in-depth filter (x11vnc -viewonly is the primary control)
+        // This filter provides early rejection and logging, but isn't foolproof against
+        // message smuggling attacks. The VNC server enforces view-only authoritatively.
+        // RFB message types (first byte after handshake):
+        //   0 = SetPixelFormat (ALLOW - display config)
+        //   2 = SetEncodings (ALLOW - compression config)
+        //   3 = FramebufferUpdateRequest (ALLOW - needed to receive frames!)
+        //   4 = KeyEvent (BLOCK - keyboard input)
+        //   5 = PointerEvent (BLOCK - mouse input)
+        //   6 = ClientCutText (BLOCK - clipboard)
+        // Handshake messages don't follow this format, so we allow short messages
+        const vncData = ws.data as VncWebSocketData;
+        const { tcpSocket, botId } = vncData;
+        
+        if (!tcpSocket) return;
+        
+        const buffer = typeof message === 'string' ? Buffer.from(message) : message;
+        
+        // Allow handshake messages (they're short and don't have the same format)
+        // After handshake, RFB messages have type byte at position 0
+        if (buffer.length > 0) {
+          const messageType = buffer[0];
+          
+          // Block input events (4=KeyEvent, 5=PointerEvent, 6=ClientCutText)
+          if (messageType === 4 || messageType === 5 || messageType === 6) {
+            // Silently drop input events - view-only mode
+            return;
+          }
+        }
+        
+        // Forward allowed messages (handshake, SetPixelFormat, SetEncodings, FramebufferUpdateRequest)
+        tcpSocket.write(buffer);
         return;
       } else if (ws.data.type === 'status') {
         // Handle commands from client
@@ -807,7 +976,13 @@ const bunServer = Bun.serve({
           const parsed = JSON.parse(data);
           
           if (parsed.type === 'command' && parsed.command) {
-            sendBotCommand(statusData.botId, parsed.command)
+            // Validate command payload with same schema as REST endpoint
+            const validation = botCommandPayloadSchema.safeParse(parsed.command);
+            if (!validation.success) {
+              console.warn(`Invalid WebSocket command for bot ${statusData.botId}:`, validation.error.issues);
+              return;
+            }
+            sendBotCommand(statusData.botId, validation.data)
               .catch((err) => console.error(`Error sending command:`, err));
           }
         } catch (error) {
@@ -819,20 +994,28 @@ const bunServer = Bun.serve({
     // Called when WebSocket connection closes
     close(ws: ServerWebSocket<WebSocketData>, code, reason) {
       if (ws.data.type === 'vnc') {
-        console.log(`VNC WebSocket closed: ${code} ${reason}`);
         const vncData = ws.data as VncWebSocketData;
+        console.log(`VNC WebSocket closed for bot ${vncData.botId}: code=${code} reason=${reason || 'none'}`);
         if (vncData.tcpSocket) {
           vncData.tcpSocket.end();
         }
       } else if (ws.data.type === 'status') {
         const statusData = ws.data as StatusWebSocketData;
-        console.log(`Status WebSocket closed for bot ${statusData.botId}: ${code} ${reason}`);
+        console.log(`Status WebSocket closed for bot ${statusData.botId}: code=${code} reason=${reason || 'none'}`);
         if (statusData.pingInterval) {
           clearInterval(statusData.pingInterval);
         }
         if (statusData.cleanup) {
           statusData.cleanup();
         }
+      }
+    },
+    
+    // Called when WebSocket send buffer is full (backpressure)
+    drain(ws: ServerWebSocket<WebSocketData>) {
+      if (ws.data.type === 'vnc') {
+        const vncData = ws.data as VncWebSocketData;
+        console.warn(`VNC WebSocket drain event for bot ${vncData.botId} - send buffer was full`);
       }
     },
   },

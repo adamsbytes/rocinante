@@ -66,6 +66,7 @@ export type LampSkill =
 
 export interface BotConfig {
   id: string;
+  ownerId: string;  // User ID from better-auth - owner of this bot
   username: string;  // Jagex account email
   password: string;  // Jagex account password
   totpSecret: string;  // Required: Base32 TOTP secret for Jagex 2FA (email codes unsupported)
@@ -110,6 +111,7 @@ export interface ProxyConfigDTO {
  */
 export interface BotConfigDTO {
   id: string;
+  ownerId: string;
   username: string;
   characterName: string;
   preferredWorld?: number;

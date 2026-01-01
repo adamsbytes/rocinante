@@ -400,9 +400,8 @@ public class CombatTask extends AbstractTask {
             activeSubTask.execute(ctx);
             if (activeSubTask.getState().isTerminal()) {
                 activeSubTask = null;
-            } else {
-                return; // Sub-task still running
             }
+            return; // Sub-task handled, phase runs next tick
         }
 
         // Check if we need to set up autocast first (one-time)

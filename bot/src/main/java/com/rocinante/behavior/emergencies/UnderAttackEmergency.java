@@ -7,6 +7,7 @@ import com.rocinante.state.CombatState;
 import com.rocinante.state.IronmanState;
 import com.rocinante.tasks.Task;
 import com.rocinante.tasks.TaskContext;
+import com.rocinante.tasks.impl.DeathTask;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +26,7 @@ import java.util.List;
  * - HCIM safety level (CAUTIOUS/PARANOID flee earlier)
  * - Current HP vs estimated max hit
  * - Combat level comparison
+ * - Active gravestone recovery (accept more risk to recover items)
  */
 @Slf4j
 public class UnderAttackEmergency implements EmergencyCondition {
@@ -38,6 +40,12 @@ public class UnderAttackEmergency implements EmergencyCondition {
      * Combat level difference threshold to consider fighting.
      */
     private static final int MAX_LEVEL_DIFFERENCE = 10;
+
+    /**
+     * During gravestone recovery, reduce flee thresholds by this multiplier.
+     * 0.5 = accept 50% lower health before fleeing (i.e., fight longer to recover items)
+     */
+    private static final double GRAVESTONE_RECOVERY_THRESHOLD_REDUCTION = 0.5;
 
     private final BotActivityTracker activityTracker;
     private final ResponseTaskFactory responseTaskFactory;
@@ -159,36 +167,50 @@ public class UnderAttackEmergency implements EmergencyCondition {
         int maxHp = playerState.getMaxHitpoints();
         int npcLevel = attacker.getCombatLevel();
 
+        // Check if we're recovering a gravestone - accept more risk to get items back
+        boolean inGravestoneRecovery = DeathTask.hasActiveGravestone(ctx.getClient());
+        double riskReduction = inGravestoneRecovery ? GRAVESTONE_RECOVERY_THRESHOLD_REDUCTION : 1.0;
+        
+        if (inGravestoneRecovery) {
+            log.debug("Gravestone recovery active - accepting {}% more risk before fleeing",
+                    (int) ((1.0 - riskReduction) * 100));
+        }
+
         // Use actual expected max hit if known, otherwise estimate from combat level
         int estimatedMaxHit = attacker.getExpectedMaxHit() > 0 
                 ? attacker.getExpectedMaxHit() 
                 : AggressorInfo.estimateMaxHit(npcLevel);
 
         // Calculate safety buffer - HCIM safety level multiplies this
-        int safetyBuffer = (int) (config.getBaseMaxHitSafetyBuffer() * safetyMultiplier);
+        // During gravestone recovery, reduce the buffer to accept more risk
+        int safetyBuffer = (int) (config.getBaseMaxHitSafetyBuffer() * safetyMultiplier * riskReduction);
         
         // CRITICAL: Check if we're in death range (HP <= max hit + buffer)
         int deathThreshold = estimatedMaxHit + safetyBuffer;
         if (currentHp <= deathThreshold) {
-            log.warn("In death range! HP={}, estimated max hit={}, buffer={}, threshold={} - FLEEING",
-                    currentHp, estimatedMaxHit, safetyBuffer, deathThreshold);
+            log.warn("In death range! HP={}, estimated max hit={}, buffer={}, threshold={} - FLEEING{}",
+                    currentHp, estimatedMaxHit, safetyBuffer, deathThreshold,
+                    inGravestoneRecovery ? " (even with reduced threshold)" : "");
             return ResponseType.FLEE;
         }
 
         // Calculate minimum health threshold - HCIM safety level affects this too
         // Base 40%, multiplied by safety level (CAUTIOUS=1.3 -> 52%, PARANOID=1.6 -> 64%)
-        double minHealthPercent = Math.min(0.80, BASE_MIN_HEALTH_TO_FIGHT * safetyMultiplier);
+        // During gravestone recovery, reduce by riskReduction (e.g., 40% * 0.5 = 20%)
+        double minHealthPercent = Math.min(0.80, BASE_MIN_HEALTH_TO_FIGHT * safetyMultiplier * riskReduction);
         double healthPercent = (double) currentHp / maxHp;
 
         if (healthPercent < minHealthPercent) {
-            log.debug("Health too low to fight ({}% < {}%), fleeing",
+            log.debug("Health too low to fight ({}% < {}%), fleeing{}",
                     String.format("%.0f", healthPercent * 100),
-                    String.format("%.0f", minHealthPercent * 100));
+                    String.format("%.0f", minHealthPercent * 100),
+                    inGravestoneRecovery ? " (reduced threshold for gravestone)" : "");
             return ResponseType.FLEE;
         }
 
         // HCIM: always flee from unexpected combat (regardless of health)
-        if (isHcim) {
+        // Exception: during gravestone recovery, HCIM can fight if health is above death threshold
+        if (isHcim && !inGravestoneRecovery) {
             log.debug("HCIM mode (safety={}) - fleeing from unexpected combat (attacker: {} lvl {})",
                     ironmanState.getHcimSafetyLevel(), attacker.getNpcName(), npcLevel);
             return ResponseType.FLEE;

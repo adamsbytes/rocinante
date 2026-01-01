@@ -155,6 +155,14 @@ public class InteractNpcTask extends com.rocinante.tasks.AbstractInteractionTask
     private boolean waitForIdle = true;
 
     /**
+     * Whether to skip pathfinding reachability checks.
+     * Use this for instanced areas (like Death's Office) where collision data may be unreliable.
+     */
+    @Getter
+    @Setter
+    private boolean skipReachabilityCheck = false;
+
+    /**
      * Custom description.
      */
     @Getter
@@ -876,6 +884,19 @@ public class InteractNpcTask extends com.rocinante.tasks.AbstractInteractionTask
         com.rocinante.navigation.NavigationService navService = ctx.getNavigationService();
         Set<Integer> npcIds = getAllNpcIds();
 
+        if (skipReachabilityCheck) {
+            // Use simple distance-based search (for instanced areas like Death's Office)
+            Optional<NPC> result = navService.findNearestNpcByDistance(playerPos, npcIds, searchRadius);
+            if (result.isEmpty()) {
+                log.debug("No nearby NPC found for IDs {} within {} tiles", npcIds, searchRadius);
+                return null;
+            }
+            NPC npc = result.get();
+            log.debug("Found nearby NPC {} at {}", npc.getName(), npc.getWorldLocation());
+            return npc;
+        }
+
+        // Use pathfinding-based reachability check
         Optional<com.rocinante.navigation.EntityFinder.NpcSearchResult> result = 
                 navService.findNearestReachableNpc(ctx, playerPos, npcIds, searchRadius);
 

@@ -3,6 +3,7 @@ package com.rocinante.behavior.emergencies;
 import com.rocinante.behavior.EmergencyCondition;
 import com.rocinante.tasks.Task;
 import com.rocinante.tasks.TaskContext;
+import com.rocinante.tasks.impl.DeathTask;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.coords.WorldPoint;
@@ -84,6 +85,12 @@ public class DeathEmergency implements EmergencyCondition {
         // Check for Death NPC dialogue (first death tutorial)
         if (isDeathDialogueOpen(client)) {
             log.info("Death detected: Death tutorial dialogue is open");
+            return true;
+        }
+
+        // Check for active gravestone (handles login with pending gravestone)
+        if (DeathTask.hasActiveGravestone(client)) {
+            log.info("Death detected: Active gravestone needs recovery");
             return true;
         }
 

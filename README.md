@@ -52,10 +52,29 @@ docker compose up -d
 
 ## Features
 
-- **Web UI**: Create/manage bots, view live VNC, monitor status, queue tasks
-- **Humanization**: Per-account behavioral profiles (mouse patterns, timing, breaks)
-- **Anti-fingerprint**: Unique machine IDs, display configs, fonts per bot
-- **Quest Helper Integration**: Automated quest completion via reflection bridge
-- **Navigation**: Full web walker with realistic pathing
-- **Combat**: Prayer flicking, gear switching, safe-spotting
-- **Ironman Support**: Resource tracking, HCIM death prevention
+### Web Management UI
+- **Bot Dashboard**: Create/configure accounts, start/stop containers, live status monitoring
+- **VNC Streaming**: Watch bot gameplay in real-time via a high-performance VNC connection
+- **Screenshot Gallery**: Auto-captured level ups, pet drops, deaths, valuable drops, boss kills
+
+### Anti-Detection
+- **Behavioral Profiles**: Per-account fingerprints (mouse speed, click variance, typing WPM, break patterns) that persist across sessions with gradual drift over time
+- **Environment Fingerprinting**: Each container gets unique machine-id, display config (resolution/DPI/depth), timezone, fonts, hostname, and JVM GC algorithm
+- **Humanization**: Fatigue modeling, attention state, inefficiency injection, predictive hovering, idle behaviors
+
+### Navigation
+- **Cost-Based Pathfinding**: ShortestPath plugin integration with transport cost penalties, such as avoiding law rune use for HCIM bots
+- **Transport Methods**: Fairy rings, spirit trees, gnome gliders, canoes, charter ships, minigame teleports, quetzal
+
+### Skills & Combat  
+- **Training Tasks**: Agility courses, cooking, firemaking, fletching, prayer (bone burying), thieving, slayer
+- **Combat System**: Prayer flicking (tick-perfect/lazy/always-on), gear switching, special attacks, target prioritization
+
+### Account Modes
+- **Ironman Support**: Resource-aware pathing, wilderness avoidance, death prevention safety checks
+- **Death Recovery**: Gravestone retrieval, Death's Office handling
+
+### Automation
+- **Quest System**: Quest Helper plugin bridge with step translation for support of all quests. Includes a custom quest for Tutorial Island handling.
+- **Grand Exchange**: Automatic gravestone retrieval and Death's Office handling
+- **Breaks & Logout**: Scheduled breaks, random event handling, session limits

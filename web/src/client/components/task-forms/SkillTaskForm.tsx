@@ -224,19 +224,24 @@ export const SkillTaskForm: Component<SkillTaskFormProps> = (props) => {
               class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
             >
               <option value="">Select a method...</option>
-              <For each={validMethods()}>
-                {(method) => (
-                  <option value={method.id}>
-                    {method.name} 
-                    {' '}(Lvl {method.minLevel}+, ~{getMethodXpRange(method)}/hr)
-                  </option>
-                )}
+              {/* Show all methods, sorted by level - valid ones first, then locked ones */}
+              <For each={availableMethods().slice().sort((a, b) => a.minLevel - b.minLevel)}>
+                {(method) => {
+                  const meetsReqs = method.minLevel <= currentLevel();
+                  return (
+                    <option 
+                      value={meetsReqs ? method.id : ''} 
+                      disabled={!meetsReqs}
+                      class={!meetsReqs ? 'text-gray-500' : ''}
+                    >
+                      {meetsReqs 
+                        ? `${method.name} (Lvl ${method.minLevel}+, ~${getMethodXpRange(method)}/hr)`
+                        : `🔒 ${method.name} (Requires Lvl ${method.minLevel})`
+                      }
+                    </option>
+                  );
+                }}
               </For>
-              <Show when={validMethods().length === 0 && availableMethods().length > 0}>
-                <option value="" disabled>
-                  No methods available at level {currentLevel()}
-                </option>
-              </Show>
             </select>
           </Show>
         </div>

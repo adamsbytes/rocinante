@@ -13,6 +13,8 @@ import net.runelite.api.widgets.WidgetInfo;
 
 import java.awt.Rectangle;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -34,9 +36,14 @@ public class XpCheckBehavior extends AbstractTask {
     // === Check method probabilities (from PlayerProfile) ===
     // Now configurable per-account via PlayerProfile preferences
 
-    // === View duration range (per REQUIREMENTS.md) ===
-    private static final long MIN_VIEW_DURATION_MS = 300;
-    private static final long MAX_VIEW_DURATION_MS = 1500;
+    // === View duration range per skill ===
+    private static final long MIN_VIEW_DURATION_PER_SKILL_MS = 800;
+    private static final long MAX_VIEW_DURATION_PER_SKILL_MS = 1600;
+    
+    // === Multi-skill check probabilities ===
+    private static final double PROB_ONE_SKILL = 0.60;    // 60% check 1 skill
+    private static final double PROB_TWO_SKILLS = 0.30;   // 30% check 2 skills
+    // Remaining 10% check 3 skills
 
     // === Phases ===
     private enum Phase {
@@ -62,9 +69,10 @@ public class XpCheckBehavior extends AbstractTask {
     
     private Phase phase = Phase.INIT;
     private CheckMethod selectedMethod;
-    private Skill targetSkill;
-    private long viewDuration;
-    private long viewStartTime;
+    private List<Skill> skillsToCheck = new ArrayList<>();
+    private int currentSkillIndex = 0;
+    private long viewDurationPerSkill;
+    private long currentSkillViewStart;
     
     private CompletableFuture<?> pendingOperation = null;
     
@@ -142,14 +150,48 @@ public class XpCheckBehavior extends AbstractTask {
     }
 
     private void initCheck(TaskContext ctx) {
-        // Determine target skill - could be influenced by current activity
-        targetSkill = determineTargetSkill(ctx);
-        viewDuration = randomization.uniformRandomLong(MIN_VIEW_DURATION_MS, MAX_VIEW_DURATION_MS);
+        // Determine how many skills to check (60% one, 30% two, 10% three)
+        skillsToCheck.clear();
+        currentSkillIndex = 0;
         
-        log.debug("Initiating XP check (target skill: {}, duration: {}ms)", 
-                 targetSkill, viewDuration);
+        double roll = randomization.uniformRandom(0, 1);
+        int numSkills;
+        if (roll < PROB_ONE_SKILL) {
+            numSkills = 1;
+        } else if (roll < PROB_ONE_SKILL + PROB_TWO_SKILLS) {
+            numSkills = 2;
+        } else {
+            numSkills = 3;
+        }
+        
+        // Add the primary target skill first
+        Skill primarySkill = determineTargetSkill(ctx);
+        skillsToCheck.add(primarySkill);
+        
+        // Add additional random skills if checking multiple
+        for (int i = 1; i < numSkills; i++) {
+            Skill additionalSkill = getRandomDifferentSkill(skillsToCheck);
+            skillsToCheck.add(additionalSkill);
+        }
+        
+        viewDurationPerSkill = randomization.uniformRandomLong(
+                MIN_VIEW_DURATION_PER_SKILL_MS, MAX_VIEW_DURATION_PER_SKILL_MS);
+        
+        log.debug("Initiating XP check (skills: {}, duration per skill: {}ms)", 
+                 skillsToCheck, viewDurationPerSkill);
         
         phase = Phase.SELECTING_METHOD;
+    }
+    
+    private Skill getRandomDifferentSkill(List<Skill> exclude) {
+        Skill[] allSkills = Skill.values();
+        Skill candidate;
+        int attempts = 0;
+        do {
+            candidate = allSkills[randomization.uniformRandomInt(0, allSkills.length - 1)];
+            attempts++;
+        } while (exclude.contains(candidate) && attempts < 50);
+        return candidate;
     }
 
     private Skill determineTargetSkill(TaskContext ctx) {
@@ -215,11 +257,10 @@ public class XpCheckBehavior extends AbstractTask {
                 int x = bounds.x + randomization.uniformRandomInt(5, Math.max(6, bounds.width - 5));
                 int y = bounds.y + randomization.uniformRandomInt(5, Math.max(6, bounds.height - 5));
                 
-                log.debug("Hovering XP orb at ({}, {})", x, y);
-                viewStartTime = System.currentTimeMillis();
+                log.debug("Hovering XP orb at ({}, {}) for {}ms", x, y, viewDurationPerSkill);
                 
                 pendingOperation = ctx.getMouseController().moveToCanvas(x, y)
-                    .thenCompose(v -> ctx.getHumanTimer().sleep(viewDuration))
+                    .thenCompose(v -> ctx.getHumanTimer().sleep(viewDurationPerSkill))
                     .thenRun(() -> phase = Phase.CLOSING);
             } else {
                 // Widget not usable, skip to close
@@ -248,13 +289,14 @@ public class XpCheckBehavior extends AbstractTask {
                 int x = bounds.x + randomization.uniformRandomInt(5, Math.max(6, bounds.width - 5));
                 int y = bounds.y + randomization.uniformRandomInt(5, Math.max(6, bounds.height - 5));
                 
-                log.debug("Clicking stats tab at ({}, {})", x, y);
+                log.debug("Clicking stats tab at ({}, {}) to view {} skill(s)", 
+                        x, y, skillsToCheck.size());
                 
                 pendingOperation = ctx.getMouseController().moveToCanvas(x, y)
                     .thenCompose(v -> ctx.getMouseController().click())
                     .thenCompose(v -> ctx.getHumanTimer().sleep(randomization.uniformRandomLong(200, 400)))
                     .thenRun(() -> {
-                        viewStartTime = System.currentTimeMillis();
+                        currentSkillIndex = 0;
                         phase = Phase.VIEWING_TAB;
                     });
             } else {
@@ -267,14 +309,15 @@ public class XpCheckBehavior extends AbstractTask {
     }
 
     private void viewStatsTab(TaskContext ctx) {
-        long elapsed = System.currentTimeMillis() - viewStartTime;
-        
-        if (elapsed >= viewDuration) {
+        // Check if we've viewed all skills
+        if (currentSkillIndex >= skillsToCheck.size()) {
             phase = Phase.CLOSING;
             return;
         }
         
-        // Hover over the target skill in the skills container
+        Skill currentSkill = skillsToCheck.get(currentSkillIndex);
+        
+        // Hover over the current skill in the skills container
         Client client = ctx.getClient();
         Widget skillsContainer = client.getWidget(WidgetInfo.SKILLS_CONTAINER);
         
@@ -282,22 +325,32 @@ public class XpCheckBehavior extends AbstractTask {
             Widget[] children = skillsContainer.getStaticChildren();
             if (children != null && children.length > 0) {
                 // Get skill widget by index (skills are ordered by ordinal)
-                int skillIndex = getSkillWidgetIndex(targetSkill);
-                if (skillIndex >= 0 && skillIndex < children.length) {
-                    Widget skillWidget = children[skillIndex];
+                int skillWidgetIdx = getSkillWidgetIndex(currentSkill);
+                if (skillWidgetIdx >= 0 && skillWidgetIdx < children.length) {
+                    Widget skillWidget = children[skillWidgetIdx];
                     if (skillWidget != null && !skillWidget.isHidden()) {
                         Rectangle bounds = skillWidget.getBounds();
                         if (bounds != null && bounds.width > 0) {
                             int x = bounds.x + randomization.uniformRandomInt(5, Math.max(6, bounds.width - 5));
                             int y = bounds.y + randomization.uniformRandomInt(5, Math.max(6, bounds.height - 5));
                             
-                            log.debug("Hovering {} skill at ({}, {})", targetSkill, x, y);
+                            // Randomize this skill's view duration slightly
+                            final long thisSkillDuration = Math.max(500, 
+                                    viewDurationPerSkill + randomization.uniformRandomLong(-200, 200));
                             
-                            // Hover and wait for remaining duration
-                            long remainingDuration = viewDuration - elapsed;
+                            log.debug("Hovering {} skill ({}/{}) at ({}, {}) for {}ms", 
+                                    currentSkill, currentSkillIndex + 1, skillsToCheck.size(), 
+                                    x, y, thisSkillDuration);
+                            
+                            currentSkillViewStart = System.currentTimeMillis();
+                            
+                            // Hover over this skill, then move to next
                             pendingOperation = ctx.getMouseController().moveToCanvas(x, y)
-                                .thenCompose(v -> ctx.getHumanTimer().sleep(Math.max(100, remainingDuration)))
-                                .thenRun(() -> phase = Phase.CLOSING);
+                                .thenCompose(v -> ctx.getHumanTimer().sleep(thisSkillDuration))
+                                .thenRun(() -> {
+                                    currentSkillIndex++;
+                                    // Don't transition phase - let next tick handle it
+                                });
                             return;
                         }
                     }
@@ -305,9 +358,8 @@ public class XpCheckBehavior extends AbstractTask {
             }
         }
         
-        // Fallback: just wait for duration then close
-        pendingOperation = ctx.getHumanTimer().sleep(Math.max(100, viewDuration - elapsed))
-            .thenRun(() -> phase = Phase.CLOSING);
+        // Fallback: skip this skill and move to next
+        currentSkillIndex++;
     }
 
     private void hoverXpTracker(TaskContext ctx) {
@@ -322,11 +374,10 @@ public class XpCheckBehavior extends AbstractTask {
                 int x = bounds.x + randomization.uniformRandomInt(10, Math.max(11, bounds.width - 10));
                 int y = bounds.y + randomization.uniformRandomInt(5, Math.max(6, bounds.height - 5));
                 
-                log.debug("Hovering XP tracker at ({}, {})", x, y);
-                viewStartTime = System.currentTimeMillis();
+                log.debug("Hovering XP tracker at ({}, {}) for {}ms", x, y, viewDurationPerSkill);
                 
                 pendingOperation = ctx.getMouseController().moveToCanvas(x, y)
-                    .thenCompose(v -> ctx.getHumanTimer().sleep(viewDuration))
+                    .thenCompose(v -> ctx.getHumanTimer().sleep(viewDurationPerSkill))
                     .thenRun(() -> phase = Phase.CLOSING);
             } else {
                 phase = Phase.CLOSING;

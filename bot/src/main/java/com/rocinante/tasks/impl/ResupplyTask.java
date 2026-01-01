@@ -246,10 +246,7 @@ public class ResupplyTask extends AbstractTask {
         // Handle active sub-task first
         if (activeSubTask != null) {
             activeSubTask.execute(ctx);
-            if (!activeSubTask.getState().isTerminal()) {
-                return; // Sub-task still running
-            }
-            
+            if (activeSubTask.getState().isTerminal()) {
             // Check if sub-task failed
             if (activeSubTask.getState() == TaskState.FAILED) {
                 log.warn("Resupply sub-task failed in phase {}: {}", 
@@ -257,8 +254,9 @@ public class ResupplyTask extends AbstractTask {
                 fail("Sub-task failed: " + activeSubTask.getDescription());
                 return;
             }
-            
             activeSubTask = null;
+            }
+            return; // Sub-task handled, phase runs next tick
         }
 
         // Skip if operation pending (async keyboard/click)

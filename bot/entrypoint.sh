@@ -186,11 +186,12 @@ pulseaudio --start --exit-idle-time=-1 2>/dev/null || true
 
 # Start VNC server on Unix socket (not TCP - reduces fingerprint)
 # Socket path is in the bind-mounted status directory for web server access
+# -viewonly: Enforces read-only at VNC protocol level (belt-and-suspenders with proxy filter)
 VNC_SOCKET_PATH="$HOME/.local/share/bolt-launcher/.runelite/rocinante/vnc.sock"
 echo "Starting VNC server on Unix socket: $VNC_SOCKET_PATH"
 rm -f "$VNC_SOCKET_PATH" 2>/dev/null || true
 
-x11vnc -display :${DISPLAY_NUM} -bg -nopw -unixsock "$VNC_SOCKET_PATH" -xkb -forever -shared -nocursorshape
+x11vnc -display :${DISPLAY_NUM} -bg -nopw -unixsock "$VNC_SOCKET_PATH" -xkb -forever -shared -nocursorshape -viewonly
 sleep 1
 
 # Verify x11vnc started

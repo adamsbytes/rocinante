@@ -155,6 +155,14 @@ public class InteractObjectTask extends com.rocinante.tasks.AbstractInteractionT
     private boolean acceptPositionChange = true;
 
     /**
+     * Whether to skip pathfinding reachability checks.
+     * Use for instanced areas where collision data is unreliable.
+     */
+    @Getter
+    @Setter
+    private boolean skipReachabilityCheck = false;
+
+    /**
      * Whether to expect a dialogue/interface to open as the success indicator.
      * When true, the task completes when any dialogue widget is visible.
      */
@@ -965,11 +973,25 @@ public class InteractObjectTask extends com.rocinante.tasks.AbstractInteractionT
     /**
      * Find the nearest reachable instance of the target object.
      * Uses NavigationService for collision-aware object selection.
-     * Objects behind fences/rivers are rejected.
+     * Objects behind fences/rivers are rejected unless skipReachabilityCheck is true.
      */
     protected TileObject findNearestObject(TaskContext ctx, WorldPoint playerPos) {
         com.rocinante.navigation.NavigationService navService = ctx.getNavigationService();
         Set<Integer> objectIdSet = new HashSet<>(getAllObjectIds());
+        
+        // Use distance-only search for instanced areas
+        if (skipReachabilityCheck) {
+            log.debug("Skipping reachability check for objects {} (instanced area)", objectIdSet);
+            Optional<TileObject> simpleResult = navService.findNearestObjectByDistance(
+                    playerPos, objectIdSet, searchRadius);
+            if (simpleResult.isPresent()) {
+                TileObject obj = simpleResult.get();
+                log.debug("Found object {} by distance at {}", obj.getId(), getObjectWorldPoint(obj));
+                return obj;
+            }
+            log.debug("No object found by distance for IDs {} within {} tiles", objectIdSet, searchRadius);
+            return null;
+        }
         
         Optional<com.rocinante.navigation.EntityFinder.ObjectSearchResult> result = 
                 navService.findNearestReachableObject(ctx, playerPos, objectIdSet, searchRadius);
@@ -1172,6 +1194,14 @@ public class InteractObjectTask extends com.rocinante.tasks.AbstractInteractionT
 
         WorldPoint targetPos = getObjectWorldPoint(targetObj);
         if (targetPos == null) {
+            return true;
+        }
+
+        // Skip collision checks for instanced areas where data is unreliable
+        if (skipReachabilityCheck) {
+            log.debug("Skipping adjacent reachability check for object {} (instanced area)", objectId);
+            adjacentPath = java.util.Collections.emptyList();
+            adjacentDestination = targetPos; // Just use the object's position
             return true;
         }
 

@@ -108,12 +108,8 @@ public class PlayerInspectionBehavior extends AbstractTask {
             return false;
         }
         
-        // Need nearby players to inspect
-        WorldState worldState = ctx.getWorldState();
-        if (worldState == null || worldState.getNearbyPlayers().isEmpty()) {
-            return false;
-        }
-        
+        // Allow task to start even if no players - it will complete immediately in executeImpl
+        // This prevents the task from staying PENDING forever and spamming "preconditions not met"
         return true;
     }
 
@@ -156,6 +152,14 @@ public class PlayerInspectionBehavior extends AbstractTask {
     }
 
     private void initInspection(TaskContext ctx) {
+        // Check for nearby players first - complete immediately if none
+        WorldState worldState = ctx.getWorldState();
+        if (worldState.getNearbyPlayers().isEmpty()) {
+            log.debug("No nearby players to inspect, completing immediately");
+            phase = Phase.COMPLETED;
+            return;
+        }
+        
         // Set hover duration for this inspection
         hoverDuration = randomization.uniformRandomLong(MIN_INSPECT_DURATION_MS, MAX_INSPECT_DURATION_MS);
         

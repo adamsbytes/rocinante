@@ -1,6 +1,9 @@
 package com.rocinante.tasks.impl;
 
+import com.rocinante.state.CombatState;
 import com.rocinante.state.PlayerState;
+import com.rocinante.util.NpcCollections;
+import com.rocinante.util.ObjectCollections;
 import net.runelite.api.NpcID;
 import net.runelite.api.ObjectID;
 import com.rocinante.tasks.AbstractTask;
@@ -11,10 +14,14 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
+import net.runelite.api.GameObject;
+import net.runelite.api.NPC;
+import net.runelite.api.Tile;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.widgets.Widget;
 
 import java.awt.Rectangle;
+import java.util.OptionalInt;
 
 /**
  * Task for handling player death and item recovery.
@@ -57,9 +64,23 @@ public class DeathTask extends AbstractTask {
     // ========================================================================
 
     /**
-     * Gravestone retrieval interface ID (602).
+     * Gravestone interface when clicking gravestone IN THE WORLD (672).
+     * From gameval: InterfaceID.GravestoneGeneric
+     * - FREEBUTTON = child 8 (take free items)
+     * - PAYBUTTON = child 15 (take items requiring payment)
      */
-    private static final int GRAVESTONE_INTERFACE_ID = 602;
+    private static final int GRAVESTONE_WORLD_INTERFACE_ID = 672;
+    private static final int GRAVESTONE_FREE_BUTTON_CHILD = 8;
+    private static final int GRAVESTONE_PAY_BUTTON_CHILD = 15;
+
+    /**
+     * Gravestone retrieval interface at Death's Office (602).
+     * From gameval: InterfaceID.GravestoneRetrieval
+     * - BUTTON = child 6 (take to inventory)
+     * - BUTTON_BANK = child 8 (take to bank)
+     */
+    private static final int DEATHS_OFFICE_RETRIEVAL_INTERFACE_ID = 602;
+    private static final int DEATHS_OFFICE_RETRIEVAL_BUTTON_CHILD = 6;
 
     /**
      * Death's Office interface ID (669).
@@ -114,17 +135,38 @@ public class DeathTask extends AbstractTask {
      */
     private static final int VARCLIENT_GRAVESTONE_Y = 398;
 
-    /**
-     * Varbit ID for whether a gravestone is currently active.
-     * From gameval: GRAVESTONE_VISIBLE = 10464
-     */
-    private static final int VARBIT_GRAVESTONE_VISIBLE = 10464;
-
-    /**
-     * Varbit ID for gravestone time remaining.
-     * From gameval: GRAVESTONE_DURATION = 10465
-     */
+    /** Varbit for gravestone visibility (10464) - use DURATION instead for reliability */
+    public static final int VARBIT_GRAVESTONE_VISIBLE = 10464;
+    
+    /** Varbit for gravestone timer (10465) - starts at 1500 ticks, counts down. >0 means active. */
     private static final int VARBIT_GRAVESTONE_DURATION = 10465;
+    
+    /**
+     * Check if there's an active gravestone that needs to be recovered.
+     * Uses GRAVESTONE_DURATION varbit which counts down from 1500 ticks (~15 mins).
+     * 
+     * @param client the game client
+     * @return true if a gravestone is active (timer > 0)
+     */
+    public static boolean hasActiveGravestone(Client client) {
+        int ticksRemaining = client.getVarbitValue(VARBIT_GRAVESTONE_DURATION);
+        if (ticksRemaining > 0) {
+            int minutesRemaining = (ticksRemaining * 600) / 60000; // ticks to minutes
+            log.debug("Active gravestone: {} ticks (~{} mins) remaining", ticksRemaining, minutesRemaining);
+        }
+        return ticksRemaining > 0;
+    }
+    
+    /**
+     * Get remaining gravestone time in ticks.
+     * Starts at 1500 ticks (~15 minutes) and counts down.
+     * 
+     * @param client the game client
+     * @return remaining ticks, or 0 if no gravestone
+     */
+    public static int getGravestoneTicksRemaining(Client client) {
+        return client.getVarbitValue(VARBIT_GRAVESTONE_DURATION);
+    }
 
     /**
      * Death's Domain portal in Death's Office - teleports to gravestone.
@@ -132,9 +174,13 @@ public class DeathTask extends AbstractTask {
      */
     private static final int DEATHS_DOMAIN_PORTAL_ID = ObjectID.DEATHS_DOMAIN;
 
-    // Note: Player gravestones use various ObjectIDs depending on the type selected.
-    // Common ones: GRAVESTONE (404), GRAVESTONE_405, SMALL_GRAVESTONE (400), GRAVE_MARKER (401)
-    // InteractObjectTask handles finding the nearest matching object.
+    /**
+     * Death's Office exit portal object ID.
+     * From gameval: DEATH_OFFICE_EXITPORTAL = 39549
+     */
+    private static final int DEATHS_OFFICE_EXIT_PORTAL_ID = ObjectID.PORTAL_39549;
+
+    // Player gravestones use ObjectCollections.PLAYER_GRAVESTONES
 
     // ========================================================================
     // Known Locations
@@ -386,12 +432,25 @@ public class DeathTask extends AbstractTask {
             return;
         }
 
+        // CRITICAL: If being attacked outside Death's Office, yield to let emergency handler flee
+        // Death recovery is useless if we die again trying to get our stuff!
+        CombatState combatState = ctx.getCombatState();
+        if (combatState != null && combatState.isBeingAttacked() && !isInDeathsOffice(ctx.getClient())) {
+            // Cancel any active sub-task so we can run
+            if (activeSubTask != null && !activeSubTask.getState().isTerminal()) {
+                log.warn("Under attack during death recovery! Cancelling {} to flee", 
+                        activeSubTask.getDescription());
+                activeSubTask = null;
+            }
+            // Return without doing anything - let EmergencyHandler queue FleeTask
+            return;
+        }
+
         // Execute active sub-task if present
         if (activeSubTask != null) {
             activeSubTask.execute(ctx);
-            if (activeSubTask.getState().isTerminal()) {
-                activeSubTask = null;
-            } else {
+            // Don't null out here - let phase handler check completion state first
+            if (!activeSubTask.getState().isTerminal()) {
                 return;
             }
         }
@@ -481,7 +540,7 @@ public class DeathTask extends AbstractTask {
         }
 
         // Check if gravestone interface is open (already at gravestone)
-        Widget gravestoneWidget = client.getWidget(GRAVESTONE_INTERFACE_ID, 0);
+        Widget gravestoneWidget = client.getWidget(GRAVESTONE_WORLD_INTERFACE_ID, 0);
         if (gravestoneWidget != null && !gravestoneWidget.isHidden()) {
             log.info("Gravestone interface detected, retrieving items");
             phase = Phase.RETRIEVE_FROM_GRAVESTONE;
@@ -512,10 +571,8 @@ public class DeathTask extends AbstractTask {
         // ========================================================================
         detectGravestoneFromVarClient(client);
 
-        int regionId = playerPos.getRegionID();
-        
-        // If we're in Death's Office
-        if (regionId == DEATHS_OFFICE_REGION) {
+        // If we're in Death's Office (check for portal + Death NPC, more reliable than region ID)
+        if (isInDeathsOffice(client)) {
             log.info("In Death's Office - checking for gravestone location");
             
             if (hasActiveGravestone && gravestoneLocation != null) {
@@ -533,6 +590,26 @@ public class DeathTask extends AbstractTask {
 
         // Not in Death's Office - determine recovery method
         if (hasActiveGravestone && gravestoneLocation != null) {
+            // Check if we have enough time to reach the gravestone
+            int ticksRemaining = getGravestoneTicksRemaining(client);
+            
+            WorldPoint currentPos = ctx.getPlayerState().getWorldPosition();
+            if (currentPos != null && ticksRemaining > 0) {
+                OptionalInt pathCostOpt = ctx.getNavigationService().getPathCost(ctx, currentPos, gravestoneLocation);
+                if (pathCostOpt.isPresent()) {
+                    int estimatedTicks = pathCostOpt.getAsInt();
+                    // Use 2x safety margin in case estimate is wrong
+                    if (estimatedTicks * 2 > ticksRemaining) {
+                        log.warn("Gravestone too far! Estimated {} ticks to reach, only {} ticks remaining. Giving up.",
+                                estimatedTicks, ticksRemaining);
+                        complete(); // Give up - can't make it in time
+                        return;
+                    }
+                    log.info("Gravestone reachable: ~{} ticks to reach, {} ticks remaining ({}% margin)",
+                            estimatedTicks, ticksRemaining, (ticksRemaining - estimatedTicks) * 100 / ticksRemaining);
+                }
+            }
+            
             // We have gravestone coordinates - go there directly
             log.info("Death recovery: heading to gravestone at {} (from VarClient)", gravestoneLocation);
             phase = Phase.GO_TO_GRAVESTONE;
@@ -541,6 +618,34 @@ public class DeathTask extends AbstractTask {
             gravestoneLocation = deathLocation;
             log.info("Death recovery: heading to gravestone at {} (provided location)", deathLocation);
             phase = Phase.GO_TO_GRAVESTONE;
+        } else if (hasActiveGravestone(client) && gravestoneLocation == null) {
+            // Timer is active but no coordinates from VarClient yet
+            int ticksLeft = getGravestoneTicksRemaining(client);
+            log.warn("Gravestone active ({} ticks remaining) but coordinates not yet available", ticksLeft);
+            
+            if (isInDeathsOffice(client)) {
+                // In Death's Office - use the portal to teleport to gravestone
+                log.info("In Death's Office - will use Death's Domain portal");
+                phase = Phase.USE_GRAVE_PORTAL;
+        } else {
+                // Not in Death's Office - wait for coordinates to populate
+                // VarClients may sync after a few ticks
+                waitTicks++;
+                if (waitTicks < 10) {
+                    log.debug("Waiting for gravestone coordinates to sync (tick {}/10)", waitTicks);
+                    return; // Stay in DETECT_STATE, retry next tick
+                }
+                
+                // Still no coords after waiting - log extensively for debugging
+                log.error("Gravestone coordinates still empty after {} ticks! Timer: {} ticks remaining",
+                        waitTicks, ticksLeft);
+                log.error("This is unexpected - please check the debug logs for VarPlayer values");
+                
+                // For now, complete the task but don't mark as success
+                // User can manually retrieve or we need more research
+                complete();
+                return;
+            }
         } else if (dialogueCompleted) {
             // We completed dialogue (first-death tutorial) but there's no gravestone
             // This means the tutorial is done - nothing more to do
@@ -552,9 +657,16 @@ public class DeathTask extends AbstractTask {
                 return;
             }
         } else {
-            // No gravestone info and haven't done dialogue - go to Death's Office
-            log.info("Death recovery: heading to Death's Office (no gravestone location known)");
-            phase = Phase.GO_TO_DEATHS_OFFICE;
+            // No gravestone info and haven't done dialogue - check if in Death's Office
+            if (isInDeathsOffice(client)) {
+                log.info("In Death's Office - will retrieve from Death or use portal");
+                phase = Phase.RETRIEVE_FROM_DEATH;
+            } else {
+                // Not in Death's Office and no gravestone - nothing we can do
+                log.warn("Not in Death's Office and no gravestone detected - giving up");
+                complete();
+                return;
+            }
         }
         waitTicks = 0;
     }
@@ -564,34 +676,62 @@ public class DeathTask extends AbstractTask {
      * The game stores the gravestone world coordinates in VarClient 397 (X) and 398 (Y).
      */
     private void detectGravestoneFromVarClient(Client client) {
-        // Check if gravestone is visible (varbit 10464)
-        int gravestoneVisible = client.getVarbitValue(VARBIT_GRAVESTONE_VISIBLE);
+        // Use GRAVESTONE_DURATION (10465) - if timer > 0, gravestone is active
+        int durationTicks = client.getVarbitValue(VARBIT_GRAVESTONE_DURATION);
         
-        if (gravestoneVisible == 1) {
+        if (durationTicks > 0) {
             // Get coordinates from VarClient
             int graveX = client.getVarcIntValue(VARCLIENT_GRAVESTONE_X);
             int graveY = client.getVarcIntValue(VARCLIENT_GRAVESTONE_Y);
             
+            // Debug: log all related vars
+            int width = client.getVarcIntValue(395);  // GRAVESTONE_WIDTH
+            int height = client.getVarcIntValue(396); // GRAVESTONE_HEIGHT  
+            int worldmap = client.getVarcIntValue(401); // WORLDMAP_GRAVESTONE
+            int varpGravestone = client.getVarpValue(1697); // GRAVESTONE_VARP
+            int varpDeathCoord = client.getVarpValue(3916); // GRAVESTONE_CREATION_DEATH_COORD
+            log.debug("Gravestone VarClients: x={}, y={}, width={}, height={}, worldmap={}", 
+                    graveX, graveY, width, height, worldmap);
+            log.debug("Gravestone VarPlayers: varp1697={}, deathCoord3916={} (binary: {})", 
+                    varpGravestone, varpDeathCoord, Integer.toBinaryString(varpDeathCoord));
+            
+            // Try to decode packed coordinate from VarPlayer 3916
+            // OSRS often packs coords as (x << 14) | y or similar
+            if (varpDeathCoord != 0 && graveX == 0 && graveY == 0) {
+                // Try common packing formats
+                int packedX1 = (varpDeathCoord >> 14) & 0x3FFF;
+                int packedY1 = varpDeathCoord & 0x3FFF;
+                int packedX2 = (varpDeathCoord >> 16) & 0xFFFF;
+                int packedY2 = varpDeathCoord & 0xFFFF;
+                log.debug("Trying to decode deathCoord: format1=({},{}), format2=({},{})", 
+                        packedX1, packedY1, packedX2, packedY2);
+            }
+            
+            // If VarClients are empty, try VarPlayer 3916 (death coord packed as (x << 14) | y)
+            if (graveX == 0 && graveY == 0 && varpDeathCoord != 0) {
+                graveX = (varpDeathCoord >> 14) & 0x3FFF;
+                graveY = varpDeathCoord & 0x3FFF;
+                log.info("Using VarPlayer death coord: ({}, {}) decoded from {}", graveX, graveY, varpDeathCoord);
+            }
+            
             if (graveX > 0 && graveY > 0) {
                 // Gravestone coordinates are world coordinates
-                gravestoneLocation = new WorldPoint(graveX, graveY, 0);
+                gravestoneLocation = new WorldPoint(graveX, graveY, client.getPlane());
                 hasActiveGravestone = true;
                 
-                // Also get duration for logging
-                int durationTicks = client.getVarbitValue(VARBIT_GRAVESTONE_DURATION);
-                int durationMinutes = durationTicks / 100; // Approximate conversion
+                int durationMinutes = (durationTicks * 600) / 60000; // ticks to minutes
                 
-                log.info("Gravestone detected via VarClient: {} (duration: ~{} mins remaining)", 
+                log.info("Gravestone detected via VarClient: {} (~{} mins remaining)", 
                         gravestoneLocation, durationMinutes);
             } else {
-                log.debug("Gravestone varbit is set but coordinates are invalid: ({}, {})", graveX, graveY);
+                log.debug("Gravestone timer active but coordinates invalid: ({}, {})", graveX, graveY);
                 hasActiveGravestone = false;
                 gravestoneLocation = null;
             }
         } else {
             hasActiveGravestone = false;
             gravestoneLocation = null;
-            log.debug("No active gravestone (varbit {} = {})", VARBIT_GRAVESTONE_VISIBLE, gravestoneVisible);
+            log.debug("No active gravestone (duration varbit = 0)");
         }
     }
 
@@ -652,9 +792,8 @@ public class DeathTask extends AbstractTask {
                 dialogueCompleted = true;
                 log.info("Death dialogue task completed successfully");
                 
-                // Check if we're still in Death's Office
-                WorldPoint playerPos = ctx.getPlayerState().getWorldPosition();
-                if (playerPos != null && playerPos.getRegionID() == DEATHS_OFFICE_REGION) {
+                // Check if we're still in Death's Office (use portal+NPC check, more reliable than region ID)
+                if (isInDeathsOffice(client)) {
                     log.info("Still in Death's Office - exiting via portal");
                     phase = Phase.EXIT_DEATHS_OFFICE;
                 } else {
@@ -693,9 +832,11 @@ public class DeathTask extends AbstractTask {
             // No dialogue open - need to talk to Death to start/resume dialogue
             if (activeSubTask == null) {
                 log.info("No dialogue open, talking to Death");
-                InteractNpcTask talkTask = new InteractNpcTask(NpcID.DEATH, "Talk-to");
+                // Use DEATH_9855 - the Death NPC in Death's Office (not 5567 which is overworld Death)
+                InteractNpcTask talkTask = new InteractNpcTask(NpcID.DEATH_9855, "Talk-to");
                 talkTask.setDescription("Talk to Death");
                 talkTask.setSearchRadius(15);
+                talkTask.setSkipReachabilityCheck(true); // Death's Office is instanced, collision unreliable
                 activeSubTask = talkTask;
             }
         }
@@ -716,8 +857,7 @@ public class DeathTask extends AbstractTask {
         }
 
         // Verify we're still in Death's Office
-        int regionId = playerPos.getRegionID();
-        if (regionId != DEATHS_OFFICE_REGION) {
+        if (!isInDeathsOffice(client)) {
             log.warn("Left Death's Office unexpectedly during USE_GRAVE_PORTAL, re-detecting state");
             phase = Phase.DETECT_STATE;
             return;
@@ -733,11 +873,12 @@ public class DeathTask extends AbstractTask {
         // Use InteractObjectTask to click the Death's Domain portal
         if (activeSubTask == null) {
             log.info("Clicking Death's Domain portal to teleport to gravestone");
-            preTeleportRegion = regionId;
+            preTeleportRegion = playerPos.getRegionID();
             
-            InteractObjectTask portalTask = new InteractObjectTask(DEATHS_DOMAIN_PORTAL_ID, "Enter");
+            InteractObjectTask portalTask = new InteractObjectTask(DEATHS_DOMAIN_PORTAL_ID, "Use");
             portalTask.setDescription("Enter Death's Domain (gravestone portal)");
             portalTask.setSearchRadius(20);
+            portalTask.setSkipReachabilityCheck(true); // Instanced area - pathfinding unreliable
             activeSubTask = portalTask;
         }
 
@@ -760,6 +901,7 @@ public class DeathTask extends AbstractTask {
      * Wait for teleport from Death's Domain portal to complete.
      */
     private void executeWaitForGraveTeleport(TaskContext ctx) {
+        Client client = ctx.getClient();
         PlayerState player = ctx.getPlayerState();
         WorldPoint playerPos = player.getWorldPosition();
 
@@ -772,11 +914,9 @@ public class DeathTask extends AbstractTask {
             return;
         }
 
-        int currentRegion = playerPos.getRegionID();
-
         // Check if we've left Death's Office
-        if (currentRegion != DEATHS_OFFICE_REGION) {
-            log.info("Teleported out of Death's Office to region {}", currentRegion);
+        if (!isInDeathsOffice(client)) {
+            log.info("Teleported out of Death's Office to region {}", playerPos.getRegionID());
             
             // Verify we're near the gravestone location
             if (gravestoneLocation != null) {
@@ -884,20 +1024,36 @@ public class DeathTask extends AbstractTask {
     private void executeRetrieveFromGravestone(TaskContext ctx) {
         Client client = ctx.getClient();
 
-        // Check if gravestone interface is already open
-        Widget gravestoneWidget = client.getWidget(GRAVESTONE_INTERFACE_ID, 0);
+        // Check if gravestone interface is already open (interface 672 for world gravestone)
+        Widget gravestoneWidget = client.getWidget(GRAVESTONE_WORLD_INTERFACE_ID, 0);
         if (gravestoneWidget != null && !gravestoneWidget.isHidden()) {
-            // Interface is open - click reclaim button
-            Widget reclaimButton = findReclaimButton(gravestoneWidget, client);
-            if (reclaimButton != null) {
-                log.info("Clicking reclaim button in gravestone interface");
-                clickWidget(ctx, reclaimButton, "Reclaim items from gravestone", Phase.RETURN_TO_LOCATION);
+            // Interface is open - try the free button first (child 8), then paid button (child 15)
+            Widget freeButton = client.getWidget(GRAVESTONE_WORLD_INTERFACE_ID, GRAVESTONE_FREE_BUTTON_CHILD);
+            Widget payButton = client.getWidget(GRAVESTONE_WORLD_INTERFACE_ID, GRAVESTONE_PAY_BUTTON_CHILD);
+            
+            if (freeButton != null && !freeButton.isHidden()) {
+                log.info("Clicking FREE items button in gravestone interface");
+                clickWidget(ctx, freeButton, "Take free items from gravestone", Phase.RETURN_TO_LOCATION);
+                itemsRetrieved = true;
+                return;
+            } else if (payButton != null && !payButton.isHidden()) {
+                log.info("Clicking PAID items button in gravestone interface");
+                clickWidget(ctx, payButton, "Take paid items from gravestone", Phase.RETURN_TO_LOCATION);
                 itemsRetrieved = true;
                 return;
             } else {
-                log.warn("Gravestone interface open but cannot find reclaim button");
+                // Fallback: search for any button with reclaim-like actions
+                Widget reclaimButton = findReclaimButton(gravestoneWidget, client);
+                if (reclaimButton != null) {
+                    log.info("Clicking reclaim button in gravestone interface (fallback)");
+                    clickWidget(ctx, reclaimButton, "Reclaim items from gravestone", Phase.RETURN_TO_LOCATION);
+                    itemsRetrieved = true;
+            return;
+        }
+
+                log.warn("Gravestone interface open but cannot find any reclaim button");
                 waitTicks++;
-                if (waitTicks > MAX_WAIT_TICKS) {
+            if (waitTicks > MAX_WAIT_TICKS) {
                     // Interface open but no button - items may already be recovered
                     log.info("Items may already be recovered, returning to activity");
                     phase = Phase.RETURN_TO_LOCATION;
@@ -907,15 +1063,16 @@ public class DeathTask extends AbstractTask {
         }
         }
 
-        // Interface not open - need to interact with gravestone object
+        // Interface not open - need to interact with gravestone NPC
+        // Player gravestones are NPCs, not objects!
         if (activeSubTask == null) {
-            log.info("Searching for gravestone object to interact with...");
+            log.info("Searching for gravestone NPC to loot...");
             
-            // Try to find any gravestone object nearby
-            // The gravestone will have "Repair" action if damaged, otherwise normal interaction
-            InteractObjectTask graveTask = new InteractObjectTask(ObjectID.GRAVESTONE, "Repair");
-            graveTask.setDescription("Interact with gravestone");
+            InteractNpcTask graveTask = new InteractNpcTask(
+                    NpcCollections.PLAYER_GRAVESTONES, "Loot");
+            graveTask.setDescription("Loot gravestone");
             graveTask.setSearchRadius(15);
+            graveTask.setSkipReachabilityCheck(true);
             activeSubTask = graveTask;
         }
 
@@ -950,6 +1107,7 @@ public class DeathTask extends AbstractTask {
     }
 
     private void executeGoToDeathsOffice(TaskContext ctx) {
+        Client client = ctx.getClient();
         PlayerState player = ctx.getPlayerState();
         WorldPoint playerPos = player.getWorldPosition();
 
@@ -957,10 +1115,9 @@ public class DeathTask extends AbstractTask {
             return;
         }
 
-        // Check if we're at Death's Office
-        int distance = playerPos.distanceTo(DEATHS_OFFICE_LOCATION);
-        if (distance <= 10) {
-            log.debug("At Death's Office area, looking for Death NPC");
+        // Check if we're actually in Death's Office (it's an instance, not a fixed location)
+        if (isInDeathsOffice(client)) {
+            log.debug("In Death's Office, looking for Death NPC");
             phase = Phase.RETRIEVE_FROM_DEATH;
             waitTicks = 0;
             return;
@@ -972,6 +1129,9 @@ public class DeathTask extends AbstractTask {
             WalkToTask walkTask = new WalkToTask(DEATHS_OFFICE_LOCATION);
             walkTask.setDescription("Walk to Death's Office");
             activeSubTask = walkTask;
+        } else if (activeSubTask.getState().isTerminal()) {
+            // Walk task finished - will re-check distance on next tick
+            activeSubTask = null;
         }
     }
 
@@ -1013,9 +1173,11 @@ public class DeathTask extends AbstractTask {
         // No interface/dialogue open - need to talk to Death NPC
         if (activeSubTask == null) {
             log.info("Talking to Death to retrieve items");
-            InteractNpcTask talkToDeathTask = new InteractNpcTask(NpcID.DEATH, "Talk-to");
+            // Use DEATH_9855 - the Death NPC in Death's Office (not 5567 which is overworld Death)
+            InteractNpcTask talkToDeathTask = new InteractNpcTask(NpcID.DEATH_9855, "Talk-to");
             talkToDeathTask.setDescription("Talk to Death");
             talkToDeathTask.setSearchRadius(15);
+            talkToDeathTask.setSkipReachabilityCheck(true); // Death's Office is instanced, collision unreliable
             activeSubTask = talkToDeathTask;
             return;
         }
@@ -1046,10 +1208,9 @@ public class DeathTask extends AbstractTask {
             return;
         }
 
-        // Check if we've already exited (no longer in Death's Office region)
-        int regionId = playerPos.getRegionID();
-        if (regionId != DEATHS_OFFICE_REGION) {
-            log.info("Already exited Death's Office, region is now {}", regionId);
+        // Check if we've already exited (no longer in Death's Office)
+        if (!isInDeathsOffice(client)) {
+            log.info("Already exited Death's Office, region is now {}", playerPos.getRegionID());
             phase = Phase.RETURN_TO_LOCATION;
             waitTicks = 0;
             return;
@@ -1066,11 +1227,12 @@ public class DeathTask extends AbstractTask {
         // Find and click the exit portal
         if (activeSubTask == null) {
             log.info("Clicking Death's Office exit portal");
-            preTeleportRegion = regionId;
+            preTeleportRegion = playerPos.getRegionID();
             
-            InteractObjectTask portalTask = new InteractObjectTask(ObjectID.PORTAL_39549, "Enter");
+            InteractObjectTask portalTask = new InteractObjectTask(ObjectID.PORTAL_39549, "Use");
             portalTask.setDescription("Exit Death's Office through portal");
             portalTask.setSearchRadius(20);
+            portalTask.setSkipReachabilityCheck(true); // Instanced area - pathfinding unreliable
             activeSubTask = portalTask;
         }
 
@@ -1111,12 +1273,11 @@ public class DeathTask extends AbstractTask {
             return;
         }
 
-        int currentRegion = playerPos.getRegionID();
-
         // Check if we've left Death's Office
-        if (currentRegion != DEATHS_OFFICE_REGION) {
-            log.info("Exited Death's Office, now in region {} at {}", currentRegion, playerPos);
-            phase = Phase.RETURN_TO_LOCATION;
+        if (!isInDeathsOffice(ctx.getClient())) {
+            log.info("Exited Death's Office, now in region {} at {}", playerPos.getRegionID(), playerPos);
+            // Re-detect state to check for gravestone before returning
+            phase = Phase.DETECT_STATE;
             waitTicks = 0;
             return;
         }
@@ -1157,12 +1318,54 @@ public class DeathTask extends AbstractTask {
             WalkToTask walkTask = new WalkToTask(returnLocation);
             walkTask.setDescription("Return to activity location");
             activeSubTask = walkTask;
+        } else if (activeSubTask.getState().isTerminal()) {
+            // Walk task finished - will re-check distance on next tick
+            activeSubTask = null;
         }
     }
 
     // ========================================================================
     // Helper Methods
     // ========================================================================
+
+    /**
+     * Check if player is in Death's Office by looking for both the exit portal AND Death NPC nearby.
+     * This is more reliable than region ID checks for instanced areas.
+     */
+    private boolean isInDeathsOffice(Client client) {
+        boolean foundPortal = false;
+        boolean foundDeath = false;
+
+        // Scan scene for exit portal (39549)
+        Tile[][][] tiles = client.getScene().getTiles();
+        int plane = client.getPlane();
+        for (int x = 0; x < 104 && !foundPortal; x++) {
+            for (int y = 0; y < 104 && !foundPortal; y++) {
+                Tile tile = tiles[plane][x][y];
+                if (tile == null) continue;
+                for (GameObject obj : tile.getGameObjects()) {
+                    if (obj != null && obj.getId() == DEATHS_OFFICE_EXIT_PORTAL_ID) {
+                        foundPortal = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Check for Death NPC (9855)
+        for (NPC npc : client.getNpcs()) {
+            if (npc != null && npc.getId() == NpcID.DEATH_9855) {
+                foundDeath = true;
+                break;
+            }
+        }
+
+        boolean inOffice = foundPortal && foundDeath;
+        if (foundPortal || foundDeath) {
+            log.debug("Death's Office check: portal={}, death={}, inOffice={}", foundPortal, foundDeath, inOffice);
+        }
+        return inOffice;
+    }
 
     /**
      * Find the reclaim/retrieve button in a death-related interface.
@@ -1200,6 +1403,25 @@ public class DeathTask extends AbstractTask {
                     return child;
                 }
             }
+        }
+
+        // Fallback: try known button locations directly
+        // World gravestone (672): free=8, paid=15
+        Widget freeBtn = client.getWidget(GRAVESTONE_WORLD_INTERFACE_ID, GRAVESTONE_FREE_BUTTON_CHILD);
+        if (freeBtn != null && !freeBtn.isHidden()) {
+            log.debug("Found gravestone free button via direct lookup (672:8)");
+            return freeBtn;
+        }
+        Widget payBtn = client.getWidget(GRAVESTONE_WORLD_INTERFACE_ID, GRAVESTONE_PAY_BUTTON_CHILD);
+        if (payBtn != null && !payBtn.isHidden()) {
+            log.debug("Found gravestone pay button via direct lookup (672:15)");
+            return payBtn;
+        }
+        // Death's Office retrieval (602): button=6
+        Widget deathOfficeBtn = client.getWidget(DEATHS_OFFICE_RETRIEVAL_INTERFACE_ID, DEATHS_OFFICE_RETRIEVAL_BUTTON_CHILD);
+        if (deathOfficeBtn != null && !deathOfficeBtn.isHidden()) {
+            log.debug("Found Death's Office reclaim button via direct lookup (602:6)");
+            return deathOfficeBtn;
         }
 
         return null;
@@ -1330,8 +1552,15 @@ public class DeathTask extends AbstractTask {
      * @return true if death-related interface is visible
      */
     public static boolean isDeathInterfaceVisible(Client client) {
-        Widget gravestone = client.getWidget(GRAVESTONE_INTERFACE_ID, 0);
+        // World gravestone interface (672)
+        Widget gravestone = client.getWidget(GRAVESTONE_WORLD_INTERFACE_ID, 0);
         if (gravestone != null && !gravestone.isHidden()) {
+            return true;
+        }
+        
+        // Death's Office retrieval interface (602)
+        Widget deathRetrieval = client.getWidget(DEATHS_OFFICE_RETRIEVAL_INTERFACE_ID, 0);
+        if (deathRetrieval != null && !deathRetrieval.isHidden()) {
             return true;
         }
 
