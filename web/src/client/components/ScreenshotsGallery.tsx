@@ -10,13 +10,46 @@ interface ScreenshotsGalleryProps {
 type CategoryOption = { id: string; label: string; count: number };
 
 function formatTimestamp(ms: number): string {
-  return new Intl.DateTimeFormat(undefined, {
+  const date = new Date(ms);
+  const now = new Date();
+  
+  // Get dates at midnight for comparison
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+  const dateDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  
+  const timeFormat = new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  const time = timeFormat.format(date);
+  
+  // Today
+  if (dateDay.getTime() === today.getTime()) {
+    return `Today, ${time}`;
+  }
+  
+  // Yesterday
+  if (dateDay.getTime() === yesterday.getTime()) {
+    return `Yesterday, ${time}`;
+  }
+  
+  // This year - show month and day
+  if (date.getFullYear() === now.getFullYear()) {
+    const dateFormat = new Intl.DateTimeFormat(undefined, {
+      month: 'short',
+      day: 'numeric',
+    });
+    return `${dateFormat.format(date)}, ${time}`;
+  }
+  
+  // Older - show full date
+  const fullFormat = new Intl.DateTimeFormat(undefined, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(ms));
+  });
+  return `${fullFormat.format(date)}, ${time}`;
 }
 
 export const ScreenshotsGallery: Component<ScreenshotsGalleryProps> = (props) => {
@@ -183,10 +216,8 @@ export const ScreenshotsGallery: Component<ScreenshotsGalleryProps> = (props) =>
                       </div>
                     </div>
                   </div>
-                  <div class="mt-2 text-xs text-gray-400 flex items-center gap-2">
-                    <span>{formatTimestamp(shot.capturedAt)}</span>
-                    <span class="text-gray-600">•</span>
-                    <span class="truncate">{(shot.sizeBytes / 1024).toFixed(0)} KB</span>
+                  <div class="mt-2 text-xs text-gray-400">
+                    {formatTimestamp(shot.capturedAt)}
                   </div>
                 </button>
               )}

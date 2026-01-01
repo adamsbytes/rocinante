@@ -233,7 +233,10 @@
 
 ---
 
-## Phase 10: Ironman & HCIM Support
+## Phase 10: Emergency Handling
+- DeathEmergency, etc
+
+## Phase 11: Ironman & HCIM Support
 **Goal**: Full ironman support with HCIM death prevention.
 
 - [X] `IronmanState` - Account type detection, Ironman restrictions (GE/trade blocking, etc)
@@ -250,7 +253,7 @@
 
 **Test**: 100 hours HCIM operation with zero preventable deaths.
 
-## Phase 11: Advanced Features
+## Phase 12: Advanced Features
 **Goal**: Make it awesome.
 
 - [ ] "Full Self Recovery" - awareness and retries such that it's VERY hard to get stuck, even when things go wrong

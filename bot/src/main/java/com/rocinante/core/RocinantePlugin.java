@@ -6,6 +6,7 @@ import javax.inject.Provider;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
+import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.GameTick;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.EventBus;
@@ -26,9 +27,12 @@ import com.rocinante.behavior.FatigueModel;
 import com.rocinante.behavior.AttentionModel;
 import com.rocinante.behavior.RandomEventHandler;
 import com.rocinante.behavior.PlayerProfile;
+import com.rocinante.behavior.emergencies.DeathEmergency;
 import com.rocinante.behavior.emergencies.EmergencyTask;
 import com.rocinante.behavior.emergencies.LowHealthEmergency;
 import com.rocinante.behavior.emergencies.PoisonEmergency;
+import com.rocinante.behavior.emergencies.UnderAttackEmergency;
+import com.rocinante.state.AggressorInfo;
 import com.rocinante.config.RocinanteConfig;
 import com.rocinante.input.RobotKeyboardController;
 import com.rocinante.input.RobotMouseController;
@@ -41,10 +45,16 @@ import com.rocinante.tasks.Task;
 import com.rocinante.tasks.TaskContext;
 import com.rocinante.tasks.TaskExecutor;
 import com.rocinante.tasks.TaskPriority;
+import com.rocinante.tasks.impl.DeathTask;
+import com.rocinante.tasks.impl.FleeTask;
+import com.rocinante.tasks.impl.InteractNpcTask;
+import com.rocinante.tasks.impl.WalkToTask;
 import com.rocinante.timing.HumanTimer;
 import com.rocinante.quest.QuestExecutor;
 import com.rocinante.quest.QuestService;
+import com.rocinante.navigation.SceneObstacleCache;
 import com.rocinante.navigation.ShortestPathBridge;
+import com.rocinante.navigation.SpatialObjectIndex;
 import com.rocinante.util.Randomization;
 import com.rocinante.behavior.tasks.MicroPauseTask;
 import com.rocinante.behavior.tasks.ShortBreakTask;
@@ -146,6 +156,20 @@ public class RocinantePlugin extends Plugin
     @Inject
     @Getter
     private ShortestPathBridge shortestPathBridge;
+
+    // === Performance Optimization Components ===
+
+    @Inject
+    @Getter
+    private SceneObstacleCache sceneObstacleCache;
+
+    @Inject
+    @Getter
+    private SpatialObjectIndex spatialObjectIndex;
+
+    @Inject
+    @Getter
+    private PerformanceMonitor performanceMonitor;
 
     // === State Components ===
 
@@ -272,12 +296,26 @@ public class RocinantePlugin extends Plugin
         // Register GameStateService with the event bus
         // GameStateService needs to receive events for state tracking
         eventBus.register(gameStateServiceProvider.get());
+
+        // === Register Performance Optimization Components ===
+        
+        // Register SceneObstacleCache - caches obstacle scan results
+        eventBus.register(sceneObstacleCache);
+        
+        // Register SpatialObjectIndex - spatial index for fast object lookups
+        eventBus.register(spatialObjectIndex);
+        
+        // Register PerformanceMonitor - tracks tick timing and cache effectiveness
+        eventBus.register(performanceMonitor);
         
         // Wire TaskExecutor to GameStateService (setter injection to break circular dependency)
         gameStateServiceProvider.get().setTaskExecutorProvider(() -> taskExecutor);
         
         // Wire SlayerPluginService to GameStateService (optional - may be null if Slayer plugin not loaded)
         gameStateServiceProvider.get().setSlayerPluginService(slayerPluginService);
+        
+        // Wire PerformanceMonitor to GameStateService
+        gameStateServiceProvider.get().setPerformanceMonitor(performanceMonitor);
 
         // Register LoginFlowHandler with the event bus
         // LoginFlowHandler auto-handles license agreement and name entry screens
@@ -649,6 +687,16 @@ public class RocinantePlugin extends Plugin
                 new PoisonEmergency(activityTracker, ctx -> wrapEmergencyTask("POISON_EMERGENCY", createDrinkAntidoteTask(ctx)))
         );
         
+        // Under Attack Emergency - triggers when attacked while skilling
+        emergencyHandler.registerCondition(
+                new UnderAttackEmergency(activityTracker, this::createUnderAttackResponseTask)
+        );
+        
+        // Death Emergency - triggers when player dies and is at Death's Office
+        emergencyHandler.registerCondition(
+                new DeathEmergency(ctx -> wrapEmergencyTask("DEATH_EMERGENCY", createDeathRecoveryTask(ctx)))
+        );
+        
         log.info("Registered {} emergency conditions", emergencyHandler.getConditionCount());
     }
     
@@ -684,7 +732,6 @@ public class RocinantePlugin extends Plugin
             private final AtomicReference<CompletableFuture<Boolean>> pending = new AtomicReference<>();
             
             {
-                this.timeout = Duration.ofSeconds(5);
                 this.priority = TaskPriority.URGENT;
             }
             
@@ -732,7 +779,6 @@ public class RocinantePlugin extends Plugin
             private final AtomicReference<CompletableFuture<Boolean>> pending = new AtomicReference<>();
             
             {
-                this.timeout = Duration.ofSeconds(5);
                 this.priority = TaskPriority.URGENT;
             }
             
@@ -760,6 +806,87 @@ public class RocinantePlugin extends Plugin
                 }
             }
         };
+    }
+
+    /**
+     * Create a response task for the UnderAttackEmergency.
+     * Returns either a fight or flee task based on the response type.
+     */
+    private Task createUnderAttackResponseTask(TaskContext ctx, AggressorInfo attacker, 
+            UnderAttackEmergency.ResponseType response) {
+        
+        switch (response) {
+            case FIGHT:
+                return wrapEmergencyTask("UNDER_ATTACK_EMERGENCY", createFightBackTask(ctx, attacker));
+            case FLEE:
+                return wrapEmergencyTask("UNDER_ATTACK_EMERGENCY", createFleeTask(ctx, attacker));
+            case IGNORE:
+            default:
+                log.debug("Ignoring attack from {} per response decision", attacker.getNpcName());
+                return null;
+        }
+    }
+
+    /**
+     * Create a task to fight back against an attacker.
+     */
+    private Task createFightBackTask(TaskContext ctx, AggressorInfo attacker) {
+        log.info("Creating fight-back task for {} (ID: {})", attacker.getNpcName(), attacker.getNpcId());
+        
+        InteractNpcTask fightTask = new InteractNpcTask(attacker.getNpcId(), "Attack");
+        fightTask.setDescription("Fight back: " + attacker.getNpcName());
+        fightTask.setSearchRadius(5); // Attacker should be very close
+        fightTask.setWaitForIdle(true); // Wait until combat ends or NPC dies
+        
+        return fightTask;
+    }
+
+    /**
+     * Create a task to flee from an attacker.
+     * If we were walking somewhere (commuting), flees toward that destination.
+     * Otherwise, flees away from attacker and returns to task location after.
+     */
+    private Task createFleeTask(TaskContext ctx, AggressorInfo attacker) {
+        // Get the current task location to return to (from activity tracker)
+        WorldPoint returnLocation = null;
+        if (activityTracker != null) {
+            returnLocation = activityTracker.getCurrentTaskLocation();
+        }
+        
+        // Check if we were walking somewhere - if so, flee TOWARD that destination
+        WorldPoint fleeTowardDestination = null;
+        Task currentTask = taskExecutor.getCurrentTask();
+        if (currentTask instanceof WalkToTask) {
+            WalkToTask walkTask = (WalkToTask) currentTask;
+            fleeTowardDestination = walkTask.getDestination();
+            log.info("Creating flee task from {} - fleeing TOWARD walk destination {} (was commuting)", 
+                    attacker.getNpcName(), fleeTowardDestination);
+        } else {
+            log.info("Creating flee task from {} (return to: {})", 
+                    attacker.getNpcName(), returnLocation);
+        }
+        
+        return new FleeTask(attacker, returnLocation, fleeTowardDestination);
+    }
+
+    /**
+     * Create a task to handle death and item recovery.
+     * Used by DeathEmergency.
+     */
+    private Task createDeathRecoveryTask(TaskContext ctx) {
+        // Get the return location from activity tracker
+        WorldPoint returnLocation = null;
+        if (activityTracker != null) {
+            returnLocation = activityTracker.getCurrentTaskLocation();
+        }
+        
+        log.info("Creating death recovery task (return to: {})", returnLocation);
+        
+        DeathTask deathTask = new DeathTask();
+        deathTask.withReturnLocation(returnLocation);
+        deathTask.withPreferGravestone(false); // Default to Death's Office for simplicity
+        
+        return deathTask;
     }
 
     @Override
@@ -819,6 +946,11 @@ public class RocinantePlugin extends Plugin
 
         // Unregister GameStateService from the event bus
         eventBus.unregister(gameStateServiceProvider.get());
+        
+        // === Unregister Performance Optimization Components ===
+        eventBus.unregister(performanceMonitor);
+        eventBus.unregister(spatialObjectIndex);
+        eventBus.unregister(sceneObstacleCache);
 
         // Invalidate all cached state
         gameStateServiceProvider.get().invalidateAllCaches();

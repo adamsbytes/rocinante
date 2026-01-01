@@ -156,7 +156,6 @@ public class DigTask extends AbstractTask {
      */
     public DigTask(WorldPoint digLocation) {
         this.digLocation = digLocation;
-        this.timeout = Duration.ofSeconds(60);
     }
 
     /**

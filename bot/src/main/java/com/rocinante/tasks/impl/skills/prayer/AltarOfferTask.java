@@ -29,7 +29,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Task for offering bones on an altar for Prayer training.
@@ -220,7 +219,6 @@ public class AltarOfferTask extends AbstractTask {
     public AltarOfferTask() {
         this.boneIds = new ArrayList<>(ItemCollections.BONES);
         this.altarIds = new ArrayList<>(ObjectCollections.BONE_OFFERING_ALTARS);
-        this.timeout = Duration.ofMinutes(10);
     }
 
     /**
@@ -231,7 +229,6 @@ public class AltarOfferTask extends AbstractTask {
     public AltarOfferTask(Collection<Integer> boneIds) {
         this.boneIds = new ArrayList<>(boneIds);
         this.altarIds = new ArrayList<>(ObjectCollections.BONE_OFFERING_ALTARS);
-        this.timeout = Duration.ofMinutes(10);
     }
 
     /**
@@ -243,7 +240,6 @@ public class AltarOfferTask extends AbstractTask {
     public AltarOfferTask(Collection<Integer> boneIds, Collection<Integer> altarIds) {
         this.boneIds = new ArrayList<>(boneIds);
         this.altarIds = new ArrayList<>(altarIds);
-        this.timeout = Duration.ofMinutes(10);
     }
 
     // ========================================================================
@@ -637,24 +633,11 @@ public class AltarOfferTask extends AbstractTask {
         phase = OfferPhase.DELAY_BETWEEN;
         waitingForDelay = true;
 
-        var humanTimer = ctx.getHumanTimer();
-        if (humanTimer != null) {
-            humanTimer.sleep(DelayProfile.ACTION_GAP)
-                    .thenRun(() -> {
-                        waitingForDelay = false;
-                        phase = OfferPhase.FIND_BONE;
-                    });
-        } else {
-            // Fallback: random delay
-            long delayMs = ThreadLocalRandom.current().nextLong(200, 600);
-            try {
-                Thread.sleep(delayMs);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-            waitingForDelay = false;
-            phase = OfferPhase.FIND_BONE;
-        }
+        ctx.getHumanTimer().sleep(DelayProfile.ACTION_GAP)
+                .thenRun(() -> {
+                    waitingForDelay = false;
+                    phase = OfferPhase.FIND_BONE;
+                });
     }
 
     private void executeDelayBetween(TaskContext ctx) {

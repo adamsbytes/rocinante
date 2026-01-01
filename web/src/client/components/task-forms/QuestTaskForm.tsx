@@ -1,4 +1,4 @@
-import { type Component, createSignal, For, Show, createMemo } from 'solid-js';
+import { type Component, createSignal, For, Show, createMemo, untrack } from 'solid-js';
 import type { QuestTaskSpec, QuestInfo, QuestsData, QuestSummary } from '../../../shared/types';
 
 interface QuestTaskFormProps {
@@ -52,21 +52,35 @@ export const QuestTaskForm: Component<QuestTaskFormProps> = (props) => {
   const [canStartFilter, setCanStartFilter] = createSignal<string>('');
   const [selectedQuest, setSelectedQuest] = createSignal<string>('');
 
-  // Live quest data availability
+  // Live quest data availability - cache to prevent unnecessary re-renders
+  // Store a stable reference that only updates when quest count or IDs change
+  const [cachedQuests, setCachedQuests] = createSignal<(QuestInfo & { canStart?: boolean; state?: string })[]>([]);
+  const [lastQuestHash, setLastQuestHash] = createSignal('');
+  
   const liveQuestData = createMemo(() => props.liveQuestData);
   const hasLiveData = createMemo(() => {
     const live = liveQuestData();
     return !!(live && live.available && live.available.length > 0);
   });
 
-  // Quest list from live data (empty until bot publishes)
-  const questList = createMemo(() => {
+  // Update cached quests only when data actually changes
+  createMemo(() => {
     const live = liveQuestData();
     if (live && live.available.length > 0) {
-      return live.available.map(liveQuestToInfo);
+      // Create a hash of quest IDs and states to detect actual changes
+      const hash = live.available.map(q => `${q.id}:${q.state}:${q.canStart}`).join('|');
+      if (hash !== untrack(lastQuestHash)) {
+        setLastQuestHash(hash);
+        setCachedQuests(live.available.map(liveQuestToInfo));
+      }
+    } else if (untrack(cachedQuests).length > 0) {
+      setCachedQuests([]);
+      setLastQuestHash('');
     }
-    return [];
   });
+
+  // Quest list from cached data (stable reference)
+  const questList = cachedQuests;
 
   // Filter quests
   const filteredQuests = createMemo(() => {
@@ -313,7 +327,7 @@ export const QuestTaskForm: Component<QuestTaskFormProps> = (props) => {
         </Show>
         <p class="text-xs text-gray-500 mt-1">
           {hasLiveData()
-            ? `${filteredQuests().length} quests available • ● = ready to start • ○ = missing requirements • ✓ = completed`
+            ? `${filteredQuests().length} quests • ● ready • ○ missing reqs • ✓ done • ◐ obtainable during quest`
             : 'Quest list will appear once the bot publishes live quest data'}
         </p>
       </div>
@@ -397,18 +411,54 @@ export const QuestTaskForm: Component<QuestTaskFormProps> = (props) => {
                     </div>
                   </Show>
 
-                  {/* Item Requirements */}
-                  <Show when={liveQuest().itemRequirements.length > 0}>
+                  {/* Item Requirements (required items only) */}
+                  <Show when={liveQuest().itemRequirements.filter(r => !r.recommended).length > 0}>
                     <div class="border-t border-gray-600 pt-3">
                       <h5 class="text-sm font-medium text-gray-300 mb-2">Item Requirements</h5>
                       <div class="grid grid-cols-2 gap-2 text-sm">
-                        <For each={liveQuest().itemRequirements}>
-                          {(req) => (
-                            <div class={`flex items-center gap-2 ${req.have ? 'text-green-400' : 'text-yellow-400'}`}>
-                              <span>{req.have ? '✓' : '○'}</span>
-                              <span>{req.quantity > 1 ? `${req.quantity}x ` : ''}{req.itemName}</span>
-                            </div>
-                          )}
+                        <For each={liveQuest().itemRequirements.filter(r => !r.recommended)}>
+                          {(req) => {
+                            const isMet = req.met ?? req.have;
+                            const isObtainableDuring = req.obtainableDuringQuest;
+                            return (
+                              <div class={`flex items-center gap-2 ${
+                                isMet ? 'text-green-400' : 
+                                isObtainableDuring ? 'text-blue-400' : 'text-yellow-400'
+                              }`}>
+                                <span>{isMet ? '✓' : isObtainableDuring ? '◐' : '○'}</span>
+                                <span>{req.quantity > 1 ? `${req.quantity}x ` : ''}{req.itemName}</span>
+                                <Show when={isObtainableDuring && !isMet}>
+                                  <span class="text-xs text-blue-400/80">(quest)</span>
+                                </Show>
+                              </div>
+                            );
+                          }}
+                        </For>
+                      </div>
+                    </div>
+                  </Show>
+
+                  {/* Item Recommendations (optional items) */}
+                  <Show when={liveQuest().itemRequirements.filter(r => r.recommended).length > 0}>
+                    <div class="border-t border-gray-600 pt-3">
+                      <h5 class="text-sm font-medium text-gray-300 mb-2">Item Recommendations</h5>
+                      <div class="grid grid-cols-2 gap-2 text-sm">
+                        <For each={liveQuest().itemRequirements.filter(r => r.recommended)}>
+                          {(req) => {
+                            const isMet = req.met ?? req.have;
+                            const isObtainableDuring = req.obtainableDuringQuest;
+                            return (
+                              <div class={`flex items-center gap-2 ${
+                                isMet ? 'text-green-400' : 'text-gray-400'
+                              }`}>
+                                <span>{isMet ? '✓' : '○'}</span>
+                                <span>{req.quantity > 1 ? `${req.quantity}x ` : ''}{req.itemName}</span>
+                                <Show when={isObtainableDuring && !isMet}>
+                                  <span class="text-xs text-blue-400/80">(quest)</span>
+                                </Show>
+                              </div>
+                            );
+                          }}
                         </For>
                       </div>
                     </div>

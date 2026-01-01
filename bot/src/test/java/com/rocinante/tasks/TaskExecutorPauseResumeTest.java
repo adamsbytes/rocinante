@@ -3,6 +3,7 @@ package com.rocinante.tasks;
 import com.rocinante.behavior.BreakScheduler;
 import com.rocinante.behavior.BreakType;
 import com.rocinante.behavior.EmergencyHandler;
+import com.rocinante.navigation.ShortestPathBridge;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
@@ -29,6 +30,9 @@ public class TaskExecutorPauseResumeTest {
     @Mock
     private EmergencyHandler emergencyHandler;
     
+    @Mock
+    private ShortestPathBridge shortestPathBridge;
+    
     private TaskExecutor taskExecutor;
 
     @Before
@@ -38,8 +42,9 @@ public class TaskExecutorPauseResumeTest {
         when(taskContext.isAbortRequested()).thenReturn(false);
         when(taskContext.isLoggedIn()).thenReturn(true);
         when(emergencyHandler.checkEmergencies(any())).thenReturn(Optional.empty());
+        when(shortestPathBridge.isAvailable()).thenReturn(true);
         
-        taskExecutor = new TaskExecutor(taskContext, breakScheduler, emergencyHandler);
+        taskExecutor = new TaskExecutor(taskContext, breakScheduler, emergencyHandler, shortestPathBridge);
         taskExecutor.start();
     }
 
@@ -196,7 +201,6 @@ public class TaskExecutorPauseResumeTest {
             this.description = description;
             this.priority = priority;
             this.ticksToComplete = ticksToComplete;
-            this.timeout = Duration.ofSeconds(10);
         }
 
         @Override

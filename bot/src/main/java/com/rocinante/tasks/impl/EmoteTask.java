@@ -261,7 +261,6 @@ public class EmoteTask extends AbstractTask {
     public EmoteTask(Emote emote) {
         this.emote = emote;
         this.emoteName = emote != null ? emote.getName() : null;
-        this.timeout = Duration.ofSeconds(30);
     }
 
     /**
@@ -272,7 +271,6 @@ public class EmoteTask extends AbstractTask {
     public EmoteTask(String emoteName) {
         this.emoteName = emoteName;
         this.emote = Emote.fromName(emoteName);
-        this.timeout = Duration.ofSeconds(30);
     }
 
     /**

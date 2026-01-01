@@ -34,9 +34,19 @@ public class DialogueTaskTest {
     private static final int WIDGET_NPC_DIALOGUE = 231;
     private static final int WIDGET_PLAYER_DIALOGUE = 217;
     private static final int WIDGET_DIALOGUE_OPTIONS = 219;
-    private static final int WIDGET_CONTINUE = 229;
-    private static final int WIDGET_SPRITE_DIALOGUE = 11;
+    private static final int WIDGET_MESSAGEBOX = 229;
+    private static final int WIDGET_OBJECTBOX = 193;  // Objectbox (sprite dialogue)
+    private static final int WIDGET_OBJECTBOX_DOUBLE = 11;  // ObjectboxDouble
     private static final int WIDGET_LEVEL_UP = 233;
+    
+    // Child IDs (from InterfaceID gameval)
+    private static final int CHILD_NPC_TEXT = 6;        // ChatLeft.TEXT
+    private static final int CHILD_PLAYER_TEXT = 6;     // ChatRight.TEXT
+    private static final int CHILD_DIALOGUE_OPTIONS = 1; // Chatmenu.OPTIONS
+    private static final int CHILD_OBJECTBOX_TEXT = 2;  // Objectbox.TEXT
+    private static final int CHILD_OBJECTBOX_DOUBLE_TEXT = 2; // ObjectboxDouble.TEXT
+    private static final int CHILD_MESSAGEBOX_TEXT = 3; // Messagebox.TEXT
+    private static final int CHILD_LEVEL_UP_CONTINUE = 3; // LevelupDisplay.CONTINUE
 
     @Mock
     private Client client;
@@ -559,10 +569,7 @@ public class DialogueTaskTest {
         when(optionsWidget.getDynamicChildren()).thenReturn(new Widget[]{titleWidget, null, null});
         when(optionsWidget.isHidden()).thenReturn(false);
 
-        Widget groupWidget = mock(Widget.class);
-        when(groupWidget.isHidden()).thenReturn(false);
-        when(client.getWidget(WIDGET_DIALOGUE_OPTIONS, 0)).thenReturn(groupWidget);
-        when(client.getWidget(WIDGET_DIALOGUE_OPTIONS, 1)).thenReturn(optionsWidget);
+        when(client.getWidget(WIDGET_DIALOGUE_OPTIONS, CHILD_DIALOGUE_OPTIONS)).thenReturn(optionsWidget);
 
         DialogueTask task = new DialogueTask();
 
@@ -644,42 +651,39 @@ public class DialogueTaskTest {
     }
 
     private void setupNpcDialogue(String text) {
-        Widget npcDialogueGroup = mock(Widget.class);
-        when(npcDialogueGroup.isHidden()).thenReturn(false);
-        when(client.getWidget(WIDGET_NPC_DIALOGUE, 0)).thenReturn(npcDialogueGroup);
-
+        // ChatLeft.TEXT is child 6
         Widget npcTextWidget = mock(Widget.class);
         when(npcTextWidget.getText()).thenReturn(text);
         when(npcTextWidget.isHidden()).thenReturn(false);
-        when(client.getWidget(WIDGET_NPC_DIALOGUE, 4)).thenReturn(npcTextWidget);
+        when(client.getWidget(WIDGET_NPC_DIALOGUE, CHILD_NPC_TEXT)).thenReturn(npcTextWidget);
 
         // Clear other dialogues
         when(client.getWidget(eq(WIDGET_DIALOGUE_OPTIONS), anyInt())).thenReturn(null);
         when(client.getWidget(eq(WIDGET_PLAYER_DIALOGUE), anyInt())).thenReturn(null);
         when(client.getWidget(eq(WIDGET_LEVEL_UP), anyInt())).thenReturn(null);
+        when(client.getWidget(eq(WIDGET_MESSAGEBOX), anyInt())).thenReturn(null);
+        when(client.getWidget(eq(WIDGET_OBJECTBOX), anyInt())).thenReturn(null);
+        when(client.getWidget(eq(WIDGET_OBJECTBOX_DOUBLE), anyInt())).thenReturn(null);
     }
 
     private void setupPlayerDialogue(String text) {
-        Widget playerDialogueGroup = mock(Widget.class);
-        when(playerDialogueGroup.isHidden()).thenReturn(false);
-        when(client.getWidget(WIDGET_PLAYER_DIALOGUE, 0)).thenReturn(playerDialogueGroup);
-
+        // ChatRight.TEXT is child 6
         Widget playerTextWidget = mock(Widget.class);
         when(playerTextWidget.getText()).thenReturn(text);
         when(playerTextWidget.isHidden()).thenReturn(false);
-        when(client.getWidget(WIDGET_PLAYER_DIALOGUE, 4)).thenReturn(playerTextWidget);
+        when(client.getWidget(WIDGET_PLAYER_DIALOGUE, CHILD_PLAYER_TEXT)).thenReturn(playerTextWidget);
 
         // Clear other dialogues
         when(client.getWidget(eq(WIDGET_DIALOGUE_OPTIONS), anyInt())).thenReturn(null);
         when(client.getWidget(eq(WIDGET_NPC_DIALOGUE), anyInt())).thenReturn(null);
         when(client.getWidget(eq(WIDGET_LEVEL_UP), anyInt())).thenReturn(null);
+        when(client.getWidget(eq(WIDGET_MESSAGEBOX), anyInt())).thenReturn(null);
+        when(client.getWidget(eq(WIDGET_OBJECTBOX), anyInt())).thenReturn(null);
+        when(client.getWidget(eq(WIDGET_OBJECTBOX_DOUBLE), anyInt())).thenReturn(null);
     }
 
     private void setupDialogueOptions(String title, String... options) {
-        Widget optionsGroup = mock(Widget.class);
-        when(optionsGroup.isHidden()).thenReturn(false);
-        when(client.getWidget(WIDGET_DIALOGUE_OPTIONS, 0)).thenReturn(optionsGroup);
-
+        // Chatmenu.OPTIONS is child 1
         Widget optionsWidget = mock(Widget.class);
         when(optionsWidget.isHidden()).thenReturn(false);
 
@@ -696,35 +700,46 @@ public class DialogueTaskTest {
         }
 
         when(optionsWidget.getDynamicChildren()).thenReturn(children);
-        when(client.getWidget(WIDGET_DIALOGUE_OPTIONS, 1)).thenReturn(optionsWidget);
+        when(client.getWidget(WIDGET_DIALOGUE_OPTIONS, CHILD_DIALOGUE_OPTIONS)).thenReturn(optionsWidget);
 
         // Clear other dialogues
         when(client.getWidget(eq(WIDGET_NPC_DIALOGUE), anyInt())).thenReturn(null);
         when(client.getWidget(eq(WIDGET_PLAYER_DIALOGUE), anyInt())).thenReturn(null);
         when(client.getWidget(eq(WIDGET_LEVEL_UP), anyInt())).thenReturn(null);
+        when(client.getWidget(eq(WIDGET_MESSAGEBOX), anyInt())).thenReturn(null);
+        when(client.getWidget(eq(WIDGET_OBJECTBOX), anyInt())).thenReturn(null);
+        when(client.getWidget(eq(WIDGET_OBJECTBOX_DOUBLE), anyInt())).thenReturn(null);
     }
 
     private void setupSpriteDialogue(String text) {
-        Widget spriteGroup = mock(Widget.class);
-        when(spriteGroup.isHidden()).thenReturn(false);
-        when(client.getWidget(WIDGET_SPRITE_DIALOGUE, 0)).thenReturn(spriteGroup);
+        // ObjectboxDouble.TEXT is child 2
+        Widget spriteTextWidget = mock(Widget.class);
+        when(spriteTextWidget.getText()).thenReturn(text);
+        when(spriteTextWidget.isHidden()).thenReturn(false);
+        when(client.getWidget(WIDGET_OBJECTBOX_DOUBLE, CHILD_OBJECTBOX_DOUBLE_TEXT)).thenReturn(spriteTextWidget);
 
         // Clear other dialogues
         when(client.getWidget(eq(WIDGET_DIALOGUE_OPTIONS), anyInt())).thenReturn(null);
         when(client.getWidget(eq(WIDGET_NPC_DIALOGUE), anyInt())).thenReturn(null);
         when(client.getWidget(eq(WIDGET_PLAYER_DIALOGUE), anyInt())).thenReturn(null);
         when(client.getWidget(eq(WIDGET_LEVEL_UP), anyInt())).thenReturn(null);
+        when(client.getWidget(eq(WIDGET_MESSAGEBOX), anyInt())).thenReturn(null);
+        when(client.getWidget(eq(WIDGET_OBJECTBOX), anyInt())).thenReturn(null);
     }
 
     private void setupLevelUpDialogue() {
-        Widget levelUpGroup = mock(Widget.class);
-        when(levelUpGroup.isHidden()).thenReturn(false);
-        when(client.getWidget(WIDGET_LEVEL_UP, 0)).thenReturn(levelUpGroup);
+        // LevelupDisplay.CONTINUE is child 3
+        Widget levelUpContinue = mock(Widget.class);
+        when(levelUpContinue.isHidden()).thenReturn(false);
+        when(client.getWidget(WIDGET_LEVEL_UP, CHILD_LEVEL_UP_CONTINUE)).thenReturn(levelUpContinue);
 
         // Clear other dialogues
         when(client.getWidget(eq(WIDGET_DIALOGUE_OPTIONS), anyInt())).thenReturn(null);
         when(client.getWidget(eq(WIDGET_NPC_DIALOGUE), anyInt())).thenReturn(null);
         when(client.getWidget(eq(WIDGET_PLAYER_DIALOGUE), anyInt())).thenReturn(null);
+        when(client.getWidget(eq(WIDGET_MESSAGEBOX), anyInt())).thenReturn(null);
+        when(client.getWidget(eq(WIDGET_OBJECTBOX), anyInt())).thenReturn(null);
+        when(client.getWidget(eq(WIDGET_OBJECTBOX_DOUBLE), anyInt())).thenReturn(null);
     }
 }
 

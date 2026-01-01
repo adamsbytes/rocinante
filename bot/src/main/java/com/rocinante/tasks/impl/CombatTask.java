@@ -299,9 +299,7 @@ public class CombatTask extends AbstractTask {
         
         // Set appropriate timeout
         if (config.hasDurationLimit()) {
-            this.timeout = config.getMaxDuration().plusMinutes(1);
         } else {
-            this.timeout = Duration.ofHours(4); // Default long timeout
         }
         
         this.priority = TaskPriority.NORMAL;

@@ -222,7 +222,6 @@ public class GrandExchangeTask extends AbstractTask {
         this.exactPrice = exactPrice;
         this.percentageOffset = percentageOffset;
         this.targetSlot = targetSlot;
-        this.timeout = Duration.ofSeconds(90);
     }
 
     // ========================================================================

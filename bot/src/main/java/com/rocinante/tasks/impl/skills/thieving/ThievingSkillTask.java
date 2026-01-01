@@ -310,7 +310,6 @@ public class ThievingSkillTask extends AbstractTask {
      */
     public ThievingSkillTask(ThievingMethod method) {
         this.method = method;
-        this.timeout = Duration.ofHours(6);
     }
 
     // ========================================================================

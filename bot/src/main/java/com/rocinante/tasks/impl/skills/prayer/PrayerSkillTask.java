@@ -229,7 +229,6 @@ public class PrayerSkillTask extends AbstractTask {
      */
     public PrayerSkillTask(PrayerMethod method) {
         this.method = method;
-        this.timeout = Duration.ofHours(6);
 
         // Default to regular bones
         this.boneIds.addAll(ItemCollections.BONES);

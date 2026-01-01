@@ -10,7 +10,6 @@ import lombok.extern.slf4j.Slf4j;
 
 import com.rocinante.util.Randomization;
 
-import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -29,10 +28,10 @@ import java.util.concurrent.CompletableFuture;
  * // Wait for player to be idle
  * WaitForConditionTask waitIdle = new WaitForConditionTask(Conditions.playerIsIdle());
  *
- * // Wait for inventory to be full with 60 second timeout
+ * // Wait for inventory to be full with 33 tick (~20s) inactivity timeout
  * WaitForConditionTask waitFull = new WaitForConditionTask(
  *     Conditions.inventoryFull()
- * ).withTimeout(Duration.ofSeconds(60));
+ * ).withInactivityTimeout(33);
  *
  * // Wait for bank to open with idle mouse behavior
  * WaitForConditionTask waitBank = new WaitForConditionTask(
@@ -51,11 +50,6 @@ public class WaitForConditionTask extends AbstractTask {
     // ========================================================================
     // Constants
     // ========================================================================
-
-    /**
-     * Default timeout for waiting (30 seconds per REQUIREMENTS.md).
-     */
-    private static final Duration DEFAULT_WAIT_TIMEOUT = Duration.ofSeconds(30);
 
     /**
      * Minimum ticks between idle mouse movements.
@@ -147,7 +141,6 @@ public class WaitForConditionTask extends AbstractTask {
      */
     public WaitForConditionTask(StateCondition condition) {
         this.condition = condition;
-        this.timeout = DEFAULT_WAIT_TIMEOUT;
         resetIdleMouseCountdown();
     }
 
@@ -225,13 +218,13 @@ public class WaitForConditionTask extends AbstractTask {
     }
 
     /**
-     * Set timeout duration (builder-style).
+     * Set inactivity timeout in ticks (builder-style).
      *
-     * @param timeout the timeout
+     * @param ticks timeout in game ticks
      * @return this task for chaining
      */
-    public WaitForConditionTask withTimeout(Duration timeout) {
-        this.timeout = timeout;
+    public WaitForConditionTask withInactivityTimeout(int ticks) {
+        this.inactivityTimeoutTicks = ticks;
         return this;
     }
 
@@ -423,17 +416,16 @@ public class WaitForConditionTask extends AbstractTask {
     }
 
     /**
-     * Get wait progress as a ratio of timeout.
+     * Get wait progress as a ratio of inactivity timeout.
      *
      * @return progress (0.0 to 1.0)
      */
+    @Override
     public double getProgress() {
-        if (timeout == null || timeout.isZero()) {
+        if (inactivityTimeoutTicks <= 0) {
             return 0.0;
         }
-        // Approximate: 1 tick = 600ms
-        double elapsedMs = waitTicks * 600.0;
-        return Math.min(1.0, elapsedMs / timeout.toMillis());
+        return Math.min(1.0, (double) waitTicks / inactivityTimeoutTicks);
     }
 
     // ========================================================================

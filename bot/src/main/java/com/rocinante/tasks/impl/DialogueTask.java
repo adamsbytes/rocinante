@@ -47,46 +47,45 @@ import java.util.regex.Pattern;
 public class DialogueTask extends AbstractTask {
 
     // ========================================================================
-    // Widget IDs for Dialogue
+    // Widget Group IDs for Dialogue
+    // Based on InterfaceID from runelite-api/gameval
+    // We check ALL children (0-20) for visibility, not specific child IDs,
+    // which makes this robust against any widget structure changes.
     // ========================================================================
 
-    /**
-     * NPC dialogue head widget group.
-     */
+    /** NPC dialogue (ChatLeft) - InterfaceID.ChatLeft = 231 */
     private static final int WIDGET_NPC_DIALOGUE = 231;
-
-    /**
-     * Player dialogue widget group.
-     */
+    
+    /** Player dialogue (ChatRight) - InterfaceID.ChatRight = 217 */
     private static final int WIDGET_PLAYER_DIALOGUE = 217;
-
-    /**
-     * Dialogue options widget group (numbered choices).
-     */
+    
+    /** Dialogue options (Chatmenu) - InterfaceID.Chatmenu = 219 */
     private static final int WIDGET_DIALOGUE_OPTIONS = 219;
-
-    /**
-     * Continue dialogue widget group.
-     */
-    private static final int WIDGET_CONTINUE = 229;
-
-    /**
-     * Generic dialogue widget.
-     */
-    private static final int WIDGET_DIALOGUE_GENERIC = 193;
-
-    /**
-     * Sprite dialogue widget (for some NPCs).
-     */
-    private static final int WIDGET_SPRITE_DIALOGUE = 11;
-
-    /**
-     * Level up dialogue.
-     */
+    
+    /** Message box (MESBOX) - InterfaceID.Messagebox = 229 */
+    private static final int WIDGET_MESSAGEBOX = 229;
+    
+    /** Sprite dialogue (Objectbox) - InterfaceID.Objectbox = 193 */
+    private static final int WIDGET_OBJECTBOX = 193;
+    
+    /** Double sprite dialogue (ObjectboxDouble) - InterfaceID.ObjectboxDouble = 11 */
+    private static final int WIDGET_OBJECTBOX_DOUBLE = 11;
+    
+    /** Level up dialogue - InterfaceID.LevelupDisplay = 233 */
     private static final int WIDGET_LEVEL_UP = 233;
 
-    // Child IDs for common dialogue elements
-    private static final int CHILD_NPC_TEXT = 4;
+    /**
+     * Number of ticks to wait with no dialogue visible before considering dialogue complete.
+     * OSRS can have brief gaps between dialogue screens during transitions.
+     * Increase this value if the bot is completing dialogue prematurely.
+     */
+    private static final int DIALOGUE_GAP_TOLERANCE_TICKS = 3;
+    
+    /**
+     * Extended gap tolerance during cutscenes.
+     * Cutscenes often have longer gaps between dialogue screens for animations.
+     */
+    private static final int CUTSCENE_GAP_TOLERANCE_TICKS = 10;
 
     // ========================================================================
     // Configuration
@@ -173,6 +172,12 @@ public class DialogueTask extends AbstractTask {
     private int waitTicks = 0;
 
     /**
+     * Ticks with no dialogue visible after we've interacted.
+     * Used to implement gap tolerance before completing.
+     */
+    private int noDialogueTicks = 0;
+
+    /**
      * Last detected dialogue text (for change detection).
      */
     private String lastDialogueText = null;
@@ -185,7 +190,6 @@ public class DialogueTask extends AbstractTask {
      * Create a dialogue task.
      */
     public DialogueTask() {
-        this.timeout = Duration.ofSeconds(60);
     }
 
     // ========================================================================
@@ -340,6 +344,7 @@ public class DialogueTask extends AbstractTask {
         continueClicks = 0;
         clickPending = false;
         waitTicks = 0;
+        noDialogueTicks = 0;
         lastDialogueText = null;
         log.debug("DialogueTask reset for retry");
     }
@@ -374,39 +379,71 @@ public class DialogueTask extends AbstractTask {
         Client client = ctx.getClient();
 
         // Check for dialogue options first (highest priority)
-        if (isWidgetVisible(client, WIDGET_DIALOGUE_OPTIONS)) {
+        // OPTIONS don't send chat messages, so we must use widget detection
+        if (hasDialogueOptions(ctx)) {
             log.debug("Dialogue options detected");
+            noDialogueTicks = 0; // Reset gap counter - dialogue is visible
             phase = DialoguePhase.SELECT_OPTION;
             return;
         }
 
-        // Check for continue dialogue
-        if (hasContinueOption(client)) {
+        // Check for continue dialogue (NPC, player, sprite, MESBOX, level up, etc.)
+        // Uses chat message tracking as primary detection - widget visibility is unreliable
+        if (hasContinueOption(ctx)) {
             log.debug("Continue dialogue detected");
-            phase = DialoguePhase.CLICK_CONTINUE;
-            return;
-        }
-
-        // Check for level up dialogue
-        if (isWidgetVisible(client, WIDGET_LEVEL_UP)) {
-            log.debug("Level up dialogue detected");
+            noDialogueTicks = 0; // Reset gap counter - dialogue is visible
             phase = DialoguePhase.CLICK_CONTINUE;
             return;
         }
 
         // No dialogue found - check if we should complete
-        if (continueClicks > 0 || !optionSequence.isEmpty()) {
-            // We've interacted with dialogue, and now it's gone
-            log.info("Dialogue completed after {} continue clicks", continueClicks);
-            complete();
+        // Only complete if we've interacted AND we've processed all configured options
+        boolean optionsComplete = optionSequence.isEmpty() || sequenceIndex >= optionSequence.size();
+        boolean resolversComplete = optionResolvers.isEmpty() || resolverIndex >= optionResolvers.size();
+
+        if (continueClicks > 0 && optionsComplete && resolversComplete) {
+            // We've clicked through and selected all configured options
+            // But wait for gap tolerance before completing - OSRS has brief gaps between screens
+            noDialogueTicks++;
+            
+            // Use longer tolerance during cutscenes (animations between dialogues)
+            boolean inCutscene = ctx.getGameStateService().isInCutscene();
+            int gapTolerance = inCutscene ? CUTSCENE_GAP_TOLERANCE_TICKS : DIALOGUE_GAP_TOLERANCE_TICKS;
+            
+            if (noDialogueTicks >= gapTolerance) {
+                // Final check - log all widget states before completing
+                log.info("Dialogue completed after {} continue clicks (waited {} ticks with no dialogue{})", 
+                        continueClicks, noDialogueTicks, inCutscene ? ", was in cutscene" : "");
+                complete();
+            } else {
+                // Log widget visibility details each tick while waiting
+                log.debug("No dialogue visible (tick {}/{}{})...", 
+                        noDialogueTicks, gapTolerance, inCutscene ? ", cutscene" : "");
+                hasContinueOption(ctx); // This will log the widget states
+            }
             return;
         }
 
-        // Waiting for dialogue to appear
+        // Still have options to select or haven't interacted yet - wait for dialogue
         waitTicks++;
-        if (waitTicks > 10) {
+        
+        // Different timeouts based on whether we've started interacting
+        int timeoutTicks = (continueClicks > 0 || !optionsComplete || !resolversComplete) ? 15 : 10;
+        
+        if (waitTicks > timeoutTicks) {
+            if (!optionsComplete || !resolversComplete) {
+                // Dialogue disappeared before we could select all options
+                log.warn("Dialogue disappeared before selecting all options (sequence: {}/{}, resolvers: {}/{})",
+                        sequenceIndex, optionSequence.size(), resolverIndex, optionResolvers.size());
+                fail("Dialogue closed before all options were selected");
+            } else if (continueClicks == 0) {
             log.warn("No dialogue detected after {} ticks", waitTicks);
             fail("No dialogue found");
+            } else {
+                // We clicked but options were empty - this is fine, complete normally
+                log.info("Dialogue completed after {} continue clicks (no options configured)", continueClicks);
+                complete();
+            }
         }
     }
 
@@ -415,13 +452,13 @@ public class DialogueTask extends AbstractTask {
     // ========================================================================
 
     private void executeClickContinue(TaskContext ctx) {
-        Client client = ctx.getClient();
-
         // Verify continue is still available
-        if (!hasContinueOption(client)) {
+        if (!hasContinueOption(ctx)) {
             phase = DialoguePhase.DETECT_DIALOGUE;
             return;
         }
+        
+        Client client = ctx.getClient();
 
         // Check continue limit
         if (continueClicks >= maxContinueClicks) {
@@ -457,7 +494,8 @@ public class DialogueTask extends AbstractTask {
     private void executeSelectOption(TaskContext ctx) {
         Client client = ctx.getClient();
 
-        Widget optionsWidget = client.getWidget(WIDGET_DIALOGUE_OPTIONS, 1);
+        // Find any visible widget in the options group that has dynamic children
+        Widget optionsWidget = findWidgetWithDynamicChildren(client, WIDGET_DIALOGUE_OPTIONS);
         if (optionsWidget == null) {
             // Options no longer visible
             phase = DialoguePhase.DETECT_DIALOGUE;
@@ -500,10 +538,17 @@ public class DialogueTask extends AbstractTask {
             log.debug("Using specified index: {}", selectedIndex);
         }
 
-        // Last resort: first option
+        // Last resort: first non-strikethrough option
+        // Strikethrough (<str>) means the option is already completed (common in tutorials)
         if (selectedIndex < 0 && children.length > 0) {
-            selectedIndex = 1;
-            log.debug("Defaulting to first option");
+            selectedIndex = findFirstSelectableOption(children);
+            if (selectedIndex > 0) {
+                log.debug("Defaulting to first selectable option: {}", selectedIndex);
+            } else {
+                // All options are strikethrough or invalid - just try option 1
+                selectedIndex = 1;
+                log.debug("All options appear completed, trying option 1");
+            }
         }
 
         if (selectedIndex < 1 || selectedIndex > 5) {
@@ -514,7 +559,7 @@ public class DialogueTask extends AbstractTask {
 
         // STABILITY CHECK: Verify options haven't changed before pressing key
         // This prevents race condition where dialogue changes during processing
-        Widget verifyWidget = client.getWidget(WIDGET_DIALOGUE_OPTIONS, 1);
+        Widget verifyWidget = findWidgetWithDynamicChildren(client, WIDGET_DIALOGUE_OPTIONS);
         if (verifyWidget == null) {
             log.debug("Options widget disappeared before selection - retrying detection");
             phase = DialoguePhase.DETECT_DIALOGUE;
@@ -634,6 +679,7 @@ public class DialogueTask extends AbstractTask {
 
     /**
      * Find option by simple text matching.
+     * Skips strikethrough options (wrapped in &lt;str&gt; tags) as they're already completed.
      */
     private int findOptionByText(Widget[] children, String targetOption) {
         // Start from index 1 - index 0 is the question/title text, not a selectable option
@@ -645,12 +691,65 @@ public class DialogueTask extends AbstractTask {
             String text = child.getText();
             if (text == null || text.isEmpty()) continue;
             optionNumber++; // This is a valid selectable option
-            if (text.toLowerCase().contains(targetOption.toLowerCase())) {
-                log.debug("Found matching option '{}' at position {} (widget index {})", text, optionNumber, i);
+            
+            // Skip strikethrough options - they're already completed
+            if (isStrikethrough(text)) {
+                log.trace("Skipping strikethrough option: {}", text);
+                continue;
+            }
+            
+            // Strip any remaining tags for matching
+            String cleanText = stripTags(text);
+            if (cleanText.toLowerCase().contains(targetOption.toLowerCase())) {
+                log.debug("Found matching option '{}' at position {} (widget index {})", cleanText, optionNumber, i);
                 return optionNumber; // 1-based option number for key press
             }
         }
         return -1;
+    }
+    
+    /**
+     * Find the first selectable (non-strikethrough) option.
+     * Returns the 1-based option number, or -1 if none found.
+     */
+    private int findFirstSelectableOption(Widget[] children) {
+        int optionNumber = 0;
+        for (int i = 1; i < children.length; i++) {
+            Widget child = children[i];
+            if (child == null) continue;
+            String text = child.getText();
+            if (text == null || text.isEmpty()) continue;
+            optionNumber++;
+            
+            // Skip strikethrough options - they're already completed
+            if (isStrikethrough(text)) {
+                continue;
+            }
+            
+            // Skip "Select an option" title if it appears
+            String cleanText = stripTags(text);
+            if (cleanText.equalsIgnoreCase("Select an option")) {
+                continue;
+            }
+            
+            return optionNumber;
+        }
+        return -1;
+    }
+    
+    /**
+     * Check if text is wrapped in strikethrough tags.
+     */
+    private boolean isStrikethrough(String text) {
+        return text != null && text.contains("<str>");
+    }
+    
+    /**
+     * Strip HTML-like tags from text for clean matching.
+     */
+    private String stripTags(String text) {
+        if (text == null) return "";
+        return text.replaceAll("<[^>]*>", "").trim();
     }
 
     /**
@@ -710,31 +809,149 @@ public class DialogueTask extends AbstractTask {
     // Helper Methods
     // ========================================================================
 
-    private boolean isWidgetVisible(Client client, int groupId) {
-        Widget widget = client.getWidget(groupId, 0);
-        return widget != null && !widget.isHidden();
+    /**
+     * Check if ANY child of a widget group is visible.
+     * Much more robust than checking specific child IDs - handles all dialogue variations.
+     */
+    private boolean isAnyChildVisible(Client client, int groupId) {
+        // Check children 0-20 (covers all known dialogue widget structures)
+        for (int childId = 0; childId <= 20; childId++) {
+            Widget widget = client.getWidget(groupId, childId);
+            if (widget != null && !widget.isHidden()) {
+                return true;
+            }
+        }
+        return false;
     }
 
-    private boolean hasContinueOption(Client client) {
-        return isWidgetVisible(client, WIDGET_NPC_DIALOGUE)
-                || isWidgetVisible(client, WIDGET_PLAYER_DIALOGUE)
-                || isWidgetVisible(client, WIDGET_CONTINUE)
-                || isWidgetVisible(client, WIDGET_DIALOGUE_GENERIC)
-                || isWidgetVisible(client, WIDGET_SPRITE_DIALOGUE)
-                || isWidgetVisible(client, WIDGET_LEVEL_UP);
+    /**
+     * Find the first visible widget in a group that has dynamic children.
+     * Used for dialogue options where we need to access the option list.
+     */
+    private Widget findWidgetWithDynamicChildren(Client client, int groupId) {
+        for (int childId = 0; childId <= 20; childId++) {
+            Widget widget = client.getWidget(groupId, childId);
+            if (widget != null && !widget.isHidden()) {
+                Widget[] children = widget.getDynamicChildren();
+                if (children != null && children.length > 0) {
+                    return widget;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Check if dialogue OPTIONS are visible.
+     * Options don't send chat messages, so we must use widget detection.
+     * We try multiple methods to be maximally thorough.
+     */
+    private boolean hasDialogueOptions(TaskContext ctx) {
+        Client client = ctx.getClient();
+        
+        // Method 1: Check if any child 0-20 is visible
+        if (isAnyChildVisible(client, WIDGET_DIALOGUE_OPTIONS)) {
+            log.trace("Options detected via isAnyChildVisible");
+            return true;
+        }
+        
+        // Method 2: Check if any child has dynamic children (the actual options list)
+        Widget optionsWidget = findWidgetWithDynamicChildren(client, WIDGET_DIALOGUE_OPTIONS);
+        if (optionsWidget != null) {
+            log.trace("Options detected via findWidgetWithDynamicChildren");
+            return true;
+        }
+        
+        // Method 3: Try to get the options widget directly and check children
+        // Check a wider range and also check getChildren() not just getDynamicChildren()
+        for (int childId = 0; childId <= 30; childId++) {
+            Widget widget = client.getWidget(WIDGET_DIALOGUE_OPTIONS, childId);
+            if (widget != null) {
+                // Check if widget exists and has any content
+                Widget[] staticChildren = widget.getChildren();
+                Widget[] dynamicChildren = widget.getDynamicChildren();
+                
+                if ((staticChildren != null && staticChildren.length > 0) ||
+                    (dynamicChildren != null && dynamicChildren.length > 0)) {
+                    log.trace("Options detected via extended child scan at child {}", childId);
+                    return true;
+                }
+                
+                // Also check if widget has text (might be the title)
+                String text = widget.getText();
+                if (text != null && !text.isEmpty() && !widget.isHidden()) {
+                    log.trace("Options detected via text content at child {}: {}", childId, text);
+                    return true;
+                }
+            }
+        }
+        
+        return false;
+    }
+    
+    private boolean hasContinueOption(TaskContext ctx) {
+        // PRIMARY: Check if a DIALOG or MESBOX chat message was received recently
+        // This is the most reliable method - widget visibility is unreliable
+        if (ctx.getGameStateService().wasDialogueRecent(10)) {
+            return true;
+        }
+        
+        // FALLBACK: Also check widget visibility for edge cases (level up, etc.)
+        Client client = ctx.getClient();
+        boolean npcDialogue = isAnyChildVisible(client, WIDGET_NPC_DIALOGUE);
+        boolean playerDialogue = isAnyChildVisible(client, WIDGET_PLAYER_DIALOGUE);
+        boolean objectbox = isAnyChildVisible(client, WIDGET_OBJECTBOX);
+        boolean objectboxDouble = isAnyChildVisible(client, WIDGET_OBJECTBOX_DOUBLE);
+        boolean messagebox = isAnyChildVisible(client, WIDGET_MESSAGEBOX);
+        boolean levelUp = isAnyChildVisible(client, WIDGET_LEVEL_UP);
+        
+        boolean anyVisible = npcDialogue || playerDialogue || objectbox || objectboxDouble 
+                || messagebox || levelUp;
+        
+        if (!anyVisible) {
+            // Log widget states when nothing is detected
+            log.debug("Widget visibility check - NPC(231):{} Player(217):{} Objectbox(193):{} " +
+                      "ObjectboxDouble(11):{} Messagebox(229):{} LevelUp(233):{}",
+                    npcDialogue, playerDialogue, objectbox, objectboxDouble, 
+                    messagebox, levelUp);
+        }
+        
+        return anyVisible;
+    }
+
+    /**
+     * Find the first visible widget child with text in a group.
+     */
+    private String getTextFromGroup(Client client, int groupId) {
+        for (int childId = 0; childId <= 20; childId++) {
+            Widget widget = client.getWidget(groupId, childId);
+            if (widget != null && !widget.isHidden()) {
+                String text = widget.getText();
+                if (text != null && !text.isEmpty()) {
+                    return text;
+                }
+            }
+        }
+        return null;
     }
 
     private String getDialogueText(Client client) {
-        Widget npcText = client.getWidget(WIDGET_NPC_DIALOGUE, CHILD_NPC_TEXT);
-        if (npcText != null && !npcText.isHidden()) {
-            return npcText.getText();
+        // Check each dialogue group for visible text - order by priority
+        int[] dialogueGroups = {
+            WIDGET_NPC_DIALOGUE,
+            WIDGET_PLAYER_DIALOGUE,
+            WIDGET_MESSAGEBOX,
+            WIDGET_OBJECTBOX,
+            WIDGET_OBJECTBOX_DOUBLE
+        };
+        
+        for (int groupId : dialogueGroups) {
+            String text = getTextFromGroup(client, groupId);
+            if (text != null) {
+                return text;
+            }
         }
-
-        Widget playerText = client.getWidget(WIDGET_PLAYER_DIALOGUE, CHILD_NPC_TEXT);
-        if (playerText != null && !playerText.isHidden()) {
-            return playerText.getText();
-        }
-
+        
         return "";
     }
 

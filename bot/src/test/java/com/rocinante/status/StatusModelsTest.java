@@ -127,7 +127,10 @@ public class StatusModelsTest {
 
     @Test
     public void xpTrackerAccumulatesGainsFromStatChanged() {
+        // Default to 0 for all skills
         when(client.getSkillExperience(any(Skill.class))).thenReturn(0);
+        // But Hitpoints must be >= 1154 (level 10) for tracking to start
+        when(client.getSkillExperience(Skill.HITPOINTS)).thenReturn(1154);
         when(client.getRealSkillLevel(any(Skill.class))).thenReturn(1);
         when(client.getBoostedSkillLevel(any(Skill.class))).thenReturn(1);
 

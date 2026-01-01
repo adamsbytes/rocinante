@@ -246,9 +246,7 @@ public class SkillTask extends AbstractTask {
 
         // Set timeout based on config
         if (config.hasTimeLimit()) {
-            this.timeout = config.getMaxDuration().plusMinutes(5);
         } else {
-            this.timeout = Duration.ofHours(8); // Default long timeout
         }
     }
 
@@ -821,6 +819,9 @@ public class SkillTask extends AbstractTask {
             List<Integer> objectIds = CollectionResolver.expandObjectIds(originalIds);
             String menuAction = method.getMenuAction();
 
+            log.debug("CollectionResolver expanded {} -> {} IDs: {} -> {}", 
+                    originalIds.size(), objectIds.size(), originalIds, objectIds);
+
             InteractObjectTask interactTask = new InteractObjectTask(
                     objectIds.get(0),
                     menuAction != null ? menuAction : "Mine"
@@ -833,6 +834,11 @@ public class SkillTask extends AbstractTask {
             if (!method.getSuccessAnimationIds().isEmpty()) {
                 interactTask.withSuccessAnimations(method.getSuccessAnimationIds());
             }
+
+            // For gathering, don't accept position change as success - wait for inventory change
+            // This prevents the bot from switching targets while walking to a resource
+            interactTask.setAcceptPositionChange(false);
+            interactTask.setWaitForInventoryChange(true);
 
             // Track current target position for predictive hover exclusion
             interactTask.setTargetPositionCallback(pos -> currentTargetPosition = pos);

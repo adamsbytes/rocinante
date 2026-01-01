@@ -5,10 +5,6 @@ import com.rocinante.tasks.impl.TravelTask;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
-import net.runelite.api.Constants;
-import net.runelite.api.GameObject;
-import net.runelite.api.Scene;
-import net.runelite.api.Tile;
 import net.runelite.api.TileObject;
 import net.runelite.api.coords.WorldPoint;
 
@@ -68,27 +64,13 @@ import java.util.stream.Collectors;
 @Singleton
 public class NavigationService {
 
-    /**
-     * Maximum time to wait for synchronous path cost computation (10 x 50ms polls = 500ms).
-     */
-    private static final int PATH_COMPUTATION_TIMEOUT_MS = 500;
-
-    /**
-     * Number of polling attempts for synchronous path cost.
-     */
-    private static final int MAX_POLL_ATTEMPTS = 10;
-
-    /**
-     * Sleep interval between polling attempts in milliseconds.
-     */
-    private static final int POLL_INTERVAL_MS = 50;
-
     // ========================================================================
     // Dependencies
     // ========================================================================
 
     private final Provider<ShortestPathBridge> bridgeProvider;
     private final CollisionService collisionService;
+    private final PathCostEstimator pathCostEstimator;
     
     @Getter
     private final PathCostCache pathCostCache;
@@ -99,9 +81,14 @@ public class NavigationService {
     private final Provider<EntityFinder> entityFinderProvider;
     private final Provider<Reachability> reachabilityProvider;
     private final Provider<ObstacleHandler> obstacleHandlerProvider;
+    private final SpatialObjectIndex spatialObjectIndex;
     
     @Getter
     private final TrainingSpotCache trainingSpotCache;
+
+    // Current pending async path request (only one at a time due to ShortestPath design)
+    private WorldPoint pendingStart = null;
+    private WorldPoint pendingEnd = null;
 
     // ========================================================================
     // Constructor
@@ -111,19 +98,23 @@ public class NavigationService {
     public NavigationService(
             Provider<ShortestPathBridge> bridgeProvider,
             CollisionService collisionService,
+            PathCostEstimator pathCostEstimator,
             PathCostCache pathCostCache,
             Client client,
             Provider<EntityFinder> entityFinderProvider,
             Provider<Reachability> reachabilityProvider,
             Provider<ObstacleHandler> obstacleHandlerProvider,
+            SpatialObjectIndex spatialObjectIndex,
             TrainingSpotCache trainingSpotCache) {
         this.bridgeProvider = bridgeProvider;
         this.collisionService = collisionService;
+        this.pathCostEstimator = pathCostEstimator;
         this.pathCostCache = pathCostCache;
         this.client = client;
         this.entityFinderProvider = entityFinderProvider;
         this.reachabilityProvider = reachabilityProvider;
         this.obstacleHandlerProvider = obstacleHandlerProvider;
+        this.spatialObjectIndex = spatialObjectIndex;
         this.trainingSpotCache = trainingSpotCache;
     }
 
@@ -251,72 +242,109 @@ public class NavigationService {
     }
 
     // ========================================================================
-    // Synchronous Path Cost API
+    // Path Cost API
     // ========================================================================
 
     /**
-     * Get path cost synchronously (BLOCKS up to 200ms if not cached).
+     * Get path cost using fast local BFS for nearby tiles.
      *
-     * <p>This method first checks the cache. On a cache miss, it requests
-     * a path from ShortestPath and blocks until the result is available
-     * or the timeout expires.
+     * <p>For tiles within the loaded scene (~52 tile radius), uses obstacle-aware
+     * BFS via PathCostEstimator. This is instant (~5-15ms).
      *
-     * @param ctx TaskContext for resource awareness
+     * <p>For tiles outside the scene, checks cache first. On cache miss,
+     * schedules an async path request and returns empty. Callers should
+     * retry next tick when the cache is populated.
+     *
+     * @param ctx   TaskContext (unused, kept for API compatibility)
      * @param start starting world point
-     * @param end ending world point
-     * @return path cost in tiles, or OptionalInt.empty() if unreachable or timeout
+     * @param end   ending world point
+     * @return path cost in tiles, or OptionalInt.empty() if unreachable or not yet computed
      */
     public OptionalInt getPathCost(TaskContext ctx, WorldPoint start, WorldPoint end) {
         if (start == null || end == null) {
             return OptionalInt.empty();
         }
 
-        // Same tile = cost 1
+        // Same tile = cost 0
         if (start.equals(end)) {
-            return OptionalInt.of(1);
+            return OptionalInt.of(0);
         }
 
-        // Check cache first
+        // Try fast local BFS first (covers ~52 tile radius)
+        OptionalInt localCost = pathCostEstimator.estimatePathCost(start, end);
+        if (localCost.isPresent()) {
+            return localCost;
+        }
+
+        // Outside local range - check cache for long-distance paths
         Optional<Integer> cached = pathCostCache.getPathCost(start, end);
         if (cached.isPresent()) {
             return OptionalInt.of(cached.get());
         }
 
-        // Cache miss - compute synchronously (BLOCKS!)
-        log.debug("Path cost cache miss: {} -> {}, computing...", start, end);
-        requestPath(ctx, start, end);
-
-        // Poll with timeout
-        int attempts = 0;
-        while (!getBridge().isPathReady() && attempts < MAX_POLL_ATTEMPTS) {
-            try {
-                Thread.sleep(POLL_INTERVAL_MS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                log.warn("Path computation interrupted");
-                return OptionalInt.empty();
+        // Check if we have a pending request for this path that has completed
+        if (isPendingRequestComplete(start, end)) {
+            Optional<Integer> newlyCached = pathCostCache.getPathCost(start, end);
+            if (newlyCached.isPresent()) {
+                return OptionalInt.of(newlyCached.get());
             }
-            attempts++;
+            // Path completed but was empty (unreachable)
+            return OptionalInt.empty();
         }
 
+        // Schedule async computation for future queries
+        scheduleAsyncPathComputation(ctx, start, end);
+        return OptionalInt.empty();
+    }
+
+    /**
+     * Check if a pending async path request has completed, and cache the result if so.
+     */
+    private boolean isPendingRequestComplete(WorldPoint start, WorldPoint end) {
+        if (pendingStart == null || pendingEnd == null) {
+            return false;
+        }
+
+        // Check if this is the pending request
+        if (!start.equals(pendingStart) || !end.equals(pendingEnd)) {
+            return false;
+        }
+
+        // Check if ShortestPath has completed
         if (!getBridge().isPathReady()) {
-            log.debug("Path computation timed out after {}ms: {} -> {}",
-                    PATH_COMPUTATION_TIMEOUT_MS, start, end);
-            return OptionalInt.empty();
+            return false;
         }
 
+        // Path is ready - cache it
         List<WorldPoint> path = getBridge().getCurrentPath();
-        int totalWaitMs = attempts * POLL_INTERVAL_MS;
-        if (path.isEmpty()) {
-            log.debug("No path found: {} -> {} - unreachable (waited {}ms)", start, end, totalWaitMs);
-            return OptionalInt.empty();
+        if (!path.isEmpty()) {
+            pathCostCache.cachePathResult(start, end, path);
+            log.debug("Async path complete: {} -> {} = {} tiles", start, end, path.size());
+        } else {
+            log.debug("Async path found no route: {} -> {}", start, end);
         }
 
-        // Cache and return
-        pathCostCache.cachePathResult(start, end, path);
-        log.debug("Path cost computed: {} -> {} = {} tiles (waited {}ms)", 
-                start, end, path.size(), totalWaitMs);
-        return OptionalInt.of(path.size());
+        // Clear pending request
+        pendingStart = null;
+        pendingEnd = null;
+        return true;
+    }
+
+    /**
+     * Schedule an async path computation via ShortestPath plugin.
+     * Only one request can be pending at a time.
+     */
+    private void scheduleAsyncPathComputation(TaskContext ctx, WorldPoint start, WorldPoint end) {
+        // If we already have a pending request, don't replace it
+        if (pendingStart != null && pendingEnd != null) {
+            log.debug("Async path request queued (already have pending): {} -> {}", start, end);
+            return;
+        }
+
+        pendingStart = start;
+        pendingEnd = end;
+        log.debug("Scheduling async path computation: {} -> {}", start, end);
+        requestPath(ctx, start, end);
     }
 
     // ========================================================================
@@ -510,56 +538,25 @@ public class NavigationService {
 
     /**
      * Scan the current scene for objects matching the given IDs.
+     * 
+     * <p>Uses {@link SpatialObjectIndex} for O(1) cell-based lookup instead of 
+     * O(N^2) full scene iteration. This is a critical path optimization.
      */
     private List<ObjectCandidate> scanForObjects(
             Collection<Integer> objectIds,
             WorldPoint referencePoint,
             int searchRadius) {
 
-        List<ObjectCandidate> candidates = new ArrayList<>();
-        Scene scene = client.getScene();
-        Tile[][][] tiles = scene.getTiles();
-        int playerPlane = referencePoint.getPlane();
+        // Use SpatialObjectIndex for efficient lookup
+        List<SpatialObjectIndex.ObjectEntry> indexResults = 
+            spatialObjectIndex.findObjectsNearby(referencePoint, searchRadius, objectIds);
 
-        Set<Integer> targetIds = objectIds instanceof Set ? (Set<Integer>) objectIds : new HashSet<>(objectIds);
-
-        for (int x = 0; x < Constants.SCENE_SIZE; x++) {
-            for (int y = 0; y < Constants.SCENE_SIZE; y++) {
-                Tile tile = tiles[playerPlane][x][y];
-                if (tile == null) {
-                    continue;
-                }
-
-                // Check game objects
-                GameObject[] gameObjects = tile.getGameObjects();
-                if (gameObjects != null) {
-                    for (GameObject obj : gameObjects) {
-                        if (obj != null && targetIds.contains(obj.getId())) {
-                            WorldPoint objPos = obj.getWorldLocation();
-                            if (objPos != null && objPos.distanceTo(referencePoint) <= searchRadius) {
-                                candidates.add(new ObjectCandidate(objPos, obj.getId()));
-                            }
-                        }
-                    }
-                }
-
-                // Check wall objects
-                net.runelite.api.WallObject wallObj = tile.getWallObject();
-                if (wallObj != null && targetIds.contains(wallObj.getId())) {
-                    WorldPoint objPos = wallObj.getWorldLocation();
-                    if (objPos != null && objPos.distanceTo(referencePoint) <= searchRadius) {
-                        candidates.add(new ObjectCandidate(objPos, wallObj.getId()));
-                    }
-                }
-
-                // Check ground objects
-                net.runelite.api.GroundObject groundObj = tile.getGroundObject();
-                if (groundObj != null && targetIds.contains(groundObj.getId())) {
-                    WorldPoint objPos = groundObj.getWorldLocation();
-                    if (objPos != null && objPos.distanceTo(referencePoint) <= searchRadius) {
-                        candidates.add(new ObjectCandidate(objPos, groundObj.getId()));
-                    }
-                }
+        // Convert to internal candidate format
+        List<ObjectCandidate> candidates = new ArrayList<>(indexResults.size());
+        for (SpatialObjectIndex.ObjectEntry entry : indexResults) {
+            TileObject obj = entry.getObject();
+            if (obj != null) {
+                candidates.add(new ObjectCandidate(entry.getPosition(), obj.getId()));
             }
         }
 
@@ -889,15 +886,22 @@ public class NavigationService {
             overrides.put("costSpiritTrees", Math.abs(spiritBonus));
         }
 
-        // Teleportation spells: add penalty when enabled but should be discouraged
+        // Teleportation spells: high base cost (home teleport has 30m cooldown),
+        // reduced when law runes are plentiful (regular teleports become viable)
         if (ra.shouldUseTeleportationSpells()) {
-            int baseTeleportTicks = 20;
-            int adjustedCost = ra.adjustTeleportCost(baseTeleportTicks, 1); // 1 law rune
-            int teleportPenalty = adjustedCost - baseTeleportTicks;
-            if (teleportPenalty > 0) {
-                overrides.put("costTeleportationSpells", teleportPenalty);
-            }
+            // Base: 300 tiles - only use teleport if it saves significant distance
+            // This accounts for home teleport's 30m cooldown opportunity cost
+            int baseCost = 300;
+            // Reduce cost when law runes are plentiful (multiplier approaches 1.0)
+            // getLawRuneCostMultiplier: 1.0 (plenty) -> 5.0 (scarce) -> 100.0 (HCIM)
+            double lawMultiplier = ra.getLawRuneCostMultiplier();
+            int adjustedCost = (int) (baseCost * lawMultiplier);
+            overrides.put("costTeleportationSpells", adjustedCost);
         }
+
+        // Minigame/group teleports: 20m cooldown - should save significant distance
+        // These are always enabled but should only be used for long trips
+        overrides.put("costTeleportationMinigames", 500);
 
         // Charter ships: gold-based penalty when enabled
         if (ra.shouldUseCharterShips()) {

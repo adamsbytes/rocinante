@@ -119,7 +119,6 @@ public class EquipItemTask extends AbstractTask {
         this.gearSet = null;
         this.attackStyle = null;
         this.description = "Equip item " + itemId;
-        this.timeout = Duration.ofSeconds(10);
     }
 
     /**
@@ -133,7 +132,6 @@ public class EquipItemTask extends AbstractTask {
         this.gearSet = null;
         this.attackStyle = null;
         this.description = "Equip item from " + itemIds;
-        this.timeout = Duration.ofSeconds(10);
     }
 
     /**
@@ -146,7 +144,6 @@ public class EquipItemTask extends AbstractTask {
         this.gearSet = gearSet;
         this.attackStyle = null;
         this.description = "Equip gear set: " + (gearSet != null ? gearSet.getName() : "null");
-        this.timeout = Duration.ofSeconds(15); // Longer for multi-item switches
     }
 
     /**
@@ -159,7 +156,6 @@ public class EquipItemTask extends AbstractTask {
         this.gearSet = null;
         this.attackStyle = attackStyle;
         this.description = "Equip for " + attackStyle.name() + " combat";
-        this.timeout = Duration.ofSeconds(15);
     }
 
     // ========================================================================

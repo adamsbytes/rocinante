@@ -133,9 +133,7 @@ public abstract class MinigameTask extends AbstractTask {
 
         // Set timeout based on config
         if (baseConfig.hasTimeLimit()) {
-            this.timeout = baseConfig.getMaxDuration().plusMinutes(5);
         } else {
-            this.timeout = Duration.ofHours(8); // Default long timeout
         }
     }
 

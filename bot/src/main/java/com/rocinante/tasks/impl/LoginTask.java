@@ -106,7 +106,6 @@ public class LoginTask extends AbstractTask {
     // ========================================================================
 
     public LoginTask() {
-        this.timeout = Duration.ofMinutes(5);
         this.currentRetryDelay = initialRetryDelayMs;
     }
 

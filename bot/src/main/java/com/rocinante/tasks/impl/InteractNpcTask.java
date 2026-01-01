@@ -259,7 +259,6 @@ public class InteractNpcTask extends com.rocinante.tasks.AbstractInteractionTask
     public InteractNpcTask(int npcId, String menuAction) {
         this.npcId = npcId;
         this.menuAction = menuAction;
-        this.timeout = Duration.ofSeconds(30);
     }
 
     /**
@@ -276,7 +275,6 @@ public class InteractNpcTask extends com.rocinante.tasks.AbstractInteractionTask
         List<Integer> ids = new ArrayList<>(npcIds);
         this.npcId = ids.get(0);
         this.menuAction = menuAction;
-        this.timeout = Duration.ofSeconds(30);
         if (ids.size() > 1) {
             this.alternateNpcIds.addAll(ids.subList(1, ids.size()));
         }

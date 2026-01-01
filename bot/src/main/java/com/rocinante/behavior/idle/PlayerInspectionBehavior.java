@@ -78,7 +78,6 @@ public class PlayerInspectionBehavior extends AbstractTask {
     public PlayerInspectionBehavior(PlayerProfile playerProfile, Randomization randomization) {
         this.playerProfile = playerProfile;
         this.randomization = randomization;
-        this.timeout = Duration.ofSeconds(10);
     }
 
     /**
@@ -87,7 +86,6 @@ public class PlayerInspectionBehavior extends AbstractTask {
     public PlayerInspectionBehavior(PlayerProfile playerProfile) {
         this.playerProfile = playerProfile;
         this.randomization = new Randomization();
-        this.timeout = Duration.ofSeconds(10);
     }
 
     @Override

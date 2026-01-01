@@ -7,12 +7,19 @@ import net.runelite.api.Client;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.events.PluginMessage;
+import shortestpath.pathfinder.CollisionMap;
+import shortestpath.pathfinder.Pathfinder;
+import shortestpath.pathfinder.PathfinderConfig;
+import shortestpath.pathfinder.SplitFlagMap;
+import shortestpath.PrimitiveIntList;
+import shortestpath.ShortestPathPlugin;
+import shortestpath.WorldPointUtil;
+import shortestpath.transport.Transport;
 
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.util.*;
 
 /**
@@ -79,42 +86,18 @@ public class ShortestPathBridge {
 
     /** Reference to ShortestPathPlugin instance */
     @Getter
-    private Object shortestPathPlugin;
+    private ShortestPathPlugin shortestPathPlugin;
 
     /** Whether the bridge is initialized and ready */
     @Getter
     private boolean available = false;
 
-    // Cached reflection accessors
-    private Method getPathfinderMethod;
-    private Method getPathfinderConfigMethod;
-    private Method getMapMethod;
-    private Method restartPathfindingMethod;
+    // Direct CollisionMap access (no reflection - loaded from ShortestPath resources)
+    // This is thread-safe: CollisionMap methods only read from immutable SplitFlagMap
+    private CollisionMap collisionMap;
     
-    // CollisionMap direction check methods
-    private Method collisionNorth;
-    private Method collisionSouth;
-    private Method collisionEast;
-    private Method collisionWest;
-    private Method collisionBlocked;
-    
-    // Pathfinder methods
-    private Method pathfinderIsDone;
-    private Method pathfinderGetPath;
-    
-    // Transport access
-    private Method getTransportsMethod;
-    
-    // Destinations (banks, altars, anvils, etc.) - accessed via field reflection
+    // Reflection only needed for private field access
     private Field allDestinationsField;
-    
-    // WorldPointUtil methods (for coordinate packing)
-    private Method packWorldPoint;
-    private Method unpackWorldPoint;
-    private Method unpackWorldX;
-    private Method unpackWorldY;
-    private Method unpackWorldPlane;
-    private Method distanceBetween;
 
     // ========================================================================
     // State
@@ -149,71 +132,45 @@ public class ShortestPathBridge {
      *
      * @param plugin the ShortestPathPlugin instance (must not be null)
      * @throws IllegalArgumentException if plugin is null
-     * @throws IllegalStateException if reflection setup fails
+     * @throws IllegalStateException if setup fails
      */
     public void initialize(Object plugin) {
         if (plugin == null) {
             throw new IllegalArgumentException("ShortestPathPlugin cannot be null");
         }
 
-        this.shortestPathPlugin = plugin;
+        if (!(plugin instanceof ShortestPathPlugin)) {
+            throw new IllegalArgumentException("Plugin must be ShortestPathPlugin, got: " + plugin.getClass().getName());
+        }
+
+        this.shortestPathPlugin = (ShortestPathPlugin) plugin;
 
         try {
-            setupReflection();
+            setup();
             this.available = true;
-            log.info("ShortestPathBridge initialized successfully");
+            log.info("ShortestPathBridge initialized successfully (direct access, minimal reflection)");
         } catch (Exception e) {
             this.available = false;
-            throw new IllegalStateException("Failed to set up reflection access to Shortest Path plugin", e);
+            throw new IllegalStateException("Failed to set up ShortestPath bridge", e);
         }
     }
 
     /**
-     * Set up reflection accessors for SP internal classes.
+     * Set up direct access to ShortestPath classes.
+     * Only uses reflection for private field access (allDestinations).
      */
-    private void setupReflection() throws Exception {
-        Class<?> pluginClass = shortestPathPlugin.getClass();
+    private void setup() throws Exception {
+        // Load CollisionMap DIRECTLY from ShortestPath's resources
+        SplitFlagMap mapData = SplitFlagMap.fromResources();
+        this.collisionMap = new CollisionMap(mapData);
+        log.info("Loaded collision map directly from ShortestPath resources");
 
-        // ShortestPathPlugin methods
-        getPathfinderMethod = pluginClass.getMethod("getPathfinder");
-        getPathfinderConfigMethod = pluginClass.getMethod("getPathfinderConfig");
-
-        // PathfinderConfig.getMap()
-        Object pathfinderConfig = getPathfinderConfigMethod.invoke(shortestPathPlugin);
+        // Only reflection needed: allDestinations is a private field
+        PathfinderConfig pathfinderConfig = shortestPathPlugin.getPathfinderConfig();
         if (pathfinderConfig != null) {
-            Class<?> configClass = pathfinderConfig.getClass();
-            getMapMethod = configClass.getMethod("getMap");
-            getTransportsMethod = configClass.getMethod("getTransports");
-            
-            // allDestinations field (private - need to use getDeclaredField)
-            allDestinationsField = configClass.getDeclaredField("allDestinations");
+            allDestinationsField = PathfinderConfig.class.getDeclaredField("allDestinations");
             allDestinationsField.setAccessible(true);
-
-            // CollisionMap methods
-            Object collisionMap = getMapMethod.invoke(pathfinderConfig);
-            if (collisionMap != null) {
-                Class<?> mapClass = collisionMap.getClass();
-                collisionNorth = mapClass.getMethod("n", int.class, int.class, int.class);
-                collisionSouth = mapClass.getMethod("s", int.class, int.class, int.class);
-                collisionEast = mapClass.getMethod("e", int.class, int.class, int.class);
-                collisionWest = mapClass.getMethod("w", int.class, int.class, int.class);
-                collisionBlocked = mapClass.getMethod("isBlocked", int.class, int.class, int.class);
-            }
         }
-
-        // restartPathfinding method
-        restartPathfindingMethod = pluginClass.getMethod("restartPathfinding", int.class, Set.class);
-
-        // WorldPointUtil class methods (static utility)
-        Class<?> worldPointUtilClass = Class.forName("shortestpath.WorldPointUtil");
-        packWorldPoint = worldPointUtilClass.getMethod("packWorldPoint", int.class, int.class, int.class);
-        unpackWorldPoint = worldPointUtilClass.getMethod("unpackWorldPoint", int.class);
-        unpackWorldX = worldPointUtilClass.getMethod("unpackWorldX", int.class);
-        unpackWorldY = worldPointUtilClass.getMethod("unpackWorldY", int.class);
-        unpackWorldPlane = worldPointUtilClass.getMethod("unpackWorldPlane", int.class);
-        distanceBetween = worldPointUtilClass.getMethod("distanceBetween", int.class, int.class);
-
-        log.debug("Reflection setup complete for ShortestPathBridge");
     }
 
     // ========================================================================
@@ -302,29 +259,17 @@ public class ShortestPathBridge {
             return true;
         }
 
-        try {
-            Object pathfinder = getPathfinderMethod.invoke(shortestPathPlugin);
-            if (pathfinder == null) {
-                return true;
-            }
-
-            // Get isDone method if not cached
-            if (pathfinderIsDone == null) {
-                pathfinderIsDone = pathfinder.getClass().getMethod("isDone");
-            }
-
-            boolean done = (boolean) pathfinderIsDone.invoke(pathfinder);
-            if (done) {
-                pathfindingInProgress = false;
-                // Cache the path
-                cachedPath = extractPath(pathfinder);
-            }
-            return done;
-        } catch (Exception e) {
-            log.error("Error checking pathfinding status", e);
-            pathfindingInProgress = false;
+        Pathfinder pathfinder = shortestPathPlugin.getPathfinder();
+        if (pathfinder == null) {
             return true;
         }
+
+        boolean done = pathfinder.isDone();
+        if (done) {
+            pathfindingInProgress = false;
+            cachedPath = extractPath(pathfinder);
+        }
+        return done;
     }
 
     /**
@@ -338,45 +283,30 @@ public class ShortestPathBridge {
             return cachedPath;
         }
 
-        try {
-            Object pathfinder = getPathfinderMethod.invoke(shortestPathPlugin);
-            if (pathfinder == null) {
-                return Collections.emptyList();
-            }
-
-            cachedPath = extractPath(pathfinder);
-            return cachedPath;
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to get current path", e);
+        Pathfinder pathfinder = shortestPathPlugin.getPathfinder();
+        if (pathfinder == null) {
+            return Collections.emptyList();
         }
+
+        cachedPath = extractPath(pathfinder);
+        return cachedPath;
     }
 
     /**
      * Extract the path from the Pathfinder object.
      */
-    private List<WorldPoint> extractPath(Object pathfinder) throws Exception {
-        if (pathfinderGetPath == null) {
-            pathfinderGetPath = pathfinder.getClass().getMethod("getPath");
-        }
-
-        Object primitiveIntList = pathfinderGetPath.invoke(pathfinder);
-        if (primitiveIntList == null) {
+    private List<WorldPoint> extractPath(Pathfinder pathfinder) {
+        PrimitiveIntList packedPath = pathfinder.getPath();
+        if (packedPath == null || packedPath.isEmpty()) {
             return Collections.emptyList();
         }
 
-        // PrimitiveIntList has size() and get(int) methods
-        Method sizeMethod = primitiveIntList.getClass().getMethod("size");
-        Method getMethod = primitiveIntList.getClass().getMethod("get", int.class);
-
-        int size = (int) sizeMethod.invoke(primitiveIntList);
+        int size = packedPath.size();
         List<WorldPoint> path = new ArrayList<>(size);
 
         for (int i = 0; i < size; i++) {
-            int packed = (int) getMethod.invoke(primitiveIntList, i);
-            WorldPoint point = unpackPoint(packed);
-            if (point != null) {
-                path.add(point);
-            }
+            int packed = packedPath.get(i);
+            path.add(WorldPointUtil.unpackWorldPoint(packed));
         }
 
         return path;
@@ -395,13 +325,7 @@ public class ShortestPathBridge {
      * @return true if blocked
      */
     public boolean isBlocked(int x, int y, int z) {
-        try {
-            Object collisionMap = getCollisionMap();
-            return (boolean) collisionBlocked.invoke(collisionMap, x, y, z);
-        } catch (Exception e) {
-            throw new IllegalStateException(
-                String.format("Failed to check blocked status at (%d, %d, %d)", x, y, z), e);
-        }
+        return collisionMap.isBlocked(x, y, z);
     }
 
     /**
@@ -426,28 +350,28 @@ public class ShortestPathBridge {
      * @return true if northward movement is allowed
      */
     public boolean canMoveNorth(int x, int y, int z) {
-        return checkDirection(collisionNorth, x, y, z);
+        return collisionMap.n(x, y, z);
     }
 
     /**
      * Check if movement is allowed from a tile to the south.
      */
     public boolean canMoveSouth(int x, int y, int z) {
-        return checkDirection(collisionSouth, x, y, z);
+        return collisionMap.s(x, y, z);
     }
 
     /**
      * Check if movement is allowed from a tile to the east.
      */
     public boolean canMoveEast(int x, int y, int z) {
-        return checkDirection(collisionEast, x, y, z);
+        return collisionMap.e(x, y, z);
     }
 
     /**
      * Check if movement is allowed from a tile to the west.
      */
     public boolean canMoveWest(int x, int y, int z) {
-        return checkDirection(collisionWest, x, y, z);
+        return collisionMap.w(x, y, z);
     }
 
     /**
@@ -557,30 +481,6 @@ public class ShortestPathBridge {
         return canMoveTo(playerPos, targetPos);
     }
 
-    /**
-     * Helper to invoke a directional collision check method.
-     */
-    private boolean checkDirection(Method method, int x, int y, int z) {
-        try {
-            Object collisionMap = getCollisionMap();
-            return (boolean) method.invoke(collisionMap, x, y, z);
-        } catch (Exception e) {
-            throw new IllegalStateException(
-                String.format("Failed to check collision direction at (%d, %d, %d)", x, y, z), e);
-        }
-    }
-
-    /**
-     * Get the CollisionMap object from PathfinderConfig.
-     */
-    private Object getCollisionMap() throws Exception {
-        Object pathfinderConfig = getPathfinderConfigMethod.invoke(shortestPathPlugin);
-        if (pathfinderConfig == null) {
-            return null;
-        }
-        return getMapMethod.invoke(pathfinderConfig);
-    }
-
     // ========================================================================
     // Transport Analysis
     // ========================================================================
@@ -631,77 +531,52 @@ public class ShortestPathBridge {
             return null;
         }
 
-        try {
-            Object pathfinderConfig = getPathfinderConfigMethod.invoke(shortestPathPlugin);
-            if (pathfinderConfig == null) {
-                return null;
-            }
-
-            // Get transports map: Map<Integer, Set<Transport>>
-            @SuppressWarnings("unchecked")
-            Map<Integer, Set<Object>> transports = 
-                    (Map<Integer, Set<Object>>) getTransportsMethod.invoke(pathfinderConfig);
-
-            if (transports == null) {
-                return null;
-            }
-
-            int packedOrigin = packPoint(origin);
-            Set<Object> originTransports = transports.get(packedOrigin);
-
-            if (originTransports == null || originTransports.isEmpty()) {
-                return null;
-            }
-
-            int packedDest = packPoint(destination);
-
-            // Find transport matching destination
-            for (Object transport : originTransports) {
-                TransportInfo info = extractTransportInfo(transport);
-                if (info != null && info.getPackedDestination() == packedDest) {
-                    return info;
-                }
-            }
-
-            return null;
-        } catch (Exception e) {
-            log.debug("Error getting transport at {}: {}", origin, e.getMessage());
+        PathfinderConfig pathfinderConfig = shortestPathPlugin.getPathfinderConfig();
+        if (pathfinderConfig == null) {
             return null;
         }
+
+        Map<Integer, Set<Transport>> transports = pathfinderConfig.getTransports();
+        if (transports == null) {
+            return null;
+        }
+
+        int packedOrigin = WorldPointUtil.packWorldPoint(origin);
+        Set<Transport> originTransports = transports.get(packedOrigin);
+
+        if (originTransports == null || originTransports.isEmpty()) {
+            return null;
+        }
+
+        int packedDest = WorldPointUtil.packWorldPoint(destination);
+
+        // Find transport matching destination
+        for (Transport transport : originTransports) {
+            if (transport.getDestination() == packedDest) {
+                return extractTransportInfo(transport);
+            }
+        }
+
+        return null;
     }
 
     /**
      * Extract TransportInfo from a Transport object.
      */
-    private TransportInfo extractTransportInfo(Object transport) throws Exception {
-        Class<?> transportClass = transport.getClass();
-
-        // Get methods (cache these for performance in production)
-        Method getOrigin = transportClass.getMethod("getOrigin");
-        Method getDestination = transportClass.getMethod("getDestination");
-        Method getType = transportClass.getMethod("getType");
-        Method getObjectInfo = transportClass.getMethod("getObjectInfo");
-        Method getDisplayInfo = transportClass.getMethod("getDisplayInfo");
-        Method getDuration = transportClass.getMethod("getDuration");
-
-        int packedOrigin = (int) getOrigin.invoke(transport);
-        int packedDestination = (int) getDestination.invoke(transport);
-        Object typeEnum = getType.invoke(transport);
-        String objectInfo = (String) getObjectInfo.invoke(transport);
-        String displayInfo = (String) getDisplayInfo.invoke(transport);
-        int duration = (int) getDuration.invoke(transport);
-
-        String typeName = typeEnum != null ? typeEnum.toString() : "TRANSPORT";
+    private TransportInfo extractTransportInfo(Transport transport) {
+        int packedOrigin = transport.getOrigin();
+        int packedDestination = transport.getDestination();
+        String typeName = transport.getType() != null ? transport.getType().toString() : "TRANSPORT";
 
         return new TransportInfo(
                 packedOrigin,
                 packedDestination,
-                unpackPoint(packedOrigin),
-                unpackPoint(packedDestination),
+                WorldPointUtil.unpackWorldPoint(packedOrigin),
+                WorldPointUtil.unpackWorldPoint(packedDestination),
                 typeName,
-                objectInfo,
-                displayInfo,
-                duration
+                transport.getObjectInfo(),
+                transport.getDisplayInfo(),
+                transport.getDuration()
         );
     }
 
@@ -745,7 +620,7 @@ public class ShortestPathBridge {
     @SuppressWarnings("unchecked")
     public Set<WorldPoint> getDestinations(String destinationType) {
         try {
-            Object pathfinderConfig = getPathfinderConfigMethod.invoke(shortestPathPlugin);
+            PathfinderConfig pathfinderConfig = shortestPathPlugin.getPathfinderConfig();
             if (pathfinderConfig == null) {
                 return Collections.emptySet();
             }
@@ -763,10 +638,7 @@ public class ShortestPathBridge {
 
             Set<WorldPoint> result = new HashSet<>(packedDestinations.size());
             for (int packed : packedDestinations) {
-                WorldPoint point = unpackPoint(packed);
-                if (point != null) {
-                    result.add(point);
-                }
+                result.add(WorldPointUtil.unpackWorldPoint(packed));
             }
             return result;
         } catch (Exception e) {
@@ -843,35 +715,17 @@ public class ShortestPathBridge {
      * Pack a WorldPoint into an int using SP's format.
      */
     public int packPoint(WorldPoint point) {
-        if (point == null) {
-            return -1;
-        }
-
-        try {
-            return (int) packWorldPoint.invoke(null, point.getX(), point.getY(), point.getPlane());
-        } catch (Exception e) {
-            // Fallback to manual packing
-            return (point.getX() & 0x7FFF) | ((point.getY() & 0x7FFF) << 15) | ((point.getPlane() & 0x3) << 30);
-        }
+        return WorldPointUtil.packWorldPoint(point);
     }
 
     /**
      * Unpack an int to a WorldPoint using SP's format.
      */
     public WorldPoint unpackPoint(int packed) {
-        if (packed == -1) {
+        if (packed == WorldPointUtil.UNDEFINED) {
             return null;
         }
-
-        try {
-            return (WorldPoint) unpackWorldPoint.invoke(null, packed);
-        } catch (Exception e) {
-            // Fallback to manual unpacking
-            int x = packed & 0x7FFF;
-            int y = (packed >> 15) & 0x7FFF;
-            int z = (packed >> 30) & 0x3;
-            return new WorldPoint(x, y, z);
-        }
+        return WorldPointUtil.unpackWorldPoint(packed);
     }
 
     // ========================================================================

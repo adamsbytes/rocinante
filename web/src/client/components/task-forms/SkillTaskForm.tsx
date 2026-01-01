@@ -1,4 +1,4 @@
-import { type Component, createSignal, createEffect, createResource, For, Show } from 'solid-js';
+import { type Component, createSignal, createEffect, createResource, For, Show, untrack } from 'solid-js';
 import type { SkillTaskSpec, TrainingMethodInfo, MethodLocationInfo, SkillName } from '../../../shared/types';
 import { SKILLS, calculateXpPerHour, getXpPerHourRange, formatXpShort } from '../../../shared/types';
 
@@ -123,9 +123,11 @@ export const SkillTaskForm: Component<SkillTaskFormProps> = (props) => {
   });
 
   // Set default target value based on target type
+  // Only re-run when targetType changes, not when currentLevel changes (from status refreshes)
   createEffect(() => {
     const type = targetType();
-    const level = currentLevel();
+    // Use untrack to read currentLevel without adding it as a dependency
+    const level = untrack(currentLevel);
     
     if (type === 'LEVEL') {
       setTargetValue(Math.min(level + 10, 99));

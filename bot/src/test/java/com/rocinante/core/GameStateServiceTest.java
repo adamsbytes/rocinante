@@ -93,6 +93,9 @@ public class GameStateServiceTest {
     @Mock
     private com.rocinante.navigation.PathCostCache pathCostCache;
 
+    @Mock
+    private PerformanceMonitor performanceMonitor;
+
     private GameStateService gameStateService;
 
     @Before
@@ -107,6 +110,8 @@ public class GameStateServiceTest {
                 pathCostCache);
         // Wire SlayerPluginService via setter (optional)
         gameStateService.setSlayerPluginService(slayerPluginService);
+        // Wire PerformanceMonitor via setter (required for onGameTick)
+        gameStateService.setPerformanceMonitor(performanceMonitor);
     }
 
     // ========================================================================

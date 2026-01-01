@@ -27,7 +27,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Task for stealing from market stalls for Thieving training.
@@ -250,7 +249,6 @@ public class StallThievingTask extends AbstractTask {
      */
     public StallThievingTask(Collection<Integer> stallIds) {
         this.stallIds = new ArrayList<>(stallIds);
-        this.timeout = Duration.ofHours(2);
     }
 
     /**
@@ -260,7 +258,6 @@ public class StallThievingTask extends AbstractTask {
      */
     public StallThievingTask(int stallId) {
         this.stallIds = List.of(stallId);
-        this.timeout = Duration.ofHours(2);
     }
 
     // ========================================================================
@@ -665,23 +662,11 @@ public class StallThievingTask extends AbstractTask {
         phase = StallPhase.DELAY_BETWEEN;
         waitingForDelay = true;
 
-        var humanTimer = ctx.getHumanTimer();
-        if (humanTimer != null) {
-            humanTimer.sleep(DelayProfile.ACTION_GAP)
-                    .thenRun(() -> {
-                        waitingForDelay = false;
-                        phase = StallPhase.CHECK_INVENTORY;
-                    });
-        } else {
-            long delayMs = ThreadLocalRandom.current().nextLong(100, 300);
-            try {
-                Thread.sleep(delayMs);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-            waitingForDelay = false;
-            phase = StallPhase.CHECK_INVENTORY;
-        }
+        ctx.getHumanTimer().sleep(DelayProfile.ACTION_GAP)
+                .thenRun(() -> {
+                    waitingForDelay = false;
+                    phase = StallPhase.CHECK_INVENTORY;
+                });
     }
 
     private void executeDelayBetween(TaskContext ctx) {

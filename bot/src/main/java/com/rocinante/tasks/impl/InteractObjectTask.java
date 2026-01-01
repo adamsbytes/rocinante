@@ -163,6 +163,15 @@ public class InteractObjectTask extends com.rocinante.tasks.AbstractInteractionT
     private boolean dialogueExpected = false;
 
     /**
+     * Whether to wait for inventory change as success indicator (for gathering).
+     * When true, animation starting means "in progress" not success.
+     * Success requires inventory item count to change.
+     */
+    @Getter
+    @Setter
+    private boolean waitForInventoryChange = false;
+
+    /**
      * Custom description.
      */
     @Getter
@@ -231,6 +240,11 @@ public class InteractObjectTask extends com.rocinante.tasks.AbstractInteractionT
     protected int startAnimation;
 
     /**
+     * Initial inventory item count (for waitForInventoryChange).
+     */
+    protected int startInventoryCount = -1;
+
+    /**
      * Ticks since interaction started.
      */
     protected int interactionTicks = 0;
@@ -268,7 +282,6 @@ public class InteractObjectTask extends com.rocinante.tasks.AbstractInteractionT
     public InteractObjectTask(int objectId, String menuAction) {
         this.objectId = objectId;
         this.menuAction = menuAction;
-        this.timeout = Duration.ofSeconds(30);
     }
 
     /**
@@ -285,7 +298,6 @@ public class InteractObjectTask extends com.rocinante.tasks.AbstractInteractionT
         List<Integer> ids = new ArrayList<>(objectIds);
         this.objectId = ids.get(0);
         this.menuAction = menuAction;
-        this.timeout = Duration.ofSeconds(30);
         if (ids.size() > 1) {
             this.alternateObjectIds.addAll(ids.subList(1, ids.size()));
         }
@@ -403,6 +415,7 @@ public class InteractObjectTask extends com.rocinante.tasks.AbstractInteractionT
         targetPosition = null;
         startPosition = null;
         startAnimation = -1;
+        startInventoryCount = -1;
         interactionTicks = 0;
         adjacentPath = java.util.Collections.emptyList();
         adjacentDestination = null;
@@ -498,6 +511,9 @@ public class InteractObjectTask extends com.rocinante.tasks.AbstractInteractionT
         // Store starting state for success detection
         startPosition = playerPos;
         startAnimation = player.getAnimationId();
+        if (waitForInventoryChange) {
+            startInventoryCount = ctx.getInventoryState().getUsedSlots();
+        }
 
         // Decide if we should rotate camera
         if (cameraRotationChance > 0 && ctx.getRandomization().chance(cameraRotationChance)) {
@@ -827,8 +843,57 @@ public class InteractObjectTask extends com.rocinante.tasks.AbstractInteractionT
             }
         }
 
-        // Check for expected animation(s)
-        if (!success && !successAnimationIds.isEmpty()) {
+        // For gathering tasks (woodcutting, mining, fishing): wait until animation STOPS
+        // Don't complete just because inventory changed - keep gathering until resource depletes
+        if (!success && waitForInventoryChange) {
+            int currentInventoryCount = ctx.getInventoryState().getUsedSlots();
+            boolean receivedItem = currentInventoryCount > startInventoryCount;
+            
+            // Check if we're still animating (gathering in progress)
+            boolean stillAnimating = false;
+            for (int animId : successAnimationIds) {
+                if (player.isAnimating(animId)) {
+                    stillAnimating = true;
+                    break;
+                }
+            }
+            // Also check generic animation if no specific animations configured
+            if (!stillAnimating && successAnimationIds.isEmpty()) {
+                stillAnimating = player.isAnimating();
+            }
+            
+            if (stillAnimating) {
+                // Still gathering - update start inventory count to track ongoing gains
+                // but DON'T complete - keep gathering until resource depletes
+                if (receivedItem) {
+                    log.debug("Received item while gathering, continuing (inv: {} -> {})", 
+                            startInventoryCount, currentInventoryCount);
+                    startInventoryCount = currentInventoryCount; // Reset to detect next item
+                }
+                
+                // Check if inventory is now full - must stop gathering
+                if (currentInventoryCount >= 28) {
+                    success = true;
+                    successReason = "inventory full while gathering";
+                } else {
+                    log.debug("Gathering in progress (tick {})", interactionTicks);
+                    return; // Keep waiting
+                }
+            } else {
+                // Animation stopped - resource depleted, moved, or interrupted
+                if (receivedItem || interactionTicks > 3) {
+                    // Either we got items, or we waited long enough for animation to have started
+                    success = true;
+                    successReason = receivedItem 
+                            ? "gathering complete (animation stopped after receiving items)"
+                            : "gathering complete (animation stopped, resource depleted)";
+                }
+                // else: animation never started, keep waiting a bit more
+            }
+        }
+
+        // Check for expected animation(s) - only if NOT waiting for inventory change
+        if (!success && !waitForInventoryChange && !successAnimationIds.isEmpty()) {
             for (int animId : successAnimationIds) {
                 if (player.isAnimating(animId)) {
                     success = true;
@@ -839,7 +904,7 @@ public class InteractObjectTask extends com.rocinante.tasks.AbstractInteractionT
         }
 
         // Check for any animation (if no specific animation expected and dialogue not expected)
-        if (!success && successAnimationIds.isEmpty() && !dialogueExpected && player.isAnimating()) {
+        if (!success && !waitForInventoryChange && successAnimationIds.isEmpty() && !dialogueExpected && player.isAnimating()) {
             success = true;
             successReason = "playing animation";
         }
@@ -934,11 +999,13 @@ public class InteractObjectTask extends com.rocinante.tasks.AbstractInteractionT
      */
     protected Collection<Integer> getAllObjectIds() {
         if (alternateObjectIds == null || alternateObjectIds.isEmpty()) {
+            log.debug("getAllObjectIds: primary only [{}]", objectId);
             return java.util.Collections.singleton(objectId);
         }
         Set<Integer> ids = new HashSet<>();
         ids.add(objectId);
         ids.addAll(alternateObjectIds);
+        log.debug("getAllObjectIds: {} IDs = {}", ids.size(), ids);
         return ids;
     }
 
@@ -1134,8 +1201,11 @@ public class InteractObjectTask extends com.rocinante.tasks.AbstractInteractionT
                 for (int dy = -1; dy <= 1; dy++) {
                     if (dx == 0 && dy == 0) continue;
                     WorldPoint adj = new WorldPoint(fpTile.getX() + dx, fpTile.getY() + dy, fpTile.getPlane());
+                    // Skip if adjacent tile is inside the footprint or blocked (can't stand there)
                     if (footprint.contains(adj) || navService.isBlocked(adj)) continue;
-                    if (!navService.canMoveTo(adj, fpTile)) continue;
+                    // NOTE: We do NOT check canMoveTo(adj, fpTile) here - that checks if we can walk
+                    // INTO the object's tile, which is always false for solid objects like trees.
+                    // We only need the adjacent tile to be walkable; interaction works from adjacent tiles.
                     int dist = playerPos.distanceTo(adj);
                     if (dist < bestDist) {
                         bestDist = dist;

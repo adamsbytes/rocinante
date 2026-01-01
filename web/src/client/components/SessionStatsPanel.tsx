@@ -1,6 +1,6 @@
 import { Component, Show, For, createMemo, createSignal } from 'solid-js';
 import type { SessionInfo, SkillName } from '../../shared/types';
-import { formatDuration, formatXp, formatXpShort, SKILLS } from '../../shared/types';
+import { formatDuration, formatXp, formatXpShort } from '../../shared/types';
 import { XpGainBadge } from './SkillIcon';
 
 interface SessionStatsPanelProps {

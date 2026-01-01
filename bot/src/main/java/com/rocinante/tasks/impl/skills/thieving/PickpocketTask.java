@@ -22,7 +22,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
-import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Task for pickpocketing NPCs for Thieving training.
@@ -239,7 +238,6 @@ public class PickpocketTask extends AbstractTask {
     public PickpocketTask(Collection<Integer> npcIds) {
         this.targetNpcIds = new ArrayList<>(npcIds);
         this.foodIds = new ArrayList<>(ItemCollections.FOOD);
-        this.timeout = Duration.ofHours(2);
     }
 
     /**
@@ -250,7 +248,6 @@ public class PickpocketTask extends AbstractTask {
     public PickpocketTask(int npcId) {
         this.targetNpcIds = List.of(npcId);
         this.foodIds = new ArrayList<>(ItemCollections.FOOD);
-        this.timeout = Duration.ofHours(2);
     }
 
     // ========================================================================
@@ -713,23 +710,11 @@ public class PickpocketTask extends AbstractTask {
         phase = PickpocketPhase.DELAY_BETWEEN;
         waitingForDelay = true;
 
-        var humanTimer = ctx.getHumanTimer();
-        if (humanTimer != null) {
-            humanTimer.sleep(DelayProfile.ACTION_GAP)
-                    .thenRun(() -> {
-                        waitingForDelay = false;
-                        phase = PickpocketPhase.CHECK_STUN;
-                    });
-        } else {
-            long delayMs = ThreadLocalRandom.current().nextLong(150, 400);
-            try {
-                Thread.sleep(delayMs);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-            waitingForDelay = false;
-            phase = PickpocketPhase.CHECK_STUN;
-        }
+        ctx.getHumanTimer().sleep(DelayProfile.ACTION_GAP)
+                .thenRun(() -> {
+                    waitingForDelay = false;
+                    phase = PickpocketPhase.CHECK_STUN;
+                });
     }
 
     private void executeDelayBetween(TaskContext ctx) {

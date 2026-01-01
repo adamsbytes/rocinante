@@ -39,7 +39,6 @@ public abstract class BehavioralTask extends AbstractTask {
         this.breakType = breakType;
         this.targetDuration = targetDuration;
         this.priority = TaskPriority.BEHAVIORAL;
-        this.timeout = targetDuration.plus(Duration.ofMinutes(1)); // Allow some buffer
     }
 
     /**

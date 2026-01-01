@@ -87,14 +87,4 @@ public class CollisionServiceTest {
         verify(bridge).canInteractWith(player, target);
     }
 
-    @Test
-    public void testIsAvailableDelegates() {
-        when(bridge.isAvailable()).thenReturn(true);
-        assertTrue(collisionService.isAvailable());
-        
-        when(bridge.isAvailable()).thenReturn(false);
-        assertFalse(collisionService.isAvailable());
-        
-        verify(bridge, times(2)).isAvailable();
-    }
 }

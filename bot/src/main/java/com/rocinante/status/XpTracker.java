@@ -70,12 +70,35 @@ public class XpTracker {
     }
 
     /**
+     * Minimum Hitpoints XP for valid data. Level 10 HP = 1154 XP.
+     * All accounts start with 10 HP, so any value below this indicates
+     * the game hasn't finished loading skill data yet.
+     */
+    private static final int MIN_VALID_HITPOINTS_XP = 1154;
+
+    /**
      * Start tracking XP for a new session.
      * Captures current XP values as the baseline.
      */
     public void startSession() {
         if (tracking) {
             log.warn("Session already started, ignoring startSession call");
+            return;
+        }
+
+        // Validate that skill data has loaded by checking Hitpoints XP
+        // All accounts start at level 10 HP (1154 XP minimum)
+        int hitpointsXp;
+        try {
+            hitpointsXp = client.getSkillExperience(Skill.HITPOINTS);
+        } catch (Exception e) {
+            log.warn("Cannot start XP tracking: failed to read Hitpoints XP - {}", e.getMessage());
+            return;
+        }
+
+        if (hitpointsXp < MIN_VALID_HITPOINTS_XP) {
+            log.warn("Cannot start XP tracking: Hitpoints XP ({}) below minimum ({}). " +
+                    "Game data not yet loaded.", hitpointsXp, MIN_VALID_HITPOINTS_XP);
             return;
         }
 
@@ -101,7 +124,7 @@ public class XpTracker {
         }
 
         tracking = true;
-        log.info("XP tracking started with {} skills captured", startingXp.size());
+        log.info("XP tracking started with {} skills captured (HP XP: {})", startingXp.size(), hitpointsXp);
     }
 
     /**

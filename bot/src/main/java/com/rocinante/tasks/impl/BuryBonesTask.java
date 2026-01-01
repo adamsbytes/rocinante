@@ -15,7 +15,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Reusable task for burying bones from inventory.
@@ -140,7 +139,6 @@ public class BuryBonesTask extends AbstractTask {
      */
     public BuryBonesTask() {
         this.boneIds = new ArrayList<>(ItemCollections.BONES);
-        this.timeout = Duration.ofMinutes(5); // Generous timeout for multiple bones
     }
 
     /**
@@ -150,7 +148,6 @@ public class BuryBonesTask extends AbstractTask {
      */
     public BuryBonesTask(Collection<Integer> boneIds) {
         this.boneIds = new ArrayList<>(boneIds);
-        this.timeout = Duration.ofMinutes(5);
     }
 
     // ========================================================================
@@ -378,25 +375,11 @@ public class BuryBonesTask extends AbstractTask {
         phase = BuryPhase.DELAY_BETWEEN;
         waitingForDelay = true;
 
-        // Use HumanTimer if available, otherwise use simple delay
-        var humanTimer = ctx.getHumanTimer();
-        if (humanTimer != null) {
-            humanTimer.sleep(DelayProfile.ACTION_GAP)
-                    .thenRun(() -> {
-                        waitingForDelay = false;
-                        phase = BuryPhase.FIND_BONE;
-                    });
-        } else {
-            // Fallback: random delay
-            long delayMs = ThreadLocalRandom.current().nextLong(MIN_BURY_DELAY_MS, MAX_BURY_DELAY_MS);
-            try {
-                Thread.sleep(delayMs);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-            waitingForDelay = false;
-            phase = BuryPhase.FIND_BONE;
-        }
+        ctx.getHumanTimer().sleep(DelayProfile.ACTION_GAP)
+                .thenRun(() -> {
+                    waitingForDelay = false;
+                    phase = BuryPhase.FIND_BONE;
+                });
     }
 
     private void executeDelayBetween(TaskContext ctx) {

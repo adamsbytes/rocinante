@@ -112,6 +112,7 @@ public class WalkToTask extends AbstractTask {
     private int ticksSinceMove = 0;
     private int ticksSinceLastClick = 0;
     private boolean clickPending = false;
+    private boolean cameraRotationPending = false;
     private int repathAttempts = 0;
     private boolean runTogglePending = false;
 
@@ -136,7 +137,6 @@ public class WalkToTask extends AbstractTask {
 
     public WalkToTask(WorldPoint destination) {
         this.destination = destination;
-        this.timeout = Duration.ofMinutes(5);
     }
 
     // ========================================================================
@@ -180,6 +180,7 @@ public class WalkToTask extends AbstractTask {
         ticksSinceMove = 0;
         ticksSinceLastClick = 0;
         clickPending = false;
+        cameraRotationPending = false;
         repathAttempts = 0;
         runTogglePending = false;
         transportSegments.clear();
@@ -508,8 +509,30 @@ public class WalkToTask extends AbstractTask {
         }
 
         if (screenPoint == null) {
+            // Target not clickable - start camera rotation if not already in progress
+            var coupler = ctx.getMouseCameraCoupler();
+            if (coupler != null && !cameraRotationPending) {
+                cameraRotationPending = true;
+                log.debug("Target {} not clickable, rotating camera", clickTarget);
+                coupler.ensureTargetVisible(clickTarget)
+                        .whenComplete((v, ex) -> cameraRotationPending = false);
+                // Don't return - fall through to try intermediate point immediately
+            }
+            
+            // Use intermediate point toward target within minimap range
+            WorldPoint intermediate = calculateIntermediatePoint(playerPos, clickTarget);
+            if (intermediate != null && !intermediate.equals(clickTarget)) {
+                screenPoint = calculateMinimapPoint(ctx, intermediate);
+                if (screenPoint != null) {
+                    clickTarget = intermediate;
+                    log.debug("Using intermediate point {} toward target", intermediate);
+                }
+        }
+
+        if (screenPoint == null) {
             log.debug("Could not calculate click point for {}", clickTarget);
             return;
+            }
         }
 
         final WorldPoint finalTarget = clickTarget;
@@ -527,6 +550,26 @@ public class WalkToTask extends AbstractTask {
                     log.error("Walk click failed", e);
                     return null;
                 });
+    }
+    
+    /**
+     * Calculate an intermediate point along the direction to target, within minimap click range.
+     */
+    private WorldPoint calculateIntermediatePoint(WorldPoint from, WorldPoint to) {
+        int dx = to.getX() - from.getX();
+        int dy = to.getY() - from.getY();
+        double distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance <= MINIMAP_CLICK_DISTANCE) {
+            return to; // Already in range
+        }
+        
+        // Scale to just under minimap range
+        double scale = (MINIMAP_CLICK_DISTANCE - 1) / distance;
+        int newX = from.getX() + (int) (dx * scale);
+        int newY = from.getY() + (int) (dy * scale);
+        
+        return new WorldPoint(newX, newY, from.getPlane());
     }
 
     private WorldPoint determineClickTarget(WorldPoint playerPos) {

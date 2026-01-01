@@ -103,7 +103,8 @@ export const SkillIcon: Component<SkillIconProps> = (props) => {
 
   return (
     <div
-      class={`relative flex items-center justify-center rounded-sm cursor-pointer transition-transform hover:scale-105 ${sizeClasses[size()]} ${props.class || ''}`}
+      class={`relative flex items-center justify-center rounded-sm transition-transform hover:scale-105 ${sizeClasses[size()]} ${props.class || ''}`}
+      classList={{ 'cursor-pointer': !!props.onClick }}
       style={{ 'background-color': bgColor() }}
       onClick={props.onClick}
       title={props.showXp && props.xp ? `${props.skill}: ${formattedXp()} XP` : props.skill}

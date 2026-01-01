@@ -327,7 +327,6 @@ public class BankTask extends AbstractTask {
         this.itemId = itemId;
         this.quantity = quantity;
         this.quantityMode = quantityMode;
-        this.timeout = Duration.ofSeconds(60);
     }
 
     // ========================================================================

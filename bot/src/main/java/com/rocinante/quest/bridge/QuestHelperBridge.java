@@ -14,6 +14,32 @@ import net.runelite.api.NPC;
 import net.runelite.api.QuestState;
 import net.runelite.api.coords.WorldPoint;
 
+// Direct QuestHelper imports - eliminates reflection overhead
+import com.questhelper.questhelpers.QuestHelper;
+import com.questhelper.questhelpers.BasicQuestHelper;
+import com.questhelper.questinfo.QuestHelperQuest;
+import com.questhelper.steps.ConditionalStep;
+import com.questhelper.steps.DetailedQuestStep;
+import com.questhelper.steps.EmoteStep;
+import com.questhelper.steps.ItemStep;
+import com.questhelper.steps.MultiNpcStep;
+import com.questhelper.steps.NpcStep;
+import com.questhelper.steps.ObjectStep;
+import com.questhelper.steps.OwnerStep;
+import com.questhelper.steps.PuzzleStep;
+import com.questhelper.steps.PuzzleWrapperStep;
+import com.questhelper.steps.ReorderableConditionalStep;
+import com.questhelper.steps.WidgetStep;
+import com.questhelper.steps.choice.DialogChoiceStep;
+import com.questhelper.steps.choice.DialogChoiceSteps;
+import com.questhelper.steps.choice.WidgetChoiceStep;
+import com.questhelper.steps.choice.WidgetChoiceSteps;
+import com.questhelper.steps.tools.DefinedPoint;
+import com.questhelper.requirements.Requirement;
+import com.questhelper.requirements.item.ItemRequirement;
+import com.questhelper.questinfo.QuestVarbits;
+import com.questhelper.questinfo.QuestVarPlayer;
+
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.*;
@@ -56,7 +82,7 @@ public class QuestHelperBridge {
     /**
      * The Quest Helper quest instance being bridged.
      */
-    private final Object questHelperInstance;
+    private final QuestHelper questHelperInstance;
 
     /**
      * Cached translated steps (varbit value → our QuestStep).
@@ -72,7 +98,7 @@ public class QuestHelperBridge {
     /**
      * Cached QuestHelperQuest enum entry for this helper (if available).
      */
-    private Object questEnumEntry;
+    private QuestHelperQuest questEnumEntry;
 
     /**
      * Create a bridge for a Quest Helper quest.
@@ -80,7 +106,11 @@ public class QuestHelperBridge {
      * @param questHelperInstance the Quest Helper quest instance (e.g., CooksAssistant)
      */
     public QuestHelperBridge(Object questHelperInstance) {
-        this.questHelperInstance = questHelperInstance;
+        if (!(questHelperInstance instanceof QuestHelper)) {
+            throw new IllegalArgumentException("Expected QuestHelper instance, got: " + 
+                questHelperInstance.getClass().getName());
+        }
+        this.questHelperInstance = (QuestHelper) questHelperInstance;
         extractMetadata();
     }
 
@@ -98,7 +128,7 @@ public class QuestHelperBridge {
     private void extractMetadata() {
         try {
             // Try to get quest name from QuestHelperQuest enum first
-            Object questEnum = extractQuestEnum();
+            QuestHelperQuest questEnum = extractQuestEnum();
             this.questEnumEntry = questEnum;
 
             String questName = extractQuestName(questEnum);
@@ -132,108 +162,49 @@ public class QuestHelperBridge {
      *
      * @return the quest name, or null if not found
      */
-    private String extractQuestName(Object questEnum) {
-        try {
-            if (questEnum != null) {
-                Method getNameMethod = questEnum.getClass().getMethod("getName");
-                return (String) getNameMethod.invoke(questEnum);
-            }
-        } catch (Exception e) {
-            log.debug("Could not extract quest name from enum", e);
+    private String extractQuestName(QuestHelperQuest questEnum) {
+        if (questEnum != null) {
+            return questEnum.getName();
         }
         return null;
     }
 
     /**
-     * Extract the varbit/varp ID used by this quest.
+     * Extract the QuestHelperQuest enum for this quest.
      *
      * <p>Quest Helper stores quest progress tracking info in the QuestHelperQuest enum.
      * Each quest has either a varbit or varp (varPlayer) ID that tracks progress.
-     * We need to find the enum entry that corresponds to this quest helper instance.
      */
-    private Object extractQuestEnum() {
-        try {
-            // Try quest field
-            Field questField = findField(questHelperInstance.getClass(), "quest");
-            if (questField != null) {
-                questField.setAccessible(true);
-                Object questEnum = questField.get(questHelperInstance);
-                if (questEnum != null) {
-                    return questEnum;
-                }
-            }
-
-            // Try getQuest() method
-            Method getQuestMethod = findMethod(questHelperInstance.getClass(), "getQuest");
-            if (getQuestMethod != null) {
-                getQuestMethod.setAccessible(true);
-                Object questEnum = getQuestMethod.invoke(questHelperInstance);
-                if (questEnum != null) {
-                    return questEnum;
-                }
-            }
-        } catch (Exception e) {
-            log.debug("Could not extract quest enum", e);
-        }
-        return null;
+    private QuestHelperQuest extractQuestEnum() {
+        // QuestHelper has a getQuest() method that returns QuestHelperQuest
+        return questHelperInstance.getQuest();
     }
 
-    private int extractVarId(Object questEnum) {
-        try {
-            if (questEnum != null) {
-                return extractVarIdFromQuestEnum(questEnum);
-            }
-        } catch (Exception e) {
-            log.debug("Could not extract varId from quest helper: {}", e.getMessage());
+    private int extractVarId(QuestHelperQuest questEnum) {
+        if (questEnum == null) {
+            return -1;
         }
         
-        return -1;
-    }
-    
-    /**
-     * Extract varbit or varp ID from a QuestHelperQuest enum entry.
-     *
-     * <p>QuestHelperQuest enum has fields:
-     * <ul>
-     *   <li>varbit: Varbit enum (has getId() method) - for varbit-based quests</li>
-     *   <li>varPlayer: VarPlayer enum (has getId() method) - for varp-based quests</li>
-     *   <li>completeValue: int - the value indicating quest completion</li>
-     * </ul>
-     *
-     * @param questEnum the QuestHelperQuest enum entry
-     * @return the varbit or varp ID, or -1 if not found
-     */
-    private int extractVarIdFromQuestEnum(Object questEnum) {
         try {
-            // Try varbit field first (most quests use varbit)
-            Field varbitField = findField(questEnum.getClass(), "varbit");
-            if (varbitField != null) {
-                varbitField.setAccessible(true);
-                Object varbitEnum = varbitField.get(questEnum);
-                if (varbitEnum != null) {
-                    // Varbit enum has getId() method
-                    Method getIdMethod = varbitEnum.getClass().getMethod("getId");
-                    int varbitId = (int) getIdMethod.invoke(varbitEnum);
-                    log.debug("Extracted varbit ID: {}", varbitId);
-                    return varbitId;
-                }
+            // Try varbit field first (most quests use varbit) - no getter available, need reflection
+            Field varbitField = QuestHelperQuest.class.getDeclaredField("varbit");
+            varbitField.setAccessible(true);
+            QuestVarbits varbit = (QuestVarbits) varbitField.get(questEnum);
+            if (varbit != null) {
+                int varbitId = varbit.getId();
+                log.debug("Extracted varbit ID: {}", varbitId);
+                return varbitId;
             }
             
             // Try varPlayer field (some older quests use varp)
-            Field varPlayerField = findField(questEnum.getClass(), "varPlayer");
-            if (varPlayerField != null) {
-                varPlayerField.setAccessible(true);
-                Object varPlayerEnum = varPlayerField.get(questEnum);
-                if (varPlayerEnum != null) {
-                    // VarPlayer enum has getId() method
-                    Method getIdMethod = varPlayerEnum.getClass().getMethod("getId");
-                    int varpId = (int) getIdMethod.invoke(varPlayerEnum);
-                    log.debug("Extracted varp ID: {}", varpId);
-                    // Mark that this uses varp - update metadata
-                    return varpId;
-                }
+            Field varPlayerField = QuestHelperQuest.class.getDeclaredField("varPlayer");
+            varPlayerField.setAccessible(true);
+            QuestVarPlayer varPlayer = (QuestVarPlayer) varPlayerField.get(questEnum);
+            if (varPlayer != null) {
+                int varpId = varPlayer.getId();
+                log.debug("Extracted varp ID: {}", varpId);
+                return varpId;
             }
-            
         } catch (Exception e) {
             log.debug("Could not extract varId from QuestHelperQuest enum: {}", e.getMessage());
         }
@@ -246,15 +217,15 @@ public class QuestHelperBridge {
      *
      * @return true if quest uses varp, false if uses varbit (default)
      */
-    private boolean questUsesVarp(Object questEnum) {
+    private boolean questUsesVarp(QuestHelperQuest questEnum) {
+        if (questEnum == null) {
+            return false;
+        }
+        
         try {
-            if (questEnum != null) {
-                Field varPlayerField = findField(questEnum.getClass(), "varPlayer");
-                if (varPlayerField != null) {
-                    varPlayerField.setAccessible(true);
-                    return varPlayerField.get(questEnum) != null;
-                }
-            }
+            Field varPlayerField = QuestHelperQuest.class.getDeclaredField("varPlayer");
+            varPlayerField.setAccessible(true);
+            return varPlayerField.get(questEnum) != null;
         } catch (Exception e) {
             log.debug("Could not determine var type", e);
         }
@@ -266,17 +237,17 @@ public class QuestHelperBridge {
      *
      * @return the varbit/varp value that indicates quest completion, or -1 if unknown
      */
-    private int extractCompletionValue(Object questEnum) {
+    private int extractCompletionValue(QuestHelperQuest questEnum) {
+        if (questEnum == null) {
+            return -1;
+        }
+        
         try {
-            if (questEnum != null) {
-                Field completeValueField = findField(questEnum.getClass(), "completeValue");
-                if (completeValueField != null) {
-                    completeValueField.setAccessible(true);
-                    int completeValue = completeValueField.getInt(questEnum);
-                    log.debug("Extracted completion value: {}", completeValue);
-                    return completeValue;
-                }
-            }
+            Field completeValueField = QuestHelperQuest.class.getDeclaredField("completeValue");
+            completeValueField.setAccessible(true);
+            int completeValue = completeValueField.getInt(questEnum);
+            log.debug("Extracted completion value: {}", completeValue);
+            return completeValue;
         } catch (Exception e) {
             log.debug("Could not extract completion value", e);
         }
@@ -294,25 +265,44 @@ public class QuestHelperBridge {
         }
 
         try {
-            // Call loadSteps() on the Quest Helper instance
-            Method loadStepsMethod = findMethod(questHelperInstance.getClass(), "loadSteps");
-            if (loadStepsMethod != null) {
-                loadStepsMethod.setAccessible(true);
-                @SuppressWarnings("unchecked")
-                Map<Integer, Object> qhSteps = (Map<Integer, Object>) loadStepsMethod.invoke(questHelperInstance);
-
-                for (Map.Entry<Integer, Object> entry : qhSteps.entrySet()) {
-                    int varValue = entry.getKey();
-                    Object qhStep = entry.getValue();
-
-                    QuestStep translated = translateStep(qhStep);
-                    if (translated != null) {
-                        translatedSteps.put(varValue, translated);
-                    }
-                }
-
-                log.info("Loaded {} steps from Quest Helper", translatedSteps.size());
+            // Call loadSteps() on the Quest Helper instance - returns Map<Integer, QuestStep>
+            // loadSteps() is defined in BasicQuestHelper, which most helpers extend
+            if (!(questHelperInstance instanceof BasicQuestHelper)) {
+                log.warn("Quest helper is not a BasicQuestHelper: {}", questHelperInstance.getClass().getName());
+                return translatedSteps;
             }
+            
+            BasicQuestHelper basicHelper = (BasicQuestHelper) questHelperInstance;
+            
+            // Quest Helper quests need setupSteps() called to populate step fields before loadSteps() works
+            // setupSteps() is defined in individual quest classes, not in BasicQuestHelper
+            try {
+                Method setupStepsMethod = findMethod(basicHelper.getClass(), "setupSteps");
+                if (setupStepsMethod != null) {
+                    setupStepsMethod.setAccessible(true);
+                    setupStepsMethod.invoke(basicHelper);
+                }
+            } catch (Exception e) {
+                log.debug("setupSteps() failed (may be fine if already initialized): {}", e.getMessage());
+            }
+            
+            Map<Integer, com.questhelper.steps.QuestStep> qhSteps = basicHelper.loadSteps();
+            if (qhSteps == null) {
+                log.warn("loadSteps() returned null for quest: {}", questHelperInstance.getClass().getSimpleName());
+                return translatedSteps;
+            }
+
+            for (Map.Entry<Integer, com.questhelper.steps.QuestStep> entry : qhSteps.entrySet()) {
+                int varValue = entry.getKey();
+                com.questhelper.steps.QuestStep qhStep = entry.getValue();
+
+                QuestStep translated = translateStep(qhStep);
+                if (translated != null) {
+                    translatedSteps.put(varValue, translated);
+                }
+            }
+
+            log.info("Loaded {} steps from Quest Helper", translatedSteps.size());
         } catch (Exception e) {
             log.error("Failed to load steps from Quest Helper", e);
         }
@@ -339,7 +329,7 @@ public class QuestHelperBridge {
      * @param qhStep the Quest Helper step object
      * @return our translated QuestStep, or null if unsupported
      */
-    private QuestStep translateStep(Object qhStep) {
+    private QuestStep translateStep(com.questhelper.steps.QuestStep qhStep) {
         if (qhStep == null) {
             return null;
         }
@@ -348,83 +338,64 @@ public class QuestHelperBridge {
         log.debug("Translating step type: {} ({})", stepClassName, qhStep.getClass().getName());
 
         try {
-            // Ship travel (non-sailing skill)
-            if (isInstanceOf(qhStep, "com.questhelper.steps.BoardShipStep")
-                    || isInstanceOf(qhStep, "com.questhelper.steps.SailStep")
-                    || "BoardShipStep".equals(stepClassName)
-                    || "SailStep".equals(stepClassName)) {
+            // Use instanceof for type checking - much faster than reflection
+            
+            // Ship travel (non-sailing skill) - check by class name since we don't have imports
+            if ("BoardShipStep".equals(stepClassName) || "SailStep".equals(stepClassName)) {
                 return translateShipStep(qhStep);
             }
 
-            // NPC-based steps (specific first)
-            if ("NpcEmoteStep".equals(stepClassName)
-                    || isInstanceOf(qhStep, "com.questhelper.steps.NpcEmoteStep")) {
+            // NPC-based steps (specific subclasses first, then base class)
+            if ("NpcEmoteStep".equals(stepClassName)) {
                 return translateNpcEmoteStep(qhStep);
             }
-            if ("NpcFollowerStep".equals(stepClassName)
-                    || isInstanceOf(qhStep, "com.questhelper.steps.NpcFollowerStep")) {
+            if ("NpcFollowerStep".equals(stepClassName)) {
                 return translateNpcFollowerStep(qhStep);
             }
-            if ("MultiNpcStep".equals(stepClassName)
-                    || isInstanceOf(qhStep, "com.questhelper.steps.MultiNpcStep")) {
+            if (qhStep instanceof MultiNpcStep) {
                 return translateMultiNpcStep(qhStep);
             }
-            if ("NpcStep".equals(stepClassName)
-                    || isInstanceOf(qhStep, "com.questhelper.steps.NpcStep")) {
+            if (qhStep instanceof NpcStep) {
                 return translateNpcStep(qhStep);
             }
 
             // Object / item / conditional
-            if ("ObjectStep".equals(stepClassName)
-                    || isInstanceOf(qhStep, "com.questhelper.steps.ObjectStep")) {
+            if (qhStep instanceof ObjectStep) {
                 return translateObjectStep(qhStep);
             }
-            if ("ItemStep".equals(stepClassName)
-                    || isInstanceOf(qhStep, "com.questhelper.steps.ItemStep")) {
+            if (qhStep instanceof ItemStep) {
                 return translateItemStep(qhStep);
             }
-            if ("ReorderableConditionalStep".equals(stepClassName)
-                    || "ConditionalStep".equals(stepClassName)
-                    || isInstanceOf(qhStep, "com.questhelper.steps.ReorderableConditionalStep")
-                    || isInstanceOf(qhStep, "com.questhelper.steps.ConditionalStep")) {
+            if (qhStep instanceof ReorderableConditionalStep || qhStep instanceof ConditionalStep) {
                 return translateConditionalStep(qhStep);
             }
 
             // Other typed steps
-            if ("EmoteStep".equals(stepClassName)
-                    || isInstanceOf(qhStep, "com.questhelper.steps.EmoteStep")) {
+            if (qhStep instanceof EmoteStep) {
                 return translateEmoteStep(qhStep);
             }
-            if ("DigStep".equals(stepClassName)
-                    || isInstanceOf(qhStep, "com.questhelper.steps.DigStep")) {
+            if ("DigStep".equals(stepClassName)) {
                 return translateDigStep(qhStep);
             }
-            if ("TileStep".equals(stepClassName)
-                    || isInstanceOf(qhStep, "com.questhelper.steps.TileStep")) {
+            if ("TileStep".equals(stepClassName)) {
                 return translateTileStep(qhStep);
             }
-            if ("WidgetStep".equals(stepClassName)
-                    || isInstanceOf(qhStep, "com.questhelper.steps.WidgetStep")) {
+            if (qhStep instanceof WidgetStep) {
                 return translateWidgetStep(qhStep);
             }
-            if ("PuzzleWrapperStep".equals(stepClassName)
-                    || isInstanceOf(qhStep, "com.questhelper.steps.PuzzleWrapperStep")) {
+            if (qhStep instanceof PuzzleWrapperStep) {
                 return translatePuzzleWrapperStep(qhStep);
             }
-            if ("PuzzleStep".equals(stepClassName)
-                    || isInstanceOf(qhStep, "com.questhelper.steps.PuzzleStep")) {
+            if (qhStep instanceof PuzzleStep) {
                 return translatePuzzleStep(qhStep);
             }
-            if ("QuestSyncStep".equals(stepClassName)
-                    || isInstanceOf(qhStep, "com.questhelper.steps.QuestSyncStep")) {
+            if ("QuestSyncStep".equals(stepClassName)) {
                 return translateQuestSyncStep(qhStep);
             }
-            if ("DetailedOwnerStep".equals(stepClassName)
-                    || isInstanceOf(qhStep, "com.questhelper.steps.DetailedOwnerStep")) {
+            if ("DetailedOwnerStep".equals(stepClassName)) {
                 return translateDetailedOwnerStep(qhStep);
             }
-            if ("DetailedQuestStep".equals(stepClassName)
-                    || isInstanceOf(qhStep, "com.questhelper.steps.DetailedQuestStep")) {
+            if (qhStep instanceof DetailedQuestStep) {
                 return translateDetailedStep(qhStep);
             }
 
@@ -434,7 +405,7 @@ public class QuestHelperBridge {
             }
 
             // OwnerStep implementations
-            if (implementsOwnerStep(qhStep)) {
+            if (qhStep instanceof OwnerStep) {
                 return translateOwnerStep(qhStep);
             }
 
@@ -730,7 +701,7 @@ public class QuestHelperBridge {
     /**
      * Translate a ConditionalStep to ConditionalQuestStep.
      */
-    private ConditionalQuestStep translateConditionalStep(Object qhStep) throws Exception {
+    private ConditionalQuestStep translateConditionalStep(com.questhelper.steps.QuestStep qhStep) throws Exception {
         String text = getStepText(qhStep);
 
         // ConditionalStep has a LinkedHashMap of conditions to steps
@@ -739,24 +710,25 @@ public class QuestHelperBridge {
         ConditionalQuestStep step = new ConditionalQuestStep(text);
         RequirementTranslator translator = new RequirementTranslator();
 
-        // Extract the steps map using reflection
+        // Extract the steps map - ConditionalStep stores Map<Requirement, QuestStep>
         try {
             Field stepsField = findField(qhStep.getClass(), "steps");
             if (stepsField != null) {
                 stepsField.setAccessible(true);
                 @SuppressWarnings("unchecked")
-                LinkedHashMap<Object, Object> branches = (LinkedHashMap<Object, Object>) stepsField.get(qhStep);
+                LinkedHashMap<Requirement, com.questhelper.steps.QuestStep> branches = 
+                    (LinkedHashMap<Requirement, com.questhelper.steps.QuestStep>) stepsField.get(qhStep);
 
-                for (Map.Entry<Object, Object> entry : branches.entrySet()) {
-                    Object condition = entry.getKey();
-                    Object branchStep = entry.getValue();
+                for (Map.Entry<Requirement, com.questhelper.steps.QuestStep> entry : branches.entrySet()) {
+                    Requirement condition = entry.getKey();
+                    com.questhelper.steps.QuestStep branchStep = entry.getValue();
 
                     // Translate the branch step
                     QuestStep translatedBranch = translateStep(branchStep);
 
                     if (translatedBranch != null) {
                         if (condition != null) {
-                            // Translate the condition using RequirementTranslator
+                            // Translate the Requirement to StateCondition
                             StateCondition translatedCondition = translator.translate(condition);
                             step.when(translatedCondition, translatedBranch);
                         } else {
@@ -1226,7 +1198,7 @@ public class QuestHelperBridge {
      * PuzzleWrapperStep extends ConditionalStep and wraps puzzle logic.
      * Since we can't auto-solve puzzles, we translate it as a conditional step.
      */
-    private ConditionalQuestStep translatePuzzleWrapperStep(Object qhStep) throws Exception {
+    private ConditionalQuestStep translatePuzzleWrapperStep(com.questhelper.steps.QuestStep qhStep) throws Exception {
         // PuzzleWrapperStep is a ConditionalStep, so use the same logic
         return translateConditionalStep(qhStep);
     }
@@ -1424,12 +1396,12 @@ public class QuestHelperBridge {
      * DetailedOwnerStep extends QuestStep and implements OwnerStep to contain child steps.
      * It delegates to a currentStep based on some internal logic.
      */
-    private QuestStep translateDetailedOwnerStep(Object qhStep) throws Exception {
+    private QuestStep translateDetailedOwnerStep(com.questhelper.steps.QuestStep qhStep) throws Exception {
         String text = getStepText(qhStep);
         
         // DetailedOwnerStep has getSteps() that returns child steps
         // We need to translate all child steps and wrap in a conditional
-        Collection<Object> childSteps = extractOwnerSteps(qhStep);
+        Collection<com.questhelper.steps.QuestStep> childSteps = extractOwnerSteps(qhStep);
         
         if (childSteps == null || childSteps.isEmpty()) {
             log.debug("DetailedOwnerStep has no child steps: {}", text);
@@ -1439,14 +1411,12 @@ public class QuestHelperBridge {
         // Create a conditional step that will evaluate child steps
         ConditionalQuestStep wrapper = new ConditionalQuestStep(text);
         
-        for (Object childStep : childSteps) {
-            if (childStep != null) {
-                QuestStep translated = translateStep(childStep);
-                if (translated != null) {
-                    // DetailedOwnerStep doesn't expose conditions, so add as alternatives
-                    wrapper.otherwise(translated);
-                    break; // Use first valid step as default
-                }
+        for (com.questhelper.steps.QuestStep childStep : childSteps) {
+            QuestStep translated = translateStep(childStep);
+            if (translated != null) {
+                // DetailedOwnerStep doesn't expose conditions, so add as alternatives
+                wrapper.otherwise(translated);
+                break; // Use first valid step as default
             }
         }
         
@@ -1458,9 +1428,9 @@ public class QuestHelperBridge {
      * Translate any step that implements the OwnerStep interface.
      * OwnerStep provides getSteps() to access child steps.
      */
-    private QuestStep translateOwnerStep(Object qhStep) throws Exception {
+    private QuestStep translateOwnerStep(com.questhelper.steps.QuestStep qhStep) throws Exception {
         String text = getStepText(qhStep);
-        Collection<Object> childSteps = extractOwnerSteps(qhStep);
+        Collection<com.questhelper.steps.QuestStep> childSteps = extractOwnerSteps(qhStep);
         
         if (childSteps == null || childSteps.isEmpty()) {
             log.debug("OwnerStep has no child steps: {}", text);
@@ -1469,7 +1439,7 @@ public class QuestHelperBridge {
         
         // Translate child steps
         List<QuestStep> translatedSteps = new ArrayList<>();
-        for (Object childStep : childSteps) {
+        for (com.questhelper.steps.QuestStep childStep : childSteps) {
             if (childStep != null) {
                 QuestStep translated = translateStep(childStep);
                 if (translated != null) {
@@ -1497,16 +1467,21 @@ public class QuestHelperBridge {
 
     /**
      * Extract child steps from an OwnerStep implementation.
+     * OwnerStep.getSteps() returns Collection<QuestStep>
      */
     @SuppressWarnings("unchecked")
-    private Collection<Object> extractOwnerSteps(Object ownerStep) {
+    private Collection<com.questhelper.steps.QuestStep> extractOwnerSteps(com.questhelper.steps.QuestStep ownerStep) {
+        if (ownerStep instanceof OwnerStep) {
+            return ((OwnerStep) ownerStep).getSteps();
+        }
+        // Fallback for edge cases
         try {
             Method getStepsMethod = findMethod(ownerStep.getClass(), "getSteps");
             if (getStepsMethod != null) {
                 getStepsMethod.setAccessible(true);
                 Object result = getStepsMethod.invoke(ownerStep);
                 if (result instanceof Collection) {
-                    return (Collection<Object>) result;
+                    return (Collection<com.questhelper.steps.QuestStep>) result;
                 }
             }
         } catch (Exception e) {

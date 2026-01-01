@@ -169,7 +169,7 @@ public class RandomEventHandler {
         WaitForConditionTask waitForLamp = new WaitForConditionTask(ctx ->
                 ctx.getInventoryState().hasItem(ItemID.MACRO_GENILAMP))
                 .withDescription("Wait for Genie lamp")
-                .withTimeout(Duration.ofSeconds(20));
+                .withInactivityTimeout(33); // ~20 seconds
 
         Task rubLamp = new RubLampTask(taskContext);
 
@@ -181,7 +181,7 @@ public class RandomEventHandler {
         WaitForConditionTask waitConsumed = new WaitForConditionTask(ctx ->
                 !ctx.getInventoryState().hasItem(ItemID.MACRO_GENILAMP))
                 .withDescription("Wait for lamp to be consumed")
-                .withTimeout(Duration.ofSeconds(20));
+                .withInactivityTimeout(33); // ~20 seconds
 
         CompositeTask sequence = CompositeTask.sequential(
                 talk,
@@ -211,7 +211,6 @@ public class RandomEventHandler {
 
         RubLampTask(TaskContext ctx) {
             this.ctx = ctx;
-            this.timeout = Duration.ofSeconds(20);
             this.priority = TaskPriority.URGENT;
         }
 

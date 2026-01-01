@@ -40,6 +40,7 @@ public class ObstacleHandler {
 
     private final Client client;
     private final AgilityShortcutData agilityShortcutData;
+    private final SpatialObjectIndex spatialObjectIndex;
 
     /**
      * Registry of known obstacles by object ID.
@@ -58,18 +59,11 @@ public class ObstacleHandler {
     private final Set<Integer> loggedUnknownObstacleIds = new HashSet<>();
 
     @Inject
-    public ObstacleHandler(Client client, AgilityShortcutData agilityShortcutData) {
+    public ObstacleHandler(Client client, AgilityShortcutData agilityShortcutData, 
+                           SpatialObjectIndex spatialObjectIndex) {
         this.client = client;
         this.agilityShortcutData = agilityShortcutData;
-        initializeRegistry();
-    }
-
-    /**
-     * Constructor for testing without AgilityShortcutData.
-     */
-    public ObstacleHandler(Client client) {
-        this.client = client;
-        this.agilityShortcutData = null;
+        this.spatialObjectIndex = Objects.requireNonNull(spatialObjectIndex, "spatialObjectIndex required");
         initializeRegistry();
     }
 
@@ -463,70 +457,38 @@ public class ObstacleHandler {
     /**
      * Find all obstacles within a radius of a point.
      *
+     * <p>Uses {@link SpatialObjectIndex} for O(1) grid-based lookup instead of 
+     * O((2R+1)^2) tile iteration.
+     *
      * @param center the center point
      * @param radius the search radius in tiles
      * @return list of detected obstacles
      */
     public List<DetectedObstacle> findObstaclesNearby(WorldPoint center, int radius) {
         List<DetectedObstacle> obstacles = new ArrayList<>();
-
-        Scene scene = client.getScene();
-        if (scene == null) {
+        
+        if (center == null) {
             return obstacles;
         }
 
-        Tile[][][] tiles = scene.getTiles();
-        int plane = center.getPlane();
-
-        LocalPoint centerLocal = LocalPoint.fromWorld(client, center);
-        if (centerLocal == null) {
-            return obstacles;
-        }
-
-        int centerSceneX = centerLocal.getSceneX();
-        int centerSceneY = centerLocal.getSceneY();
-
-        for (int dx = -radius; dx <= radius; dx++) {
-            for (int dy = -radius; dy <= radius; dy++) {
-                int sceneX = centerSceneX + dx;
-                int sceneY = centerSceneY + dy;
-
-                if (sceneX < 0 || sceneX >= Constants.SCENE_SIZE ||
-                        sceneY < 0 || sceneY >= Constants.SCENE_SIZE) {
-                    continue;
-                }
-
-                Tile tile = tiles[plane][sceneX][sceneY];
-                if (tile == null) {
-                    continue;
-                }
-
-                // Check wall objects
-                WallObject wallObject = tile.getWallObject();
-                if (wallObject != null) {
-                    ObstacleDefinition def = getObstacleDefinition(wallObject.getId());
-                    if (def != null) {
-                        WorldPoint location = tile.getWorldLocation();
-                        obstacles.add(new DetectedObstacle(def, wallObject, location,
-                                def.isBlocked(wallObject.getId())));
-                    }
-                }
-
-                // Check game objects
-                for (GameObject gameObject : tile.getGameObjects()) {
-                    if (gameObject == null) {
-                        continue;
-                    }
-                    ObstacleDefinition def = getObstacleDefinition(gameObject.getId());
-                    if (def != null) {
-                        WorldPoint location = tile.getWorldLocation();
-                        obstacles.add(new DetectedObstacle(def, gameObject, location,
-                                def.isBlocked(gameObject.getId())));
-                    }
-                }
+        // Get all objects in the search area (pass null for objectIds = all objects)
+        List<SpatialObjectIndex.ObjectEntry> entries = 
+            spatialObjectIndex.findObjectsNearby(center, radius, null);
+        
+        for (SpatialObjectIndex.ObjectEntry entry : entries) {
+            TileObject obj = entry.getObject();
+            if (obj == null) {
+                continue;
+            }
+            
+            int objectId = obj.getId();
+            ObstacleDefinition def = getObstacleDefinition(objectId);
+            if (def != null) {
+                obstacles.add(new DetectedObstacle(def, obj, entry.getPosition(),
+                        def.isBlocked(objectId)));
             }
         }
-
+        
         return obstacles;
     }
 

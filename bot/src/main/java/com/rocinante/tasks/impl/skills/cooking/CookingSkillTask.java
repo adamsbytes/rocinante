@@ -235,7 +235,6 @@ public class CookingSkillTask extends AbstractTask {
      */
     public CookingSkillTask(CookingSkillTaskConfig config) {
         this.config = config;
-        this.timeout = config.getMaxDuration() != null ? config.getMaxDuration() : Duration.ofHours(4);
 
         // Combine fires and ranges into one list
         this.cookingObjectIds = new ArrayList<>();

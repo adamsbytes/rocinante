@@ -28,6 +28,18 @@ import java.time.Instant;
 @Slf4j
 public abstract class AbstractTask implements Task {
 
+    /**
+     * Number of ticks without progress before considering task stuck.
+     * 100 ticks ≈ 60 seconds at 0.6s/tick.
+     */
+    public static final int INACTIVITY_TIMEOUT_TICKS = 100;
+
+    /**
+     * Maximum absolute timeout as a safety net (30 minutes).
+     * This catches truly stuck tasks that somehow keep reporting false progress.
+     */
+    public static final Duration MAX_ABSOLUTE_TIMEOUT = Duration.ofMinutes(30);
+
     @Getter
     protected volatile TaskState state = TaskState.PENDING;
 
@@ -37,7 +49,7 @@ public abstract class AbstractTask implements Task {
 
     @Getter
     @Setter
-    protected Duration timeout = Task.DEFAULT_TIMEOUT;
+    protected int inactivityTimeoutTicks = INACTIVITY_TIMEOUT_TICKS;
 
     @Getter
     @Setter
@@ -53,6 +65,19 @@ public abstract class AbstractTask implements Task {
      */
     @Getter
     protected int executionTicks = 0;
+
+    /**
+     * Tick number when progress was last recorded.
+     * Progress resets the inactivity timeout.
+     */
+    @Getter
+    protected int lastProgressTick = 0;
+
+    // Snapshot of game state for automatic progress detection
+    private int lastInventoryHash = 0;
+    private int lastPlayerX = -1;
+    private int lastPlayerY = -1;
+    private int lastAnimation = -1;
 
     /**
      * Flag indicating if the task was aborted externally.
@@ -115,7 +140,7 @@ public abstract class AbstractTask implements Task {
 
     /**
      * Record a phase transition for logging and tracking.
-     * Resets phase wait ticks counter.
+     * Resets phase wait ticks counter and records progress.
      *
      * @param newPhase the new phase (use enum.name() or string)
      */
@@ -130,6 +155,88 @@ public abstract class AbstractTask implements Task {
         
         if (!newPhase.equals(oldPhase)) {
             log.debug("Task '{}' phase: {} -> {}", getDescription(), oldPhase, newPhase);
+            // Phase transitions count as progress
+            recordProgress();
+        }
+    }
+
+    /**
+     * Record that the task made progress.
+     * This resets the inactivity timeout counter.
+     * 
+     * <p>Call this whenever the task does something meaningful:
+     * <ul>
+     *   <li>Successfully clicks something</li>
+     *   <li>Detects expected state change (inventory, position, animation)</li>
+     *   <li>Transitions to a new phase</li>
+     *   <li>Completes a sub-task</li>
+     * </ul>
+     */
+    protected void recordProgress() {
+        this.lastProgressTick = this.executionTicks;
+    }
+
+    /**
+     * Record progress with a description for debugging.
+     * 
+     * @param description what progress was made
+     */
+    protected void recordProgress(String description) {
+        this.lastProgressTick = this.executionTicks;
+        log.trace("Task '{}' progress: {} (tick {})", getDescription(), description, executionTicks);
+    }
+
+    /**
+     * Automatically detect meaningful game state changes and record progress.
+     * Called each tick before executeImpl().
+     * 
+     * <p>Detects:
+     * <ul>
+     *   <li>Inventory changes (items gained/lost)</li>
+     *   <li>Position changes (player moved)</li>
+     *   <li>Animation changes (started new action)</li>
+     * </ul>
+     */
+    private void detectAutomaticProgress(TaskContext ctx) {
+        boolean progressDetected = false;
+        
+        // Check inventory changes
+        var inv = ctx.getInventoryState();
+        if (inv != null) {
+            int currentHash = inv.hashCode();
+            if (lastInventoryHash != 0 && currentHash != lastInventoryHash) {
+                progressDetected = true;
+                log.trace("Auto-progress: inventory changed");
+            }
+            lastInventoryHash = currentHash;
+        }
+        
+        // Check position changes
+        var player = ctx.getPlayerState();
+        if (player != null && player.getWorldPosition() != null) {
+            int x = player.getWorldPosition().getX();
+            int y = player.getWorldPosition().getY();
+            if (lastPlayerX >= 0 && (x != lastPlayerX || y != lastPlayerY)) {
+                progressDetected = true;
+                log.trace("Auto-progress: position changed");
+            }
+            lastPlayerX = x;
+            lastPlayerY = y;
+        }
+        
+        // Check animation changes (new animation started)
+        if (player != null) {
+            int anim = player.getAnimationId();
+            if (lastAnimation != -1 && anim != lastAnimation && anim != -1) {
+                // Only count starting a new animation, not stopping
+                progressDetected = true;
+                log.trace("Auto-progress: animation started ({})", anim);
+            }
+            lastAnimation = anim;
+        }
+        
+        if (progressDetected) {
+            recordProgress();
         }
     }
 
@@ -285,6 +392,11 @@ public abstract class AbstractTask implements Task {
         this.state = TaskState.PENDING;
         this.startTime = null;
         this.executionTicks = 0;
+        this.lastProgressTick = 0;
+        this.lastInventoryHash = 0;
+        this.lastPlayerX = -1;
+        this.lastPlayerY = -1;
+        this.lastAnimation = -1;
         this.aborted = false;
         this.failureReason = null;
         resetImpl();
@@ -321,8 +433,8 @@ public abstract class AbstractTask implements Task {
                 return;
             }
             // Log task start with configuration details
-            log.debug("Starting task: {} [timeout={}s, priority={}, maxRetries={}]",
-                    getDescription(), timeout.getSeconds(), priority, maxRetries);
+            log.debug("Starting task: {} [inactivityTimeout={}ticks, priority={}, maxRetries={}]",
+                    getDescription(), inactivityTimeoutTicks, priority, maxRetries);
             transitionTo(TaskState.RUNNING);
         }
 
@@ -338,13 +450,17 @@ public abstract class AbstractTask implements Task {
 
         // Check for timeout
         if (isTimedOut()) {
-            fail("Task timed out after " + getExecutionDuration().toSeconds() + " seconds");
+            fail("Task timed out: no progress for " + getTicksSinceProgress() + " ticks");
             return;
         }
 
         // Execute the actual task logic
         try {
             executionTicks++;
+            
+            // Detect meaningful game state changes as automatic progress
+            detectAutomaticProgress(ctx);
+            
             executeImpl(ctx);
         } catch (Exception e) {
             log.error("Task '{}' threw exception during execution", getDescription(), e);
@@ -385,14 +501,45 @@ public abstract class AbstractTask implements Task {
 
     /**
      * Check if the task has exceeded its timeout.
+     * 
+     * <p>Uses progress-based timeout: times out if no progress for
+     * {@link #inactivityTimeoutTicks} ticks (default 100 ≈ 60 seconds).
+     * 
+     * <p>Also has a safety-net absolute timeout of 30 minutes to catch
+     * tasks that somehow keep reporting false progress.
      *
-     * @return true if timed out
+     * @return true if timed out due to inactivity or absolute limit
      */
     public boolean isTimedOut() {
         if (startTime == null) {
             return false;
         }
-        return getExecutionDuration().compareTo(timeout) > 0;
+        
+        // Primary: inactivity-based timeout
+        int ticksSinceProgress = executionTicks - lastProgressTick;
+        if (ticksSinceProgress > inactivityTimeoutTicks) {
+            log.debug("Task '{}' timed out: no progress for {} ticks (limit: {})",
+                    getDescription(), ticksSinceProgress, inactivityTimeoutTicks);
+            return true;
+        }
+        
+        // Safety net: absolute timeout (catches infinite false-progress loops)
+        if (getExecutionDuration().compareTo(MAX_ABSOLUTE_TIMEOUT) > 0) {
+            log.warn("Task '{}' hit absolute timeout of {} minutes",
+                    getDescription(), MAX_ABSOLUTE_TIMEOUT.toMinutes());
+            return true;
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Get ticks since last progress was recorded.
+     * 
+     * @return ticks since last progress
+     */
+    public int getTicksSinceProgress() {
+        return executionTicks - lastProgressTick;
     }
 
     /**
@@ -408,14 +555,14 @@ public abstract class AbstractTask implements Task {
     }
 
     /**
-     * Get the remaining time before timeout.
+     * Get the remaining ticks before inactivity timeout.
      *
-     * @return remaining duration, or ZERO if already timed out
+     * @return remaining ticks, or 0 if already timed out
      */
-    public Duration getRemainingTime() {
-        Duration elapsed = getExecutionDuration();
-        Duration remaining = timeout.minus(elapsed);
-        return remaining.isNegative() ? Duration.ZERO : remaining;
+    public int getRemainingInactivityTicks() {
+        int ticksSinceProgress = executionTicks - lastProgressTick;
+        int remaining = inactivityTimeoutTicks - ticksSinceProgress;
+        return Math.max(0, remaining);
     }
 
     // ========================================================================
@@ -434,13 +581,14 @@ public abstract class AbstractTask implements Task {
     }
 
     /**
-     * Set the task timeout (builder-style).
+     * Set the inactivity timeout in ticks (builder-style).
+     * Default is 100 ticks (≈60 seconds).
      *
-     * @param timeout the timeout duration
+     * @param ticks the inactivity timeout in ticks
      * @return this task for chaining
      */
-    public AbstractTask withTimeout(Duration timeout) {
-        this.timeout = timeout;
+    public AbstractTask withInactivityTimeout(int ticks) {
+        this.inactivityTimeoutTicks = ticks;
         return this;
     }
 

@@ -31,10 +31,6 @@ import java.util.List;
  *
  * // Specific puzzle type
  * PuzzleQuestStep slidingStep = new PuzzleQuestStep(PuzzleType.SLIDING_PUZZLE, "Solve the sliding puzzle");
- *
- * // With custom timeout
- * PuzzleQuestStep step = new PuzzleQuestStep(PuzzleType.LIGHT_BOX, "Solve the light box")
- *     .withTimeout(180000); // 3 minutes
  * }</pre>
  */
 @Getter
@@ -109,9 +105,8 @@ public class PuzzleQuestStep extends QuestStep {
         puzzleTask.withDescription(getText())
                 .withClickDelays(minClickDelay, maxClickDelay);
 
-        if (getTimeoutMs() > 0) {
-            puzzleTask.setTimeout(java.time.Duration.ofMillis(getTimeoutMs()));
-        }
+        // Progress-based timeout: puzzles making progress won't timeout
+        // No need to set explicit timeout
 
         tasks.add(puzzleTask);
         return tasks;

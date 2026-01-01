@@ -34,10 +34,10 @@ FROM eclipse-temurin:17-jdk-noble AS rocinante-builder
 WORKDIR /build
 
 # Copy Quest Helper JAR as compile dependency
-COPY --from=quest-helper-builder /build/quest-helper/build/libs/quest-helper-*.jar /deps/quest-helper.jar
+COPY --from=quest-helper-builder /build/quest-helper/build/libs/quest-helper-*.jar deps/quest-helper.jar
 
 # Copy Shortest Path JAR as compile dependency
-COPY --from=shortest-path-builder /build/shortest-path/build/libs/shortest-path-*.jar /deps/shortest-path.jar
+COPY --from=shortest-path-builder /build/shortest-path/build/libs/shortest-path-*.jar deps/shortest-path.jar
 
 # Copy Gradle wrapper and build files first (better layer caching)
 COPY gradlew gradlew.bat settings.gradle build.gradle ./

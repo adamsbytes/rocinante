@@ -15,6 +15,15 @@ import { ScreenshotsGallery } from '../components/ScreenshotsGallery';
 
 type StatsView = 'grid' | 'table';
 
+/** Format game state from SCREAMING_SNAKE_CASE to Title Case */
+function formatGameState(state: string): string {
+  return state
+    .toLowerCase()
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
 export const BotDetail: Component = () => {
   const params = useParams({ from: '/bots/$id' });
   const botQuery = useBotQuery(() => params().id);
@@ -212,18 +221,20 @@ export const BotDetail: Component = () => {
                     </span>
                   </Show>
                 </div>
-                <Show
-                  when={isRunning()}
-                  fallback={
-                    <VncOfflinePlaceholder state={bot().status.state} />
-                  }
-                >
+                {/* Always render VncViewer to avoid destroy/recreate on isRunning() flickers */}
+                <div class="relative">
                   <VncViewer 
                     botId={params().id} 
                     shouldConnect={isRunning}
                     onStatusChange={handleVncStatusChange} 
                   />
-                </Show>
+                  {/* Overlay placeholder when not running */}
+                  <Show when={!isRunning()}>
+                    <div class="absolute inset-0">
+                      <VncOfflinePlaceholder state={bot().status.state} />
+                    </div>
+                  </Show>
+                </div>
               </div>
 
               {/* Real-time Status Section - always visible, disabled when offline */}
@@ -256,7 +267,7 @@ export const BotDetail: Component = () => {
                       <span>Account Stats</span>
                       <Show when={isRunning() && runtimeStatus()?.gameState}>
                         <span class="text-xs px-2 py-0.5 rounded bg-gray-700 text-gray-300">
-                          {runtimeStatus()!.gameState}
+                          {formatGameState(runtimeStatus()!.gameState)}
                         </span>
                       </Show>
                       <Show when={!isRunning()}>
@@ -437,7 +448,7 @@ const VncOfflinePlaceholder: Component<{ state: string }> = (props) => {
   };
 
   return (
-    <div class="relative bg-black rounded-lg overflow-hidden aspect-video flex items-center justify-center">
+    <div class="relative bg-black rounded-lg overflow-hidden w-full h-full flex items-center justify-center">
       <div class="absolute inset-0 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900" />
       <div class="relative text-center">
         <div class="text-4xl mb-3">{stateIcon()}</div>

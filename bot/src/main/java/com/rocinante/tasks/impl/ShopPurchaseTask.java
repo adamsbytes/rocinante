@@ -183,7 +183,6 @@ public class ShopPurchaseTask extends AbstractTask {
         this.itemId = itemId;
         this.quantity = quantity;
         this.quantityMode = PurchaseQuantity.EXACT;
-        this.timeout = Duration.ofSeconds(60);
     }
 
     private ShopPurchaseTask(int shopkeeperNpcId, int itemId, PurchaseQuantity quantityMode) {
@@ -191,7 +190,6 @@ public class ShopPurchaseTask extends AbstractTask {
         this.itemId = itemId;
         this.quantity = 0;
         this.quantityMode = quantityMode;
-        this.timeout = Duration.ofSeconds(60);
     }
 
     // ========================================================================

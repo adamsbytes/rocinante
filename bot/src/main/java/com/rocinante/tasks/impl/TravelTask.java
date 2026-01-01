@@ -523,7 +523,6 @@ public class TravelTask extends AbstractTask {
         this.expectedDestination = expectedDestination;
         this.description = description;
         this.groupingTeleport = groupingTeleport;
-        this.timeout = Duration.ofSeconds(60); // Longer timeout for transports
     }
 
     // ========================================================================

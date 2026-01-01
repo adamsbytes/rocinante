@@ -143,7 +143,6 @@ public class PickupItemTask extends AbstractTask {
     public PickupItemTask(int itemId, String itemName) {
         this.itemId = itemId;
         this.itemName = itemName;
-        this.timeout = Duration.ofSeconds(30);
     }
 
     /**

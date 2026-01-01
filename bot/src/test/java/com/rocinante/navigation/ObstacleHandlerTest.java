@@ -22,12 +22,18 @@ public class ObstacleHandlerTest {
     @Mock
     private Scene scene;
 
+    @Mock
+    private AgilityShortcutData agilityShortcutData;
+
+    @Mock
+    private SpatialObjectIndex spatialObjectIndex;
+
     private ObstacleHandler obstacleHandler;
 
     @Before
     public void setUp() {
         MockitoAnnotations.openMocks(this);
-        obstacleHandler = new ObstacleHandler(client);
+        obstacleHandler = new ObstacleHandler(client, agilityShortcutData, spatialObjectIndex);
     }
 
     // ========================================================================

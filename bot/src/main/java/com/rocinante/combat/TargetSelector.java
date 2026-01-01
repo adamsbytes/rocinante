@@ -3,7 +3,9 @@ package com.rocinante.combat;
 import com.rocinante.core.GameStateService;
 import com.rocinante.navigation.Reachability;
 import com.rocinante.navigation.ShortestPathBridge;
+import com.rocinante.state.AggressorInfo;
 import com.rocinante.state.NpcSnapshot;
+import com.rocinante.state.PlayerSnapshot;
 import com.rocinante.state.PlayerState;
 import com.rocinante.state.WorldState;
 import lombok.Getter;
@@ -12,11 +14,9 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.coords.WorldPoint;
 
-import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * Intelligent target selection for combat.
@@ -27,6 +27,10 @@ import java.util.stream.Collectors;
  *   <li>Avoidance rules for invalid targets (Section 10.5.2)</li>
  *   <li>Integration with WorldState and PathFinder</li>
  * </ul>
+ *
+ * <p><b>Performance Note:</b> This class passes WorldState through the method chain
+ * to avoid redundant getWorldState() calls. All filtering uses manual iteration
+ * instead of streams to minimize allocations on the critical path.
  *
  * <p>Usage:
  * <pre>{@code
@@ -89,8 +93,8 @@ public class TargetSelector {
             return Optional.empty();
         }
 
-        // Apply avoidance filters
-        List<NpcSnapshot> validTargets = filterCandidates(candidates, playerPos);
+        // Apply avoidance filters (pass worldState through)
+        List<NpcSnapshot> validTargets = filterCandidates(candidates, playerPos, worldState);
 
         if (validTargets.isEmpty()) {
             log.debug("TargetSelector: All {} candidates filtered out by avoidance rules", candidates.size());
@@ -134,7 +138,7 @@ public class TargetSelector {
 
         WorldPoint playerPos = playerState.getWorldPosition();
         List<NpcSnapshot> candidates = worldState.getNpcsWithinDistance(playerPos, config.getSearchRadius());
-        List<NpcSnapshot> validTargets = filterCandidates(candidates, playerPos);
+        List<NpcSnapshot> validTargets = filterCandidates(candidates, playerPos, worldState);
 
         // Sort by first applicable priority
         if (!validTargets.isEmpty() && !config.getPriorities().isEmpty()) {
@@ -152,7 +156,8 @@ public class TargetSelector {
      * @return true if the NPC passes all avoidance filters
      */
     public boolean isValidTarget(NpcSnapshot npc, WorldPoint playerPos) {
-        return passesAvoidanceFilters(npc, playerPos);
+        WorldState worldState = gameStateService.getWorldState();
+        return passesAvoidanceFilters(npc, playerPos, worldState);
     }
 
     // ========================================================================
@@ -161,18 +166,26 @@ public class TargetSelector {
 
     /**
      * Filter candidates through all avoidance rules.
+     * Uses manual iteration instead of streams to minimize allocations.
      */
-    private List<NpcSnapshot> filterCandidates(List<NpcSnapshot> candidates, WorldPoint playerPos) {
-        return candidates.stream()
-                .filter(npc -> passesAvoidanceFilters(npc, playerPos))
-                .collect(Collectors.toList());
+    private List<NpcSnapshot> filterCandidates(List<NpcSnapshot> candidates, WorldPoint playerPos, WorldState worldState) {
+        if (candidates.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<NpcSnapshot> result = new ArrayList<>(candidates.size());
+        for (NpcSnapshot npc : candidates) {
+            if (passesAvoidanceFilters(npc, playerPos, worldState)) {
+                result.add(npc);
+            }
+        }
+        return result;
     }
 
     /**
      * Check if an NPC passes all avoidance filters.
      * Note: NPC ID/name filtering is handled separately to allow self-defense against other NPCs.
      */
-    private boolean passesAvoidanceFilters(NpcSnapshot npc, WorldPoint playerPos) {
+    private boolean passesAvoidanceFilters(NpcSnapshot npc, WorldPoint playerPos, WorldState worldState) {
         // Skip dead NPCs
         if (config.isSkipDead() && npc.isDead()) {
             log.debug("Skipping {} - dead", npc.getName());
@@ -186,8 +199,8 @@ public class TargetSelector {
             return false;
         }
 
-        // Skip NPCs in combat with other players
-        if (config.isSkipInCombatWithOthers() && isInCombatWithOtherPlayer(npc)) {
+        // Skip NPCs in combat with other players (pass worldState through)
+        if (config.isSkipInCombatWithOthers() && isInCombatWithOtherPlayer(npc, worldState)) {
             log.debug("Skipping {} - in combat with another player", npc.getName());
             return false;
         }
@@ -227,7 +240,7 @@ public class TargetSelector {
      * Check if an NPC is in combat with another player (not the local player).
      * Per Section 10.5.2: Skip NPCs in combat with other players.
      */
-    private boolean isInCombatWithOtherPlayer(NpcSnapshot npc) {
+    private boolean isInCombatWithOtherPlayer(NpcSnapshot npc, WorldState worldState) {
         int interactingIndex = npc.getInteractingIndex();
         
         // Not interacting with anyone
@@ -250,20 +263,22 @@ public class TargetSelector {
         }
 
         // Could also check if another player has this NPC targeted
-        // by checking all nearby players' target indices
-        return isTargetedByOtherPlayer(npc);
+        // by checking all nearby players' target indices (pass worldState)
+        return isTargetedByOtherPlayer(npc, worldState);
     }
 
     /**
      * Check if any other player is targeting this NPC.
+     * Uses manual iteration to avoid stream allocations.
      */
-    private boolean isTargetedByOtherPlayer(NpcSnapshot npc) {
-        WorldState worldState = gameStateService.getWorldState();
-        
-        // Check all nearby players
-        return worldState.getNearbyPlayers().stream()
-                .anyMatch(player -> player.isInCombat() && 
-                         player.getInteractingIndex() == npc.getIndex());
+    private boolean isTargetedByOtherPlayer(NpcSnapshot npc, WorldState worldState) {
+        int npcIndex = npc.getIndex();
+        for (PlayerSnapshot player : worldState.getNearbyPlayers()) {
+            if (player.isInCombat() && player.getInteractingIndex() == npcIndex) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -336,125 +351,178 @@ public class TargetSelector {
 
     /**
      * Select target using a specific priority type.
+     * Uses manual iteration instead of streams to minimize allocations.
      */
     private Optional<NpcSnapshot> selectByPriorityType(List<NpcSnapshot> targets, 
                                                         WorldPoint playerPos, 
                                                         SelectionPriority priority) {
-        List<NpcSnapshot> filtered = new ArrayList<>(targets);
-
         switch (priority) {
             case TARGETING_PLAYER:
-                // Get NPCs that are ACTUALLY ATTACKING us (not just interacting/talking)
-                // CombatState.aggressiveNpcs only contains NPCs that have attacked us
-                var combatState = gameStateService.getCombatState();
-                Set<Integer> actualAttackerIndices = combatState.getAggressiveNpcs().stream()
-                        .map(a -> a.getNpcIndex())
-                        .collect(Collectors.toSet());
-                
-                // Filter to NPCs that are both targeting us AND have actually attacked
-                List<NpcSnapshot> attackingUs = filtered.stream()
-                        .filter(NpcSnapshot::isTargetingPlayer)
-                        .filter(npc -> actualAttackerIndices.contains(npc.getIndex()))
-                        .collect(Collectors.toList());
-                
-                if (attackingUs.isEmpty()) {
-                    return Optional.empty();
-                }
-                
-                // PREFER NPCs that match our target filter (e.g., if hunting chickens and a chicken attacks)
-                List<NpcSnapshot> matchingTargets = attackingUs.stream()
-                        .filter(this::matchesTargetFilter)
-                        .collect(Collectors.toList());
-                
-                if (!matchingTargets.isEmpty()) {
-                    // Fight the matching target that's attacking us
-                    sortByDistance(matchingTargets, playerPos);
-                    log.debug("TARGETING_PLAYER: Found {} matching target(s) attacking us", matchingTargets.size());
-                    return Optional.of(matchingTargets.get(0));
-                }
-                
-                // SELF-DEFENSE: No matching targets attacking, but something else is
-                // Fight back against whatever is attacking us
-                sortByDistance(attackingUs, playerPos);
-                log.debug("TARGETING_PLAYER: Self-defense against {} (not a configured target)", 
-                        attackingUs.get(0).getName());
-                return Optional.of(attackingUs.get(0));
+                return selectTargetingPlayer(targets, playerPos);
 
             case LOWEST_HP:
-                // Filter to configured targets with visible health bars, sort by HP ascending
-                filtered = filtered.stream()
-                        .filter(this::matchesTargetFilter)
-                        .filter(NpcSnapshot::isHealthBarVisible)
-                        .collect(Collectors.toList());
-                if (filtered.isEmpty()) {
-                    return Optional.empty();
-                }
-                filtered.sort(Comparator.comparingDouble(NpcSnapshot::getHealthPercent));
-                return Optional.of(filtered.get(0));
+                return selectByHealth(targets, playerPos, true);
 
             case HIGHEST_HP:
-                // Filter to configured targets with visible health bars, sort by HP descending
-                filtered = filtered.stream()
-                        .filter(this::matchesTargetFilter)
-                        .filter(NpcSnapshot::isHealthBarVisible)
-                        .collect(Collectors.toList());
-                if (filtered.isEmpty()) {
-                    // For highest HP, also include full-health NPCs (no health bar)
-                    List<NpcSnapshot> matchingFull = targets.stream()
-                            .filter(this::matchesTargetFilter)
-                            .collect(Collectors.toList());
-                    if (!matchingFull.isEmpty()) {
-                        sortByDistance(matchingFull, playerPos);
-                        return Optional.of(matchingFull.get(0));
-                    }
-                    return Optional.empty();
-                }
-                filtered.sort(Comparator.comparingDouble(NpcSnapshot::getHealthPercent).reversed());
-                return Optional.of(filtered.get(0));
+                return selectByHealth(targets, playerPos, false);
 
             case NEAREST:
-                // Filter to configured targets, then sort by distance
-                filtered = filtered.stream()
-                        .filter(this::matchesTargetFilter)
-                        .collect(Collectors.toList());
-                if (filtered.isEmpty()) {
-                    return Optional.empty();
-                }
-                sortByDistance(filtered, playerPos);
-                return Optional.of(filtered.get(0));
+                return selectNearest(targets, playerPos);
 
             case SPECIFIC_ID:
-                // Filter to specific NPC IDs only
-                if (!config.hasTargetNpcIds()) {
-                    return Optional.empty();
-                }
-                filtered = filtered.stream()
-                        .filter(npc -> config.isTargetNpcId(npc.getId()))
-                        .collect(Collectors.toList());
-                if (filtered.isEmpty()) {
-                    return Optional.empty();
-                }
-                sortByDistance(filtered, playerPos);
-                return Optional.of(filtered.get(0));
+                return selectBySpecificId(targets, playerPos);
 
             case SPECIFIC_NAME:
-                // Filter to specific NPC names only
-                if (!config.hasTargetNpcNames()) {
-                    return Optional.empty();
-                }
-                filtered = filtered.stream()
-                        .filter(npc -> config.isTargetNpcName(npc.getName()))
-                        .collect(Collectors.toList());
-                if (filtered.isEmpty()) {
-                    return Optional.empty();
-                }
-                sortByDistance(filtered, playerPos);
-                return Optional.of(filtered.get(0));
+                return selectBySpecificName(targets, playerPos);
 
             default:
                 log.warn("Unknown selection priority: {}", priority);
                 return Optional.empty();
         }
+    }
+
+    /**
+     * Select NPCs that are ACTUALLY ATTACKING us (not just interacting/talking).
+     */
+    private Optional<NpcSnapshot> selectTargetingPlayer(List<NpcSnapshot> targets, WorldPoint playerPos) {
+        // Get NPCs that are ACTUALLY ATTACKING us (not just interacting/talking)
+        // CombatState.aggressiveNpcs only contains NPCs that have attacked us
+        var combatState = gameStateService.getCombatState();
+        List<AggressorInfo> aggressors = combatState.getAggressiveNpcs();
+        
+        // Build set of actual attacker indices
+        Set<Integer> actualAttackerIndices = new HashSet<>(aggressors.size());
+        for (AggressorInfo a : aggressors) {
+            actualAttackerIndices.add(a.getNpcIndex());
+        }
+        
+        // Filter to NPCs that are both targeting us AND have actually attacked
+        List<NpcSnapshot> attackingUs = new ArrayList<>();
+        for (NpcSnapshot npc : targets) {
+            if (npc.isTargetingPlayer() && actualAttackerIndices.contains(npc.getIndex())) {
+                attackingUs.add(npc);
+            }
+        }
+        
+        if (attackingUs.isEmpty()) {
+            return Optional.empty();
+        }
+        
+        // PREFER NPCs that match our target filter (e.g., if hunting chickens and a chicken attacks)
+        List<NpcSnapshot> matchingTargets = new ArrayList<>();
+        for (NpcSnapshot npc : attackingUs) {
+            if (matchesTargetFilter(npc)) {
+                matchingTargets.add(npc);
+            }
+        }
+        
+        if (!matchingTargets.isEmpty()) {
+            // Fight the matching target that's attacking us
+            sortByDistance(matchingTargets, playerPos);
+            log.debug("TARGETING_PLAYER: Found {} matching target(s) attacking us", matchingTargets.size());
+            return Optional.of(matchingTargets.get(0));
+        }
+        
+        // SELF-DEFENSE: No matching targets attacking, but something else is
+        // Fight back against whatever is attacking us
+        sortByDistance(attackingUs, playerPos);
+        log.debug("TARGETING_PLAYER: Self-defense against {} (not a configured target)", 
+                attackingUs.get(0).getName());
+        return Optional.of(attackingUs.get(0));
+    }
+
+    /**
+     * Select by health (lowest or highest).
+     */
+    private Optional<NpcSnapshot> selectByHealth(List<NpcSnapshot> targets, WorldPoint playerPos, boolean lowest) {
+        // Filter to configured targets with visible health bars
+        List<NpcSnapshot> filtered = new ArrayList<>();
+        for (NpcSnapshot npc : targets) {
+            if (matchesTargetFilter(npc) && npc.isHealthBarVisible()) {
+                filtered.add(npc);
+            }
+        }
+        
+        if (filtered.isEmpty()) {
+            if (!lowest) {
+                // For highest HP, also include full-health NPCs (no health bar)
+                List<NpcSnapshot> matchingFull = new ArrayList<>();
+                for (NpcSnapshot npc : targets) {
+                    if (matchesTargetFilter(npc)) {
+                        matchingFull.add(npc);
+                    }
+                }
+                if (!matchingFull.isEmpty()) {
+                    sortByDistance(matchingFull, playerPos);
+                    return Optional.of(matchingFull.get(0));
+                }
+            }
+            return Optional.empty();
+        }
+        
+        if (lowest) {
+            filtered.sort(Comparator.comparingDouble(NpcSnapshot::getHealthPercent));
+        } else {
+            filtered.sort(Comparator.comparingDouble(NpcSnapshot::getHealthPercent).reversed());
+        }
+        return Optional.of(filtered.get(0));
+    }
+
+    /**
+     * Select nearest matching target.
+     */
+    private Optional<NpcSnapshot> selectNearest(List<NpcSnapshot> targets, WorldPoint playerPos) {
+        List<NpcSnapshot> filtered = new ArrayList<>();
+        for (NpcSnapshot npc : targets) {
+            if (matchesTargetFilter(npc)) {
+                filtered.add(npc);
+            }
+        }
+        if (filtered.isEmpty()) {
+            return Optional.empty();
+        }
+        sortByDistance(filtered, playerPos);
+        return Optional.of(filtered.get(0));
+    }
+
+    /**
+     * Select by specific NPC ID.
+     */
+    private Optional<NpcSnapshot> selectBySpecificId(List<NpcSnapshot> targets, WorldPoint playerPos) {
+        if (!config.hasTargetNpcIds()) {
+            return Optional.empty();
+        }
+        List<NpcSnapshot> filtered = new ArrayList<>();
+        for (NpcSnapshot npc : targets) {
+            if (config.isTargetNpcId(npc.getId())) {
+                filtered.add(npc);
+            }
+        }
+        if (filtered.isEmpty()) {
+            return Optional.empty();
+        }
+        sortByDistance(filtered, playerPos);
+        return Optional.of(filtered.get(0));
+    }
+
+    /**
+     * Select by specific NPC name.
+     */
+    private Optional<NpcSnapshot> selectBySpecificName(List<NpcSnapshot> targets, WorldPoint playerPos) {
+        if (!config.hasTargetNpcNames()) {
+            return Optional.empty();
+        }
+        List<NpcSnapshot> filtered = new ArrayList<>();
+        for (NpcSnapshot npc : targets) {
+            if (config.isTargetNpcName(npc.getName())) {
+                filtered.add(npc);
+            }
+        }
+        if (filtered.isEmpty()) {
+            return Optional.empty();
+        }
+        sortByDistance(filtered, playerPos);
+        return Optional.of(filtered.get(0));
     }
 
     /**
@@ -507,4 +575,3 @@ public class TargetSelector {
         return String.format("TargetSelector[config=%s]", config.getSummary());
     }
 }
-

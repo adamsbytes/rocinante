@@ -62,6 +62,12 @@ public class BurnLocationFinder {
          * Same-line positions are preferred to continue an existing fire line.
          */
         boolean onSameLine;
+
+        /**
+         * Number of consecutive clear tiles available in the burn direction (west).
+         * This determines how many logs can be burned before repositioning.
+         */
+        int lineLength;
     }
 
     /**
@@ -72,7 +78,8 @@ public class BurnLocationFinder {
      *   <li>Scan tiles in expanding rings around current position</li>
      *   <li>Filter out blocked tiles and tiles with existing fires</li>
      *   <li>Calculate path cost for reachable candidates</li>
-     *   <li>Rank by: same-line preference, then path cost</li>
+     *   <li>Calculate available line length (consecutive clear tiles west)</li>
+     *   <li>Rank by: line length (prefer enough for logs), then path cost</li>
      * </ol>
      *
      * @param ctx             TaskContext for navigation and world state
@@ -86,6 +93,26 @@ public class BurnLocationFinder {
             WorldPoint currentPosition,
             int searchRadius,
             int walkThreshold) {
+        // Default: try to find room for at least 10 logs
+        return findOptimalBurnLocation(ctx, currentPosition, searchRadius, walkThreshold, 10);
+    }
+
+    /**
+     * Find the optimal burn location with enough room for a specific number of logs.
+     *
+     * @param ctx             TaskContext for navigation and world state
+     * @param currentPosition current player position
+     * @param searchRadius    tiles to search around current position
+     * @param walkThreshold   maximum acceptable path cost
+     * @param desiredLogs     number of logs we want to burn (determines minimum line length)
+     * @return optimal burn location, or empty if no suitable spot found
+     */
+    public static Optional<BurnLocation> findOptimalBurnLocation(
+            TaskContext ctx,
+            WorldPoint currentPosition,
+            int searchRadius,
+            int walkThreshold,
+            int desiredLogs) {
 
         if (ctx == null || currentPosition == null) {
             return Optional.empty();
@@ -113,14 +140,27 @@ public class BurnLocationFinder {
             return Optional.empty();
         }
 
-        // Sort candidates: prefer same-line, then lowest path cost
+        // Sort candidates: prefer positions with enough line length, then by path cost
+        // A position with lineLength >= desiredLogs is "good enough" - don't walk further for more
+        final int targetLength = desiredLogs;
         candidates.sort(Comparator
-                .comparing(BurnLocation::isOnSameLine).reversed()  // true first
-                .thenComparingInt(BurnLocation::getPathCost));
+                // First: prefer positions with enough room for all logs
+                .comparing((BurnLocation loc) -> loc.getLineLength() >= targetLength).reversed()
+                // Then: prefer same-line (continue existing fire line)
+                .thenComparing(BurnLocation::isOnSameLine).reversed()
+                // Then: for "good enough" positions, pick closest (lowest path cost)
+                // For "not enough" positions, pick longest line
+                .thenComparingInt(loc -> {
+                    if (loc.getLineLength() >= targetLength) {
+                        return loc.getPathCost(); // Minimize walk distance
+                    } else {
+                        return targetLength - loc.getLineLength(); // Maximize line length
+                    }
+                }));
 
         BurnLocation best = candidates.get(0);
-        log.debug("Found {} burn location candidates, best: {} (cost: {}, sameLine: {})",
-                candidates.size(), best.getPosition(), best.getPathCost(), best.isOnSameLine());
+        log.debug("Found {} burn location candidates, best: {} (cost: {}, lineLength: {}, sameLine: {})",
+                candidates.size(), best.getPosition(), best.getPathCost(), best.getLineLength(), best.isOnSameLine());
 
         return Optional.of(best);
     }
@@ -202,7 +242,36 @@ public class BurnLocationFinder {
         // Check if on same line (same Y coordinate = continue fire line west)
         boolean onSameLine = candidate.getY() == origin.getY();
 
-        candidates.add(new BurnLocation(candidate, pathCost, onSameLine));
+        // Calculate how many consecutive clear tiles are available westward
+        int lineLength = countClearTilesWest(candidate, fireTiles, navService);
+
+        candidates.add(new BurnLocation(candidate, pathCost, onSameLine, lineLength));
+    }
+
+    /**
+     * Count consecutive clear tiles in the burn direction (west) from a starting position.
+     * Fires make the player move west after lighting, so we need clear tiles to the west.
+     *
+     * @param start      starting position
+     * @param fireTiles  tiles that already have fires
+     * @param navService navigation service for collision checking
+     * @return number of consecutive clear tiles available (including start tile)
+     */
+    private static int countClearTilesWest(WorldPoint start, Set<WorldPoint> fireTiles, NavigationService navService) {
+        int count = 1; // Start tile is already verified clear
+        int maxCheck = 30; // Don't check more than 30 tiles
+
+        for (int dx = 1; dx <= maxCheck; dx++) {
+            WorldPoint tile = new WorldPoint(start.getX() - dx, start.getY(), start.getPlane());
+
+            // Stop if blocked or has fire
+            if (navService.isBlocked(tile) || fireTiles.contains(tile)) {
+                break;
+            }
+            count++;
+        }
+
+        return count;
     }
 
     /**

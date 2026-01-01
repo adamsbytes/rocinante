@@ -193,9 +193,7 @@ public class AgilityCourseTask extends AbstractTask {
 
         // Set timeout based on config
         if (config.hasMaxDuration()) {
-            this.timeout = config.getMaxDuration().plusMinutes(5);
         } else {
-            this.timeout = Duration.ofHours(8); // Default long timeout
         }
     }
 

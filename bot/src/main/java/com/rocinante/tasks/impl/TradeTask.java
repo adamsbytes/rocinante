@@ -179,7 +179,6 @@ public class TradeTask extends AbstractTask {
     public TradeTask(TradeConfig config) {
         this.config = config;
         this.priority = TaskPriority.BEHAVIORAL;
-        this.timeout = Duration.ofSeconds(120); // 2 minute timeout for trades
     }
 
     /**

@@ -1,10 +1,20 @@
 package com.rocinante.quest.bridge;
 
+import com.questhelper.questhelpers.QuestHelper;
+import com.questhelper.requirements.Requirement;
+import com.questhelper.steps.ConditionalStep;
+import com.questhelper.steps.NpcStep;
+import com.questhelper.steps.ObjectStep;
+import com.questhelper.steps.EmoteStep;
+import com.questhelper.steps.DigStep;
+import com.questhelper.steps.WidgetStep;
+import com.questhelper.steps.DetailedQuestStep;
 import com.rocinante.quest.steps.*;
 import com.rocinante.state.StateCondition;
 import com.rocinante.tasks.impl.DialogueOptionResolver;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.Mockito;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -12,6 +22,7 @@ import java.util.*;
 import java.util.regex.Pattern;
 
 import static org.junit.Assert.*;
+import static org.mockito.Mockito.*;
 
 /**
  * Comprehensive unit tests for QuestHelperBridge translation logic.
@@ -226,24 +237,26 @@ public class QuestHelperBridgeTest {
      */
     @Test
     public void testTranslateConditionalStep_CooksAssistant() throws Exception {
-        MockConditionalStep mockStep = new MockConditionalStep();
-        mockStep.text = Arrays.asList("Complete the quest requirements.");
+        // Create mocked ConditionalStep with proper type
+        ConditionalStep mockStep = mock(ConditionalStep.class);
+        when(mockStep.getText()).thenReturn(Arrays.asList("Complete the quest requirements."));
         
-        // Create mock branches
-        LinkedHashMap<Object, Object> steps = new LinkedHashMap<>();
+        // Create mock branches with proper types
+        LinkedHashMap<Requirement, com.questhelper.steps.QuestStep> steps = new LinkedHashMap<>();
         
-        // Mock condition (VarbitRequirement)
-        MockVarbitRequirement condition = new MockVarbitRequirement();
-        condition.varbitID = 1000;
-        condition.requiredValue = 1;
+        // Mock condition
+        Requirement condition = mock(Requirement.class);
         
-        // Mock step for the branch
-        MockNpcStep branchStep = new MockNpcStep();
-        branchStep.npcID = 4626;
-        branchStep.text = Arrays.asList("Talk to the Cook.");
+        // Mock NpcStep for the branch
+        NpcStep branchStep = mock(NpcStep.class);
+        when(branchStep.getText()).thenReturn(Arrays.asList("Talk to the Cook."));
         
         steps.put(condition, branchStep);
-        mockStep.steps = steps;
+        
+        // Set the steps field via reflection
+        Field stepsField = ConditionalStep.class.getDeclaredField("steps");
+        stepsField.setAccessible(true);
+        stepsField.set(mockStep, steps);
 
         ConditionalQuestStep result = translateConditionalStep(mockStep);
 
@@ -643,7 +656,7 @@ public class QuestHelperBridgeTest {
     private ConditionalQuestStep translateConditionalStep(Object mockStep) {
         try {
             QuestHelperBridge bridge = createBridgeWithMockQuest();
-            Method method = QuestHelperBridge.class.getDeclaredMethod("translateConditionalStep", Object.class);
+            Method method = QuestHelperBridge.class.getDeclaredMethod("translateConditionalStep", com.questhelper.steps.QuestStep.class);
             method.setAccessible(true);
             return (ConditionalQuestStep) method.invoke(bridge, mockStep);
         } catch (Exception e) {
@@ -752,7 +765,8 @@ public class QuestHelperBridgeTest {
     }
 
     private QuestHelperBridge createBridgeWithMockQuest() {
-        return new QuestHelperBridge(new MockQuestHelper());
+        QuestHelper mockQuestHelper = mock(QuestHelper.class);
+        return new QuestHelperBridge(mockQuestHelper);
     }
 
     private Object createMockDialogChoiceSteps(List<String> choices) {
@@ -779,12 +793,6 @@ public class QuestHelperBridgeTest {
     // ========================================================================
     // Mock Classes (mimicking Quest Helper structures)
     // ========================================================================
-
-    public static class MockQuestHelper {
-        public String getClass_SimpleName() {
-            return "MockQuest";
-        }
-    }
 
     public static class MockNpcStep {
         public int npcID;

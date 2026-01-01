@@ -91,6 +91,43 @@ export interface BotWithStatus extends BotConfig {
   status: BotStatus;
 }
 
+// =============================================================================
+// DTOs - Safe for client transmission (no sensitive fields)
+// =============================================================================
+
+/** Proxy config without password - safe for client */
+export interface ProxyConfigDTO {
+  host: string;
+  port: number;
+  user?: string;
+  /** True if a proxy password is configured */
+  hasPassword: boolean;
+}
+
+/**
+ * Bot config without sensitive fields - sent to the client.
+ * Password, totpSecret, and proxy.pass are never exposed.
+ */
+export interface BotConfigDTO {
+  id: string;
+  username: string;
+  characterName: string;
+  preferredWorld?: number;
+  lampSkill: LampSkill;
+  proxy: ProxyConfigDTO | null;
+  ironman: IronmanConfig;
+  resources: ResourceConfig;
+  environment: EnvironmentConfig;
+  /** Always true - indicates password is set (for UI display) */
+  hasPassword: boolean;
+  /** Always true - indicates TOTP secret is set (for UI display) */
+  hasTotpSecret: boolean;
+}
+
+export interface BotWithStatusDTO extends BotConfigDTO {
+  status: BotStatus;
+}
+
 export interface BotsConfigFile {
   bots: BotConfig[];
 }
@@ -460,7 +497,7 @@ export interface LocationInfo {
   x: number;
   y: number;
   plane: number;
-  type: 'GENERIC' | 'BANK' | 'SHOP' | 'TRAINING' | 'QUEST' | 'TRANSPORT';
+  type: 'GENERIC' | 'BANK' | 'SHOP' | 'TRAINING' | 'QUEST' | 'TRANSPORT' | 'CITY' | 'MINIGAME' | 'TRADING' | 'ALTAR';
   tags: string[];
 }
 
@@ -550,7 +587,20 @@ export interface ItemRequirementStatus {
   itemName: string;
   itemId: number;
   quantity: number;
-  have: boolean;
+  /** Items in inventory */
+  inInventory: number;
+  /** Items equipped */
+  equipped: number;
+  /** Items in bank */
+  inBank: number;
+  /** Whether requirement is met (total >= quantity) */
+  met: boolean;
+  /** Can be obtained during the quest */
+  obtainableDuringQuest: boolean;
+  /** Is this a recommended (not required) item */
+  recommended: boolean;
+  /** @deprecated Use met instead */
+  have?: boolean;
 }
 
 // ============================================================================

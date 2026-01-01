@@ -221,7 +221,6 @@ public class UseItemOnNpcTask extends AbstractTask {
     public UseItemOnNpcTask(int itemId, int npcId) {
         this.itemIds = Collections.singletonList(itemId);
         this.npcId = npcId;
-        this.timeout = Duration.ofSeconds(30);
     }
 
     /**
@@ -234,7 +233,6 @@ public class UseItemOnNpcTask extends AbstractTask {
     public UseItemOnNpcTask(Collection<Integer> itemIds, int npcId) {
         this.itemIds = new ArrayList<>(itemIds);
         this.npcId = npcId;
-        this.timeout = Duration.ofSeconds(30);
     }
 
     /**
@@ -254,7 +252,6 @@ public class UseItemOnNpcTask extends AbstractTask {
         if (ids.size() > 1) {
             this.alternateNpcIds.addAll(ids.subList(1, ids.size()));
         }
-        this.timeout = Duration.ofSeconds(30);
     }
 
     // ========================================================================

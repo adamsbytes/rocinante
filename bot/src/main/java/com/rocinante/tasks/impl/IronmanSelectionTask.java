@@ -66,7 +66,6 @@ public class IronmanSelectionTask extends AbstractTask {
     public IronmanSelectionTask(IronmanState ironmanState) {
         this.ironmanState = ironmanState;
         this.targetType = ironmanState.getIntendedType();
-        this.timeout = Duration.ofSeconds(30);
     }
 
     /**
@@ -79,7 +78,6 @@ public class IronmanSelectionTask extends AbstractTask {
     public IronmanSelectionTask(IronmanState ironmanState, AccountType targetType) {
         this.ironmanState = ironmanState;
         this.targetType = targetType;
-        this.timeout = Duration.ofSeconds(30);
     }
 
     @Override

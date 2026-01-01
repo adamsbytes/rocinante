@@ -18,6 +18,9 @@ import java.util.*;
  * (via {@link NavigationService}) to ensure selected targets are actually reachable.
  * This prevents selecting targets across fences, rivers, or other barriers.
  *
+ * <p>Object finding uses {@link SpatialObjectIndex} for efficient O(1) grid-based
+ * lookups instead of full scene scans.
+ *
  * <p>All methods return {@link Optional} results containing not just the entity,
  * but also the adjacent tile information needed for interaction.
  *
@@ -28,6 +31,7 @@ import java.util.*;
  * @see Reachability
  * @see CollisionService
  * @see NavigationService
+ * @see SpatialObjectIndex
  */
 @Slf4j
 @Singleton
@@ -42,14 +46,17 @@ public class EntityFinder {
     private final Reachability reachability;
     private final CollisionService collisionService;
     private final Provider<NavigationService> navigationServiceProvider;
+    private final SpatialObjectIndex spatialObjectIndex;
 
     @Inject
     public EntityFinder(Client client, Reachability reachability, CollisionService collisionService,
-                       Provider<NavigationService> navigationServiceProvider) {
+                       Provider<NavigationService> navigationServiceProvider,
+                       SpatialObjectIndex spatialObjectIndex) {
         this.client = client;
         this.reachability = reachability;
         this.collisionService = collisionService;
         this.navigationServiceProvider = navigationServiceProvider;
+        this.spatialObjectIndex = spatialObjectIndex;
     }
 
     private NavigationService getNavigationService() {
@@ -61,11 +68,22 @@ public class EntityFinder {
     // ========================================================================
 
     /**
+     * Initial candidates to compute path cost for (after sorting by distance).
+     * If none are reachable, will continue checking remaining candidates.
+     */
+    private static final int INITIAL_PATH_COST_CANDIDATES = 10;
+
+    /**
      * Find the nearest reachable object matching the specified IDs.
      *
-     * <p>Uses collision-aware reachability and actual path costs (not straight-line distance)
-     * to ensure the returned object can actually be reached. Objects behind fences, rivers,
-     * or other blocking terrain are rejected.
+     * <p>Uses spatial index for efficient object lookup:
+     * <ol>
+     *   <li>Query spatial index for objects matching IDs within radius</li>
+     *   <li>Sort by Chebyshev distance</li>
+     *   <li>Compute actual path cost only for top N candidates</li>
+     * </ol>
+     *
+     * <p>This ensures O(1) grid lookup + small list scan instead of O(n) scene scan.
      *
      * @param ctx       TaskContext for path cost calculations
      * @param playerPos player's current position
@@ -83,64 +101,90 @@ public class EntityFinder {
             return Optional.empty();
         }
 
-        Scene scene = client.getScene();
-        Tile[][][] tiles = scene.getTiles();
-        int playerPlane = playerPos.getPlane();
+        // Phase 1: Query spatial index for matching objects
+        List<SpatialObjectIndex.ObjectEntry> indexResults = 
+            spatialObjectIndex.findObjectsNearby(playerPos, radius, objectIds);
 
+        if (indexResults.isEmpty()) {
+            return Optional.empty();
+        }
+
+        // Convert to candidates with visibility info
+        List<ObjectCandidate> candidates = new ArrayList<>(indexResults.size());
+        for (SpatialObjectIndex.ObjectEntry entry : indexResults) {
+            TileObject obj = entry.getObject();
+            boolean visible = obj.getClickbox() != null;
+            candidates.add(new ObjectCandidate(obj, entry.getPosition(), entry.getDistance(), visible));
+        }
+
+        // Phase 2: Sort by Chebyshev distance (visible objects preferred at same distance)
+        candidates.sort((a, b) -> {
+            if (a.distance != b.distance) {
+                return Integer.compare(a.distance, b.distance);
+            }
+            // Prefer visible at same distance
+            if (a.visible != b.visible) {
+                return a.visible ? -1 : 1;
+            }
+            return 0;
+        });
+
+        // Phase 3: Compute actual path cost for candidates
+        // Start with initial batch, continue if none reachable
         Map<String, Set<WorldPoint>> footprintCache = new HashMap<>();
+        int initialBatch = Math.min(INITIAL_PATH_COST_CANDIDATES, candidates.size());
 
         TileObject bestObject = null;
         int bestPathCost = Integer.MAX_VALUE;
         boolean bestVisible = false;
-        int bestDistance = Integer.MAX_VALUE;
         WorldPoint bestAdjacentTile = null;
 
-        for (int x = 0; x < Constants.SCENE_SIZE; x++) {
-            for (int y = 0; y < Constants.SCENE_SIZE; y++) {
-                Tile tile = tiles[playerPlane][x][y];
-                if (tile == null) {
-                    continue;
-                }
+        // Check initial batch
+        int checkedCount = 0;
+        for (int i = 0; i < initialBatch; i++) {
+            ObjectCandidate candidate = candidates.get(i);
+            checkedCount++;
 
-                TileObject obj = findMatchingObjectOnTile(tile, objectIds);
-                if (obj == null) {
-                    continue;
-                }
+            ObjectPathResult pathResult = computeObjectPathCost(ctx, playerPos, candidate.object, footprintCache);
+            if (pathResult == null || pathResult.cost < 0) {
+                log.debug("Object {} at {} rejected: unreachable",
+                        candidate.object.getId(), candidate.position);
+                continue;
+            }
 
-                WorldPoint objPos = TileObjectUtils.getWorldPoint(obj);
-                if (objPos == null) {
-                    continue;
-                }
+            boolean better =
+                    pathResult.cost < bestPathCost ||
+                    (pathResult.cost == bestPathCost && candidate.visible && !bestVisible);
 
-                int tileDistance = playerPos.distanceTo(objPos);
-                if (tileDistance > radius) {
-                    continue;
-                }
+            if (better) {
+                bestObject = candidate.object;
+                bestPathCost = pathResult.cost;
+                bestVisible = candidate.visible;
+                bestAdjacentTile = pathResult.adjacentTile;
+            }
+        }
 
-                // Compute reachability and cost using actual pathfinding
-                ObjectPathResult pathResult = computeObjectPathCost(ctx, playerPos, obj, footprintCache);
+        // If none reachable in initial batch, continue checking remaining candidates
+        if (bestObject == null && checkedCount < candidates.size()) {
+            log.debug("No reachable object in first {} candidates, checking remaining {}", 
+                    checkedCount, candidates.size() - checkedCount);
+            
+            for (int i = checkedCount; i < candidates.size(); i++) {
+                ObjectCandidate candidate = candidates.get(i);
+
+                ObjectPathResult pathResult = computeObjectPathCost(ctx, playerPos, candidate.object, footprintCache);
                 if (pathResult == null || pathResult.cost < 0) {
-                    log.debug("Object {} at {} rejected: path cost={}, reason={}",
-                            obj.getId(), objPos, 
-                            pathResult != null ? pathResult.cost : "N/A",
-                            pathResult == null ? "no path result" : "negative cost (unreachable)");
+                    log.debug("Object {} at {} rejected: unreachable",
+                            candidate.object.getId(), candidate.position);
                     continue;
                 }
 
-                boolean visible = obj.getClickbox() != null;
-
-                boolean better =
-                        pathResult.cost < bestPathCost ||
-                        (pathResult.cost == bestPathCost && visible && !bestVisible) ||
-                        (pathResult.cost == bestPathCost && visible == bestVisible && tileDistance < bestDistance);
-
-                if (better) {
-                    bestObject = obj;
-                    bestPathCost = pathResult.cost;
-                    bestVisible = visible;
-                    bestDistance = tileDistance;
-                    bestAdjacentTile = pathResult.adjacentTile;
-                }
+                // Found a reachable one - use it (already sorted by distance)
+                bestObject = candidate.object;
+                bestPathCost = pathResult.cost;
+                bestVisible = candidate.visible;
+                bestAdjacentTile = pathResult.adjacentTile;
+                break; // Take the first reachable one from remaining
             }
         }
 
@@ -152,38 +196,29 @@ public class EntityFinder {
     }
 
     /**
-     * Find any object matching the IDs on the given tile.
+     * Candidate object for path cost computation.
      */
-    private TileObject findMatchingObjectOnTile(Tile tile, Collection<Integer> objectIds) {
-        // Check game objects
-        GameObject[] gameObjects = tile.getGameObjects();
-        if (gameObjects != null) {
-            for (GameObject obj : gameObjects) {
-                if (obj != null && objectIds.contains(obj.getId())) {
-                    return obj;
-                }
-            }
-        }
+    private static class ObjectCandidate {
+        final TileObject object;
+        final WorldPoint position;
+        final int distance;
+        final boolean visible;
 
-        // Check wall objects
-        WallObject wallObj = tile.getWallObject();
-        if (wallObj != null && objectIds.contains(wallObj.getId())) {
-            return wallObj;
+        ObjectCandidate(TileObject object, WorldPoint position, int distance, boolean visible) {
+            this.object = object;
+            this.position = position;
+            this.distance = distance;
+            this.visible = visible;
         }
+    }
 
-        // Check ground objects
-        GroundObject groundObj = tile.getGroundObject();
-        if (groundObj != null && objectIds.contains(groundObj.getId())) {
-            return groundObj;
-        }
-
-        // Check decorative objects
-        DecorativeObject decObj = tile.getDecorativeObject();
-        if (decObj != null && objectIds.contains(decObj.getId())) {
-            return decObj;
-        }
-
-        return null;
+    /**
+     * Calculate Chebyshev distance (max of |dx|, |dy|).
+     */
+    private static int chebyshevDistance(WorldPoint a, WorldPoint b) {
+        int dx = Math.abs(a.getX() - b.getX());
+        int dy = Math.abs(a.getY() - b.getY());
+        return Math.max(dx, dy);
     }
 
     /**
@@ -240,11 +275,13 @@ public class EntityFinder {
      * Returns null if no reachable adjacent tile exists.
      */
     private ObjectPathResult findBestAdjacentTileWithPathCost(TaskContext ctx, WorldPoint playerPos, Set<WorldPoint> footprint) {
-        WorldPoint bestTile = null;
-        int bestPathCost = Integer.MAX_VALUE;
-
         NavigationService navService = getNavigationService();
 
+        // Collect all valid adjacent tiles (not blocked, not in footprint)
+        List<WorldPoint> candidates = new ArrayList<>();
+        int blockedCount = 0;
+        
+        Set<WorldPoint> seen = new HashSet<>();
         for (WorldPoint footprintTile : footprint) {
             for (int dx = -1; dx <= 1; dx++) {
                 for (int dy = -1; dy <= 1; dy++) {
@@ -256,53 +293,51 @@ public class EntityFinder {
                             footprintTile.getPlane()
                     );
 
+                    // Skip duplicates (tile adjacent to multiple footprint tiles)
+                    if (!seen.add(adjacentTile)) {
+                        continue;
+                    }
+
                     // Skip if inside the footprint
                     if (footprint.contains(adjacentTile)) {
                         continue;
                     }
 
-                    // Check if this tile is blocked
+                    // Check if this tile is blocked (can't stand there)
                     if (collisionService.isBlocked(adjacentTile)) {
+                        blockedCount++;
                         continue;
                     }
 
-                    // Check if we can interact from this adjacent tile
-                    if (!canInteractFrom(adjacentTile, footprintTile)) {
-                        continue;
-                    }
-
-                    // Get actual path cost using NavigationService
-                    OptionalInt pathCostOpt = navService.getPathCost(ctx, playerPos, adjacentTile);
-                    if (pathCostOpt.isEmpty()) {
-                        // No path to this adjacent tile - skip it (unreachable)
-                        continue;
-                    }
-
-                    int pathCost = pathCostOpt.getAsInt();
-                    if (pathCost < bestPathCost) {
-                        bestPathCost = pathCost;
-                        bestTile = adjacentTile;
-                    }
+                    candidates.add(adjacentTile);
                 }
             }
         }
 
-        if (bestTile != null) {
-            log.debug("Selected adjacent tile for object: {} (path cost: {}, from {} candidates)",
-                    bestTile, bestPathCost + 1, footprint.size() * 8);
-            // Add 1 for the interaction cost
-            return new ObjectPathResult(bestPathCost + 1, bestTile);
+        if (candidates.isEmpty()) {
+            log.debug("No valid adjacent tiles: footprint={} tiles, blocked={}", footprint.size(), blockedCount);
+            return null;
+                    }
+
+        // Sort by straight-line distance from player (closest first)
+        candidates.sort(Comparator.comparingInt(tile -> chebyshevDistance(playerPos, tile)));
+
+        // Check path cost in order - return first reachable one
+        int noPathCount = 0;
+        for (WorldPoint adjacentTile : candidates) {
+                    OptionalInt pathCostOpt = navService.getPathCost(ctx, playerPos, adjacentTile);
+            if (pathCostOpt.isPresent()) {
+                    int pathCost = pathCostOpt.getAsInt();
+                log.debug("Found reachable adjacent tile: {} (path cost: {}, checked {} of {} candidates)",
+                        adjacentTile, pathCost + 1, noPathCount + 1, candidates.size());
+                return new ObjectPathResult(pathCost + 1, adjacentTile);
+        }
+            noPathCount++;
         }
 
-        return null; // Not reachable
-    }
-
-    /**
-     * Check if interaction is possible from an adjacent tile to a footprint tile.
-     * Always checks collision - fences can block interaction even between adjacent tiles.
-     */
-    private boolean canInteractFrom(WorldPoint adjacentTile, WorldPoint footprintTile) {
-        return collisionService.canMoveTo(adjacentTile, footprintTile);
+        log.debug("No reachable adjacent tile: footprint={} tiles, blocked={}, noPath={}",
+                footprint.size(), blockedCount, noPathCount);
+        return null;
     }
 
     private Set<WorldPoint> getCachedFootprint(TileObject target, Map<String, Set<WorldPoint>> cache) {
@@ -361,6 +396,12 @@ public class EntityFinder {
     /**
      * Find the nearest reachable NPC for melee interaction, filtered by name.
      *
+     * <p>Uses a two-phase approach for performance:
+     * <ol>
+     *   <li>Collect all matching NPCs and sort by Chebyshev distance</li>
+     *   <li>Compute actual path cost only for top N candidates</li>
+     * </ol>
+     *
      * @param ctx       TaskContext for path cost calculations
      * @param playerPos player's current position
      * @param npcIds    set of acceptable NPC IDs
@@ -379,10 +420,8 @@ public class EntityFinder {
             return Optional.empty();
         }
 
-        NPC bestNpc = null;
-        int bestPathCost = Integer.MAX_VALUE;
-        int bestDistance = Integer.MAX_VALUE;
-        WorldPoint bestAdjacentTile = null;
+        // Phase 1: Collect candidates with distance
+        List<NpcCandidate> candidates = new ArrayList<>();
 
         for (NPC npc : client.getNpcs()) {
             if (npc == null || npc.isDead()) {
@@ -404,26 +443,59 @@ public class EntityFinder {
                 continue;
             }
 
-            int tileDistance = playerPos.distanceTo(npcPos);
-            if (tileDistance > radius) {
+            int chebyshevDist = chebyshevDistance(playerPos, npcPos);
+            if (chebyshevDist > radius) {
                 continue;
             }
 
-            // Compute path cost with reachability validation using actual pathfinding
-            NpcPathResult pathResult = computeNpcMeleePathCost(ctx, playerPos, npcPos, tileDistance);
+            candidates.add(new NpcCandidate(npc, npcPos, chebyshevDist));
+        }
+
+        if (candidates.isEmpty()) {
+            return Optional.empty();
+        }
+
+        // Phase 2: Sort by Chebyshev distance
+        candidates.sort(Comparator.comparingInt(c -> c.distance));
+
+        // Phase 3: Compute actual path cost for candidates
+        int initialBatch = Math.min(INITIAL_PATH_COST_CANDIDATES, candidates.size());
+
+        NPC bestNpc = null;
+        int bestPathCost = Integer.MAX_VALUE;
+        WorldPoint bestAdjacentTile = null;
+
+        int checkedCount = 0;
+        for (int i = 0; i < initialBatch; i++) {
+            NpcCandidate candidate = candidates.get(i);
+            checkedCount++;
+
+            NpcPathResult pathResult = computeNpcMeleePathCost(ctx, playerPos, candidate.position, candidate.distance);
             if (pathResult == null || pathResult.cost < 0) {
                 continue;
             }
 
-            boolean better =
-                    pathResult.cost < bestPathCost ||
-                    (pathResult.cost == bestPathCost && tileDistance < bestDistance);
-
-            if (better) {
-                bestNpc = npc;
+            if (pathResult.cost < bestPathCost) {
+                bestNpc = candidate.npc;
                 bestPathCost = pathResult.cost;
-                bestDistance = tileDistance;
                 bestAdjacentTile = pathResult.adjacentTile;
+            }
+        }
+
+        // If none reachable in initial batch, continue checking remaining
+        if (bestNpc == null && checkedCount < candidates.size()) {
+            for (int i = checkedCount; i < candidates.size(); i++) {
+                NpcCandidate candidate = candidates.get(i);
+
+                NpcPathResult pathResult = computeNpcMeleePathCost(ctx, playerPos, candidate.position, candidate.distance);
+                if (pathResult == null || pathResult.cost < 0) {
+                    continue;
+                }
+
+                bestNpc = candidate.npc;
+                bestPathCost = pathResult.cost;
+                bestAdjacentTile = pathResult.adjacentTile;
+                break;
             }
         }
 
@@ -432,6 +504,21 @@ public class EntityFinder {
         }
 
         return Optional.of(new NpcSearchResult(bestNpc, Collections.emptyList(), bestAdjacentTile, bestPathCost));
+    }
+
+    /**
+     * Candidate NPC for path cost computation.
+     */
+    private static class NpcCandidate {
+        final NPC npc;
+        final WorldPoint position;
+        final int distance;
+
+        NpcCandidate(NPC npc, WorldPoint position, int distance) {
+            this.npc = npc;
+            this.position = position;
+            this.distance = distance;
+        }
     }
 
     /**
@@ -526,6 +613,12 @@ public class EntityFinder {
     /**
      * Find the nearest NPC attackable with ranged/magic weapons, filtered by name.
      *
+     * <p>Uses a two-phase approach for performance:
+     * <ol>
+     *   <li>Collect all matching NPCs and sort by Chebyshev distance</li>
+     *   <li>Compute actual path cost only for top N candidates</li>
+     * </ol>
+     *
      * @param ctx         TaskContext for path cost calculations
      * @param playerPos   player's current position
      * @param npcIds      set of acceptable NPC IDs
@@ -546,10 +639,8 @@ public class EntityFinder {
             return Optional.empty();
         }
 
-        NPC bestNpc = null;
-        int bestPathCost = Integer.MAX_VALUE;
-        int bestDistance = Integer.MAX_VALUE;
-        WorldPoint bestAttackPosition = null;
+        // Phase 1: Collect candidates with distance
+        List<NpcCandidate> candidates = new ArrayList<>();
 
         for (NPC npc : client.getNpcs()) {
             if (npc == null || npc.isDead()) {
@@ -571,26 +662,59 @@ public class EntityFinder {
                 continue;
             }
 
-            int tileDistance = playerPos.distanceTo(npcPos);
-            if (tileDistance > radius) {
+            int chebyshevDist = chebyshevDistance(playerPos, npcPos);
+            if (chebyshevDist > radius) {
                 continue;
             }
 
-            // Check if attackable from current position or nearby using actual path costs
-            NpcPathResult pathResult = computeNpcRangedPathCost(ctx, playerPos, npcPos, tileDistance, weaponRange);
+            candidates.add(new NpcCandidate(npc, npcPos, chebyshevDist));
+        }
+
+        if (candidates.isEmpty()) {
+            return Optional.empty();
+        }
+
+        // Phase 2: Sort by Chebyshev distance
+        candidates.sort(Comparator.comparingInt(c -> c.distance));
+
+        // Phase 3: Compute actual path cost for candidates
+        int initialBatch = Math.min(INITIAL_PATH_COST_CANDIDATES, candidates.size());
+
+        NPC bestNpc = null;
+        int bestPathCost = Integer.MAX_VALUE;
+        WorldPoint bestAttackPosition = null;
+
+        int checkedCount = 0;
+        for (int i = 0; i < initialBatch; i++) {
+            NpcCandidate candidate = candidates.get(i);
+            checkedCount++;
+
+            NpcPathResult pathResult = computeNpcRangedPathCost(ctx, playerPos, candidate.position, candidate.distance, weaponRange);
             if (pathResult == null || pathResult.cost < 0) {
                 continue;
             }
 
-            boolean better =
-                    pathResult.cost < bestPathCost ||
-                    (pathResult.cost == bestPathCost && tileDistance < bestDistance);
-
-            if (better) {
-                bestNpc = npc;
+            if (pathResult.cost < bestPathCost) {
+                bestNpc = candidate.npc;
                 bestPathCost = pathResult.cost;
-                bestDistance = tileDistance;
                 bestAttackPosition = pathResult.adjacentTile;
+            }
+        }
+
+        // If none reachable in initial batch, continue checking remaining
+        if (bestNpc == null && checkedCount < candidates.size()) {
+            for (int i = checkedCount; i < candidates.size(); i++) {
+                NpcCandidate candidate = candidates.get(i);
+
+                NpcPathResult pathResult = computeNpcRangedPathCost(ctx, playerPos, candidate.position, candidate.distance, weaponRange);
+                if (pathResult == null || pathResult.cost < 0) {
+                    continue;
+                }
+
+                bestNpc = candidate.npc;
+                bestPathCost = pathResult.cost;
+                bestAttackPosition = pathResult.adjacentTile;
+                break;
             }
         }
 
@@ -684,8 +808,9 @@ public class EntityFinder {
     /**
      * Find the nearest object by distance only (no reachability validation).
      *
-     * <p>Use this only for destination resolution in walk tasks where the actual
-     * reachability will be validated upon arrival.
+     * <p>Uses spatial index for efficient lookup. Use this only for destination 
+     * resolution in walk tasks where the actual reachability will be validated 
+     * upon arrival.
      *
      * @param playerPos player's current position
      * @param objectIds set of acceptable object IDs
@@ -701,35 +826,22 @@ public class EntityFinder {
             return Optional.empty();
         }
 
-        Scene scene = client.getScene();
-        Tile[][][] tiles = scene.getTiles();
-        int playerPlane = playerPos.getPlane();
+        // Use spatial index for efficient lookup
+        List<SpatialObjectIndex.ObjectEntry> results = 
+            spatialObjectIndex.findObjectsNearby(playerPos, radius, objectIds);
 
+        if (results.isEmpty()) {
+            return Optional.empty();
+        }
+
+        // Find nearest by distance
         TileObject nearest = null;
         int nearestDistance = Integer.MAX_VALUE;
 
-        for (int x = 0; x < Constants.SCENE_SIZE; x++) {
-            for (int y = 0; y < Constants.SCENE_SIZE; y++) {
-                Tile tile = tiles[playerPlane][x][y];
-                if (tile == null) {
-                    continue;
-                }
-
-                TileObject obj = findMatchingObjectOnTile(tile, objectIds);
-                if (obj == null) {
-                    continue;
-                }
-
-                WorldPoint objPos = TileObjectUtils.getWorldPoint(obj);
-                if (objPos == null) {
-                    continue;
-                }
-
-                int distance = playerPos.distanceTo(objPos);
-                if (distance <= radius && distance < nearestDistance) {
-                    nearestDistance = distance;
-                    nearest = obj;
-                }
+        for (SpatialObjectIndex.ObjectEntry entry : results) {
+            if (entry.getDistance() < nearestDistance) {
+                nearestDistance = entry.getDistance();
+                nearest = entry.getObject();
             }
         }
 

@@ -1,6 +1,6 @@
 import { Component, Show, For, createMemo, createSignal } from 'solid-js';
 import type { PlayerInfo, SkillData, SkillName } from '../../shared/types';
-import { SKILLS, formatXp, XP_TABLE, getLevel } from '../../shared/types';
+import { formatXp, XP_TABLE } from '../../shared/types';
 import { SkillIcon } from './SkillIcon';
 
 /**
@@ -108,7 +108,7 @@ export const AccountStatsGrid: Component<AccountStatsGridProps> = (props) => {
             <img 
               src="https://oldschool.runescape.wiki/images/Quest_point_icon.png" 
               alt="Quest Points"
-              class="w-8 h-8 object-contain"
+              class="w-10 h-10 object-contain"
               loading="lazy"
             />
           </div>

@@ -9,6 +9,7 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.Varbits;
+import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.GameTick;
 import net.runelite.client.eventbus.Subscribe;
 
@@ -80,6 +81,13 @@ public class BotActivityTracker {
     
     @Getter
     private volatile int wildernessLevel = 0;
+    
+    /**
+     * The target location of the current main task.
+     * Used by emergency handlers to return after handling the emergency.
+     */
+    @Getter
+    private volatile WorldPoint currentTaskLocation = null;
     
     private Instant activityStartTime = Instant.now();
     private ActivityType lastActivity = ActivityType.IDLE;
@@ -258,6 +266,17 @@ public class BotActivityTracker {
     public void clearExplicitActivity() {
         this.explicitActivity = null;
         log.debug("Explicit activity cleared");
+    }
+
+    /**
+     * Set the current task's target location.
+     * Called by TaskExecutor when starting a main task.
+     * 
+     * @param location the task's target location, or null to clear
+     */
+    public void setCurrentTaskLocation(@Nullable WorldPoint location) {
+        this.currentTaskLocation = location;
+        log.debug("Task location set: {}", location);
     }
 
     // ========================================================================

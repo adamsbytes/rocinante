@@ -163,7 +163,6 @@ public class PuzzleTask extends AbstractTask {
      */
     public PuzzleTask(PuzzleSolverRegistry registry) {
         this.registry = registry;
-        this.timeout = Duration.ofMinutes(5);
     }
 
     /**
@@ -175,7 +174,6 @@ public class PuzzleTask extends AbstractTask {
     public PuzzleTask(PuzzleSolverRegistry registry, PuzzleType puzzleType) {
         this.registry = registry;
         this.targetPuzzleType = puzzleType;
-        this.timeout = Duration.ofMinutes(5);
     }
 
     // ========================================================================

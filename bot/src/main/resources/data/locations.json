@@ -1,0 +1,1923 @@
+{
+  "version": "1.0",
+  "generated": "2026-01-01T04:14:49.832Z",
+  "source": "shortest-path plugin (https://github.com/Skretzo/shortest-path) + curated additions",
+  "locations": [
+    {
+      "id": "bank_al_kharid",
+      "name": "Al Kharid Bank",
+      "x": 3269,
+      "y": 3169,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_ape_atoll",
+      "name": "Ape Atoll Bank",
+      "x": 2780,
+      "y": 2783,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_arceuus",
+      "name": "Arceuus Bank",
+      "x": 1635,
+      "y": 3749,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_ardougne",
+      "name": "Ardougne Bank",
+      "x": 2655,
+      "y": 3286,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_barbarian_outpost",
+      "name": "Barbarian Outpost Bank",
+      "x": 2536,
+      "y": 3573,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_blast_furnace",
+      "name": "Blast Furnace Bank",
+      "x": 1948,
+      "y": 4957,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_burgh_de_rott",
+      "name": "Burgh de Rott Bank",
+      "x": 3495,
+      "y": 3211,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_canifis",
+      "name": "Canifis Bank",
+      "x": 3512,
+      "y": 3483,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_castle_wars",
+      "name": "Castle Wars Bank",
+      "x": 2443,
+      "y": 3083,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_catherby",
+      "name": "Catherby Bank",
+      "x": 2807,
+      "y": 3441,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_clan_hall",
+      "name": "Clan Hall Bank",
+      "x": 1748,
+      "y": 5476,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_cooks_guild",
+      "name": "Cooks' Guild Bank",
+      "x": 3148,
+      "y": 3450,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_corsair_cove",
+      "name": "Corsair Cove Bank",
+      "x": 2569,
+      "y": 2864,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_crafting_guild",
+      "name": "Crafting Guild Bank",
+      "x": 2935,
+      "y": 3280,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_daimons_crater",
+      "name": "Daimon's Crater Bank",
+      "x": 3426,
+      "y": 4069,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_darkmeyer",
+      "name": "Darkmeyer Bank",
+      "x": 3607,
+      "y": 3367,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_dorgesh_kaan",
+      "name": "Dorgesh-Kaan Bank",
+      "x": 2701,
+      "y": 5352,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_draynor_village",
+      "name": "Draynor Village Bank",
+      "x": 3092,
+      "y": 3245,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_edgeville",
+      "name": "Edgeville Bank",
+      "x": 3098,
+      "y": 3494,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_falador",
+      "name": "Falador Bank",
+      "x": 3015,
+      "y": 3355,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_farming_guild",
+      "name": "Farming Guild Bank",
+      "x": 1249,
+      "y": 3758,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_ferox_enclave",
+      "name": "Ferox Enclave Bank",
+      "x": 3130,
+      "y": 3631,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_fishing_guild",
+      "name": "Fishing Guild Bank",
+      "x": 2586,
+      "y": 3422,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_fortis_colosseum",
+      "name": "Fortis Colosseum Bank",
+      "x": 1804,
+      "y": 9501,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_fossil_island_museum_camp",
+      "name": "Fossil Island Museum Camp Bank",
+      "x": 3741,
+      "y": 3805,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_fossil_island_volcano",
+      "name": "Fossil Island Volcano Bank",
+      "x": 3819,
+      "y": 3809,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_giants_foundry",
+      "name": "Giants' Foundry Bank",
+      "x": 3374,
+      "y": 11493,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_grand_exchange",
+      "name": "Grand Exchange Bank",
+      "x": 3162,
+      "y": 3489,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_hallowed_sepulchre",
+      "name": "Hallowed Sepulchre Bank",
+      "x": 2404,
+      "y": 5986,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_hosidius",
+      "name": "Hosidius Bank",
+      "x": 1748,
+      "y": 3600,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_hosidius_kitchen",
+      "name": "Hosidius Kitchen Bank",
+      "x": 1676,
+      "y": 3615,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_hosidius_sand_crabs",
+      "name": "Hosidius Sand Crabs Bank",
+      "x": 1719,
+      "y": 3465,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_hosidius_vinery",
+      "name": "Hosidius Vinery Bank",
+      "x": 1809,
+      "y": 3566,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_hunter_guild",
+      "name": "Hunter Guild Bank",
+      "x": 1542,
+      "y": 3040,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_keldagrim",
+      "name": "Keldagrim Bank",
+      "x": 2836,
+      "y": 10207,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_kourend_castle",
+      "name": "Kourend Castle Bank",
+      "x": 1613,
+      "y": 3681,
+      "plane": 2,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_lands_end",
+      "name": "Land's End Bank",
+      "x": 1512,
+      "y": 3421,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_legends_guild",
+      "name": "Legends' Guild Bank",
+      "x": 2732,
+      "y": 3381,
+      "plane": 2,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_lovakengj",
+      "name": "Lovakengj Bank",
+      "x": 1530,
+      "y": 3740,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_lumbridge_castle",
+      "name": "Lumbridge Castle Bank",
+      "x": 3209,
+      "y": 3220,
+      "plane": 2,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_lunar_isle",
+      "name": "Lunar Isle Bank",
+      "x": 2099,
+      "y": 3919,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_mage_arena",
+      "name": "Mage Arena Bank",
+      "x": 2534,
+      "y": 4712,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_mage_training_arena",
+      "name": "Mage Training Arena Bank",
+      "x": 3365,
+      "y": 3318,
+      "plane": 1,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_mining_guild",
+      "name": "Mining Guild Bank",
+      "x": 3013,
+      "y": 9718,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_mor_ul_rek",
+      "name": "Mor Ul Rek Bank",
+      "x": 2543,
+      "y": 5141,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_mos_leharmless",
+      "name": "Mos Le'Harmless Bank",
+      "x": 3680,
+      "y": 2983,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_motherlode_mine",
+      "name": "Motherlode Mine Bank",
+      "x": 3760,
+      "y": 5666,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_mount_karuulm",
+      "name": "Mount Karuulm Bank",
+      "x": 1324,
+      "y": 3824,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_mount_quidamortem",
+      "name": "Mount Quidamortem Bank",
+      "x": 1254,
+      "y": 3571,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_myths_guild",
+      "name": "Myths' Guild Bank",
+      "x": 2465,
+      "y": 2848,
+      "plane": 1,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_nardah",
+      "name": "Nardah Bank",
+      "x": 3427,
+      "y": 2894,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_neitiznot",
+      "name": "Neitiznot Bank",
+      "x": 2339,
+      "y": 3807,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_port_khazard",
+      "name": "Port Khazard Bank",
+      "x": 2661,
+      "y": 3162,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_port_phasmatys",
+      "name": "Port Phasmatys Bank",
+      "x": 3691,
+      "y": 3466,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_port_piscarilius",
+      "name": "Port Piscarilius Bank",
+      "x": 1808,
+      "y": 3790,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_prifddinas",
+      "name": "Prifddinas Bank",
+      "x": 3295,
+      "y": 6060,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_rogues_den",
+      "name": "Rogues' Den Bank",
+      "x": 3040,
+      "y": 4969,
+      "plane": 1,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_ruins_of_camdozaal",
+      "name": "Ruins of Camdozaal Bank",
+      "x": 2978,
+      "y": 5798,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_ruins_of_unkah",
+      "name": "Ruins of Unkah Bank",
+      "x": 3156,
+      "y": 2835,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_seers_village",
+      "name": "Seers' Village Bank",
+      "x": 2729,
+      "y": 3493,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_shantay_pass",
+      "name": "Shantay Pass Bank",
+      "x": 3308,
+      "y": 3120,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_shayzien_encampment",
+      "name": "Shayzien Encampment Bank",
+      "x": 1486,
+      "y": 3646,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_sophanem",
+      "name": "Sophanem Bank",
+      "x": 2801,
+      "y": 5169,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_soul_wars",
+      "name": "Soul Wars Bank",
+      "x": 2212,
+      "y": 2859,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_sulphur_mine",
+      "name": "Sulphur Mine Bank",
+      "x": 1501,
+      "y": 3871,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_temple_of_the_eye",
+      "name": "Temple of the Eye Bank",
+      "x": 3618,
+      "y": 9473,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_tree_gnome_stronghold",
+      "name": "Tree Gnome Stronghold Bank",
+      "x": 2446,
+      "y": 3427,
+      "plane": 1,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_trouble_brewing",
+      "name": "Trouble Brewing Bank",
+      "x": 3810,
+      "y": 3021,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_varrock",
+      "name": "Varrock Bank",
+      "x": 3256,
+      "y": 3420,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_ver_sinhaza",
+      "name": "Ver Sinhaza Bank",
+      "x": 3652,
+      "y": 3208,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_void_knights_output",
+      "name": "Void Knights' Output Bank",
+      "x": 2668,
+      "y": 2653,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_warriors_guild",
+      "name": "Warriors' Guild Bank",
+      "x": 2843,
+      "y": 3543,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_wintertodt_camp",
+      "name": "Wintertodt Camp Bank",
+      "x": 1640,
+      "y": 3944,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_woodcutting_guild",
+      "name": "Woodcutting Guild Bank",
+      "x": 1551,
+      "y": 9873,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_yanille",
+      "name": "Yanille Bank",
+      "x": 2613,
+      "y": 3094,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "bank_zanaris",
+      "name": "Zanaris Bank",
+      "x": 2381,
+      "y": 4460,
+      "plane": 0,
+      "type": "BANK",
+      "tags": [
+        "bank"
+      ]
+    },
+    {
+      "id": "city_al_kharid",
+      "name": "Al Kharid",
+      "x": 3293,
+      "y": 3174,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "f2p"
+      ]
+    },
+    {
+      "id": "city_aldarin",
+      "name": "Aldarin",
+      "x": 1393,
+      "y": 2931,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members",
+        "varlamore"
+      ]
+    },
+    {
+      "id": "city_ape_atoll",
+      "name": "Ape Atoll",
+      "x": 2755,
+      "y": 2784,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members"
+      ]
+    },
+    {
+      "id": "city_arceuus",
+      "name": "Arceuus",
+      "x": 1679,
+      "y": 3742,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members",
+        "zeah"
+      ]
+    },
+    {
+      "id": "city_arceuus_library",
+      "name": "Arceuus Library",
+      "x": 1632,
+      "y": 3834,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "teleport"
+      ]
+    },
+    {
+      "id": "city_ardougne",
+      "name": "Ardougne",
+      "x": 2661,
+      "y": 3302,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "teleport"
+      ]
+    },
+    {
+      "id": "city_barbarian",
+      "name": "Barbarian",
+      "x": 2543,
+      "y": 3569,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "teleport"
+      ]
+    },
+    {
+      "id": "city_barbarian_village",
+      "name": "Barbarian Village",
+      "x": 3082,
+      "y": 3420,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "f2p"
+      ]
+    },
+    {
+      "id": "city_barrows",
+      "name": "Barrows",
+      "x": 3563,
+      "y": 3314,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "teleport"
+      ]
+    },
+    {
+      "id": "city_brimhaven",
+      "name": "Brimhaven",
+      "x": 2771,
+      "y": 3178,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members",
+        "karamja"
+      ]
+    },
+    {
+      "id": "city_burgh_de_rott",
+      "name": "Burgh de Rott",
+      "x": 3495,
+      "y": 3211,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members",
+        "morytania"
+      ]
+    },
+    {
+      "id": "city_burthorpe",
+      "name": "Burthorpe",
+      "x": 2926,
+      "y": 3559,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members"
+      ]
+    },
+    {
+      "id": "city_cam_torum",
+      "name": "Cam Torum",
+      "x": 1438,
+      "y": 3108,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members",
+        "varlamore"
+      ]
+    },
+    {
+      "id": "city_camelot",
+      "name": "Camelot",
+      "x": 2757,
+      "y": 3478,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "teleport"
+      ]
+    },
+    {
+      "id": "city_canifis",
+      "name": "Canifis",
+      "x": 3506,
+      "y": 3496,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members",
+        "morytania"
+      ]
+    },
+    {
+      "id": "city_catherby",
+      "name": "Catherby",
+      "x": 2801,
+      "y": 3449,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "teleport"
+      ]
+    },
+    {
+      "id": "city_civitas_illa_fortis",
+      "name": "Civitas illa Fortis",
+      "x": 1680,
+      "y": 3134,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "teleport"
+      ]
+    },
+    {
+      "id": "city_dorgesh_kaan",
+      "name": "Dorgesh-Kaan",
+      "x": 2720,
+      "y": 5351,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members",
+        "cave"
+      ]
+    },
+    {
+      "id": "city_draynor_manor",
+      "name": "Draynor Manor",
+      "x": 3108,
+      "y": 3351,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "teleport"
+      ]
+    },
+    {
+      "id": "city_draynor_village",
+      "name": "Draynor Village",
+      "x": 3093,
+      "y": 3244,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "f2p"
+      ]
+    },
+    {
+      "id": "city_edgeville",
+      "name": "Edgeville",
+      "x": 3087,
+      "y": 3504,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "teleport"
+      ]
+    },
+    {
+      "id": "city_falador",
+      "name": "Falador",
+      "x": 2965,
+      "y": 3378,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "teleport"
+      ]
+    },
+    {
+      "id": "city_fishing_guild",
+      "name": "Fishing Guild",
+      "x": 2613,
+      "y": 3391,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "teleport"
+      ]
+    },
+    {
+      "id": "city_harmony_island",
+      "name": "Harmony Island",
+      "x": 3796,
+      "y": 2866,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "teleport"
+      ]
+    },
+    {
+      "id": "city_hosidius",
+      "name": "Hosidius",
+      "x": 1747,
+      "y": 3599,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members",
+        "zeah"
+      ]
+    },
+    {
+      "id": "city_jatizso",
+      "name": "Jatizso",
+      "x": 2407,
+      "y": 3804,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members",
+        "fremennik"
+      ]
+    },
+    {
+      "id": "city_keldagrim",
+      "name": "Keldagrim",
+      "x": 2838,
+      "y": 10207,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members",
+        "dwarf"
+      ]
+    },
+    {
+      "id": "city_kharyrll",
+      "name": "Kharyrll",
+      "x": 3494,
+      "y": 3473,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "teleport"
+      ]
+    },
+    {
+      "id": "city_khazard",
+      "name": "Khazard",
+      "x": 2636,
+      "y": 3167,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "teleport"
+      ]
+    },
+    {
+      "id": "city_kourend_castle",
+      "name": "Kourend Castle",
+      "x": 1641,
+      "y": 3673,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "teleport"
+      ]
+    },
+    {
+      "id": "city_lassar",
+      "name": "Lassar",
+      "x": 3002,
+      "y": 3470,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "teleport"
+      ]
+    },
+    {
+      "id": "city_lletya",
+      "name": "Lletya",
+      "x": 2341,
+      "y": 3171,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members",
+        "elf"
+      ]
+    },
+    {
+      "id": "city_lovakengj",
+      "name": "Lovakengj",
+      "x": 1526,
+      "y": 3739,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members",
+        "zeah"
+      ]
+    },
+    {
+      "id": "city_lumbridge",
+      "name": "Lumbridge",
+      "x": 3221,
+      "y": 3218,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "teleport"
+      ]
+    },
+    {
+      "id": "city_lunar_isle",
+      "name": "Lunar Isle",
+      "x": 2100,
+      "y": 3914,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members",
+        "fremennik"
+      ]
+    },
+    {
+      "id": "city_moonclan",
+      "name": "Moonclan",
+      "x": 2113,
+      "y": 3915,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "teleport"
+      ]
+    },
+    {
+      "id": "city_mort_myre",
+      "name": "Mort'ton",
+      "x": 3489,
+      "y": 3287,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members",
+        "morytania"
+      ]
+    },
+    {
+      "id": "city_mos_le_harmless",
+      "name": "Mos Le'Harmless",
+      "x": 3680,
+      "y": 2980,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members",
+        "pirate"
+      ]
+    },
+    {
+      "id": "city_nardah",
+      "name": "Nardah",
+      "x": 3428,
+      "y": 2892,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members",
+        "desert"
+      ]
+    },
+    {
+      "id": "city_neitiznot",
+      "name": "Neitiznot",
+      "x": 2337,
+      "y": 3807,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members",
+        "fremennik"
+      ]
+    },
+    {
+      "id": "city_pollnivneach",
+      "name": "Pollnivneach",
+      "x": 3359,
+      "y": 2981,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members",
+        "desert"
+      ]
+    },
+    {
+      "id": "city_port_phasmatys",
+      "name": "Port Phasmatys",
+      "x": 3688,
+      "y": 3476,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members",
+        "morytania"
+      ]
+    },
+    {
+      "id": "city_port_piscarilius",
+      "name": "Port Piscarilius",
+      "x": 1803,
+      "y": 3788,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members",
+        "zeah"
+      ]
+    },
+    {
+      "id": "city_port_sarim",
+      "name": "Port Sarim",
+      "x": 3023,
+      "y": 3208,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "f2p",
+        "port"
+      ]
+    },
+    {
+      "id": "city_prifddinas",
+      "name": "Prifddinas",
+      "x": 3239,
+      "y": 6076,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members",
+        "elf"
+      ]
+    },
+    {
+      "id": "city_rellekka",
+      "name": "Rellekka",
+      "x": 2660,
+      "y": 3657,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members",
+        "fremennik"
+      ]
+    },
+    {
+      "id": "city_rimmington",
+      "name": "Rimmington",
+      "x": 2957,
+      "y": 3214,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "f2p"
+      ]
+    },
+    {
+      "id": "city_salve_graveyard",
+      "name": "Salve Graveyard",
+      "x": 3432,
+      "y": 3459,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "teleport"
+      ]
+    },
+    {
+      "id": "city_seers_village",
+      "name": "Seers' Village",
+      "x": 2725,
+      "y": 3484,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members"
+      ]
+    },
+    {
+      "id": "city_senntisten",
+      "name": "Senntisten",
+      "x": 3320,
+      "y": 3337,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "teleport"
+      ]
+    },
+    {
+      "id": "city_shayzien",
+      "name": "Shayzien",
+      "x": 1482,
+      "y": 3592,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members",
+        "zeah"
+      ]
+    },
+    {
+      "id": "city_shilo_village",
+      "name": "Shilo Village",
+      "x": 2852,
+      "y": 2955,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members",
+        "karamja"
+      ]
+    },
+    {
+      "id": "city_sophanem",
+      "name": "Sophanem",
+      "x": 3315,
+      "y": 2783,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members",
+        "desert"
+      ]
+    },
+    {
+      "id": "city_tai_bwo_wannai",
+      "name": "Tai Bwo Wannai",
+      "x": 2789,
+      "y": 3065,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members",
+        "karamja"
+      ]
+    },
+    {
+      "id": "city_taverley",
+      "name": "Taverley",
+      "x": 2894,
+      "y": 3436,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members"
+      ]
+    },
+    {
+      "id": "city_tree_gnome_stronghold",
+      "name": "Tree Gnome Stronghold",
+      "x": 2461,
+      "y": 3444,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members",
+        "gnome"
+      ]
+    },
+    {
+      "id": "city_tree_gnome_village",
+      "name": "Tree Gnome Village",
+      "x": 2542,
+      "y": 3170,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members",
+        "gnome"
+      ]
+    },
+    {
+      "id": "city_trollheim",
+      "name": "Trollheim",
+      "x": 2890,
+      "y": 3679,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "teleport"
+      ]
+    },
+    {
+      "id": "city_varrock",
+      "name": "Varrock",
+      "x": 3213,
+      "y": 3424,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "teleport"
+      ]
+    },
+    {
+      "id": "city_watchtower",
+      "name": "Watchtower",
+      "x": 2549,
+      "y": 3112,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "teleport"
+      ]
+    },
+    {
+      "id": "city_watchtower_yanille",
+      "name": "Watchtower (Yanille)",
+      "x": 2584,
+      "y": 3097,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "teleport"
+      ]
+    },
+    {
+      "id": "city_waterbirth",
+      "name": "Waterbirth",
+      "x": 2546,
+      "y": 3756,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "teleport"
+      ]
+    },
+    {
+      "id": "city_west_ardougne",
+      "name": "West Ardougne",
+      "x": 2500,
+      "y": 3290,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "teleport"
+      ]
+    },
+    {
+      "id": "city_yanille",
+      "name": "Yanille",
+      "x": 2605,
+      "y": 3093,
+      "plane": 0,
+      "type": "CITY",
+      "tags": [
+        "city",
+        "members"
+      ]
+    },
+    {
+      "id": "minigame_barbarian_assault",
+      "name": "Barbarian Assault",
+      "x": 2531,
+      "y": 3569,
+      "plane": 0,
+      "type": "MINIGAME",
+      "tags": [
+        "minigame",
+        "teleport"
+      ],
+      "metadata": {
+        "travel_type": "grouping_teleport"
+      }
+    },
+    {
+      "id": "minigame_blast_furnace",
+      "name": "Blast Furnace",
+      "x": 2894,
+      "y": 10214,
+      "plane": 0,
+      "type": "MINIGAME",
+      "tags": [
+        "minigame",
+        "teleport"
+      ],
+      "metadata": {
+        "travel_type": "grouping_teleport"
+      }
+    },
+    {
+      "id": "minigame_burthorpe_games_room",
+      "name": "Burthorpe Games Room",
+      "x": 2899,
+      "y": 3553,
+      "plane": 0,
+      "type": "MINIGAME",
+      "tags": [
+        "minigame",
+        "teleport"
+      ],
+      "metadata": {
+        "travel_type": "grouping_teleport"
+      }
+    },
+    {
+      "id": "minigame_castle_wars",
+      "name": "Castle Wars",
+      "x": 2442,
+      "y": 3093,
+      "plane": 0,
+      "type": "MINIGAME",
+      "tags": [
+        "minigame",
+        "teleport"
+      ],
+      "metadata": {
+        "travel_type": "grouping_teleport"
+      }
+    },
+    {
+      "id": "minigame_clan_wars",
+      "name": "Clan Wars",
+      "x": 3150,
+      "y": 3635,
+      "plane": 0,
+      "type": "MINIGAME",
+      "tags": [
+        "minigame",
+        "teleport"
+      ],
+      "metadata": {
+        "travel_type": "grouping_teleport"
+      }
+    },
+    {
+      "id": "minigame_fishing_trawler",
+      "name": "Fishing Trawler",
+      "x": 2658,
+      "y": 3157,
+      "plane": 0,
+      "type": "MINIGAME",
+      "tags": [
+        "minigame",
+        "teleport"
+      ],
+      "metadata": {
+        "travel_type": "grouping_teleport"
+      }
+    },
+    {
+      "id": "minigame_giants_foundry",
+      "name": "Giant's Foundry",
+      "x": 3361,
+      "y": 3149,
+      "plane": 0,
+      "type": "MINIGAME",
+      "tags": [
+        "minigame",
+        "teleport"
+      ],
+      "metadata": {
+        "travel_type": "grouping_teleport"
+      }
+    },
+    {
+      "id": "minigame_guardians_of_the_rift",
+      "name": "Guardians of the Rift",
+      "x": 3104,
+      "y": 9573,
+      "plane": 0,
+      "type": "MINIGAME",
+      "tags": [
+        "minigame",
+        "teleport"
+      ],
+      "metadata": {
+        "travel_type": "grouping_teleport"
+      }
+    },
+    {
+      "id": "minigame_last_man_standing",
+      "name": "Last Man Standing",
+      "x": 3150,
+      "y": 3635,
+      "plane": 0,
+      "type": "MINIGAME",
+      "tags": [
+        "minigame",
+        "teleport"
+      ],
+      "metadata": {
+        "travel_type": "grouping_teleport"
+      }
+    },
+    {
+      "id": "minigame_mage_training_arena",
+      "name": "Mage Training Arena",
+      "x": 3363,
+      "y": 3295,
+      "plane": 0,
+      "type": "MINIGAME",
+      "tags": [
+        "minigame",
+        "teleport"
+      ],
+      "metadata": {
+        "travel_type": "grouping_teleport"
+      }
+    },
+    {
+      "id": "minigame_nightmare_zone",
+      "name": "Nightmare Zone",
+      "x": 2609,
+      "y": 3114,
+      "plane": 0,
+      "type": "MINIGAME",
+      "tags": [
+        "minigame",
+        "teleport"
+      ],
+      "metadata": {
+        "travel_type": "grouping_teleport"
+      }
+    },
+    {
+      "id": "minigame_pest_control",
+      "name": "Pest Control",
+      "x": 2658,
+      "y": 2663,
+      "plane": 0,
+      "type": "MINIGAME",
+      "tags": [
+        "minigame",
+        "teleport"
+      ],
+      "metadata": {
+        "travel_type": "grouping_teleport"
+      }
+    },
+    {
+      "id": "minigame_rat_pits",
+      "name": "Rat Pits",
+      "x": 2561,
+      "y": 3319,
+      "plane": 0,
+      "type": "MINIGAME",
+      "tags": [
+        "minigame",
+        "teleport"
+      ],
+      "metadata": {
+        "travel_type": "grouping_teleport"
+      }
+    },
+    {
+      "id": "minigame_shades_of_mortton",
+      "name": "Shades of Mort'ton",
+      "x": 3506,
+      "y": 3304,
+      "plane": 0,
+      "type": "MINIGAME",
+      "tags": [
+        "minigame",
+        "teleport"
+      ],
+      "metadata": {
+        "travel_type": "grouping_teleport"
+      }
+    },
+    {
+      "id": "minigame_soul_wars",
+      "name": "Soul Wars",
+      "x": 2018,
+      "y": 5929,
+      "plane": 0,
+      "type": "MINIGAME",
+      "tags": [
+        "minigame",
+        "teleport"
+      ],
+      "metadata": {
+        "travel_type": "grouping_teleport"
+      }
+    },
+    {
+      "id": "minigame_tithe_farm",
+      "name": "Tithe Farm",
+      "x": 1792,
+      "y": 3501,
+      "plane": 0,
+      "type": "MINIGAME",
+      "tags": [
+        "minigame",
+        "teleport"
+      ],
+      "metadata": {
+        "travel_type": "grouping_teleport"
+      }
+    },
+    {
+      "id": "minigame_trouble_brewing",
+      "name": "Trouble Brewing",
+      "x": 3801,
+      "y": 3015,
+      "plane": 0,
+      "type": "MINIGAME",
+      "tags": [
+        "minigame",
+        "teleport"
+      ],
+      "metadata": {
+        "travel_type": "grouping_teleport"
+      }
+    },
+    {
+      "id": "minigame_tzhaar_fight_pit",
+      "name": "TzHaar Fight Pit",
+      "x": 2399,
+      "y": 5177,
+      "plane": 0,
+      "type": "MINIGAME",
+      "tags": [
+        "minigame",
+        "teleport"
+      ],
+      "metadata": {
+        "travel_type": "grouping_teleport"
+      }
+    },
+    {
+      "id": "grand_exchange",
+      "name": "Grand Exchange",
+      "x": 3164,
+      "y": 3478,
+      "plane": 0,
+      "type": "TRADING",
+      "tags": [
+        "ge",
+        "trading",
+        "bank"
+      ]
+    }
+  ]
+}

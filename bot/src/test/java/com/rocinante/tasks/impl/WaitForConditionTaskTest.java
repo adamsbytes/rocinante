@@ -90,7 +90,7 @@ public class WaitForConditionTaskTest {
         assertEquals(condition, task.getCondition());
         assertTrue(task.isIdleMouseBehavior());
         assertNull(task.getEarlyExitCondition());
-        assertEquals(Duration.ofSeconds(30), task.getTimeout());
+        assertEquals(100, task.getInactivityTimeoutTicks()); // Default 100 ticks
     }
 
     // ========================================================================
@@ -138,14 +138,14 @@ public class WaitForConditionTaskTest {
                 .withIdleMouseBehavior(false)
                 .withEarlyExitCondition(exitCondition)
                 .withOnConditionMet(callback)
-                .withTimeout(Duration.ofMinutes(1))
+                .withInactivityTimeout(100)  // 100 ticks ≈ 60 seconds
                 .withDescription("Wait for test")
                 .withVerboseLogging(true);
 
         assertFalse(task.isIdleMouseBehavior());
         assertEquals(exitCondition, task.getEarlyExitCondition());
         assertEquals(callback, task.getOnConditionMet());
-        assertEquals(Duration.ofMinutes(1), task.getTimeout());
+        assertEquals(100, task.getInactivityTimeoutTicks());
         assertEquals("Wait for test", task.getDescription());
         assertTrue(task.isVerboseLogging());
     }
@@ -401,9 +401,9 @@ public class WaitForConditionTaskTest {
     public void testGetProgress_CalculatesCorrectly() {
         WaitForConditionTask task = new WaitForConditionTask(ctx -> false)
                 .withIdleMouseBehavior(false)
-                .withTimeout(Duration.ofSeconds(30));
+                .withInactivityTimeout(50);  // 50 ticks
 
-        // 1 tick = ~600ms, so 50 ticks = 30 seconds = 100% of timeout
+        // Execute 25 ticks = 50% of inactivity timeout
         for (int i = 0; i < 25; i++) {
             task.execute(taskContext);
         }
@@ -416,7 +416,7 @@ public class WaitForConditionTaskTest {
     public void testGetProgress_ZeroTimeout_ReturnsZero() {
         WaitForConditionTask task = new WaitForConditionTask(ctx -> false)
                 .withIdleMouseBehavior(false)
-                .withTimeout(Duration.ZERO);
+                .withInactivityTimeout(0);
 
         task.execute(taskContext);
 

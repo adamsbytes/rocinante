@@ -114,7 +114,6 @@ public class InventoryInteractTask extends AbstractTask {
     public InventoryInteractTask(int itemId, String action) {
         this.itemIds = Collections.singletonList(itemId);
         this.action = action.toLowerCase();
-        this.timeout = Duration.ofSeconds(15);
     }
 
     /**
@@ -127,7 +126,6 @@ public class InventoryInteractTask extends AbstractTask {
     public InventoryInteractTask(Collection<Integer> itemIds, String action) {
         this.itemIds = new ArrayList<>(itemIds);
         this.action = action.toLowerCase();
-        this.timeout = Duration.ofSeconds(15);
     }
 
     // ========================================================================

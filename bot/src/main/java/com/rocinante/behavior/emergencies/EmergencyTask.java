@@ -8,8 +8,6 @@ import com.rocinante.tasks.TaskPriority;
 import com.rocinante.tasks.TaskState;
 import lombok.extern.slf4j.Slf4j;
 
-import java.time.Duration;
-
 /**
  * Wrapper task for emergency response tasks.
  * 
@@ -40,9 +38,6 @@ public class EmergencyTask extends AbstractTask {
         
         // Emergency tasks are always URGENT priority
         this.priority = TaskPriority.URGENT;
-        
-        // Use the wrapped task's timeout, or default to 10 seconds
-        this.timeout = responseTask.getTimeout() != null ? responseTask.getTimeout() : Duration.ofSeconds(10);
     }
 
     @Override
@@ -104,11 +99,6 @@ public class EmergencyTask extends AbstractTask {
     public int getMaxRetries() {
         // Use wrapped task's retry count
         return responseTask.getMaxRetries();
-    }
-
-    @Override
-    public Duration getTimeout() {
-        return timeout;
     }
 }
 

@@ -97,7 +97,6 @@ public class BreakActivityTask extends AbstractTask {
             this.breakDuration = Duration.ofMillis(durationMs);
         }
         
-        this.timeout = breakDuration.plusSeconds(30); // Extra time for activity execution
         this.priority = TaskPriority.BEHAVIORAL;
     }
 

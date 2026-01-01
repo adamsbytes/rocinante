@@ -169,7 +169,6 @@ public class UseItemOnObjectTask extends AbstractTask {
     public UseItemOnObjectTask(int itemId, int objectId) {
         this.itemIds = Collections.singletonList(itemId);
         this.objectIds = Collections.singletonList(objectId);
-        this.timeout = Duration.ofSeconds(30);
     }
 
     /**
@@ -182,7 +181,6 @@ public class UseItemOnObjectTask extends AbstractTask {
     public UseItemOnObjectTask(Collection<Integer> itemIds, int objectId) {
         this.itemIds = new ArrayList<>(itemIds);
         this.objectIds = Collections.singletonList(objectId);
-        this.timeout = Duration.ofSeconds(30);
     }
 
     /**
@@ -195,7 +193,6 @@ public class UseItemOnObjectTask extends AbstractTask {
     public UseItemOnObjectTask(Collection<Integer> itemIds, Collection<Integer> objectIds) {
         this.itemIds = new ArrayList<>(itemIds);
         this.objectIds = new ArrayList<>(objectIds);
-        this.timeout = Duration.ofSeconds(30);
     }
 
     /**
@@ -207,7 +204,6 @@ public class UseItemOnObjectTask extends AbstractTask {
     public UseItemOnObjectTask(int itemId, Collection<Integer> objectIds) {
         this.itemIds = Collections.singletonList(itemId);
         this.objectIds = new ArrayList<>(objectIds);
-        this.timeout = Duration.ofSeconds(30);
     }
 
     // ========================================================================

@@ -1,5 +1,7 @@
 import { randomUUIDv7 } from 'bun';
 import type { ServerWebSocket, Socket } from 'bun';
+import { join, normalize, resolve, sep } from 'path';
+import { z } from 'zod';
 import {
   getBots,
   getBot,
@@ -19,7 +21,6 @@ import {
   buildBotImage,
 } from './docker';
 import {
-  handleStatusWebSocket,
   readBotStatus,
   sendBotCommand,
   cleanup as cleanupStatus,
@@ -33,8 +34,140 @@ import {
   getLocationsByType,
 } from './data';
 import { listScreenshots, getScreenshotFile } from './screenshots';
-import type { ApiResponse, BotConfig, BotWithStatus, BotRuntimeStatus, LocationInfo, EnvironmentConfig } from '../shared/types';
-import { botFormSchema, type BotFormData } from '../shared/botSchema';
+import type { ApiResponse, BotConfig, BotWithStatus, BotConfigDTO, BotWithStatusDTO, ProxyConfigDTO, LocationInfo, EnvironmentConfig, BotStatus } from '../shared/types';
+import { botCreateSchema, botUpdateSchema, type BotFormData, type BotUpdateData } from '../shared/botSchema';
+import { botCommandPayloadSchema } from '../shared/commandSchema';
+
+// =============================================================================
+// Bot ID Validation (UUIDv7)
+// =============================================================================
+const botIdSchema = z.uuidv7({ message: 'Invalid bot ID: must be a valid UUIDv7' });
+
+type BotIdResult = 
+  | { ok: true; botId: string; bot: BotConfig }
+  | { ok: false; response: Response };
+
+/**
+ * Extract and validate bot ID from path, then fetch the bot.
+ * Returns the validated botId and bot config, or an error response.
+ */
+async function withBotId(path: string, pattern: RegExp): Promise<BotIdResult> {
+  const match = path.match(pattern);
+  if (!match) {
+    return { ok: false, response: error('Not found', 404) };
+  }
+  
+  const rawId = match[1];
+  const validation = botIdSchema.safeParse(rawId);
+  if (!validation.success) {
+    return { ok: false, response: error('Invalid bot ID format', 400) };
+  }
+  
+  const botId = validation.data;
+  const bot = await getBot(botId);
+  if (!bot) {
+    return { ok: false, response: error('Bot not found', 404) };
+  }
+  
+  return { ok: true, botId, bot };
+}
+
+/**
+ * Extract and validate bot ID from path (without fetching bot).
+ * Use when you only need to validate the ID format.
+ */
+function extractBotId(path: string, pattern: RegExp): { ok: true; botId: string } | { ok: false; response: Response } {
+  const match = path.match(pattern);
+  if (!match) {
+    return { ok: false, response: error('Not found', 404) };
+  }
+  
+  const rawId = match[1];
+  const validation = botIdSchema.safeParse(rawId);
+  if (!validation.success) {
+    return { ok: false, response: error('Invalid bot ID format', 400) };
+  }
+  
+  return { ok: true, botId: validation.data };
+}
+
+// =============================================================================
+// Path Security - Prevent directory traversal attacks
+// =============================================================================
+
+/**
+ * Validates that a requested file path resolves within the allowed base directory.
+ * Prevents path traversal attacks (../, absolute paths, etc.)
+ * 
+ * @param baseDir - Absolute path to the allowed directory
+ * @param requestedPath - User-supplied path (from URL, query param, etc.)
+ * @returns Validated absolute path within baseDir
+ * @throws Error if path attempts to escape baseDir
+ */
+function validateSecurePath(baseDir: string, requestedPath: string): string {
+  // Normalize the requested path and strip leading slashes/backslashes
+  const normalized = normalize(requestedPath).replace(/^[/\\]+/, '');
+  
+  // Resolve both to absolute paths for comparison
+  const resolvedBase = resolve(baseDir);
+  const resolvedPath = resolve(join(resolvedBase, normalized));
+  
+  // Ensure the resolved path is within the base directory
+  const baseWithSep = resolvedBase.endsWith(sep) ? resolvedBase : `${resolvedBase}${sep}`;
+  
+  if (resolvedPath !== resolvedBase && !resolvedPath.startsWith(baseWithSep)) {
+    throw new Error('Path traversal attempt detected');
+  }
+  
+  return resolvedPath;
+}
+
+// =============================================================================
+// DTO Sanitization - Strip sensitive fields before sending to client
+// =============================================================================
+
+/**
+ * Convert ProxyConfig to ProxyConfigDTO (strip password).
+ */
+function toProxyDTO(proxy: BotConfig['proxy']): ProxyConfigDTO | null {
+  if (!proxy) return null;
+  return {
+    host: proxy.host,
+    port: proxy.port,
+    user: proxy.user,
+    hasPassword: !!proxy.pass,
+  };
+}
+
+/**
+ * Strip sensitive fields from BotConfig before sending to client.
+ * Never exposes: password, totpSecret, proxy.pass
+ */
+function toBotDTO(bot: BotConfig): BotConfigDTO {
+  return {
+    id: bot.id,
+    username: bot.username,
+    characterName: bot.characterName,
+    preferredWorld: bot.preferredWorld,
+    lampSkill: bot.lampSkill,
+    proxy: toProxyDTO(bot.proxy),
+    ironman: bot.ironman,
+    resources: bot.resources,
+    environment: bot.environment,
+    hasPassword: !!bot.password,
+    hasTotpSecret: !!bot.totpSecret,
+  };
+}
+
+/**
+ * Convert BotConfig + BotStatus to BotWithStatusDTO.
+ */
+function toBotWithStatusDTO(bot: BotConfig, status: BotStatus): BotWithStatusDTO {
+  return {
+    ...toBotDTO(bot),
+    status,
+  };
+}
 
 const PORT = parseInt(process.env.PORT || '3000');
 
@@ -166,14 +299,10 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
   const method = req.method;
 
   // VNC WebSocket upgrade
-  const vncMatch = path.match(/^\/api\/vnc\/([^/]+)$/);
-  if (vncMatch && req.headers.get('upgrade') === 'websocket') {
-    const botId = vncMatch[1];
-    const bot = await getBot(botId);
-    
-    if (!bot) {
-      return error('Bot not found', 404);
-    }
+  if (path.match(/^\/api\/vnc\/[^/]+$/) && req.headers.get('upgrade') === 'websocket') {
+    const result = await withBotId(path, /^\/api\/vnc\/([^/]+)$/);
+    if (!result.ok) return result.response;
+    const { botId } = result;
 
     // Check if bot is running
     const status = await getContainerStatus(botId);
@@ -197,14 +326,10 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
   }
 
   // Status WebSocket upgrade
-  const statusMatch = path.match(/^\/api\/status\/([^/]+)$/);
-  if (statusMatch && req.headers.get('upgrade') === 'websocket') {
-    const botId = statusMatch[1];
-    const bot = await getBot(botId);
-    
-    if (!bot) {
-      return error('Bot not found', 404);
-    }
+  if (path.match(/^\/api\/status\/[^/]+$/) && req.headers.get('upgrade') === 'websocket') {
+    const result = await withBotId(path, /^\/api\/status\/([^/]+)$/);
+    if (!result.ok) return result.response;
+    const { botId } = result;
 
     // Upgrade to WebSocket
     const upgraded = server.upgrade(req, {
@@ -223,44 +348,31 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
   }
 
   // REST API for bot runtime status
-  const statusApiMatch = path.match(/^\/api\/bots\/([^/]+)\/status$/);
-  if (statusApiMatch && method === 'GET') {
-    const botId = statusApiMatch[1];
-    const bot = await getBot(botId);
+  if (path.match(/^\/api\/bots\/[^/]+\/status$/) && method === 'GET') {
+    const result = await withBotId(path, /^\/api\/bots\/([^/]+)\/status$/);
+    if (!result.ok) return result.response;
     
-    if (!bot) {
-      return error('Bot not found', 404);
-    }
-
-    const runtimeStatus = await readBotStatus(botId);
+    const runtimeStatus = await readBotStatus(result.botId);
     return success(runtimeStatus);
   }
 
   // Screenshots - list
-  const screenshotsMatch = path.match(/^\/api\/bots\/([^/]+)\/screenshots$/);
-  if (screenshotsMatch && method === 'GET') {
-    const botId = screenshotsMatch[1];
-    const bot = await getBot(botId);
-
-    if (!bot) {
-      return error('Bot not found', 404);
-    }
+  if (path.match(/^\/api\/bots\/[^/]+\/screenshots$/) && method === 'GET') {
+    const result = await withBotId(path, /^\/api\/bots\/([^/]+)\/screenshots$/);
+    if (!result.ok) return result.response;
 
     const category = url.searchParams.get('category');
     const character = url.searchParams.get('character');
-    const screenshots = await listScreenshots(botId, { category, character });
+    // Pass bot's timezone so screenshot timestamps are parsed correctly
+    const timezone = result.bot.environment?.timezone;
+    const screenshots = await listScreenshots(result.botId, { category, character, timezone });
     return success(screenshots);
   }
 
-  // Screenshots - view single file
-  const screenshotViewMatch = path.match(/^\/api\/bots\/([^/]+)\/screenshots\/view$/);
-  if (screenshotViewMatch && method === 'GET') {
-    const botId = screenshotViewMatch[1];
-    const bot = await getBot(botId);
-
-    if (!bot) {
-      return error('Bot not found', 404);
-    }
+  // Screenshots - view single file (uses Bun's optimized file streaming)
+  if (path.match(/^\/api\/bots\/[^/]+\/screenshots\/view$/) && method === 'GET') {
+    const result = await withBotId(path, /^\/api\/bots\/([^/]+)\/screenshots\/view$/);
+    if (!result.ok) return result.response;
 
     const relativePath = url.searchParams.get('path');
     if (!relativePath) {
@@ -268,13 +380,12 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
     }
 
     try {
-      const fileResult = await getScreenshotFile(botId, relativePath);
+      const fileResult = await getScreenshotFile(result.botId, relativePath);
       if (!fileResult) {
         return error('Screenshot not found', 404);
       }
-      const arrayBuffer = await fileResult.file.arrayBuffer();
-      return new Response(arrayBuffer, {
-        status: 200,
+      // Use Bun's optimized file streaming - passes BunFile directly to Response
+      return new Response(fileResult.file, {
         headers: {
           'Content-Type': fileResult.contentType,
           'Cache-Control': 'public, max-age=60',
@@ -287,18 +398,21 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
   }
 
   // REST API to send commands to bot
-  const commandMatch = path.match(/^\/api\/bots\/([^/]+)\/command$/);
-  if (commandMatch && method === 'POST') {
-    const botId = commandMatch[1];
-    const bot = await getBot(botId);
-    
-    if (!bot) {
-      return error('Bot not found', 404);
-    }
+  if (path.match(/^\/api\/bots\/[^/]+\/command$/) && method === 'POST') {
+    const result = await withBotId(path, /^\/api\/bots\/([^/]+)\/command$/);
+    if (!result.ok) return result.response;
 
     try {
       const body = await req.json();
-      await sendBotCommand(botId, body);
+      
+      // Validate command payload with Zod
+      const validation = botCommandPayloadSchema.safeParse(body);
+      if (!validation.success) {
+        const issues = validation.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`);
+        return error(`Invalid command: ${issues.join(', ')}`, 400);
+      }
+      
+      await sendBotCommand(result.botId, validation.data);
       return success({ sent: true });
     } catch (err) {
       return error(err instanceof Error ? err.message : 'Failed to send command');
@@ -316,23 +430,20 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
     });
   }
 
-  // List all bots
+  // List all bots (returns DTOs - no sensitive fields)
   if (path === '/api/bots' && method === 'GET') {
     const bots = await getBots();
-    const botsWithStatus: BotWithStatus[] = await Promise.all(
-      bots.map(async (bot) => ({
-        ...bot,
-        status: await getContainerStatus(bot.id),
-      }))
+    const botsWithStatus: BotWithStatusDTO[] = await Promise.all(
+      bots.map(async (bot) => toBotWithStatusDTO(bot, await getContainerStatus(bot.id)))
     );
     return success(botsWithStatus);
   }
 
-  // Create new bot
+  // Create new bot (returns DTO - no sensitive fields)
   if (path === '/api/bots' && method === 'POST') {
     try {
       const body = await req.json();
-      const parsed = botFormSchema.safeParse(body);
+      const parsed = botCreateSchema.safeParse(body);
 
       if (!parsed.success) {
         return error(`Invalid bot configuration: ${formatValidationErrors(parsed.error.issues)}`, 400);
@@ -352,45 +463,56 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
       };
 
       await createBot(newBot);
-      return success(newBot);
+      return success(toBotDTO(newBot));
     } catch (err) {
       return error(err instanceof Error ? err.message : 'Failed to create bot');
     }
   }
 
   // Single bot routes
-  const botMatch = path.match(/^\/api\/bots\/([^/]+)$/);
-  if (botMatch) {
-    const botId = botMatch[1];
+  if (path.match(/^\/api\/bots\/[^/]+$/)) {
+    // Validate bot ID first for all methods
+    const idResult = extractBotId(path, /^\/api\/bots\/([^/]+)$/);
+    if (!idResult.ok) return idResult.response;
+    const botId = idResult.botId;
 
-    // Get single bot
+    // Get single bot (returns DTO - no sensitive fields)
     if (method === 'GET') {
       const bot = await getBot(botId);
       if (!bot) {
         return error('Bot not found', 404);
       }
-      const botWithStatus: BotWithStatus = {
-        ...bot,
-        status: await getContainerStatus(bot.id),
-      };
-      return success(botWithStatus);
+      return success(toBotWithStatusDTO(bot, await getContainerStatus(bot.id)));
     }
 
-    // Update bot
+    // Update bot (returns DTO - no sensitive fields)
+    // Password/TOTP: empty = no change, non-empty = update
     if (method === 'PUT') {
       try {
+        const existingBot = await getBot(botId);
+        if (!existingBot) {
+          return error('Bot not found', 404);
+        }
+
         const body = await req.json();
-        const parsed = botFormSchema.safeParse(body);
+        const parsed = botUpdateSchema.safeParse(body);
 
         if (!parsed.success) {
           return error(`Invalid bot configuration: ${formatValidationErrors(parsed.error.issues)}`, 400);
         }
 
-        const updated = await updateBot(botId, parsed.data);
+        // Merge: keep existing password/TOTP if not provided in update
+        const updateData: BotFormData = {
+          ...parsed.data,
+          password: parsed.data.password ?? existingBot.password,
+          totpSecret: parsed.data.totpSecret ?? existingBot.totpSecret,
+        };
+
+        const updated = await updateBot(botId, updateData);
         if (!updated) {
           return error('Bot not found', 404);
         }
-        return success(updated);
+        return success(toBotDTO(updated));
       } catch (err) {
         return error(err instanceof Error ? err.message : 'Failed to update bot');
       }
@@ -413,28 +535,25 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
   }
 
   // Bot actions
-  const actionMatch = path.match(/^\/api\/bots\/([^/]+)\/(start|stop|restart|logs)$/);
-  if (actionMatch && method === 'POST') {
-    const botId = actionMatch[1];
-    const action = actionMatch[2];
-
-    const bot = await getBot(botId);
-    if (!bot) {
-      return error('Bot not found', 404);
-    }
+  if (path.match(/^\/api\/bots\/[^/]+\/(start|stop|restart)$/) && method === 'POST') {
+    const result = await withBotId(path, /^\/api\/bots\/([^/]+)\/(start|stop|restart)$/);
+    if (!result.ok) return result.response;
+    
+    const actionMatch = path.match(/\/(start|stop|restart)$/);
+    const action = actionMatch![1];
 
     try {
       switch (action) {
         case 'start':
-          await startBot(bot);
+          await startBot(result.bot);
           return success({ started: true });
 
         case 'stop':
-          await stopBot(botId);
+          await stopBot(result.botId);
           return success({ stopped: true });
 
         case 'restart':
-          await restartBot(bot);
+          await restartBot(result.bot);
           return success({ restarted: true });
 
         default:
@@ -446,17 +565,12 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
   }
 
   // Bot logs (GET for SSE)
-  const logsMatch = path.match(/^\/api\/bots\/([^/]+)\/logs$/);
-  if (logsMatch && method === 'GET') {
-    const botId = logsMatch[1];
-
-    const bot = await getBot(botId);
-    if (!bot) {
-      return error('Bot not found', 404);
-    }
+  if (path.match(/^\/api\/bots\/[^/]+\/logs$/) && method === 'GET') {
+    const result = await withBotId(path, /^\/api\/bots\/([^/]+)\/logs$/);
+    if (!result.ok) return result.response;
 
     try {
-      const logStream = await getContainerLogs(botId);
+      const logStream = await getContainerLogs(result.botId);
       return new Response(logStream, {
         headers: {
           'Content-Type': 'text/event-stream',
@@ -511,17 +625,29 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
     // For dev, Vite handles this via proxy
     try {
       const filePath = path === '/' ? '/index.html' : path;
-      const file = Bun.file(`./dist/client${filePath}`);
+      const baseDir = resolve('./dist/client');
+      
+      // Validate path to prevent directory traversal attacks
+      const securePath = validateSecurePath(baseDir, filePath);
+      
+      const file = Bun.file(securePath);
       if (await file.exists()) {
         return new Response(file);
       }
-      // SPA fallback
-      const indexFile = Bun.file('./dist/client/index.html');
+      
+      // SPA fallback - also validate this path
+      const indexPath = validateSecurePath(baseDir, '/index.html');
+      const indexFile = Bun.file(indexPath);
       if (await indexFile.exists()) {
         return new Response(indexFile);
       }
-    } catch {
-      // Fall through to 404
+    } catch (err) {
+      // Path traversal attempts or other errors
+      if (err instanceof Error && err.message.includes('traversal')) {
+        console.warn(`Path traversal attempt blocked: ${path}`);
+        return error('Invalid path', 400);
+      }
+      // Fall through to 404 for other errors
     }
   }
 
@@ -566,9 +692,18 @@ await checkPrerequisites();
 const bunServer = Bun.serve({
   port: PORT,
   fetch: handleRequest,
+  
+  // Security: Limit request body size to prevent DOS attacks
+  // 10MB is generous for bot configs, commands, and other API payloads
+  maxRequestBodySize: 10 * 1024 * 1024, // 10MB
+  
   websocket: {
     // Idle timeout in seconds - set to 120s, ping every 30s keeps connection alive
     idleTimeout: 120,
+    
+    // Security: Limit WebSocket message size to prevent DOS attacks
+    // 1MB is more than enough for VNC frames and status updates
+    maxPayloadLength: 1 * 1024 * 1024, // 1MB
     
     // Called when WebSocket connection opens
     async open(ws: ServerWebSocket<WebSocketData>) {
@@ -660,16 +795,10 @@ const bunServer = Bun.serve({
     // Called when WebSocket receives a message from client
     message(ws: ServerWebSocket<WebSocketData>, message) {
       if (ws.data.type === 'vnc') {
-        // Forward client data to VNC server
-        const vncData = ws.data as VncWebSocketData;
-        const { tcpSocket } = vncData;
-        if (tcpSocket) {
-          if (typeof message === 'string') {
-            tcpSocket.write(Buffer.from(message));
-          } else {
-            tcpSocket.write(message);
-          }
-        }
+        // View-only mode: Drop all client→server messages (keyboard, mouse, clipboard)
+        // Only server→client frames are forwarded (screen updates)
+        // This prevents remote control while allowing observation
+        return;
       } else if (ws.data.type === 'status') {
         // Handle commands from client
         const statusData = ws.data as StatusWebSocketData;

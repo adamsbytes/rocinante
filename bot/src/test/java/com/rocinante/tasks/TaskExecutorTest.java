@@ -3,6 +3,7 @@ package com.rocinante.tasks;
 import com.rocinante.behavior.BreakScheduler;
 import com.rocinante.behavior.BreakType;
 import com.rocinante.behavior.EmergencyHandler;
+import com.rocinante.navigation.ShortestPathBridge;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
@@ -29,6 +30,9 @@ public class TaskExecutorTest {
     @Mock
     private EmergencyHandler emergencyHandler;
     
+    @Mock
+    private ShortestPathBridge shortestPathBridge;
+    
     private TaskExecutor taskExecutor;
 
     @Before
@@ -44,7 +48,10 @@ public class TaskExecutorTest {
         // Setup emergencyHandler defaults
         when(emergencyHandler.checkEmergencies(any())).thenReturn(Optional.empty());
         
-        taskExecutor = new TaskExecutor(taskContext, breakScheduler, emergencyHandler);
+        // Setup shortestPathBridge defaults
+        when(shortestPathBridge.isAvailable()).thenReturn(true);
+        
+        taskExecutor = new TaskExecutor(taskContext, breakScheduler, emergencyHandler, shortestPathBridge);
     }
 
     // ========================================================================
@@ -86,7 +93,6 @@ public class TaskExecutorTest {
             private boolean executed = false;
             
             {
-                timeout = Duration.ofSeconds(5);
             }
             
             @Override
@@ -130,7 +136,6 @@ public class TaskExecutorTest {
             private boolean executed = false;
             
             {
-                timeout = Duration.ofSeconds(5);
             }
             
             @Override
@@ -173,7 +178,6 @@ public class TaskExecutorTest {
             private int ticks = 0;
             
             {
-                timeout = Duration.ofSeconds(10);
             }
             
             @Override
@@ -216,7 +220,6 @@ public class TaskExecutorTest {
     private Task createMockTask(String description) {
         return new AbstractTask() {
             {
-                timeout = Duration.ofSeconds(5);
             }
             
             @Override

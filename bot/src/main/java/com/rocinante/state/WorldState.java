@@ -5,7 +5,6 @@ import lombok.Value;
 import net.runelite.api.coords.WorldPoint;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * Immutable snapshot of the nearby game world at a point in time.
@@ -21,6 +20,10 @@ import java.util.stream.Collectors;
  * </ul>
  *
  * Uses EXPENSIVE_COMPUTED cache policy (5-tick refresh) per Section 6.1.1.
+ *
+ * <p><b>Performance Note:</b> All query methods use manual iteration instead of streams
+ * to minimize allocations on the critical path. Per REQUIREMENTS.md Section 6.1:
+ * state queries must complete in &lt;1ms when cached.
  */
 @Value
 @Builder
@@ -102,9 +105,16 @@ public class WorldState {
      * @return list of matching NPCs (may be empty)
      */
     public List<NpcSnapshot> getNpcsById(int npcId) {
-        return nearbyNpcs.stream()
-                .filter(npc -> npc.getId() == npcId)
-                .collect(Collectors.toList());
+        if (nearbyNpcs.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<NpcSnapshot> result = new ArrayList<>(nearbyNpcs.size());
+        for (NpcSnapshot npc : nearbyNpcs) {
+            if (npc.getId() == npcId) {
+                result.add(npc);
+            }
+        }
+        return result;
     }
 
     /**
@@ -114,13 +124,20 @@ public class WorldState {
      * @return list of matching NPCs (may be empty)
      */
     public List<NpcSnapshot> getNpcsByIds(int... npcIds) {
-        Set<Integer> idSet = new HashSet<>();
+        if (nearbyNpcs.isEmpty() || npcIds == null || npcIds.length == 0) {
+            return Collections.emptyList();
+        }
+        Set<Integer> idSet = new HashSet<>(npcIds.length);
         for (int id : npcIds) {
             idSet.add(id);
         }
-        return nearbyNpcs.stream()
-                .filter(npc -> idSet.contains(npc.getId()))
-                .collect(Collectors.toList());
+        List<NpcSnapshot> result = new ArrayList<>(nearbyNpcs.size());
+        for (NpcSnapshot npc : nearbyNpcs) {
+            if (idSet.contains(npc.getId())) {
+                result.add(npc);
+            }
+        }
+        return result;
     }
 
     /**
@@ -130,12 +147,16 @@ public class WorldState {
      * @return list of matching NPCs (may be empty)
      */
     public List<NpcSnapshot> getNpcsByName(String name) {
-        if (name == null) {
+        if (name == null || nearbyNpcs.isEmpty()) {
             return Collections.emptyList();
         }
-        return nearbyNpcs.stream()
-                .filter(npc -> npc.getName() != null && name.equalsIgnoreCase(npc.getName()))
-                .collect(Collectors.toList());
+        List<NpcSnapshot> result = new ArrayList<>(nearbyNpcs.size());
+        for (NpcSnapshot npc : nearbyNpcs) {
+            if (npc.getName() != null && name.equalsIgnoreCase(npc.getName())) {
+                result.add(npc);
+            }
+        }
+        return result;
     }
 
     /**
@@ -145,9 +166,12 @@ public class WorldState {
      * @return Optional containing the NPC, or empty if not found
      */
     public Optional<NpcSnapshot> getNpcByIndex(int index) {
-        return nearbyNpcs.stream()
-                .filter(npc -> npc.getIndex() == index)
-                .findFirst();
+        for (NpcSnapshot npc : nearbyNpcs) {
+            if (npc.getIndex() == index) {
+                return Optional.of(npc);
+            }
+        }
+        return Optional.empty();
     }
 
     /**
@@ -156,9 +180,16 @@ public class WorldState {
      * @return list of NPCs targeting the player
      */
     public List<NpcSnapshot> getNpcsTargetingPlayer() {
-        return nearbyNpcs.stream()
-                .filter(NpcSnapshot::isTargetingPlayer)
-                .collect(Collectors.toList());
+        if (nearbyNpcs.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<NpcSnapshot> result = new ArrayList<>(nearbyNpcs.size());
+        for (NpcSnapshot npc : nearbyNpcs) {
+            if (npc.isTargetingPlayer()) {
+                result.add(npc);
+            }
+        }
+        return result;
     }
 
     /**
@@ -169,8 +200,18 @@ public class WorldState {
      * @return Optional containing the nearest NPC, or empty if none found
      */
     public Optional<NpcSnapshot> getNearestNpcById(int npcId, WorldPoint playerPos) {
-        return getNpcsById(npcId).stream()
-                .min(Comparator.comparingInt(npc -> npc.distanceTo(playerPos)));
+        NpcSnapshot nearest = null;
+        int nearestDist = Integer.MAX_VALUE;
+        for (NpcSnapshot npc : nearbyNpcs) {
+            if (npc.getId() == npcId) {
+                int dist = npc.distanceTo(playerPos);
+                if (dist < nearestDist) {
+                    nearestDist = dist;
+                    nearest = npc;
+                }
+            }
+        }
+        return Optional.ofNullable(nearest);
     }
 
     /**
@@ -180,8 +221,18 @@ public class WorldState {
      * @return Optional containing the nearest aggressive NPC
      */
     public Optional<NpcSnapshot> getNearestNpcTargetingPlayer(WorldPoint playerPos) {
-        return getNpcsTargetingPlayer().stream()
-                .min(Comparator.comparingInt(npc -> npc.distanceTo(playerPos)));
+        NpcSnapshot nearest = null;
+        int nearestDist = Integer.MAX_VALUE;
+        for (NpcSnapshot npc : nearbyNpcs) {
+            if (npc.isTargetingPlayer()) {
+                int dist = npc.distanceTo(playerPos);
+                if (dist < nearestDist) {
+                    nearestDist = dist;
+                    nearest = npc;
+                }
+            }
+        }
+        return Optional.ofNullable(nearest);
     }
 
     /**
@@ -192,9 +243,16 @@ public class WorldState {
      * @return list of NPCs within distance
      */
     public List<NpcSnapshot> getNpcsWithinDistance(WorldPoint playerPos, int distance) {
-        return nearbyNpcs.stream()
-                .filter(npc -> npc.isWithinDistance(playerPos, distance))
-                .collect(Collectors.toList());
+        if (nearbyNpcs.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<NpcSnapshot> result = new ArrayList<>(nearbyNpcs.size());
+        for (NpcSnapshot npc : nearbyNpcs) {
+            if (npc.isWithinDistance(playerPos, distance)) {
+                result.add(npc);
+            }
+        }
+        return result;
     }
 
     /**
@@ -204,7 +262,12 @@ public class WorldState {
      * @return true if at least one matching NPC exists
      */
     public boolean hasNpc(int npcId) {
-        return nearbyNpcs.stream().anyMatch(npc -> npc.getId() == npcId);
+        for (NpcSnapshot npc : nearbyNpcs) {
+            if (npc.getId() == npcId) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -213,7 +276,12 @@ public class WorldState {
      * @return true if any NPC is targeting the player
      */
     public boolean isPlayerTargeted() {
-        return nearbyNpcs.stream().anyMatch(NpcSnapshot::isTargetingPlayer);
+        for (NpcSnapshot npc : nearbyNpcs) {
+            if (npc.isTargetingPlayer()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -228,10 +296,12 @@ public class WorldState {
         if (position == null) {
             return Optional.empty();
         }
-        return nearbyNpcs.stream()
-                .filter(npc -> npc.getId() == npcId)
-                .filter(npc -> position.equals(npc.getWorldPosition()))
-                .findFirst();
+        for (NpcSnapshot npc : nearbyNpcs) {
+            if (npc.getId() == npcId && position.equals(npc.getWorldPosition())) {
+                return Optional.of(npc);
+            }
+        }
+        return Optional.empty();
     }
 
     /**
@@ -245,10 +315,12 @@ public class WorldState {
         if (position == null || npcIds == null || npcIds.isEmpty()) {
             return Optional.empty();
         }
-        return nearbyNpcs.stream()
-                .filter(npc -> npcIds.contains(npc.getId()))
-                .filter(npc -> position.equals(npc.getWorldPosition()))
-                .findFirst();
+        for (NpcSnapshot npc : nearbyNpcs) {
+            if (npcIds.contains(npc.getId()) && position.equals(npc.getWorldPosition())) {
+                return Optional.of(npc);
+            }
+        }
+        return Optional.empty();
     }
 
     /**
@@ -262,9 +334,18 @@ public class WorldState {
         if (npcIds == null || npcIds.isEmpty()) {
             return Optional.empty();
         }
-        return nearbyNpcs.stream()
-                .filter(npc -> npcIds.contains(npc.getId()))
-                .min(Comparator.comparingInt(npc -> npc.distanceTo(playerPos)));
+        NpcSnapshot nearest = null;
+        int nearestDist = Integer.MAX_VALUE;
+        for (NpcSnapshot npc : nearbyNpcs) {
+            if (npcIds.contains(npc.getId())) {
+                int dist = npc.distanceTo(playerPos);
+                if (dist < nearestDist) {
+                    nearestDist = dist;
+                    nearest = npc;
+                }
+            }
+        }
+        return Optional.ofNullable(nearest);
     }
 
     // ========================================================================
@@ -278,9 +359,16 @@ public class WorldState {
      * @return list of matching objects (may be empty)
      */
     public List<GameObjectSnapshot> getObjectsById(int objectId) {
-        return nearbyObjects.stream()
-                .filter(obj -> obj.getId() == objectId)
-                .collect(Collectors.toList());
+        if (nearbyObjects.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<GameObjectSnapshot> result = new ArrayList<>(nearbyObjects.size());
+        for (GameObjectSnapshot obj : nearbyObjects) {
+            if (obj.getId() == objectId) {
+                result.add(obj);
+            }
+        }
+        return result;
     }
 
     /**
@@ -290,13 +378,20 @@ public class WorldState {
      * @return list of matching objects (may be empty)
      */
     public List<GameObjectSnapshot> getObjectsByIds(int... objectIds) {
-        Set<Integer> idSet = new HashSet<>();
+        if (nearbyObjects.isEmpty() || objectIds == null || objectIds.length == 0) {
+            return Collections.emptyList();
+        }
+        Set<Integer> idSet = new HashSet<>(objectIds.length);
         for (int id : objectIds) {
             idSet.add(id);
         }
-        return nearbyObjects.stream()
-                .filter(obj -> idSet.contains(obj.getId()))
-                .collect(Collectors.toList());
+        List<GameObjectSnapshot> result = new ArrayList<>(nearbyObjects.size());
+        for (GameObjectSnapshot obj : nearbyObjects) {
+            if (idSet.contains(obj.getId())) {
+                result.add(obj);
+            }
+        }
+        return result;
     }
 
     /**
@@ -307,8 +402,18 @@ public class WorldState {
      * @return Optional containing the nearest object, or empty if none found
      */
     public Optional<GameObjectSnapshot> getNearestObjectById(int objectId, WorldPoint playerPos) {
-        return getObjectsById(objectId).stream()
-                .min(Comparator.comparingInt(obj -> obj.distanceTo(playerPos)));
+        GameObjectSnapshot nearest = null;
+        int nearestDist = Integer.MAX_VALUE;
+        for (GameObjectSnapshot obj : nearbyObjects) {
+            if (obj.getId() == objectId) {
+                int dist = obj.distanceTo(playerPos);
+                if (dist < nearestDist) {
+                    nearestDist = dist;
+                    nearest = obj;
+                }
+            }
+        }
+        return Optional.ofNullable(nearest);
     }
 
     /**
@@ -318,9 +423,16 @@ public class WorldState {
      * @return list of objects with the action
      */
     public List<GameObjectSnapshot> getObjectsWithAction(String action) {
-        return nearbyObjects.stream()
-                .filter(obj -> obj.hasAction(action))
-                .collect(Collectors.toList());
+        if (nearbyObjects.isEmpty() || action == null) {
+            return Collections.emptyList();
+        }
+        List<GameObjectSnapshot> result = new ArrayList<>(nearbyObjects.size());
+        for (GameObjectSnapshot obj : nearbyObjects) {
+            if (obj.hasAction(action)) {
+                result.add(obj);
+            }
+        }
+        return result;
     }
 
     /**
@@ -330,7 +442,12 @@ public class WorldState {
      * @return true if at least one matching object exists
      */
     public boolean hasObject(int objectId) {
-        return nearbyObjects.stream().anyMatch(obj -> obj.getId() == objectId);
+        for (GameObjectSnapshot obj : nearbyObjects) {
+            if (obj.getId() == objectId) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // ========================================================================
@@ -344,9 +461,16 @@ public class WorldState {
      * @return list of matching items (may be empty)
      */
     public List<GroundItemSnapshot> getGroundItemsById(int itemId) {
-        return groundItems.stream()
-                .filter(item -> item.getId() == itemId)
-                .collect(Collectors.toList());
+        if (groundItems.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<GroundItemSnapshot> result = new ArrayList<>(groundItems.size());
+        for (GroundItemSnapshot item : groundItems) {
+            if (item.getId() == itemId) {
+                result.add(item);
+            }
+        }
+        return result;
     }
 
     /**
@@ -357,8 +481,18 @@ public class WorldState {
      * @return Optional containing the nearest item, or empty if none found
      */
     public Optional<GroundItemSnapshot> getNearestGroundItemById(int itemId, WorldPoint playerPos) {
-        return getGroundItemsById(itemId).stream()
-                .min(Comparator.comparingInt(item -> item.distanceTo(playerPos)));
+        GroundItemSnapshot nearest = null;
+        int nearestDist = Integer.MAX_VALUE;
+        for (GroundItemSnapshot item : groundItems) {
+            if (item.getId() == itemId) {
+                int dist = item.distanceTo(playerPos);
+                if (dist < nearestDist) {
+                    nearestDist = dist;
+                    nearest = item;
+                }
+            }
+        }
+        return Optional.ofNullable(nearest);
     }
 
     /**
@@ -368,9 +502,16 @@ public class WorldState {
      * @return list of valuable items
      */
     public List<GroundItemSnapshot> getValuableGroundItems(int minValue) {
-        return groundItems.stream()
-                .filter(item -> item.isWorthMoreThan(minValue))
-                .collect(Collectors.toList());
+        if (groundItems.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<GroundItemSnapshot> result = new ArrayList<>(groundItems.size());
+        for (GroundItemSnapshot item : groundItems) {
+            if (item.isWorthMoreThan(minValue)) {
+                result.add(item);
+            }
+        }
+        return result;
     }
 
     /**
@@ -379,9 +520,12 @@ public class WorldState {
      * @return sorted list of ground items
      */
     public List<GroundItemSnapshot> getGroundItemsByValue() {
-        return groundItems.stream()
-                .sorted(Comparator.comparingLong(GroundItemSnapshot::getTotalGeValue).reversed())
-                .collect(Collectors.toList());
+        if (groundItems.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<GroundItemSnapshot> result = new ArrayList<>(groundItems);
+        result.sort(Comparator.comparingLong(GroundItemSnapshot::getTotalGeValue).reversed());
+        return result;
     }
 
     /**
@@ -391,7 +535,12 @@ public class WorldState {
      * @return true if at least one matching item exists
      */
     public boolean hasGroundItem(int itemId) {
-        return groundItems.stream().anyMatch(item -> item.getId() == itemId);
+        for (GroundItemSnapshot item : groundItems) {
+            if (item.getId() == itemId) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // ========================================================================
@@ -408,9 +557,12 @@ public class WorldState {
         if (name == null) {
             return Optional.empty();
         }
-        return nearbyPlayers.stream()
-                .filter(p -> p.getName() != null && name.equalsIgnoreCase(p.getName()))
-                .findFirst();
+        for (PlayerSnapshot p : nearbyPlayers) {
+            if (p.getName() != null && name.equalsIgnoreCase(p.getName())) {
+                return Optional.of(p);
+            }
+        }
+        return Optional.empty();
     }
 
     /**
@@ -419,9 +571,16 @@ public class WorldState {
      * @return list of skulled players
      */
     public List<PlayerSnapshot> getSkulledPlayers() {
-        return nearbyPlayers.stream()
-                .filter(PlayerSnapshot::isSkulled)
-                .collect(Collectors.toList());
+        if (nearbyPlayers.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<PlayerSnapshot> result = new ArrayList<>(nearbyPlayers.size());
+        for (PlayerSnapshot p : nearbyPlayers) {
+            if (p.isSkulled()) {
+                result.add(p);
+            }
+        }
+        return result;
     }
 
     /**
@@ -432,9 +591,16 @@ public class WorldState {
      * @return list of players within distance
      */
     public List<PlayerSnapshot> getPlayersWithinDistance(WorldPoint playerPos, int distance) {
-        return nearbyPlayers.stream()
-                .filter(p -> p.isWithinDistance(playerPos, distance))
-                .collect(Collectors.toList());
+        if (nearbyPlayers.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<PlayerSnapshot> result = new ArrayList<>(nearbyPlayers.size());
+        for (PlayerSnapshot p : nearbyPlayers) {
+            if (p.isWithinDistance(playerPos, distance)) {
+                result.add(p);
+            }
+        }
+        return result;
     }
 
     // ========================================================================
@@ -447,9 +613,16 @@ public class WorldState {
      * @return list of projectiles aimed at the player
      */
     public List<ProjectileSnapshot> getProjectilesTargetingPlayer() {
-        return projectiles.stream()
-                .filter(ProjectileSnapshot::isTargetingPlayer)
-                .collect(Collectors.toList());
+        if (projectiles.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<ProjectileSnapshot> result = new ArrayList<>(projectiles.size());
+        for (ProjectileSnapshot p : projectiles) {
+            if (p.isTargetingPlayer()) {
+                result.add(p);
+            }
+        }
+        return result;
     }
 
     /**
@@ -459,9 +632,16 @@ public class WorldState {
      * @return list of matching projectiles
      */
     public List<ProjectileSnapshot> getProjectilesById(int graphicId) {
-        return projectiles.stream()
-                .filter(p -> p.getId() == graphicId)
-                .collect(Collectors.toList());
+        if (projectiles.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<ProjectileSnapshot> result = new ArrayList<>(projectiles.size());
+        for (ProjectileSnapshot p : projectiles) {
+            if (p.getId() == graphicId) {
+                result.add(p);
+            }
+        }
+        return result;
     }
 
     /**
@@ -470,7 +650,12 @@ public class WorldState {
      * @return true if projectiles are incoming
      */
     public boolean hasIncomingProjectiles() {
-        return projectiles.stream().anyMatch(ProjectileSnapshot::isTargetingPlayer);
+        for (ProjectileSnapshot p : projectiles) {
+            if (p.isTargetingPlayer()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // ========================================================================
@@ -484,9 +669,16 @@ public class WorldState {
      * @return list of graphics objects at that position
      */
     public List<GraphicsObjectSnapshot> getGraphicsObjectsAt(WorldPoint position) {
-        return graphicsObjects.stream()
-                .filter(go -> position.equals(go.getWorldPosition()))
-                .collect(Collectors.toList());
+        if (graphicsObjects.isEmpty() || position == null) {
+            return Collections.emptyList();
+        }
+        List<GraphicsObjectSnapshot> result = new ArrayList<>(graphicsObjects.size());
+        for (GraphicsObjectSnapshot go : graphicsObjects) {
+            if (position.equals(go.getWorldPosition())) {
+                result.add(go);
+            }
+        }
+        return result;
     }
 
     /**
@@ -496,9 +688,16 @@ public class WorldState {
      * @return list of matching graphics objects
      */
     public List<GraphicsObjectSnapshot> getGraphicsObjectsById(int graphicId) {
-        return graphicsObjects.stream()
-                .filter(go -> go.getId() == graphicId)
-                .collect(Collectors.toList());
+        if (graphicsObjects.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<GraphicsObjectSnapshot> result = new ArrayList<>(graphicsObjects.size());
+        for (GraphicsObjectSnapshot go : graphicsObjects) {
+            if (go.getId() == graphicId) {
+                result.add(go);
+            }
+        }
+        return result;
     }
 
     // ========================================================================
@@ -571,4 +770,3 @@ public class WorldState {
         );
     }
 }
-

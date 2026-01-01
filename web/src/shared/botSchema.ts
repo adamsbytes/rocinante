@@ -53,77 +53,64 @@ export const proxySchema = z.object({
   pass: optionalTrimmedString,
 });
 
-export const botFormSchema = z
+// Shared schema parts
+const usernameSchema = z.string().trim().email({ message: 'Valid Jagex account email is required' });
+const characterNameSchema = z
+  .string()
+  .trim()
+  .min(1, { message: 'Character name is required' })
+  .max(12, { message: 'Character name must be 12 characters or fewer' })
+  .regex(/^[a-zA-Z0-9 -]+$/, { message: 'Character name can only contain letters, numbers, spaces, and hyphens' });
+const lampSkillSchema = z.enum(lampSkillOptions, { message: 'Lamp skill is required' });
+const totpSecretSchema = z
+  .string()
+  .trim()
+  .min(1, { message: '2FA TOTP secret is required' })
+  .regex(/^[A-Z2-7]+=*$/i, { message: 'TOTP secret must be valid Base32 format (A-Z, 2-7)' });
+const preferredWorldSchema = z.coerce.number().int({ message: 'Preferred world must be a whole number' }).min(301, { message: 'Preferred world must be between 301 and 638' }).max(638, { message: 'Preferred world must be between 301 and 638' }).optional();
+const proxyFieldSchema = z.union([proxySchema, z.null()]).transform((value) => value ?? null);
+const resourcesSchema = z.object({ cpuLimit: z.enum(cpuOptions), memoryLimit: z.enum(memoryOptions) });
+
+const ironmanSchema = z
   .object({
-    username: z
-      .string()
-      .trim()
-      .email({ message: 'Valid Jagex account email is required' }),
-    password: z
-      .string()
-      .min(1, { message: 'Password is required' }),
-    totpSecret: z
-      .string()
-      .trim()
-      .min(1, { message: '2FA TOTP secret is required' }),
-    characterName: z
-      .string()
-      .trim()
-      .min(1, { message: 'Character name is required' })
-      .max(12, { message: 'Character name must be 12 characters or fewer' }),
-    lampSkill: z.enum(lampSkillOptions, { message: 'Lamp skill is required' }),
-    preferredWorld: z
-      .coerce.number()
-      .int({ message: 'Preferred world must be a whole number' })
-      .min(301, { message: 'Preferred world must be between 301 and 638' })
-      .max(638, { message: 'Preferred world must be between 301 and 638' })
-      .optional(),
-    proxy: z.union([proxySchema, z.null()]).transform((value) => value ?? null),
-    ironman: z
-      .object({
-        enabled: z.boolean(),
-        type: ironmanTypeSchema,
-        hcimSafetyLevel: hcimSafetySchema,
-      })
-      .superRefine((value, ctx) => {
-        if (value.enabled && !value.type) {
-          ctx.addIssue({
-            code: 'custom',
-            path: ['type'],
-            message: 'Select an Ironman type when enabled',
-          });
-        }
-        if (!value.enabled && (value.type || value.hcimSafetyLevel)) {
-          ctx.addIssue({
-            code: 'custom',
-            path: ['type'],
-            message: 'Disable Ironman values when not enabled',
-          });
-        }
-        if (value.type !== 'HARDCORE_IRONMAN' && value.hcimSafetyLevel) {
-          ctx.addIssue({
-            code: 'custom',
-            path: ['hcimSafetyLevel'],
-            message: 'HCIM safety level only applies to Hardcore Ironman',
-          });
-        }
-        if (value.type === 'HARDCORE_IRONMAN' && !value.hcimSafetyLevel) {
-          ctx.addIssue({
-            code: 'custom',
-            path: ['hcimSafetyLevel'],
-            message: 'Select a safety level for Hardcore Ironman',
-          });
-        }
-      })
-      .transform((value) => ({
-        enabled: value.enabled,
-        type: value.enabled ? value.type : null,
-        hcimSafetyLevel: value.type === 'HARDCORE_IRONMAN' ? value.hcimSafetyLevel : null,
-      })),
-    resources: z.object({
-      cpuLimit: z.enum(cpuOptions),
-      memoryLimit: z.enum(memoryOptions),
-    }),
+    enabled: z.boolean(),
+    type: ironmanTypeSchema,
+    hcimSafetyLevel: hcimSafetySchema,
+  })
+  .superRefine((value, ctx) => {
+    if (value.enabled && !value.type) {
+      ctx.addIssue({ code: 'custom', path: ['type'], message: 'Select an Ironman type when enabled' });
+    }
+    if (!value.enabled && (value.type || value.hcimSafetyLevel)) {
+      ctx.addIssue({ code: 'custom', path: ['type'], message: 'Disable Ironman values when not enabled' });
+    }
+    if (value.type !== 'HARDCORE_IRONMAN' && value.hcimSafetyLevel) {
+      ctx.addIssue({ code: 'custom', path: ['hcimSafetyLevel'], message: 'HCIM safety level only applies to Hardcore Ironman' });
+    }
+    if (value.type === 'HARDCORE_IRONMAN' && !value.hcimSafetyLevel) {
+      ctx.addIssue({ code: 'custom', path: ['hcimSafetyLevel'], message: 'Select a safety level for Hardcore Ironman' });
+    }
+  })
+  .transform((value) => ({
+    enabled: value.enabled,
+    type: value.enabled ? value.type : null,
+    hcimSafetyLevel: value.type === 'HARDCORE_IRONMAN' ? value.hcimSafetyLevel : null,
+  }));
+
+/**
+ * Schema for creating a new bot - password and TOTP required.
+ */
+export const botCreateSchema = z
+  .object({
+    username: usernameSchema,
+    password: z.string().min(1, { message: 'Password is required' }),
+    totpSecret: totpSecretSchema,
+    characterName: characterNameSchema,
+    lampSkill: lampSkillSchema,
+    preferredWorld: preferredWorldSchema,
+    proxy: proxyFieldSchema,
+    ironman: ironmanSchema,
+    resources: resourcesSchema,
   })
   .transform((value) => ({
     ...value,
@@ -134,6 +121,45 @@ export const botFormSchema = z
     },
   }));
 
-export type BotFormInput = z.input<typeof botFormSchema>;
-export type BotFormData = z.infer<typeof botFormSchema>;
+/**
+ * Schema for updating an existing bot - password and TOTP are optional.
+ * Empty string = no change (will be undefined after transform).
+ */
+export const botUpdateSchema = z
+  .object({
+    username: usernameSchema,
+    // Empty string transforms to undefined = no change
+    password: z.string().optional().transform((v) => (v && v.trim().length > 0 ? v : undefined)),
+    totpSecret: z
+      .string()
+      .optional()
+      .refine((v) => {
+        // Allow empty (means no change) or valid Base32 format
+        if (!v || v.trim().length === 0) return true;
+        return /^[A-Z2-7]+=*$/i.test(v.trim());
+      }, { message: 'TOTP secret must be valid Base32 format (A-Z, 2-7)' })
+      .transform((v) => (v && v.trim().length > 0 ? v.trim() : undefined)),
+    characterName: characterNameSchema,
+    lampSkill: lampSkillSchema,
+    preferredWorld: preferredWorldSchema,
+    proxy: proxyFieldSchema,
+    ironman: ironmanSchema,
+    resources: resourcesSchema,
+  })
+  .transform((value) => ({
+    ...value,
+    preferredWorld: value.preferredWorld ?? undefined,
+    resources: {
+      cpuLimit: value.resources.cpuLimit || '1.0',
+      memoryLimit: value.resources.memoryLimit || '2G',
+    },
+  }));
+
+/** @deprecated Use botCreateSchema for new bots, botUpdateSchema for edits */
+export const botFormSchema = botCreateSchema;
+
+export type BotFormInput = z.input<typeof botCreateSchema>;
+export type BotFormData = z.infer<typeof botCreateSchema>;
+export type BotUpdateInput = z.input<typeof botUpdateSchema>;
+export type BotUpdateData = z.infer<typeof botUpdateSchema>;
 

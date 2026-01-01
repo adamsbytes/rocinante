@@ -395,11 +395,12 @@ public class BurnLocationFinderTest {
     public void testBurnLocation_CorrectValues() {
         WorldPoint position = new WorldPoint(100, 100, 0);
         BurnLocationFinder.BurnLocation location =
-                new BurnLocationFinder.BurnLocation(position, 5, true);
+                new BurnLocationFinder.BurnLocation(position, 5, true, 10);
 
         assertEquals(position, location.getPosition());
         assertEquals(5, location.getPathCost());
         assertTrue(location.isOnSameLine());
+        assertEquals(10, location.getLineLength());
     }
 
     // ========================================================================

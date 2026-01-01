@@ -467,7 +467,6 @@ public class TutorialIsland implements Quest {
             // Return a no-op task that completes immediately
             return new com.rocinante.tasks.AbstractTask() {
                 {
-                    this.timeout = java.time.Duration.ofSeconds(1);
                 }
                 
                 @Override

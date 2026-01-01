@@ -152,6 +152,13 @@ public class GameStateService {
      */
     private final com.rocinante.navigation.PathCostCache pathCostCache;
 
+    /**
+     * Performance monitor for tracking tick timing and cache effectiveness.
+     * Set via setter injection to avoid circular dependency.
+     */
+    @Nullable
+    private PerformanceMonitor performanceMonitor;
+
     // SlayerPluginService is set via setter - it's a RuneLite plugin service that
     // may not be available if the Slayer plugin isn't loaded
     @Nullable
@@ -262,6 +269,12 @@ public class GameStateService {
      * Used by CombatTask to detect unreachable targets and return to home position.
      */
     private volatile int lastCantReachTick = -1;
+    
+    /**
+     * Tick when last DIALOG or MESBOX chat message was received.
+     * This is the most reliable way to detect dialogue - widget visibility is unreliable.
+     */
+    private volatile int lastDialogueTick = -1;
     
     /**
      * Interface mode enum - determines which widget IDs to use for tabs, etc.
@@ -450,6 +463,16 @@ public class GameStateService {
         this.slayerPluginService = slayerPluginService;
     }
 
+    /**
+     * Set the PerformanceMonitor for tick timing tracking.
+     * Uses setter injection to avoid circular dependency.
+     *
+     * @param performanceMonitor the performance monitor
+     */
+    public void setPerformanceMonitor(PerformanceMonitor performanceMonitor) {
+        this.performanceMonitor = performanceMonitor;
+    }
+
     // ========================================================================
     // Event Handlers
     // ========================================================================
@@ -458,8 +481,10 @@ public class GameStateService {
      * Main tick handler - runs AFTER other plugins have processed the tick.
      * Updates tick-cached state and checks dirty flags for event-invalidated caches.
      */
-    @Subscribe(priority = -10)
+    @Subscribe(priority = Integer.MAX_VALUE)
     public void onGameTick(GameTick event) {
+        performanceMonitor.recordTickStart();
+        
         if (!loggedIn) {
             return;
         }
@@ -586,6 +611,12 @@ public class GameStateService {
         
         // Start XP/stats tracking session
         xpTracker.startSession();
+        
+        // Verify XP tracking started - if not, game data wasn't loaded yet
+        if (!xpTracker.isTracking()) {
+            log.debug("XP tracking not started yet - will retry on next tick");
+            return; // Don't mark as initialized, will retry
+        }
         
         behaviorsInitialized = true;
         log.info("Behavioral session initialized for account type: {}", accountType);
@@ -748,12 +779,22 @@ public class GameStateService {
     }
 
     /**
-     * Handle chat messages - track combat-relevant messages.
+     * Handle chat messages - track combat-relevant and dialogue messages.
      */
     @Subscribe
     public void onChatMessage(ChatMessage event) {
-        // Check both ENGINE and GAMEMESSAGE - "I can't reach that" comes as ENGINE
         ChatMessageType type = event.getType();
+        
+        // Track dialogue messages - DIALOG (NPC chat) and MESBOX (info boxes)
+        // This is the most reliable way to detect dialogue, as widget visibility is unreliable
+        if (type == ChatMessageType.DIALOG || type == ChatMessageType.MESBOX) {
+            lastDialogueTick = currentTick;
+            log.debug("Dialogue message at tick {}: {} - {}", currentTick, type, 
+                    event.getMessage().length() > 50 ? event.getMessage().substring(0, 50) + "..." : event.getMessage());
+            return;
+        }
+        
+        // Check both ENGINE and GAMEMESSAGE - "I can't reach that" comes as ENGINE
         if (type != ChatMessageType.GAMEMESSAGE && type != ChatMessageType.ENGINE) {
             return;
         }
@@ -783,6 +824,62 @@ public class GameStateService {
      */
     public void clearCantReachFlag() {
         lastCantReachTick = -1;
+    }
+    
+    /**
+     * Check if a dialogue message (DIALOG or MESBOX) was received recently.
+     * This is the most reliable way to detect if dialogue is active - widget visibility is unreliable.
+     *
+     * @param withinTicks how many ticks ago to check (e.g., 5 = last 5 ticks)
+     * @return true if a dialogue message was received within the specified tick window
+     */
+    public boolean wasDialogueRecent(int withinTicks) {
+        return lastDialogueTick >= 0 && (currentTick - lastDialogueTick) <= withinTicks;
+    }
+    
+    /**
+     * Get the tick when the last dialogue message was received.
+     * Returns -1 if no dialogue has been received this session.
+     */
+    public int getLastDialogueTick() {
+        return lastDialogueTick;
+    }
+    
+    /**
+     * Clear the dialogue tracking. Called when dialogue task completes.
+     */
+    public void clearDialogueTracking() {
+        lastDialogueTick = -1;
+    }
+    
+    // Cutscene varbit/varp IDs from gameval
+    private static final int VARBIT_CUTSCENE_STATUS = 542;
+    private static final int VARP_CUTSCENE_VAR = 466;
+    
+    /**
+     * Check if the player is currently in a cutscene.
+     * Uses CUTSCENE_STATUS varbit and CUTSCENE_VAR varp.
+     * During cutscenes, dialogue may have longer gaps between screens.
+     */
+    public boolean isInCutscene() {
+        try {
+            // Check varbit 542 (CUTSCENE_STATUS) - non-zero usually means cutscene
+            int cutsceneStatus = client.getVarbitValue(VARBIT_CUTSCENE_STATUS);
+            if (cutsceneStatus != 0) {
+                return true;
+            }
+            
+            // Check varp 466 (CUTSCENE_VAR) - non-zero usually means cutscene
+            int cutsceneVar = client.getVarpValue(VARP_CUTSCENE_VAR);
+            if (cutsceneVar != 0) {
+                return true;
+            }
+            
+            return false;
+        } catch (Exception e) {
+            // If we can't check, assume not in cutscene
+            return false;
+        }
     }
 
     // ========================================================================

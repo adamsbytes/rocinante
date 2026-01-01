@@ -1,7 +1,5 @@
 package com.rocinante.tasks;
 
-import java.time.Duration;
-
 /**
  * Base interface for all executable tasks in the automation framework.
  *
@@ -17,19 +15,20 @@ import java.time.Duration;
  *   <li>State transitions are managed by the task itself</li>
  * </ul>
  *
- * <p>Timeout Behavior (per Section 5.1):
+ * <p>Timeout Behavior:
  * <ul>
- *   <li>Default timeout: 60 seconds for all task types</li>
+ *   <li>Progress-based: tasks timeout after 100 ticks (~60s) without progress</li>
+ *   <li>Progress is auto-detected: inventory changes, position changes, animation starts</li>
+ *   <li>Tasks can also manually call recordProgress() for custom progress events</li>
  *   <li>On timeout: task transitions to FAILED state</li>
- *   <li>Override for special cases (long walks, combat)</li>
  * </ul>
  */
 public interface Task {
 
     /**
-     * Default task timeout in seconds.
+     * Default inactivity timeout in ticks (100 ticks ≈ 60 seconds at 0.6s/tick).
      */
-    Duration DEFAULT_TIMEOUT = Duration.ofSeconds(60);
+    int DEFAULT_INACTIVITY_TIMEOUT_TICKS = 100;
 
     /**
      * Get the current execution state of this task.
@@ -88,13 +87,14 @@ public interface Task {
     String getDescription();
 
     /**
-     * Get the maximum execution time before the task is considered stuck.
-     * Default is 60 seconds per REQUIREMENTS.md Section 5.1.
+     * Get the inactivity timeout in ticks.
+     * Task times out after this many ticks without progress.
+     * Default is 100 ticks (≈60 seconds).
      *
-     * @return the timeout duration
+     * @return the inactivity timeout in ticks
      */
-    default Duration getTimeout() {
-        return DEFAULT_TIMEOUT;
+    default int getInactivityTimeoutTicks() {
+        return DEFAULT_INACTIVITY_TIMEOUT_TICKS;
     }
 
     /**

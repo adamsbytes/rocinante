@@ -1,0 +1,261 @@
+package com.rocinante.behavior.emergencies;
+
+import com.rocinante.behavior.BotActivityTracker;
+import com.rocinante.behavior.EmergencyCondition;
+import com.rocinante.state.AggressorInfo;
+import com.rocinante.state.CombatState;
+import com.rocinante.state.IronmanState;
+import com.rocinante.tasks.Task;
+import com.rocinante.tasks.TaskContext;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
+
+import java.util.List;
+
+/**
+ * Emergency condition for being attacked while skilling or idle.
+ * 
+ * Triggers when:
+ * - Player is being attacked by aggressive NPCs
+ * - Player is NOT in an intentional combat task
+ * 
+ * Response depends on:
+ * - Account type (HCIM always flees)
+ * - HCIM safety level (CAUTIOUS/PARANOID flee earlier)
+ * - Current HP vs estimated max hit
+ * - Combat level comparison
+ */
+@Slf4j
+public class UnderAttackEmergency implements EmergencyCondition {
+
+    /**
+     * Base minimum HP percentage to fight (normal accounts).
+     */
+    private static final double BASE_MIN_HEALTH_TO_FIGHT = 0.40; // 40% HP
+
+    /**
+     * Combat level difference threshold to consider fighting.
+     */
+    private static final int MAX_LEVEL_DIFFERENCE = 10;
+
+    private final BotActivityTracker activityTracker;
+    private final ResponseTaskFactory responseTaskFactory;
+    private final Config config;
+
+    @Builder
+    @Getter
+    public static class Config {
+        /**
+         * Whether to fight back when attacked (default true).
+         */
+        @Builder.Default
+        private boolean fightBack = true;
+
+        /**
+         * Whether to flee if can't/won't fight (default true).
+         */
+        @Builder.Default
+        private boolean fleeIfCantFight = true;
+
+        /**
+         * Whether to return to previous activity after dealing with attacker.
+         */
+        @Builder.Default
+        private boolean returnAfterCombat = true;
+
+        /**
+         * Maximum NPC combat level to fight (0 = no limit).
+         */
+        @Builder.Default
+        private int maxNpcLevelToFight = 0;
+
+        /**
+         * Force flee mode (never fight, always run).
+         */
+        @Builder.Default
+        private boolean alwaysFlee = false;
+
+        /**
+         * Base safety buffer in HP points above estimated max hit.
+         * HCIM safety level multiplies this.
+         */
+        @Builder.Default
+        private int baseMaxHitSafetyBuffer = 3;
+    }
+
+    public UnderAttackEmergency(BotActivityTracker activityTracker, ResponseTaskFactory responseTaskFactory) {
+        this(activityTracker, responseTaskFactory, Config.builder().build());
+    }
+
+    public UnderAttackEmergency(BotActivityTracker activityTracker, ResponseTaskFactory responseTaskFactory, Config config) {
+        this.activityTracker = activityTracker;
+        this.responseTaskFactory = responseTaskFactory;
+        this.config = config;
+    }
+
+    @Override
+    public boolean isTriggered(TaskContext ctx) {
+        CombatState combatState = ctx.getCombatState();
+
+        // Not triggered if not being attacked
+        if (!combatState.isBeingAttacked()) {
+            return false;
+        }
+
+        // Don't trigger if we're already in intentional combat (CombatTask handles it)
+        if (activityTracker.getCurrentActivity().isCombat()) {
+            return false;
+        }
+
+        List<AggressorInfo> aggressors = combatState.getAggressiveNpcs();
+        if (aggressors.isEmpty()) {
+            return false;
+        }
+
+        AggressorInfo attacker = aggressors.get(0);
+        log.warn("Under attack by {} (level {}) while skilling!",
+                attacker.getNpcName(), attacker.getCombatLevel());
+
+        return true;
+    }
+
+    @Override
+    public Task createResponseTask(TaskContext ctx) {
+        CombatState combatState = ctx.getCombatState();
+        var playerState = ctx.getPlayerState();
+
+        List<AggressorInfo> aggressors = combatState.getAggressiveNpcs();
+        if (aggressors.isEmpty()) {
+            return null;
+        }
+
+        AggressorInfo attacker = aggressors.get(0);
+        ResponseType response = determineResponse(ctx, attacker);
+
+        log.info("Under attack response: {} (attacker: {} lvl {}, player HP: {}/{})",
+                response, attacker.getNpcName(), attacker.getCombatLevel(),
+                playerState.getCurrentHitpoints(), playerState.getMaxHitpoints());
+
+        return responseTaskFactory.create(ctx, attacker, response);
+    }
+
+    /**
+     * Determine whether to fight or flee based on situation.
+     */
+    private ResponseType determineResponse(TaskContext ctx, AggressorInfo attacker) {
+        var playerState = ctx.getPlayerState();
+        IronmanState ironmanState = ctx.getIronmanState();
+        
+        boolean isHcim = ironmanState.isHardcore();
+        double safetyMultiplier = ironmanState.getFleeThresholdMultiplier();
+
+        // Force flee if configured
+        if (config.isAlwaysFlee()) {
+            return ResponseType.FLEE;
+        }
+
+        int currentHp = playerState.getCurrentHitpoints();
+        int maxHp = playerState.getMaxHitpoints();
+        int npcLevel = attacker.getCombatLevel();
+
+        // Use actual expected max hit if known, otherwise estimate from combat level
+        int estimatedMaxHit = attacker.getExpectedMaxHit() > 0 
+                ? attacker.getExpectedMaxHit() 
+                : AggressorInfo.estimateMaxHit(npcLevel);
+
+        // Calculate safety buffer - HCIM safety level multiplies this
+        int safetyBuffer = (int) (config.getBaseMaxHitSafetyBuffer() * safetyMultiplier);
+        
+        // CRITICAL: Check if we're in death range (HP <= max hit + buffer)
+        int deathThreshold = estimatedMaxHit + safetyBuffer;
+        if (currentHp <= deathThreshold) {
+            log.warn("In death range! HP={}, estimated max hit={}, buffer={}, threshold={} - FLEEING",
+                    currentHp, estimatedMaxHit, safetyBuffer, deathThreshold);
+            return ResponseType.FLEE;
+        }
+
+        // Calculate minimum health threshold - HCIM safety level affects this too
+        // Base 40%, multiplied by safety level (CAUTIOUS=1.3 -> 52%, PARANOID=1.6 -> 64%)
+        double minHealthPercent = Math.min(0.80, BASE_MIN_HEALTH_TO_FIGHT * safetyMultiplier);
+        double healthPercent = (double) currentHp / maxHp;
+
+        if (healthPercent < minHealthPercent) {
+            log.debug("Health too low to fight ({}% < {}%), fleeing",
+                    String.format("%.0f", healthPercent * 100),
+                    String.format("%.0f", minHealthPercent * 100));
+            return ResponseType.FLEE;
+        }
+
+        // HCIM: always flee from unexpected combat (regardless of health)
+        if (isHcim) {
+            log.debug("HCIM mode (safety={}) - fleeing from unexpected combat (attacker: {} lvl {})",
+                    ironmanState.getHcimSafetyLevel(), attacker.getNpcName(), npcLevel);
+            return ResponseType.FLEE;
+        }
+
+        // Check if fight back is enabled
+        if (!config.isFightBack()) {
+            return config.isFleeIfCantFight() ? ResponseType.FLEE : ResponseType.IGNORE;
+        }
+
+        // Check level difference
+        int playerCombatLevel = ctx.getClient().getLocalPlayer().getCombatLevel();
+        int levelDiff = npcLevel - playerCombatLevel;
+
+        if (levelDiff > MAX_LEVEL_DIFFERENCE) {
+            log.debug("NPC level {} too high (player: {}, diff: {}), fleeing",
+                    npcLevel, playerCombatLevel, levelDiff);
+            return config.isFleeIfCantFight() ? ResponseType.FLEE : ResponseType.IGNORE;
+        }
+
+        // Check max level config
+        if (config.getMaxNpcLevelToFight() > 0 && npcLevel > config.getMaxNpcLevelToFight()) {
+            log.debug("NPC level {} exceeds max fight level {}, fleeing",
+                    npcLevel, config.getMaxNpcLevelToFight());
+            return config.isFleeIfCantFight() ? ResponseType.FLEE : ResponseType.IGNORE;
+        }
+
+        // Fight back!
+        log.debug("Deciding to fight {} (lvl {}, max hit {}, player HP {})",
+                attacker.getNpcName(), npcLevel, estimatedMaxHit, currentHp);
+        return ResponseType.FIGHT;
+    }
+
+    @Override
+    public String getDescription() {
+        return "Player under attack while skilling";
+    }
+
+    @Override
+    public String getId() {
+        return "UNDER_ATTACK_EMERGENCY";
+    }
+
+    @Override
+    public long getCooldownMs() {
+        return 10000; // 10 second cooldown
+    }
+
+    @Override
+    public int getSeverity() {
+        return 70; // High but below low-health (90)
+    }
+
+    /**
+     * Type of response to an attack.
+     */
+    public enum ResponseType {
+        FIGHT,
+        FLEE,
+        IGNORE
+    }
+
+    /**
+     * Factory interface for creating response tasks.
+     */
+    @FunctionalInterface
+    public interface ResponseTaskFactory {
+        Task create(TaskContext ctx, AggressorInfo attacker, ResponseType response);
+    }
+}

@@ -1,6 +1,5 @@
 import Docker from 'dockerode';
-import { join } from 'path';
-import { mkdirSync, existsSync, writeFileSync } from 'fs';
+import { writeFileSync } from 'fs';
 import type { BotConfig, BotStatus } from '../shared/types';
 import {
   getStatusDir,

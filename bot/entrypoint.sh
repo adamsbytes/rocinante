@@ -189,7 +189,8 @@ pulseaudio --start --exit-idle-time=-1 2>/dev/null || true
 VNC_SOCKET_PATH="$HOME/.local/share/bolt-launcher/.runelite/rocinante/vnc.sock"
 echo "Starting VNC server on Unix socket: $VNC_SOCKET_PATH"
 rm -f "$VNC_SOCKET_PATH" 2>/dev/null || true
-x11vnc -display :${DISPLAY_NUM} -bg -nopw -unixsock "$VNC_SOCKET_PATH" -xkb -forever -shared
+
+x11vnc -display :${DISPLAY_NUM} -bg -nopw -unixsock "$VNC_SOCKET_PATH" -xkb -forever -shared -nocursorshape
 sleep 1
 
 # Verify x11vnc started
@@ -467,18 +468,21 @@ EOF
                 sed -i '/^defaultworld\./d' "$profile_file" 2>/dev/null || true
                 sed -i '/^runelite\.questhelperplugin=/d' "$profile_file" 2>/dev/null || true
                 sed -i '/^runelite\.shortestpathplugin=/d' "$profile_file" 2>/dev/null || true
+                sed -i '/^runelite\.gpuplugin=/d' "$profile_file" 2>/dev/null || true
+                sed -i '/^runelite\.hdplugin=/d' "$profile_file" 2>/dev/null || true
                 sed -i '/^runelite\.externalPlugins=/d' "$profile_file" 2>/dev/null || true
                 sed -i '/^questhelpervars\./d' "$profile_file" 2>/dev/null || true
-                # Add our settings - enable Quest Helper plugin
+                # Add our settings
                 # Note: RuneLite uses profile configs, NOT settings.properties after first launch
-                # externalPlugins tells RuneLite to install from Plugin Hub
-                # questhelperplugin=true enables the plugin once installed
+                # CRITICAL: GPU plugins must be disabled for screenshot plugin to work in Xvfb
                 cat >> "$profile_file" << EOF
 defaultworld.defaultWorld=$DEFAULT_WORLD
 defaultworld.useLastWorld=false
 runelite.externalPlugins=quest-helper,shortest-path
 runelite.questhelperplugin=true
 runelite.shortestpathplugin=true
+runelite.gpuplugin=false
+runelite.hdplugin=false
 questhelpervars.selected-assist-level=true
 EOF
             fi
@@ -494,6 +498,8 @@ defaultworld.useLastWorld=false
 runelite.externalPlugins=quest-helper,shortest-path
 runelite.questhelperplugin=true
 runelite.shortestpathplugin=true
+runelite.gpuplugin=false
+runelite.hdplugin=false
 questhelpervars.selected-assist-level=true
 EOF
     fi

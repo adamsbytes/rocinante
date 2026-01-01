@@ -127,50 +127,28 @@ export async function getTrainingMethodsBySkill(): Promise<Record<SkillName, Tra
 // Navigation Locations
 // ============================================================================
 
-interface RawLocation {
-  id: string;
-  name: string;
-  x: number;
-  y: number;
-  plane?: number;
-  type: string;
-  tags?: string[];
-  metadata?: Record<string, unknown>;
-}
-
-interface WebJsonFile {
+interface LocationsJsonFile {
   version: string;
-  nodes: RawLocation[];
-}
-
-interface RegionJsonFile {
-  region?: {
+  generated: string;
+  source: string;
+  locations: Array<{
     id: string;
     name: string;
-  };
-  nodes: RawLocation[];
+    x: number;
+    y: number;
+    plane: number;
+    type: string;
+    tags: string[];
+    metadata?: Record<string, string>;
+  }>;
 }
-
-// Region files to load (must match bot's NavigationWebLoader)
-const REGION_FILES = [
-  'tutorial_island.json',
-  'misthalin.json',
-  'asgarnia.json',
-  'kandarin.json',
-  'morytania.json',
-  'kourend.json',
-  'varlamore.json',
-  'fremennik.json',
-  'karamja.json',
-  'kharidian.json',
-];
 
 let cachedLocations: LocationInfo[] | null = null;
 let locationsCacheTime = 0;
 
 /**
- * Load and parse navigation locations from web.json AND all region files.
- * Mirrors the bot's NavigationWebLoader.loadComplete() behavior.
+ * Load and parse navigation locations from locations.json.
+ * Data extracted from shortest-path plugin + curated city centers.
  */
 export async function getLocations(): Promise<LocationInfo[]> {
   const now = Date.now();
@@ -180,52 +158,25 @@ export async function getLocations(): Promise<LocationInfo[]> {
     return cachedLocations;
   }
 
-  const allLocations: LocationInfo[] = [];
-
   try {
-    // Load base web.json
-    const baseFile = Bun.file(`${BOT_DATA_PATH}/web.json`);
-    if (await baseFile.exists()) {
-      const data: WebJsonFile = await baseFile.json();
-      for (const n of data.nodes) {
-        allLocations.push({
-          id: n.id,
-          name: n.name,
-          x: n.x,
-          y: n.y,
-          plane: n.plane ?? 0,
-          type: n.type as LocationInfo['type'],
-          tags: n.tags ?? [],
-        });
-      }
+    const file = Bun.file(`${BOT_DATA_PATH}/locations.json`);
+    if (await file.exists()) {
+      const data: LocationsJsonFile = await file.json();
+      cachedLocations = data.locations.map(loc => ({
+        id: loc.id,
+        name: loc.name,
+        x: loc.x,
+        y: loc.y,
+        plane: loc.plane,
+        type: loc.type as LocationInfo['type'],
+        tags: loc.tags,
+      }));
+      locationsCacheTime = now;
+      return cachedLocations;
     }
-
-    // Load all region files
-    for (const regionFile of REGION_FILES) {
-      try {
-        const file = Bun.file(`${BOT_DATA_PATH}/regions/${regionFile}`);
-        if (await file.exists()) {
-          const data: RegionJsonFile = await file.json();
-          for (const n of data.nodes) {
-            allLocations.push({
-      id: n.id,
-      name: n.name,
-      x: n.x,
-      y: n.y,
-      plane: n.plane ?? 0,
-      type: n.type as LocationInfo['type'],
-      tags: n.tags ?? [],
-            });
-          }
-        }
-      } catch (err) {
-        console.warn(`Failed to load region file ${regionFile}:`, err);
-      }
-    }
-
-    cachedLocations = allLocations;
-    locationsCacheTime = now;
-    return cachedLocations;
+    
+    console.error('locations.json not found');
+    return [];
   } catch (error) {
     console.error('Failed to load locations:', error);
     return cachedLocations || [];

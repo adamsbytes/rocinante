@@ -98,7 +98,6 @@ public class UnequipItemTask extends AbstractTask {
     public UnequipItemTask(int slot, int expectedItemId) {
         this.slot = slot;
         this.expectedItemId = expectedItemId;
-        this.timeout = Duration.ofSeconds(5);
     }
 
     /**

@@ -272,7 +272,6 @@ public class WidgetInteractTask extends AbstractTask {
      */
     public WidgetInteractTask(int widgetGroupId) {
         this.widgetGroupId = widgetGroupId;
-        this.timeout = Duration.ofSeconds(30);
     }
 
     /**
@@ -284,7 +283,6 @@ public class WidgetInteractTask extends AbstractTask {
     public WidgetInteractTask(int widgetGroupId, int widgetChildId) {
         this.widgetGroupId = widgetGroupId;
         this.widgetChildId = widgetChildId;
-        this.timeout = Duration.ofSeconds(30);
     }
 
     // ========================================================================

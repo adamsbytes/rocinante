@@ -22,14 +22,10 @@ dependencies {
 
     // Quest Helper - built from source in Docker build stage
     // See build.Dockerfile for how this JAR is produced
-    if (file('/deps/quest-helper.jar').exists()) {
-        compileOnly files('/deps/quest-helper.jar')
-    }
-
-    // Shortest Path - built from source in Docker build stage
-    if (file('/deps/shortest-path.jar').exists()) {
-        compileOnly files('/deps/shortest-path.jar')
-    }
+    compileOnly files('deps/quest-helper.jar')
+    compileOnly files('deps/shortest-path.jar')
+    testImplementation files('deps/quest-helper.jar')
+    testImplementation files('deps/shortest-path.jar')
 
     // Lombok for boilerplate reduction
     compileOnly 'org.projectlombok:lombok:1.18.34'

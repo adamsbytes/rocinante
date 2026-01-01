@@ -1,6 +1,6 @@
 import { Component, Show, For, createMemo, createSignal } from 'solid-js';
 import type { PlayerInfo, SkillData, SkillName, SessionInfo } from '../../shared/types';
-import { SKILLS, formatXp, formatXpShort, XP_TABLE, getLevel } from '../../shared/types';
+import { SKILLS, formatXp, formatXpShort } from '../../shared/types';
 import { SkillIcon } from './SkillIcon';
 
 interface AccountStatsHiscoresProps {

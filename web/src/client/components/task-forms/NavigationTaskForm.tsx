@@ -9,11 +9,9 @@ interface NavigationTaskFormProps {
 const LOCATION_TYPES = [
   { value: '', label: 'All Types' },
   { value: 'BANK', label: '🏦 Banks' },
-  { value: 'SHOP', label: '🏪 Shops' },
-  { value: 'TRAINING', label: '⚔️ Training Spots' },
-  { value: 'QUEST', label: '📜 Quest Locations' },
-  { value: 'TRANSPORT', label: '🚀 Transport' },
-  { value: 'GENERIC', label: '📍 Other' },
+  { value: 'CITY', label: '🏘️ Cities & Towns' },
+  { value: 'MINIGAME', label: '🎮 Minigames' },
+  { value: 'TRADING', label: '💰 Trading (GE)' },
 ] as const;
 
 /**

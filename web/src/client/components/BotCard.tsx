@@ -1,12 +1,12 @@
 import { type Component } from 'solid-js';
 import { useNavigate } from '@tanstack/solid-router';
-import type { BotWithStatus } from '../../shared/types';
+import type { BotWithStatusDTO } from '../../shared/types';
 import { StatusBadge } from './StatusBadge';
 import { useStartBotMutation, useStopBotMutation } from '../lib/api';
 import { openLogs } from '../lib/logsStore';
 
 interface BotCardProps {
-  bot: BotWithStatus;
+  bot: BotWithStatusDTO;
 }
 
 export const BotCard: Component<BotCardProps> = (props) => {

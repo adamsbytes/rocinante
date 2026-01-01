@@ -69,6 +69,10 @@ public abstract class AbstractInteractionTask extends AbstractTask {
                 }
                 waitAttempts++;
             }
+            // Instrumentation: track if path wait loop actually blocks
+            if (waitAttempts > 0) {
+                log.debug("Path wait loop iterated {} times (~{}ms blocking)", waitAttempts, waitAttempts * 50);
+            }
             currentPath = navService.getCurrentPath();
         }
 

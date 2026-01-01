@@ -1,6 +1,7 @@
 import { existsSync } from 'fs';
 import { readdir, stat } from 'fs/promises';
 import { extname, join, normalize, sep } from 'path';
+import { DateTime } from 'luxon';
 import type { ScreenshotEntry } from '../shared/types';
 import { getScreenshotsDir } from './status';
 
@@ -9,26 +10,51 @@ type BunFile = ReturnType<typeof Bun.file>;
 interface ListOptions {
   category?: string | null;
   character?: string | null;
+  /** Bot's timezone (e.g., "America/New_York") - timestamps in filenames are in this zone */
+  timezone?: string;
 }
 
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
 
-function parseScreenshotFilename(filename: string): { title: string; capturedAt: number | null } {
+/**
+ * Format title from RuneLite's "Thing(Detail)" format to "Thing - Detail".
+ * Examples:
+ *   "Woodcutting(10)" -> "Woodcutting - 10"
+ *   "Quest(Dragon Slayer)" -> "Quest - Dragon Slayer"
+ *   "Pet(Heron)" -> "Pet - Heron"
+ */
+function formatTitle(rawTitle: string): string {
+  // Match pattern: "Name(Detail)" - capture name and detail
+  const match = rawTitle.match(/^(.+?)\((.+)\)$/);
+  if (match) {
+    return `${match[1].trim()} - ${match[2].trim()}`;
+  }
+  return rawTitle;
+}
+
+/**
+ * Parse screenshot filename to extract title and capture timestamp.
+ * The timestamp in the filename is in the bot's local timezone.
+ */
+function parseScreenshotFilename(filename: string, timezone: string): { title: string; capturedAt: number | null } {
   const base = filename.replace(/\.[^/.]+$/, ''); // strip extension
   const match = base.match(/^(?<title>.+?)\s+(?<timestamp>\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})$/);
 
   if (!match || !match.groups) {
-    return { title: base, capturedAt: null };
+    return { title: formatTitle(base), capturedAt: null };
   }
 
   const { title, timestamp } = match.groups;
+  // Parse timestamp in the bot's timezone, not UTC
+  // Filename format: 2024-12-31_14-30-00 -> 2024-12-31T14:30:00
   const [datePart, timePart] = timestamp.split('_');
-  const iso = `${datePart}T${timePart.replace(/-/g, ':')}Z`;
-  const parsed = Date.parse(iso);
-
+  const localTimeStr = `${datePart}T${timePart.replace(/-/g, ':')}`;
+  
+  const dt = DateTime.fromISO(localTimeStr, { zone: timezone });
+  
   return {
-    title: title.trim(),
-    capturedAt: Number.isFinite(parsed) ? parsed : null,
+    title: formatTitle(title.trim()),
+    capturedAt: dt.isValid ? dt.toMillis() : null,
   };
 }
 
@@ -46,6 +72,8 @@ export async function listScreenshots(botId: string, options: ListOptions = {}):
 
   const filterCategory = options.category?.toLowerCase() ?? null;
   const filterCharacter = options.character?.toLowerCase() ?? null;
+  // Default to UTC if no timezone provided (shouldn't happen with proper bot config)
+  const timezone = options.timezone ?? 'UTC';
 
   const characterDirs = await readdir(baseDir, { withFileTypes: true });
 
@@ -72,7 +100,7 @@ export async function listScreenshots(botId: string, options: ListOptions = {}):
 
         const fullPath = join(categoryPath, fileEntry.name);
         const fileStat = await stat(fullPath);
-        const { title, capturedAt } = parseScreenshotFilename(fileEntry.name);
+        const { title, capturedAt } = parseScreenshotFilename(fileEntry.name, timezone);
         const capturedAtMs = capturedAt ?? fileStat.mtimeMs;
 
         results.push({

@@ -148,7 +148,6 @@ public class DropInventoryTask extends AbstractTask {
      */
     public DropInventoryTask(Collection<Integer> itemIds) {
         this.itemIdsToDrop = new HashSet<>(itemIds);
-        this.timeout = Duration.ofMinutes(2);
     }
 
     /**

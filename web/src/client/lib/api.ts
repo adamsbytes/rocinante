@@ -1,5 +1,5 @@
-import { createQuery, createMutation, useQueryClient } from '@tanstack/solid-query';
-import type { BotConfig, BotWithStatus, ApiResponse, ScreenshotEntry } from '../../shared/types';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/solid-query';
+import type { BotConfigDTO, BotWithStatusDTO, ApiResponse, ScreenshotEntry } from '../../shared/types';
 import type { BotFormData } from '../../shared/botSchema';
 
 const API_BASE = '/api';
@@ -28,22 +28,22 @@ export const botKeys = {
 
 // Queries
 export function useBotsQuery() {
-  return createQuery(() => ({
+  return useQuery(() => ({
     queryKey: botKeys.all,
-    queryFn: () => fetchApi<BotWithStatus[]>('/bots'),
+    queryFn: () => fetchApi<BotWithStatusDTO[]>('/bots'),
   }));
 }
 
 export function useBotQuery(id: () => string) {
-  return createQuery(() => ({
+  return useQuery(() => ({
     queryKey: botKeys.detail(id()),
-    queryFn: () => fetchApi<BotWithStatus>(`/bots/${id()}`),
+    queryFn: () => fetchApi<BotWithStatusDTO>(`/bots/${id()}`),
     enabled: !!id(),
   }));
 }
 
 export function useScreenshotsQuery(id: () => string, category: () => string | null) {
-  return createQuery(() => ({
+  return useQuery(() => ({
     queryKey: botKeys.screenshots(id(), category()),
     queryFn: () => {
       const search = new URLSearchParams();
@@ -65,9 +65,9 @@ export function useScreenshotsQuery(id: () => string, category: () => string | n
 // Mutations
 export function useCreateBotMutation() {
   const queryClient = useQueryClient();
-  return createMutation(() => ({
+  return useMutation(() => ({
     mutationFn: (bot: BotFormData) =>
-      fetchApi<BotConfig>('/bots', {
+      fetchApi<BotConfigDTO>('/bots', {
         method: 'POST',
         body: JSON.stringify(bot),
       }),
@@ -79,9 +79,9 @@ export function useCreateBotMutation() {
 
 export function useUpdateBotMutation() {
   const queryClient = useQueryClient();
-  return createMutation(() => ({
+  return useMutation(() => ({
     mutationFn: ({ id, ...bot }: BotFormData & { id: string }) =>
-      fetchApi<BotConfig>(`/bots/${id}`, {
+      fetchApi<BotConfigDTO>(`/bots/${id}`, {
         method: 'PUT',
         body: JSON.stringify(bot),
       }),
@@ -94,7 +94,7 @@ export function useUpdateBotMutation() {
 
 export function useDeleteBotMutation() {
   const queryClient = useQueryClient();
-  return createMutation(() => ({
+  return useMutation(() => ({
     mutationFn: (id: string) =>
       fetchApi<void>(`/bots/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
@@ -105,7 +105,7 @@ export function useDeleteBotMutation() {
 
 export function useStartBotMutation() {
   const queryClient = useQueryClient();
-  return createMutation(() => ({
+  return useMutation(() => ({
     mutationFn: (id: string) =>
       fetchApi<void>(`/bots/${id}/start`, { method: 'POST' }),
     onSuccess: (_, id) => {
@@ -117,7 +117,7 @@ export function useStartBotMutation() {
 
 export function useStopBotMutation() {
   const queryClient = useQueryClient();
-  return createMutation(() => ({
+  return useMutation(() => ({
     mutationFn: (id: string) =>
       fetchApi<void>(`/bots/${id}/stop`, { method: 'POST' }),
     onSuccess: (_, id) => {
@@ -129,7 +129,7 @@ export function useStopBotMutation() {
 
 export function useRestartBotMutation() {
   const queryClient = useQueryClient();
-  return createMutation(() => ({
+  return useMutation(() => ({
     mutationFn: (id: string) =>
       fetchApi<void>(`/bots/${id}/restart`, { method: 'POST' }),
     onSuccess: (_, id) => {

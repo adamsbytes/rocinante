@@ -2444,6 +2444,85 @@
         }
       ],
       "notes": "Chop willows, burn logs (consumed). Trains Woodcutting and Firemaking."
+    },
+    {
+      "id": "regular_powerchop_firemake",
+      "name": "Regular Trees - Powerchop & Firemake",
+      "skill": "WOODCUTTING",
+      "methodType": "GATHER_AND_PROCESS",
+      "minLevel": 1,
+      "xpPerAction": 25.0,
+      "secondarySkill": "FIREMAKING",
+      "secondaryXpPerAction": 40.0,
+      "targetObjectIds": [1276, 1278],
+      "menuAction": "Chop down",
+      "successAnimationIds": [879],
+      "requiresInventorySpace": true,
+      "dropWhenFull": false,
+      "productItemIds": [1511],
+      "sourceItemId": 1511,
+      "logItemId": 1511,
+      "processingToolId": 590,
+      "requiredItemIds": [1349, 1351, 1353, 1355, 1357, 1359, 6739, 590],
+      "ironmanViable": true,
+      "locations": [
+        {
+          "id": "lumbridge",
+          "name": "Lumbridge Castle",
+          "trainingArea": {"x": 3203, "y": 3225, "plane": 0},
+          "actionsPerHour": 600
+        },
+        {
+          "id": "varrock_west",
+          "name": "Varrock West",
+          "trainingArea": {"x": 3167, "y": 3415, "plane": 0},
+          "actionsPerHour": 550
+        }
+      ],
+      "notes": "Chop trees, burn logs (consumed). Trains Woodcutting and Firemaking. Good for early levels."
+    },
+    {
+      "id": "oak_powerchop_firemake",
+      "name": "Oak Trees - Powerchop & Firemake",
+      "skill": "WOODCUTTING",
+      "methodType": "GATHER_AND_PROCESS",
+      "minLevel": 15,
+      "xpPerAction": 37.5,
+      "secondarySkill": "FIREMAKING",
+      "secondaryXpPerAction": 60.0,
+      "targetObjectIds": [10820],
+      "menuAction": "Chop down",
+      "successAnimationIds": [879],
+      "requiresInventorySpace": true,
+      "dropWhenFull": false,
+      "productItemIds": [1521],
+      "sourceItemId": 1521,
+      "logItemId": 1521,
+      "processingToolId": 590,
+      "requiredItemIds": [1349, 1351, 1353, 1355, 1357, 1359, 6739, 590],
+      "ironmanViable": true,
+      "watchedGroundItems": [
+        {"itemId": 5070, "itemName": "Bird nest (empty)", "priority": 50, "maxPickupDistance": 5, "interruptAction": true},
+        {"itemId": 5071, "itemName": "Bird nest (egg)", "priority": 60, "maxPickupDistance": 5, "interruptAction": true},
+        {"itemId": 5072, "itemName": "Bird nest (egg)", "priority": 60, "maxPickupDistance": 5, "interruptAction": true},
+        {"itemId": 5073, "itemName": "Bird nest (egg)", "priority": 60, "maxPickupDistance": 5, "interruptAction": true},
+        {"itemId": 5074, "itemName": "Bird nest (ring)", "priority": 80, "maxPickupDistance": 5, "interruptAction": true}
+      ],
+      "locations": [
+        {
+          "id": "draynor",
+          "name": "Draynor Village",
+          "trainingArea": {"x": 3101, "y": 3245, "plane": 0},
+          "actionsPerHour": 500
+        },
+        {
+          "id": "varrock_west",
+          "name": "Varrock West Bank",
+          "trainingArea": {"x": 3165, "y": 3420, "plane": 0},
+          "actionsPerHour": 450
+        }
+      ],
+      "notes": "Chop oaks, burn logs (consumed). Trains Woodcutting and Firemaking."
     }
   ]
 }

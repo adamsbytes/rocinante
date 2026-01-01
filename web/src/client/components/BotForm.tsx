@@ -1,24 +1,35 @@
-import { type Component, createSignal } from 'solid-js';
-import type { BotConfig, LampSkill } from '../../shared/types';
-import { botFormSchema, type BotFormData, type BotFormInput } from '../../shared/botSchema';
+import { type Component, createSignal, createMemo } from 'solid-js';
+import type { BotConfigDTO, LampSkill } from '../../shared/types';
+import { botCreateSchema, botUpdateSchema, type BotFormData, type BotFormInput, type BotUpdateInput } from '../../shared/botSchema';
 
 interface BotFormProps {
-  initialData?: BotConfig;
+  /** Initial data for editing - uses DTO (no password/TOTP values) */
+  initialData?: BotConfigDTO;
   onSubmit: (data: BotFormData) => void;
   isLoading?: boolean;
   submitLabel?: string;
 }
 
+// Placeholder to show in password fields when editing (no actual data)
+const PASSWORD_PLACEHOLDER = '••••••••••••';
+
 export const BotForm: Component<BotFormProps> = (props) => {
   const data = props.initialData || null;
+  const isEditMode = !!data;
   const initialCharacterName = data ? data.characterName : '';
 
   const [characterName, setCharacterName] = createSignal(initialCharacterName);
   const [username, setUsername] = createSignal(data ? data.username : '');
-  const [password, setPassword] = createSignal(data ? data.password : '');
-  const [totpSecret, setTotpSecret] = createSignal(data ? data.totpSecret : '');
+  // In edit mode, password/TOTP start empty (placeholder shown via CSS)
+  // User must type to change them; empty = no change
+  const [password, setPassword] = createSignal('');
+  const [totpSecret, setTotpSecret] = createSignal('');
   const [showPassword, setShowPassword] = createSignal(false);
   const [showTotpSecret, setShowTotpSecret] = createSignal(false);
+  
+  // Track if user has started typing in sensitive fields
+  const passwordTouched = createMemo(() => password().length > 0);
+  const totpTouched = createMemo(() => totpSecret().length > 0);
   const lampSkillOptions: readonly LampSkill[] = [
     'ATTACK',
     'STRENGTH',
@@ -53,13 +64,16 @@ export const BotForm: Component<BotFormProps> = (props) => {
   const [lampSkill, setLampSkill] = createSignal<LampSkill>(data ? data.lampSkill : lampSkillOptions[0]);
   const [preferredWorld, setPreferredWorld] = createSignal(data && data.preferredWorld !== undefined ? data.preferredWorld : 418);
 
-  // Proxy
+  // Proxy - DTO has hasPassword flag instead of actual password
   const proxyData = data && data.proxy ? data.proxy : null;
   const [proxyEnabled, setProxyEnabled] = createSignal(!!proxyData);
   const [proxyHost, setProxyHost] = createSignal(proxyData ? proxyData.host : '');
   const [proxyPort, setProxyPort] = createSignal(proxyData ? proxyData.port : 8080);
   const [proxyUser, setProxyUser] = createSignal(proxyData && proxyData.user ? proxyData.user : '');
-  const [proxyPass, setProxyPass] = createSignal(proxyData && proxyData.pass ? proxyData.pass : '');
+  // Proxy password: empty in edit mode, user types to change
+  const [proxyPass, setProxyPass] = createSignal('');
+  const proxyHasExistingPassword = proxyData?.hasPassword ?? false;
+  const proxyPassTouched = createMemo(() => proxyPass().length > 0);
 
   // Ironman - single dropdown for account type
   type AccountTypeOption = 'NORMAL' | 'STANDARD_IRONMAN' | 'HARDCORE_IRONMAN' | 'ULTIMATE_IRONMAN';
@@ -91,10 +105,11 @@ export const BotForm: Component<BotFormProps> = (props) => {
   const handleSubmit = (e: Event) => {
     e.preventDefault();
 
-    const formData: BotFormInput = {
+    // Build form data - password/TOTP empty means "no change" in edit mode
+    const formData: BotFormInput | BotUpdateInput = {
       username: username(),
-      password: password(),
-      totpSecret: totpSecret(),
+      password: password(), // Empty string in edit mode = no change
+      totpSecret: totpSecret(), // Empty string in edit mode = no change
       characterName: characterName(),
       lampSkill: lampSkill(),
       preferredWorld: Number.isFinite(preferredWorld()) ? preferredWorld() : undefined,
@@ -103,7 +118,7 @@ export const BotForm: Component<BotFormProps> = (props) => {
             host: proxyHost().trim(),
             port: proxyPort(),
             user: proxyUser().trim() || undefined,
-            pass: proxyPass() || undefined,
+            pass: proxyPass() || undefined, // Empty = no change in edit mode
           }
         : null,
       ironman: {
@@ -117,14 +132,16 @@ export const BotForm: Component<BotFormProps> = (props) => {
       },
     };
 
-    const parsed = botFormSchema.safeParse(formData);
+    // Use appropriate schema based on mode
+    const schema = isEditMode ? botUpdateSchema : botCreateSchema;
+    const parsed = schema.safeParse(formData);
     if (!parsed.success) {
       setErrors(parsed.error.issues.map((issue) => issue.message));
       return;
     }
 
     setErrors([]);
-    props.onSubmit(parsed.data);
+    props.onSubmit(parsed.data as BotFormData);
   };
 
   const inputClass = 'w-full px-3 py-2 bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg focus:outline-none focus:border-[var(--accent)]';
@@ -173,42 +190,61 @@ export const BotForm: Component<BotFormProps> = (props) => {
             />
           </div>
           <div>
-            <label class={labelClass}>Password</label>
+            <label class={labelClass}>
+              Password
+              {isEditMode && <span class="text-xs text-[var(--text-secondary)] ml-2">(leave empty to keep current)</span>}
+            </label>
             <div class="relative">
               <input
-                type={showPassword() ? 'text' : 'password'}
+                type={showPassword() && passwordTouched() ? 'text' : 'password'}
                 value={password()}
                 onInput={(e) => setPassword(e.currentTarget.value)}
                 class={`${inputClass} pr-12`}
-                required
+                placeholder={isEditMode ? PASSWORD_PLACEHOLDER : ''}
+                required={!isEditMode}
               />
               <button
                 type="button"
-                class="absolute inset-y-0 right-0 px-3 text-sm text-[var(--text-secondary)] hover:text-white"
-                onClick={() => setShowPassword((prev) => !prev)}
+                class={`absolute inset-y-0 right-0 px-3 text-sm transition-colors ${
+                  passwordTouched() 
+                    ? 'text-[var(--text-secondary)] hover:text-white cursor-pointer' 
+                    : 'text-[var(--text-secondary)]/30 cursor-not-allowed'
+                }`}
+                onClick={() => passwordTouched() && setShowPassword((prev) => !prev)}
+                disabled={!passwordTouched()}
+                title={passwordTouched() ? (showPassword() ? 'Hide password' : 'Show password') : 'Type to enable'}
               >
-                {showPassword() ? 'Hide' : 'View'}
+                {showPassword() && passwordTouched() ? 'Hide' : 'View'}
               </button>
             </div>
           </div>
         </div>
         <div>
-          <label class={labelClass}>2FA TOTP Secret</label>
+          <label class={labelClass}>
+            2FA TOTP Secret
+            {isEditMode && <span class="text-xs text-[var(--text-secondary)] ml-2">(leave empty to keep current)</span>}
+          </label>
           <div class="relative">
             <input
-              type={showTotpSecret() ? 'text' : 'password'}
+              type={showTotpSecret() && totpTouched() ? 'text' : 'password'}
               value={totpSecret()}
               onInput={(e) => setTotpSecret(e.currentTarget.value)}
               class={`${inputClass} pr-12`}
-              placeholder="Base32 secret from authenticator setup"
-              required
+              placeholder={isEditMode ? PASSWORD_PLACEHOLDER : 'Base32 secret from authenticator setup'}
+              required={!isEditMode}
             />
             <button
               type="button"
-              class="absolute inset-y-0 right-0 px-3 text-sm text-[var(--text-secondary)] hover:text-white"
-              onClick={() => setShowTotpSecret((prev) => !prev)}
+              class={`absolute inset-y-0 right-0 px-3 text-sm transition-colors ${
+                totpTouched() 
+                  ? 'text-[var(--text-secondary)] hover:text-white cursor-pointer' 
+                  : 'text-[var(--text-secondary)]/30 cursor-not-allowed'
+              }`}
+              onClick={() => totpTouched() && setShowTotpSecret((prev) => !prev)}
+              disabled={!totpTouched()}
+              title={totpTouched() ? (showTotpSecret() ? 'Hide secret' : 'Show secret') : 'Type to enable'}
             >
-              {showTotpSecret() ? 'Hide' : 'View'}
+              {showTotpSecret() && totpTouched() ? 'Hide' : 'View'}
             </button>
           </div>
           <p class="text-xs text-[var(--text-secondary)] mt-1">
@@ -303,12 +339,18 @@ export const BotForm: Component<BotFormProps> = (props) => {
                 />
               </div>
               <div>
-                <label class={labelClass}>Password (optional)</label>
+                <label class={labelClass}>
+                  Password (optional)
+                  {isEditMode && proxyHasExistingPassword && !proxyPassTouched() && (
+                    <span class="text-xs text-[var(--text-secondary)] ml-2">(set - leave empty to keep)</span>
+                  )}
+                </label>
                 <input
                   type="password"
                   value={proxyPass()}
                   onInput={(e) => setProxyPass(e.currentTarget.value)}
                   class={inputClass}
+                  placeholder={isEditMode && proxyHasExistingPassword ? PASSWORD_PLACEHOLDER : ''}
                 />
               </div>
             </div>

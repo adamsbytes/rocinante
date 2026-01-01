@@ -198,7 +198,6 @@ public class ProcessItemTask extends AbstractTask {
     public ProcessItemTask(int sourceItemId, int targetItemId) {
         this.sourceItemId = sourceItemId;
         this.targetItemId = targetItemId;
-        this.timeout = Duration.ofMinutes(5);
     }
 
     // ========================================================================

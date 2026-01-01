@@ -71,7 +71,6 @@ public class XpCheckBehavior extends AbstractTask {
     public XpCheckBehavior(PlayerProfile playerProfile, Randomization randomization) {
         this.playerProfile = playerProfile;
         this.randomization = randomization;
-        this.timeout = Duration.ofSeconds(10);
     }
 
     /**
@@ -80,7 +79,6 @@ public class XpCheckBehavior extends AbstractTask {
     public XpCheckBehavior(PlayerProfile playerProfile) {
         this.playerProfile = playerProfile;
         this.randomization = new Randomization();
-        this.timeout = Duration.ofSeconds(10);
     }
 
     @Override

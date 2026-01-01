@@ -175,9 +175,7 @@ public class FiremakingSkillTask extends AbstractTask {
 
         // Set timeout based on config
         if (config.hasTimeLimit()) {
-            this.timeout = config.getMaxDuration().plusMinutes(5);
         } else {
-            this.timeout = Duration.ofHours(8);
         }
     }
 
@@ -424,38 +422,30 @@ public class FiremakingSkillTask extends AbstractTask {
 
     private void executeWaitingForFire(TaskContext ctx) {
         waitTicks++;
-
-        // Check for timeout
-        if (waitTicks > config.getLightingTimeoutTicks()) {
-            log.debug("Fire lighting timed out, checking position");
-            // Check if we moved (fire was lit but we missed the animation)
-            WorldPoint currentPos = ctx.getPlayerState().getWorldPosition();
-            if (!currentPos.equals(positionBeforeFire)) {
-                onFireLit(ctx);
-            } else {
-                // Position blocked, need to reposition
-                log.debug("Timed out at same position, repositioning");
-                transitionToPhase(FiremakingPhase.REPOSITIONING);
-            }
-            return;
-        }
-
-        // Check for fire lighting animation
         PlayerState player = ctx.getPlayerState();
-        if (player.getAnimationId() == FIRE_LIGHTING_ANIMATION) {
-            log.debug("Fire lighting animation detected");
-            // Continue waiting for completion
-            return;
-        }
-
-        // Check if player moved (fire was successfully lit)
         WorldPoint currentPos = player.getWorldPosition();
+
+        // ALWAYS check if player moved first - this means fire was lit
+        // Must check this before animation check, as position changes while animating
         if (!currentPos.equals(positionBeforeFire)) {
             onFireLit(ctx);
             return;
         }
 
-        // Still waiting
+        // Check for timeout
+        if (waitTicks > config.getLightingTimeoutTicks()) {
+            log.debug("Fire lighting timed out at same position, repositioning");
+                transitionToPhase(FiremakingPhase.REPOSITIONING);
+            return;
+        }
+
+        // Check for fire lighting animation (still in progress)
+        if (player.getAnimationId() == FIRE_LIGHTING_ANIMATION) {
+            log.debug("Fire lighting animation detected");
+            return;
+        }
+
+        // Still waiting (no animation, no movement)
         log.debug("Waiting for fire... tick {}", waitTicks);
     }
 
@@ -543,17 +533,22 @@ public class FiremakingSkillTask extends AbstractTask {
     private WorldPoint findDynamicBurnLocation(TaskContext ctx) {
         WorldPoint currentPos = ctx.getPlayerState().getWorldPosition();
 
+        // Count how many logs we want to burn - find a spot with enough room
+        int logsInInventory = ctx.getInventoryState().countItem(config.getLogItemId());
+        int desiredLineLength = Math.max(5, logsInInventory); // At least 5 tiles, or enough for all logs
+
         Optional<BurnLocationFinder.BurnLocation> burnLoc = BurnLocationFinder.findOptimalBurnLocation(
                 ctx,
                 currentPos,
                 config.getBurnHereSearchRadius(),
-                config.getBurnHereWalkThreshold()
+                config.getBurnHereWalkThreshold(),
+                desiredLineLength
         );
 
         if (burnLoc.isPresent()) {
             BurnLocationFinder.BurnLocation loc = burnLoc.get();
-            log.debug("Found dynamic burn location {} tiles away (on same line: {})",
-                    loc.getPathCost(), loc.isOnSameLine());
+            log.debug("Found dynamic burn location {} tiles away (lineLength: {}, sameLine: {})",
+                    loc.getPathCost(), loc.getLineLength(), loc.isOnSameLine());
             return loc.getPosition();
         }
 

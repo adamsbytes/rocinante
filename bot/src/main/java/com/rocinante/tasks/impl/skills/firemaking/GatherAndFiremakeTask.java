@@ -294,6 +294,11 @@ public class GatherAndFiremakeTask extends AbstractTask {
             chopTask.withSuccessAnimations(method.getSuccessAnimationIds());
         }
 
+        // For gathering, don't accept position change as success - wait for inventory change
+        // This prevents the bot from switching targets while walking to a tree
+        chopTask.setAcceptPositionChange(false);
+        chopTask.setWaitForInventoryChange(true);
+
         currentSubTask = chopTask;
     }
 
