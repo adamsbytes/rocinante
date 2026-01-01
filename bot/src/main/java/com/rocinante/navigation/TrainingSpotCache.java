@@ -6,6 +6,7 @@ import com.google.common.cache.CacheStats;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonSyntaxException;
+import com.rocinante.util.CacheSigningUtil;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.coords.WorldPoint;
@@ -185,21 +186,23 @@ public class TrainingSpotCache {
         int bankY;
         int bankPlane;
         String timestamp;
+        String signature;  // HMAC-SHA256 signature
 
         // Default constructor for GSON
         FileCacheEntry() {}
 
         FileCacheEntry(String key, List<FileCachedCandidate> candidates, 
-                       int bankX, int bankY, int bankPlane, String timestamp) {
+                       int bankX, int bankY, int bankPlane, String timestamp, String signature) {
             this.key = key;
             this.candidates = candidates;
             this.bankX = bankX;
             this.bankY = bankY;
             this.bankPlane = bankPlane;
             this.timestamp = timestamp;
+            this.signature = signature;
         }
 
-        static FileCacheEntry from(CacheEntry entry) {
+        static FileCacheEntry from(CacheEntry entry, String signature) {
             List<FileCachedCandidate> fileCandidates = entry.candidates().stream()
                     .map(FileCachedCandidate::from)
                     .collect(Collectors.toList());
@@ -211,7 +214,8 @@ public class TrainingSpotCache {
                     bank != null ? bank.getX() : 0,
                     bank != null ? bank.getY() : 0,
                     bank != null ? bank.getPlane() : 0,
-                    entry.timestamp().toString()
+                    entry.timestamp().toString(),
+                    signature
             );
         }
 
@@ -230,6 +234,14 @@ public class TrainingSpotCache {
                     bank,
                     Instant.parse(timestamp)
             );
+        }
+
+        /**
+         * Get the data to be signed.
+         */
+        String getSignableData() {
+            // Include key, candidate count, bank position, and timestamp
+            return key + "\n" + candidates.size() + "\n" + bankX + "," + bankY + "," + bankPlane + "\n" + timestamp;
         }
     }
 
@@ -483,7 +495,7 @@ public class TrainingSpotCache {
      * Read a cache entry from a file.
      *
      * @param filePath the file path
-     * @return the cache entry, or empty if not found/invalid
+     * @return the cache entry, or empty if not found/invalid/tampered
      */
     private Optional<CacheEntry> readCacheFile(Path filePath) {
         if (!Files.exists(filePath)) {
@@ -497,6 +509,19 @@ public class TrainingSpotCache {
                 log.warn("Invalid cache file (null content): {}", filePath);
                 return Optional.empty();
             }
+
+            // Verify signature
+            if (!CacheSigningUtil.verify(fileEntry.getSignableData(), fileEntry.signature)) {
+                log.warn("Cache file rejected (invalid signature): {}", filePath);
+                // Delete tampered/unsigned file
+                try {
+                    Files.deleteIfExists(filePath);
+                } catch (IOException deleteEx) {
+                    log.debug("Failed to delete tampered cache file {}: {}", filePath, deleteEx.getMessage());
+                }
+                return Optional.empty();
+            }
+
             return Optional.of(fileEntry.toCacheEntry());
         } catch (IOException e) {
             log.warn("Failed to read cache file: {}", filePath, e);
@@ -527,10 +552,14 @@ public class TrainingSpotCache {
         Path filePath = getCacheFilePath(cacheKey);
 
         try {
-            FileCacheEntry fileEntry = FileCacheEntry.from(entry);
+            // Create file entry with signature
+            FileCacheEntry fileEntry = FileCacheEntry.from(entry, null);
+            String signature = CacheSigningUtil.sign(fileEntry.getSignableData());
+            fileEntry.signature = signature;
+
             String json = gson.toJson(fileEntry);
             Files.writeString(filePath, json, StandardCharsets.UTF_8);
-            log.debug("Wrote cache file: {}", filePath);
+            log.debug("Wrote signed cache file: {}", filePath);
         } catch (IOException e) {
             log.warn("Failed to write cache file: {}", filePath, e);
         }

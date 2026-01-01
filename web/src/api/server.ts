@@ -1,6 +1,6 @@
 import { randomUUIDv7 } from 'bun';
 import type { ServerWebSocket, Socket } from 'bun';
-import { createHash, randomBytes, randomInt, timingSafeEqual } from 'crypto';
+import { randomInt, timingSafeEqual } from 'crypto';
 import { join, normalize, resolve, sep } from 'path';
 import { z } from 'zod';
 import { RateLimiterMemory } from 'rate-limiter-flexible';
@@ -37,7 +37,7 @@ import {
 } from './data';
 import { listScreenshots, getScreenshotFile } from './screenshots';
 import { auth, getSession, type Session } from './auth';
-import type { ApiResponse, BotConfig, BotWithStatus, BotConfigDTO, BotWithStatusDTO, ProxyConfigDTO, LocationInfo, EnvironmentConfig, BotStatus } from '../shared/types';
+import type { ApiResponse, ApiErrorCode, BotConfig, BotWithStatus, BotConfigDTO, BotWithStatusDTO, ProxyConfigDTO, LocationInfo, EnvironmentConfig, BotStatus } from '../shared/types';
 import { botCreateSchema, botUpdateSchema, type BotFormData, type BotUpdateData } from '../shared/botSchema';
 import { botCommandPayloadSchema } from '../shared/commandSchema';
 
@@ -66,7 +66,7 @@ const OWNERSHIP_DELAY_MIN_MS = 100;
 const OWNERSHIP_DELAY_JITTER_MS = 100;
 
 const sleep = (ms: number) => (ms <= 0 ? Promise.resolve() : new Promise((resolve) => setTimeout(resolve, ms)));
-const hashId = (value: string) => createHash('sha256').update(value).digest();
+const hashId = (value: string) => new Bun.CryptoHasher('sha256').update(value).digest();
 const timingSafeOwnerMatch = (a: string, b: string) => timingSafeEqual(hashId(a), hashId(b));
 async function padOwnershipTiming(start: number): Promise<void> {
   const target = OWNERSHIP_DELAY_MIN_MS + randomInt(0, OWNERSHIP_DELAY_JITTER_MS + 1);
@@ -77,18 +77,11 @@ async function padOwnershipTiming(start: number): Promise<void> {
   }
 }
 
-/** Get client IP from request (checks X-Forwarded-For for proxies, falls back to direct connection) */
+import { getClientIpForRateLimit } from './ip-helpers';
+
+/** Get client IP from request with trusted proxy validation */
 function getClientIp(req: Request, server: ReturnType<typeof Bun.serve>): string {
-  // Check proxy headers first (trusted reverse proxy scenario)
-  const forwarded = req.headers.get('x-forwarded-for');
-  if (forwarded) {
-    // X-Forwarded-For can be comma-separated list; first is original client
-    return forwarded.split(',')[0].trim();
-  }
-  
-  // Fall back to direct connection IP
-  const socketAddr = server.requestIP(req);
-  return socketAddr?.address ?? 'unknown';
+  return getClientIpForRateLimit(req, server);
 }
 
 type BotIdResult = 
@@ -102,19 +95,19 @@ type BotIdResult =
 async function withBotId(path: string, pattern: RegExp): Promise<BotIdResult> {
   const match = path.match(pattern);
   if (!match) {
-    return { ok: false, response: error('Not found', 404) };
+    return { ok: false, response: error({ code: 'NOT_FOUND', status: 404, details: 'Route not matched' }) };
   }
   
   const rawId = match[1];
   const validation = botIdSchema.safeParse(rawId);
   if (!validation.success) {
-    return { ok: false, response: error('Invalid bot ID format', 400) };
+    return { ok: false, response: validationError('Invalid bot ID format') };
   }
   
   const botId = validation.data;
   const bot = await getBot(botId);
   if (!bot) {
-    return { ok: false, response: error('Bot not found', 404) };
+    return { ok: false, response: error({ code: 'NOT_FOUND', status: 404, details: `Bot ${botId} not found` }) };
   }
   
   return { ok: true, botId, bot };
@@ -135,9 +128,9 @@ async function withOwnedBot(session: NonNullable<Session>, path: string, pattern
 
   const ownerMatches = timingSafeOwnerMatch(result.bot.ownerId, session.user.id);
   if (!ownerMatches) {
-    console.warn(`IDOR blocked: user ${session.user.id} tried to access bot ${result.botId} owned by ${result.bot.ownerId}`);
+    // Log IDOR attempt but return generic NOT_FOUND to avoid info leakage
     await padOwnershipTiming(start);
-    return { ok: false, response: error('Not found', 404) };
+    return { ok: false, response: error({ code: 'NOT_FOUND', status: 404, details: `IDOR blocked: user ${session.user.id} → bot ${result.botId}` }) };
   }
 
   await padOwnershipTiming(start);
@@ -234,6 +227,7 @@ type VncSocketData = {
 type VncWebSocketData = {
   type: 'vnc';
   botId: string;
+  userId: string;
   tcpSocket: Socket<VncSocketData> | null;
   /** Track if we've ever had a successful VNC connection on this WebSocket */
   hadConnection: boolean;
@@ -246,13 +240,18 @@ type VncWebSocketData = {
    * We ignore these and start proxying after.
    */
   browserHandshakeIgnoreBytes: number;
+  /** Periodic session re-validation interval */
+  sessionValidationInterval: ReturnType<typeof setInterval> | null;
 };
 
 type StatusWebSocketData = {
   type: 'status';
   botId: string;
+  userId: string;
   cleanup: (() => void) | null;
   pingInterval: ReturnType<typeof setInterval> | null;
+  /** Periodic session re-validation interval */
+  sessionValidationInterval: ReturnType<typeof setInterval> | null;
 };
 
 type WebSocketData = VncWebSocketData | StatusWebSocketData;
@@ -264,12 +263,86 @@ function json<T>(data: T, status = 200): Response {
   });
 }
 
+/** Generate a short request ID for log correlation (8 chars) */
+function generateRequestId(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(4));
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 function success<T>(data: T): Response {
   return json<ApiResponse<T>>({ success: true, data });
 }
 
-function error(message: string, status = 400): Response {
-  return json<ApiResponse<never>>({ success: false, error: message }, status);
+/**
+ * User-facing error messages by code.
+ * These are succinct and safe for display; verbose details go to server logs.
+ */
+const ERROR_MESSAGES: Record<ApiErrorCode, string> = {
+  UNAUTHORIZED: 'Please sign in to continue',
+  FORBIDDEN: 'You don\'t have access to this resource',
+  NOT_FOUND: 'The requested resource was not found',
+  VALIDATION_ERROR: 'Please check your input and try again',
+  RATE_LIMITED: 'Too many requests, please wait a moment',
+  BOT_NOT_RUNNING: 'Bot must be running to perform this action',
+  BOT_ALREADY_RUNNING: 'Bot is already running',
+  CONTAINER_ERROR: 'Failed to manage bot container',
+  INTERNAL_ERROR: 'Something went wrong, please try again',
+};
+
+interface ErrorOptions {
+  /** Error code for programmatic handling */
+  code: ApiErrorCode;
+  /** HTTP status code */
+  status?: number;
+  /** Internal details for server logs (not sent to client) */
+  details?: string;
+  /** Original error for stack trace logging */
+  cause?: unknown;
+}
+
+/**
+ * Create an error response with request ID for log correlation.
+ * Logs verbose details server-side; returns succinct message to client.
+ */
+function error(opts: ErrorOptions): Response {
+  const requestId = generateRequestId();
+  const message = ERROR_MESSAGES[opts.code];
+  const status = opts.status ?? 400;
+  
+  // Verbose server-side logging
+  const logParts = [`[${requestId}] ${opts.code}`];
+  if (opts.details) logParts.push(`- ${opts.details}`);
+  if (opts.cause instanceof Error) {
+    logParts.push(`- ${opts.cause.message}`);
+    if (opts.cause.stack) {
+      console.error(logParts.join(' '));
+      console.error(opts.cause.stack);
+    } else {
+      console.error(logParts.join(' '));
+    }
+  } else {
+    console.error(logParts.join(' '));
+  }
+  
+  // Succinct client response
+  return json<ApiResponse<never>>({ 
+    success: false, 
+    error: message,
+    code: opts.code,
+    requestId,
+  }, status);
+}
+
+/** Legacy error helper for simple cases (validation messages are already user-friendly) */
+function validationError(message: string): Response {
+  const requestId = generateRequestId();
+  console.error(`[${requestId}] VALIDATION_ERROR - ${message}`);
+  return json<ApiResponse<never>>({
+    success: false,
+    error: message,
+    code: 'VALIDATION_ERROR',
+    requestId,
+  }, 400);
 }
 
 function formatValidationErrors(issues: Array<{ message: string }>): string {
@@ -366,7 +439,7 @@ function generateEnvironmentFingerprint(fingerprintSeed: string): EnvironmentCon
 /** Generate an 8-character alphanumeric VNC password */
 function generateVncPassword(): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  const bytes = randomBytes(8);
+  const bytes = crypto.getRandomValues(new Uint8Array(8));
   return Array.from(bytes).map(b => chars[b % chars.length]).join('');
 }
 
@@ -391,7 +464,7 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
     try {
       await limiter.consume(key);
     } catch {
-      return error('Too Many Requests', 429);
+      return error({ code: 'RATE_LIMITED', status: 429 });
     }
   }
 
@@ -413,8 +486,7 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
   // DEFAULT DENY: All other /api/* routes require authentication
   // ==========================================================================
   if (path.startsWith('/api') && !session?.user?.id) {
-    console.warn(`Auth failed: ${method} ${path} - no valid session`);
-    return error('Unauthorized', 401);
+    return error({ code: 'UNAUTHORIZED', status: 401, details: `${method} ${path} - no valid session` });
   }
 
   // From here on, session is guaranteed valid for all /api/* routes
@@ -433,7 +505,7 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
     // Check if bot is running
     const status = await getContainerStatus(botId);
     if (status.state !== 'running') {
-      return error('Bot is not running', 400);
+      return error({ code: 'BOT_NOT_RUNNING', status: 400, details: `Bot ${botId} not running for VNC` });
     }
 
     // Get VNC password from bot config
@@ -444,17 +516,19 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
       data: {
         type: 'vnc',
         botId,
+        userId: session!.user.id,
         tcpSocket: null,
         hadConnection: false,
         vncPassword,
         browserHandshakeIgnoreBytes: 0,
+        sessionValidationInterval: null,
       } as VncWebSocketData,
     });
 
     if (upgraded) {
       return undefined; // Bun handles the 101 response
     }
-    return error('WebSocket upgrade failed', 500);
+    return error({ code: 'INTERNAL_ERROR', status: 500, details: 'WebSocket upgrade failed' });
   }
 
   // Status WebSocket upgrade
@@ -468,15 +542,17 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
       data: {
         type: 'status',
         botId,
+        userId: session!.user.id,
         cleanup: null,
         pingInterval: null,
+        sessionValidationInterval: null,
       } as StatusWebSocketData,
     });
 
     if (upgraded) {
       return undefined; // Bun handles the 101 response
     }
-    return error('WebSocket upgrade failed', 500);
+    return error({ code: 'INTERNAL_ERROR', status: 500, details: 'WebSocket upgrade failed' });
   }
 
   // ==========================================================================
@@ -512,24 +588,25 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
 
     const relativePath = url.searchParams.get('path');
     if (!relativePath) {
-      return error('Missing path', 400);
+      return validationError('Missing screenshot path');
     }
 
     try {
       const fileResult = await getScreenshotFile(result.botId, relativePath);
       if (!fileResult) {
-        return error('Screenshot not found', 404);
+        return error({ code: 'NOT_FOUND', status: 404, details: `Screenshot: ${relativePath}` });
       }
       // Use Bun's optimized file streaming - passes BunFile directly to Response
+      // Cache-Control: private prevents intermediate caches (CDNs) from storing user-specific screenshots
       return new Response(fileResult.file, {
         headers: {
           'Content-Type': fileResult.contentType,
-          'Cache-Control': 'public, max-age=60',
+          'Cache-Control': 'private, max-age=60',
         },
       });
     } catch (err) {
       console.error('Failed to load screenshot', err);
-      return error('Failed to load screenshot', 500);
+      return error({ code: 'INTERNAL_ERROR', status: 500, details: 'Failed to load screenshot', cause: err });
     }
   }
 
@@ -545,13 +622,13 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
       const validation = botCommandPayloadSchema.safeParse(body);
       if (!validation.success) {
         const issues = validation.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`);
-        return error(`Invalid command: ${issues.join(', ')}`, 400);
+        return validationError(`Invalid command: ${issues.join(', ')}`);
       }
       
       await sendBotCommand(result.botId, validation.data);
       return success({ sent: true });
     } catch (err) {
-      return error(err instanceof Error ? err.message : 'Failed to send command');
+      return error({ code: 'INTERNAL_ERROR', details: 'Failed to send command', cause: err });
     }
   }
 
@@ -573,14 +650,14 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
       const parsed = botCreateSchema.safeParse(body);
 
       if (!parsed.success) {
-        return error(`Invalid bot configuration: ${formatValidationErrors(parsed.error.issues)}`, 400);
+        return validationError(formatValidationErrors(parsed.error.issues));
       }
 
       const botData: BotFormData = parsed.data;
       const botId = randomUUIDv7();
       
       // Generate random seed for fingerprint (unpredictable, stored in DB)
-      const fingerprintSeed = randomBytes(32).toString('hex');
+      const fingerprintSeed = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('hex');
       
       // Generate environment fingerprint data (deterministic from random seed, not botId)
       const environment = generateEnvironmentFingerprint(fingerprintSeed);
@@ -600,7 +677,7 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
       await createBot(newBot);
       return success(toBotDTO(newBot));
     } catch (err) {
-      return error(err instanceof Error ? err.message : 'Failed to create bot');
+      return error({ code: 'INTERNAL_ERROR', details: 'Failed to create bot', cause: err });
     }
   }
 
@@ -623,7 +700,7 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
         const parsed = botUpdateSchema.safeParse(body);
 
         if (!parsed.success) {
-          return error(`Invalid bot configuration: ${formatValidationErrors(parsed.error.issues)}`, 400);
+          return validationError(formatValidationErrors(parsed.error.issues));
         }
 
         // Merge: keep existing password/TOTP if not provided in update
@@ -635,11 +712,11 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
 
         const updated = await updateBot(botId, updateData);
         if (!updated) {
-          return error('Bot not found', 404);
+          return error({ code: 'NOT_FOUND', status: 404, details: `Bot ${botId} not found for update` });
         }
         return success(toBotDTO(updated));
       } catch (err) {
-        return error(err instanceof Error ? err.message : 'Failed to update bot');
+        return error({ code: 'INTERNAL_ERROR', details: 'Failed to update bot', cause: err });
       }
     }
 
@@ -650,11 +727,11 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
         await removeContainer(botId);
         const deleted = await deleteBot(botId);
         if (!deleted) {
-          return error('Bot not found', 404);
+          return error({ code: 'NOT_FOUND', status: 404, details: `Bot ${botId} not found for delete` });
         }
         return success({ deleted: true });
       } catch (err) {
-        return error(err instanceof Error ? err.message : 'Failed to delete bot');
+        return error({ code: 'CONTAINER_ERROR', details: 'Failed to delete bot', cause: err });
       }
     }
   }
@@ -682,10 +759,10 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
           return success({ restarted: true });
 
         default:
-          return error('Unknown action', 400);
+          return error({ code: 'VALIDATION_ERROR', details: `Unknown action: ${action}` });
       }
     } catch (err) {
-      return error(err instanceof Error ? err.message : `Failed to ${action} bot`);
+      return error({ code: 'CONTAINER_ERROR', details: `Failed to ${action} bot`, cause: err });
     }
   }
 
@@ -704,7 +781,7 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
         },
       });
     } catch (err) {
-      return error(err instanceof Error ? err.message : 'Failed to get logs');
+      return error({ code: 'CONTAINER_ERROR', details: 'Failed to get logs', cause: err });
     }
   }
 
@@ -724,7 +801,7 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
         return success(data);
       }
     } catch (err) {
-      return error(err instanceof Error ? err.message : 'Failed to load training methods');
+      return error({ code: 'INTERNAL_ERROR', details: 'Failed to load training methods', cause: err });
     }
   }
 
@@ -740,7 +817,7 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
         return success(data);
       }
     } catch (err) {
-      return error(err instanceof Error ? err.message : 'Failed to load locations');
+      return error({ code: 'INTERNAL_ERROR', details: 'Failed to load locations', cause: err });
     }
   }
 
@@ -769,14 +846,13 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
     } catch (err) {
       // Path traversal attempts or other errors
       if (err instanceof Error && err.message.includes('traversal')) {
-        console.warn(`Path traversal attempt blocked: ${path}`);
-        return error('Invalid path', 400);
+        return error({ code: 'FORBIDDEN', status: 403, details: `Path traversal blocked: ${path}` });
       }
       // Fall through to 404 for other errors
     }
   }
 
-  return error('Not found', 404);
+  return error({ code: 'NOT_FOUND', status: 404, details: `${method} ${path}` });
 }
 
 // Check prerequisites on startup
@@ -804,6 +880,34 @@ async function checkPrerequisites(): Promise<void> {
 console.log('Starting Rocinante Management Server...');
 await checkPrerequisites();
 
+// Session re-validation interval for WebSocket connections (60 seconds)
+const SESSION_VALIDATION_INTERVAL_MS = 60_000;
+
+/**
+ * Start periodic session validation for a WebSocket connection.
+ * Closes the connection if user no longer owns the bot.
+ */
+function startSessionValidation(
+  ws: ServerWebSocket<WebSocketData>,
+  botId: string,
+  userId: string
+): ReturnType<typeof setInterval> {
+  return setInterval(async () => {
+    if (ws.readyState !== 1) return; // Not open
+    
+    try {
+      const bot = await getBot(botId);
+      if (!bot || bot.ownerId !== userId) {
+        console.warn(`Session invalidated for ${ws.data.type} WebSocket: bot ${botId}, user ${userId}`);
+        ws.close(4001, 'Session expired or access revoked');
+      }
+    } catch (err) {
+      console.error(`Error validating session for bot ${botId}:`, err);
+      // Don't close on transient errors - only on definitive "no access"
+    }
+  }, SESSION_VALIDATION_INTERVAL_MS);
+}
+
 const bunServer = Bun.serve({
   port: PORT,
   fetch: handleRequest,
@@ -812,9 +916,12 @@ const bunServer = Bun.serve({
   // 10MB is generous for bot configs, commands, and other API payloads
   maxRequestBodySize: 10 * 1024 * 1024, // 10MB
   
-  websocket: {
+websocket: {
     // Idle timeout in seconds - set to 120s, ping every 30s keeps connection alive
     idleTimeout: 120,
+    
+    // Session re-validation interval (1 minute)
+    // Periodically checks that user still owns the bot
     
     // Security: Limit WebSocket message size to prevent DOS attacks
     // 10MB allows for VNC full-screen updates (1280x720 can be ~3.5MB uncompressed)
@@ -976,6 +1083,9 @@ const bunServer = Bun.serve({
         
         // Start connection attempts (non-blocking)
         tryConnect(0);
+        
+        // Start periodic session validation
+        vncData.sessionValidationInterval = startSessionValidation(ws, botId, vncData.userId);
       } else if (ws.data.type === 'status') {
         const statusData = ws.data as StatusWebSocketData;
         const { botId } = statusData;
@@ -1005,6 +1115,9 @@ const bunServer = Bun.serve({
           ws.send(JSON.stringify(initialStatus));
         }
         }).catch((err) => console.error(`Error reading initial status:`, err));
+        
+        // Start periodic session validation
+        statusData.sessionValidationInterval = startSessionValidation(ws, botId, statusData.userId);
       }
     },
 
@@ -1082,11 +1195,17 @@ const bunServer = Bun.serve({
         if (vncData.tcpSocket) {
           vncData.tcpSocket.end();
         }
+        if (vncData.sessionValidationInterval) {
+          clearInterval(vncData.sessionValidationInterval);
+        }
       } else if (ws.data.type === 'status') {
         const statusData = ws.data as StatusWebSocketData;
         console.log(`Status WebSocket closed for bot ${statusData.botId}: code=${code} reason=${reason || 'none'}`);
         if (statusData.pingInterval) {
           clearInterval(statusData.pingInterval);
+        }
+        if (statusData.sessionValidationInterval) {
+          clearInterval(statusData.sessionValidationInterval);
         }
         if (statusData.cleanup) {
           statusData.cleanup();

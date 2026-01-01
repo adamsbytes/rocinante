@@ -1,6 +1,6 @@
 import { type Component, Show, Suspense, createSignal, createEffect, onCleanup, createMemo } from 'solid-js';
 import { Link, useParams } from '@tanstack/solid-router';
-import { useBotQuery, useStartBotMutation, useStopBotMutation, useRestartBotMutation, useDeleteBotMutation } from '../lib/api';
+import { useBotQuery, useStartBotMutation, useStopBotMutation, useRestartBotMutation, useDeleteBotMutation, getErrorMessage } from '../lib/api';
 import { StatusBadge } from '../components/StatusBadge';
 import { VncViewer, type VncStatus } from '../components/VncViewer';
 import { LogsViewer } from '../components/LogsViewer';
@@ -103,7 +103,7 @@ export const BotDetail: Component = () => {
           when={botQuery.data}
           fallback={
             <Show when={botQuery.isError}>
-              <p class="text-red-400">Failed to load bot</p>
+              <p class="text-red-400 text-sm">{getErrorMessage(botQuery.error)}</p>
             </Show>
           }
         >

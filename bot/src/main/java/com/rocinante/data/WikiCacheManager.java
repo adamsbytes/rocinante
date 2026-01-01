@@ -6,6 +6,7 @@ import com.google.common.cache.CacheStats;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonSyntaxException;
+import com.rocinante.util.CacheSigningUtil;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
@@ -145,23 +146,26 @@ public class WikiCacheManager {
         String content;
         String timestamp;
         String contentType;
+        String signature;  // HMAC-SHA256 signature of key+content+timestamp+contentType
 
         // Default constructor for GSON
         FileCacheEntry() {}
 
-        FileCacheEntry(String key, String content, String timestamp, String contentType) {
+        FileCacheEntry(String key, String content, String timestamp, String contentType, String signature) {
             this.key = key;
             this.content = content;
             this.timestamp = timestamp;
             this.contentType = contentType;
+            this.signature = signature;
         }
 
-        static FileCacheEntry from(CacheEntry entry) {
+        static FileCacheEntry from(CacheEntry entry, String signature) {
             return new FileCacheEntry(
                     entry.key(),
                     entry.content(),
                     entry.timestamp().toString(),
-                    entry.contentType()
+                    entry.contentType(),
+                    signature
             );
         }
 
@@ -172,6 +176,13 @@ public class WikiCacheManager {
                     Instant.parse(timestamp),
                     contentType
             );
+        }
+
+        /**
+         * Get the data to be signed (key + content + timestamp + contentType).
+         */
+        String getSignableData() {
+            return key + "\n" + content + "\n" + timestamp + "\n" + contentType;
         }
     }
 
@@ -455,7 +466,7 @@ public class WikiCacheManager {
      * Read a cache entry from a file.
      *
      * @param filePath the file path
-     * @return the cache entry, or empty if not found/invalid
+     * @return the cache entry, or empty if not found/invalid/tampered
      */
     private Optional<CacheEntry> readCacheFile(Path filePath) {
         if (!Files.exists(filePath)) {
@@ -469,6 +480,19 @@ public class WikiCacheManager {
                 log.warn("Invalid cache file (null content): {}", filePath);
                 return Optional.empty();
             }
+
+            // Verify signature
+            if (!CacheSigningUtil.verify(fileEntry.getSignableData(), fileEntry.signature)) {
+                log.warn("Cache file rejected (invalid signature): {}", filePath);
+                // Delete tampered/unsigned file
+                try {
+                    Files.deleteIfExists(filePath);
+                } catch (IOException deleteEx) {
+                    log.debug("Failed to delete tampered cache file {}: {}", filePath, deleteEx.getMessage());
+                }
+                return Optional.empty();
+            }
+
             return Optional.of(fileEntry.toCacheEntry());
         } catch (IOException e) {
             log.warn("Failed to read cache file: {}", filePath, e);
@@ -499,10 +523,13 @@ public class WikiCacheManager {
         Path filePath = getCacheFilePath(cacheKey);
 
         try {
-            FileCacheEntry fileEntry = FileCacheEntry.from(entry);
+            // Create file entry with signature
+            String signature = CacheSigningUtil.sign(entry.key() + "\n" + entry.content() + "\n" + entry.timestamp() + "\n" + entry.contentType());
+            FileCacheEntry fileEntry = FileCacheEntry.from(entry, signature);
+
             String json = gson.toJson(fileEntry);
             Files.writeString(filePath, json, StandardCharsets.UTF_8);
-            log.debug("Wrote cache file: {}", filePath);
+            log.debug("Wrote signed cache file: {}", filePath);
         } catch (IOException e) {
             log.warn("Failed to write cache file: {}", filePath, e);
         }

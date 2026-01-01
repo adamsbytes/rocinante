@@ -1,7 +1,7 @@
 import type { Component } from 'solid-js';
 import { useNavigate } from '@tanstack/solid-router';
 import { BotForm } from '../components/BotForm';
-import { useCreateBotMutation } from '../lib/api';
+import { useCreateBotMutation, getErrorMessage } from '../lib/api';
 import type { BotFormData } from '../../shared/botSchema';
 
 export const BotNew: Component = () => {
@@ -26,8 +26,8 @@ export const BotNew: Component = () => {
         submitLabel="Create Bot"
       />
       {createMutation.isError && (
-        <p class="mt-4 text-red-400">
-          Error: {createMutation.error?.message || 'Failed to create bot'}
+        <p class="mt-4 text-red-400 text-sm">
+          {getErrorMessage(createMutation.error)}
         </p>
       )}
     </div>

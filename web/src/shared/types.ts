@@ -85,6 +85,9 @@ export interface BotConfig {
   
   /** Random seed for fingerprint generation (64 hex chars, never exposed to client) */
   fingerprintSeed: string;
+  
+  /** Shared secret for wiki cache HMAC signing (64 hex chars, injected at runtime) */
+  wikiCacheSecret?: string;
 }
 
 export interface BotStatus {
@@ -143,8 +146,28 @@ export interface BotsConfigFile {
 export interface ApiResponse<T> {
   success: boolean;
   data?: T;
+  /** User-friendly error message (succinct, safe for display) */
   error?: string;
+  /** Error code for programmatic handling */
+  code?: ApiErrorCode;
+  /** Request ID for correlating with server logs */
+  requestId?: string;
 }
+
+/**
+ * API error codes - map to user-friendly messages on the client.
+ * Server logs verbose details; client shows succinct message + requestId.
+ */
+export type ApiErrorCode =
+  | 'UNAUTHORIZED'
+  | 'FORBIDDEN'
+  | 'NOT_FOUND'
+  | 'VALIDATION_ERROR'
+  | 'RATE_LIMITED'
+  | 'BOT_NOT_RUNNING'
+  | 'BOT_ALREADY_RUNNING'
+  | 'CONTAINER_ERROR'
+  | 'INTERNAL_ERROR';
 
 // ============================================================================
 // Screenshots

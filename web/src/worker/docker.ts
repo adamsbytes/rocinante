@@ -22,7 +22,7 @@ import {
   getBoltDataDir,
   ensureBoltDataDir,
 } from '../api/status';
-import { getBot } from '../api/config';
+import { getBot, getWikiCacheSecret } from '../api/config';
 
 const docker = new Docker({ socketPath: '/var/run/docker.sock' });
 
@@ -333,8 +333,11 @@ async function startBotWithConfig(bot: BotConfig): Promise<void> {
     },
   });
 
+  // Inject wiki cache secret (shared across all bots for cache signing)
+  const botWithSecret = { ...bot, wikiCacheSecret: getWikiCacheSecret() };
+
   // Inject config.json directly into container from memory (never touches host disk)
-  const configTar = await createConfigTar(bot);
+  const configTar = await createConfigTar(botWithSecret);
   await container.putArchive(configTar, { path: '/home/runelite' });
 
   await container.start();

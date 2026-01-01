@@ -3,6 +3,7 @@ import {
   createRoute,
   Outlet,
   Link,
+  useLocation,
 } from '@tanstack/solid-router';
 import { Show, Switch, Match } from 'solid-js';
 import { createPersistedSignal } from './lib/persistedSignal';
@@ -12,6 +13,7 @@ import { BotDetail } from './routes/BotDetail';
 import { BotNew } from './routes/BotNew';
 import { BotEdit } from './routes/BotEdit';
 import { Login } from './routes/Login';
+import { VerifyMagicLink } from './routes/VerifyMagicLink';
 import { LogsViewer } from './components/LogsViewer';
 import { getViewingLogsForBot, closeLogs } from './lib/logsStore';
 import { user, loading, isAuthenticated, signOut } from './lib/auth';
@@ -78,6 +80,10 @@ const SignOutIcon = () => (
 function RootLayout() {
   const viewingBotId = getViewingLogsForBot();
   const [collapsed, setCollapsed] = createPersistedSignal('sidebar-collapsed', false);
+  const location = useLocation();
+
+  // Auth verification route bypasses normal auth check
+  const isAuthRoute = () => location().pathname.startsWith('/auth/');
 
   // Shared styles for nav items
   const navItemBase = "flex items-center rounded-lg hover:bg-[var(--bg-tertiary)] transition-colors";
@@ -85,6 +91,11 @@ function RootLayout() {
   // Use Switch/Match for reactive conditional rendering
   return (
     <Switch>
+      {/* Auth routes (verify magic link) bypass auth check */}
+      <Match when={isAuthRoute()}>
+        <Outlet />
+      </Match>
+
       {/* Show loading spinner while checking auth */}
       <Match when={loading()}>
         <LoadingSpinner />
@@ -234,9 +245,18 @@ const botEditRoute = createRoute({
   component: BotEdit,
 });
 
+// Magic link verification - intercepts magic link clicks to capture fingerprint
+// This route bypasses the normal auth check since it IS the auth flow
+const verifyMagicLinkRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/auth/verify',
+  component: VerifyMagicLink,
+});
+
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   botNewRoute,
   botDetailRoute,
   botEditRoute,
+  verifyMagicLinkRoute,
 ]);

@@ -40,6 +40,9 @@ IRONMAN_ENABLED=$(jq -e -r '.ironman.enabled' "$CONFIG_FILE")
 IRONMAN_TYPE=$(jq -r '.ironman.type // ""' "$CONFIG_FILE")
 HCIM_SAFETY_LEVEL=$(jq -r '.ironman.hcimSafetyLevel // ""' "$CONFIG_FILE")
 
+# Wiki cache signing secret (shared across all bots)
+WIKI_CACHE_SECRET=$(jq -e -r '.wikiCacheSecret' "$CONFIG_FILE")
+
 # Set display and timezone exports
 export DISPLAY=:${DISPLAY_NUM}
 export TZ="$TIMEZONE"
@@ -294,6 +297,9 @@ if [ -n "$HCIM_SAFETY_LEVEL" ]; then
 fi
 
 RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -Drocinante.random.lampSkill=$LAMP_SKILL"
+
+# Wiki cache signing secret (not logged - sensitive)
+RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -Drocinante.wiki.cache.secret=$WIKI_CACHE_SECRET"
 
 export RUNELITE_JVM_ARGS
 

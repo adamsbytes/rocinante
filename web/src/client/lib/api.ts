@@ -1,8 +1,34 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/solid-query';
-import type { BotConfigDTO, BotWithStatusDTO, ApiResponse, ScreenshotEntry } from '../../shared/types';
+import type { BotConfigDTO, BotWithStatusDTO, ApiResponse, ApiErrorCode, ScreenshotEntry } from '../../shared/types';
 import type { BotFormData } from '../../shared/botSchema';
 
 const API_BASE = '/api';
+
+/**
+ * Custom error class for API errors.
+ * Contains requestId for log correlation and code for programmatic handling.
+ */
+export class ApiError extends Error {
+  /** Error code for programmatic handling */
+  readonly code: ApiErrorCode;
+  /** Request ID for correlating with server logs (for bug reports) */
+  readonly requestId: string;
+  /** HTTP status code */
+  readonly status: number;
+
+  constructor(message: string, code: ApiErrorCode, requestId: string, status: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.code = code;
+    this.requestId = requestId;
+    this.status = status;
+  }
+
+  /** Format for display: "Message (ref: abc123)" */
+  toDisplayString(): string {
+    return `${this.message} (ref: ${this.requestId})`;
+  }
+}
 
 async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -14,9 +40,30 @@ async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
   });
   const data: ApiResponse<T> = await res.json();
   if (!data.success) {
-    throw new Error(data.error || 'Unknown error');
+    throw new ApiError(
+      data.error || 'Something went wrong',
+      data.code || 'INTERNAL_ERROR',
+      data.requestId || 'unknown',
+      res.status
+    );
   }
   return data.data as T;
+}
+
+/** Type guard to check if an error is an ApiError */
+export function isApiError(error: unknown): error is ApiError {
+  return error instanceof ApiError;
+}
+
+/** Get display-friendly error message from any error */
+export function getErrorMessage(error: unknown): string {
+  if (isApiError(error)) {
+    return error.toDisplayString();
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return 'An unexpected error occurred';
 }
 
 // Query keys

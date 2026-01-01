@@ -1,7 +1,8 @@
 import { Database } from 'bun:sqlite';
 import { join } from 'path';
 import { mkdirSync, existsSync } from 'fs';
-import type { BotConfig } from '../shared/types';
+import type { BotConfig, ProxyConfig } from '../shared/types';
+import { encrypt, decrypt } from './crypto';
 
 const DATA_DIR = process.env.DATA_DIR || './data';
 const DB_PATH = join(DATA_DIR, 'bots.db');
@@ -16,6 +17,15 @@ const db = new Database(DB_PATH, { create: true });
 
 // Enable WAL mode for better concurrent access and crash safety
 db.exec('PRAGMA journal_mode = WAL');
+
+// Initialize secrets table (shared secrets for all bots)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS secrets (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+`);
 
 // Initialize schema
 db.exec(`
@@ -60,23 +70,32 @@ interface BotRow {
   updated_at: string;
 }
 
-// Convert database row to BotConfig
+// Decrypt proxy password if present
+function decryptProxy(proxy: ProxyConfig, aad: string): ProxyConfig {
+  if (proxy.pass) {
+    return { ...proxy, pass: decrypt(proxy.pass, aad) };
+  }
+  return proxy;
+}
+
+// Convert database row to BotConfig (decrypts sensitive fields)
 function fromRow(row: BotRow): BotConfig {
+  const aad = row.id;
   return {
     id: row.id,
     ownerId: row.owner_id,
     username: row.username,
-    password: row.password,
-    totpSecret: row.totp_secret,
+    password: decrypt(row.password, aad),
+    totpSecret: decrypt(row.totp_secret, aad),
     characterName: row.character_name,
     preferredWorld: row.preferred_world ?? undefined,
     lampSkill: row.lamp_skill as BotConfig['lampSkill'],
-    proxy: row.proxy ? JSON.parse(row.proxy) : null,
+    proxy: row.proxy ? decryptProxy(JSON.parse(row.proxy), aad) : null,
     ironman: JSON.parse(row.ironman),
     resources: JSON.parse(row.resources),
     environment: JSON.parse(row.environment),
-    vncPassword: row.vnc_password,
-    fingerprintSeed: row.fingerprint_seed,
+    vncPassword: decrypt(row.vnc_password, aad),
+    fingerprintSeed: decrypt(row.fingerprint_seed, aad),
   };
 }
 
@@ -122,22 +141,32 @@ export function getBotsByOwner(ownerId: string): BotConfig[] {
   return rows.map(fromRow);
 }
 
+// Encrypt proxy password if present
+function encryptProxy(proxy: ProxyConfig | null, aad: string): string | null {
+  if (!proxy) return null;
+  const encrypted = proxy.pass
+    ? { ...proxy, pass: encrypt(proxy.pass, aad) }
+    : proxy;
+  return JSON.stringify(encrypted);
+}
+
 export function createBot(bot: BotConfig): BotConfig {
+  const aad = bot.id;
   statements.insert.run({
     $id: bot.id,
     $owner_id: bot.ownerId,
     $username: bot.username,
-    $password: bot.password,
-    $totp_secret: bot.totpSecret,
+    $password: encrypt(bot.password, aad),
+    $totp_secret: encrypt(bot.totpSecret, aad),
     $character_name: bot.characterName,
     $preferred_world: bot.preferredWorld ?? null,
     $lamp_skill: bot.lampSkill,
-    $proxy: bot.proxy ? JSON.stringify(bot.proxy) : null,
+    $proxy: encryptProxy(bot.proxy, aad),
     $ironman: JSON.stringify(bot.ironman),
     $resources: JSON.stringify(bot.resources),
     $environment: JSON.stringify(bot.environment),
-    $vnc_password: bot.vncPassword,
-    $fingerprint_seed: bot.fingerprintSeed,
+    $vnc_password: encrypt(bot.vncPassword, aad),
+    $fingerprint_seed: encrypt(bot.fingerprintSeed, aad),
   });
   return bot;
 }
@@ -148,6 +177,7 @@ export function updateBot(id: string, updates: Partial<BotConfig>): BotConfig | 
 
   // Merge updates with existing
   const updated: BotConfig = { ...existing, ...updates, id };
+  const aad = id;
 
   // Build dynamic UPDATE statement
   // NOTE: ownerId is intentionally excluded - ownership transfers are not allowed
@@ -160,11 +190,11 @@ export function updateBot(id: string, updates: Partial<BotConfig>): BotConfig | 
   }
   if (updates.password !== undefined) {
     setClauses.push('password = $password');
-    params.$password = updates.password;
+    params.$password = encrypt(updates.password, aad);
   }
   if (updates.totpSecret !== undefined) {
     setClauses.push('totp_secret = $totp_secret');
-    params.$totp_secret = updates.totpSecret;
+    params.$totp_secret = encrypt(updates.totpSecret, aad);
   }
   if (updates.characterName !== undefined) {
     setClauses.push('character_name = $character_name');
@@ -180,7 +210,7 @@ export function updateBot(id: string, updates: Partial<BotConfig>): BotConfig | 
   }
   if (updates.proxy !== undefined) {
     setClauses.push('proxy = $proxy');
-    params.$proxy = updates.proxy ? JSON.stringify(updates.proxy) : null;
+    params.$proxy = encryptProxy(updates.proxy, aad);
   }
   if (updates.ironman !== undefined) {
     setClauses.push('ironman = $ironman');
@@ -196,11 +226,11 @@ export function updateBot(id: string, updates: Partial<BotConfig>): BotConfig | 
   }
   if (updates.vncPassword !== undefined) {
     setClauses.push('vnc_password = $vnc_password');
-    params.$vnc_password = updates.vncPassword;
+    params.$vnc_password = encrypt(updates.vncPassword, aad);
   }
   if (updates.fingerprintSeed !== undefined) {
     setClauses.push('fingerprint_seed = $fingerprint_seed');
-    params.$fingerprint_seed = updates.fingerprintSeed;
+    params.$fingerprint_seed = encrypt(updates.fingerprintSeed, aad);
   }
 
   if (setClauses.length === 0) {
@@ -220,4 +250,32 @@ export function updateBot(id: string, updates: Partial<BotConfig>): BotConfig | 
 export function deleteBot(id: string): boolean {
   const result = statements.delete.run(id);
   return result.changes > 0;
+}
+
+// =============================================================================
+// Shared Secrets
+// =============================================================================
+
+const secretStatements = {
+  get: db.query<{ value: string }, [string]>('SELECT value FROM secrets WHERE key = ?'),
+  set: db.query<void, { $key: string; $value: string }>(
+    'INSERT OR REPLACE INTO secrets (key, value) VALUES ($key, $value)'
+  ),
+};
+
+/**
+ * Get or generate the wiki cache signing secret.
+ * Creates a new 64-char hex secret if one doesn't exist.
+ */
+export function getWikiCacheSecret(): string {
+  const row = secretStatements.get.get('wiki_cache_secret');
+  if (row) {
+    return row.value;
+  }
+
+  // Generate new secret
+  const secret = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('hex');
+  secretStatements.set.run({ $key: 'wiki_cache_secret', $value: secret });
+  console.log('Generated new wiki cache signing secret');
+  return secret;
 }

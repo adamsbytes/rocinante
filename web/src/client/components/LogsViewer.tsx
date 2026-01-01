@@ -1,4 +1,5 @@
 import { type Component, createSignal, onCleanup, onMount, Show, For } from 'solid-js';
+import type { ApiResponse } from '../../shared/types';
 
 interface LogsViewerProps {
   botId: string;
@@ -23,8 +24,10 @@ export const LogsViewer: Component<LogsViewerProps> = (props) => {
     fetch(`/api/bots/${props.botId}/logs`, { signal: abortController.signal })
       .then(async (response) => {
         if (!response.ok) {
-          const data = await response.json();
-          throw new Error(data.error || 'Failed to fetch logs');
+          const data: ApiResponse<never> = await response.json();
+          const msg = data.error || 'Failed to fetch logs';
+          const ref = data.requestId ? ` (ref: ${data.requestId})` : '';
+          throw new Error(msg + ref);
         }
         
         setIsConnected(true);

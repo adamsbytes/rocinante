@@ -1,7 +1,7 @@
 import { type Component, Show, Suspense } from 'solid-js';
 import { useNavigate, useParams } from '@tanstack/solid-router';
 import { BotForm } from '../components/BotForm';
-import { useBotQuery, useUpdateBotMutation } from '../lib/api';
+import { useBotQuery, useUpdateBotMutation, getErrorMessage } from '../lib/api';
 import type { BotFormData } from '../../shared/botSchema';
 
 export const BotEdit: Component = () => {
@@ -27,7 +27,7 @@ export const BotEdit: Component = () => {
           when={botQuery.data}
           fallback={
             <Show when={botQuery.isError}>
-              <p class="text-red-400">Failed to load bot configuration</p>
+              <p class="text-red-400 text-sm">{getErrorMessage(botQuery.error)}</p>
             </Show>
           }
         >
@@ -42,8 +42,8 @@ export const BotEdit: Component = () => {
         </Show>
       </Suspense>
       {updateMutation.isError && (
-        <p class="mt-4 text-red-400">
-          Error: {updateMutation.error?.message || 'Failed to update bot'}
+        <p class="mt-4 text-red-400 text-sm">
+          {getErrorMessage(updateMutation.error)}
         </p>
       )}
     </div>
