@@ -1,6 +1,6 @@
 import { existsSync } from 'fs';
-import { readdir, stat } from 'fs/promises';
-import { extname, join, normalize, sep } from 'path';
+import { readdir, stat, lstat } from 'fs/promises';
+import { extname, join, normalize, sep, resolve } from 'path';
 import { DateTime } from 'luxon';
 import type { ScreenshotEntry } from '../shared/types';
 import { getScreenshotsDir } from './status';
@@ -123,14 +123,28 @@ export async function listScreenshots(botId: string, options: ListOptions = {}):
   return results;
 }
 
-function assertPathWithin(baseDir: string, targetPath: string): void {
+async function resolvePathWithoutSymlinks(baseDir: string, targetPath: string): Promise<string> {
   const normalized = normalize(targetPath).replace(/^[/\\]+/, '');
-  const resolved = join(baseDir, normalized);
-  const baseWithSep = baseDir.endsWith(sep) ? baseDir : `${baseDir}${sep}`;
+  const baseResolved = resolve(baseDir);
+  const candidate = resolve(baseResolved, normalized);
+  const baseWithSep = baseResolved.endsWith(sep) ? baseResolved : `${baseResolved}${sep}`;
 
-  if (resolved !== baseDir && !resolved.startsWith(baseWithSep)) {
+  if (candidate !== baseResolved && !candidate.startsWith(baseWithSep)) {
     throw new Error('Invalid screenshot path');
   }
+
+  // Walk each path segment and reject if any segment is a symlink
+  const parts = normalized.split(sep).filter(Boolean);
+  let current = baseResolved;
+  for (const part of parts) {
+    current = join(current, part);
+    const info = await lstat(current);
+    if (info.isSymbolicLink()) {
+      throw new Error('Symlinks are not allowed in screenshot paths');
+    }
+  }
+
+  return candidate;
 }
 
 function guessContentType(ext: string): string {
@@ -151,11 +165,39 @@ export async function getScreenshotFile(botId: string, relativePath: string): Pr
     return null;
   }
 
-  assertPathWithin(baseDir, relativePath);
-  const normalized = normalize(relativePath).replace(/^[/\\]+/, '');
-  const fullPath = join(baseDir, normalized);
+  // Validate file extension first (allowlist: only image formats)
+  const ext = extname(relativePath).toLowerCase();
+  if (!IMAGE_EXTENSIONS.has(ext)) {
+    return null;
+  }
 
-  if (!existsSync(fullPath)) {
+  let fullPath: string;
+  try {
+    fullPath = await resolvePathWithoutSymlinks(baseDir, relativePath);
+  } catch {
+    return null;
+  }
+
+  let fileStat;
+  try {
+    fileStat = await lstat(fullPath);
+  } catch {
+    return null;
+  }
+  
+  // Reject symlinks
+  if (fileStat.isSymbolicLink()) {
+    return null;
+  }
+  
+  // Reject non-files
+  if (!fileStat.isFile()) {
+    return null;
+  }
+  
+  // Reject hardlinks (nlink > 1 means file has multiple directory entries)
+  // This prevents hardlink attacks where attacker links sensitive files into screenshots dir
+  if (fileStat.nlink > 1) {
     return null;
   }
 
@@ -164,7 +206,6 @@ export async function getScreenshotFile(botId: string, relativePath: string): Pr
     return null;
   }
 
-  const ext = extname(fullPath);
   return { file, contentType: guessContentType(ext) };
 }
 

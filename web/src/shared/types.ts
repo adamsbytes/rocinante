@@ -79,6 +79,12 @@ export interface BotConfig {
   
   /** Environment fingerprint settings - auto-generated, deterministic per bot */
   environment: EnvironmentConfig;
+  
+  /** VNC password for remote viewing (8 alphanumeric chars, generated on creation) */
+  vncPassword: string;
+  
+  /** Random seed for fingerprint generation (64 hex chars, never exposed to client) */
+  fingerprintSeed: string;
 }
 
 export interface BotStatus {

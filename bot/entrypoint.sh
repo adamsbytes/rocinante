@@ -6,50 +6,49 @@ echo "================================================="
 echo "Launcher: Bolt (native Linux launcher)"
 echo "================================================="
 
-# Display number from profile (required)
-if [ -z "$DISPLAY_NUMBER" ]; then
-    echo "ERROR: DISPLAY_NUMBER env var not set - profile configuration error"
+# =============================================================================
+# Load Configuration from JSON file
+# All config comes from /home/runelite/config.json - NO environment variables
+# =============================================================================
+
+CONFIG_FILE="/home/runelite/config.json"
+
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "FATAL: Config file not found: $CONFIG_FILE"
     exit 1
 fi
-DISPLAY_NUM="$DISPLAY_NUMBER"
+
+echo "Loading configuration from $CONFIG_FILE"
+
+# Read all required values - jq -e exits non-zero if null/missing (fail loud)
+# NOTE: Sensitive fields (password, totpSecret, username) are NOT extracted here
+# They're read directly by bolt_login.py from the JSON file to avoid shell exposure
+DISPLAY_NUM=$(jq -e -r '.environment.displayNumber' "$CONFIG_FILE")
+SCREEN_RES=$(jq -e -r '.environment.screenResolution' "$CONFIG_FILE")
+SCREEN_DEPTH=$(jq -e -r '.environment.screenDepth' "$CONFIG_FILE")
+DISPLAY_DPI=$(jq -e -r '.environment.displayDpi' "$CONFIG_FILE")
+TIMEZONE=$(jq -e -r '.environment.timezone' "$CONFIG_FILE")
+GC_ALGORITHM=$(jq -e -r '.environment.gcAlgorithm' "$CONFIG_FILE")
+ADDITIONAL_FONTS=$(jq -e -r '.environment.additionalFonts | join(" ")' "$CONFIG_FILE")
+LAMP_SKILL=$(jq -e -r '.lampSkill' "$CONFIG_FILE")
+CHARACTER_NAME=$(jq -e -r '.characterName' "$CONFIG_FILE")
+VNC_PASSWORD=$(jq -e -r '.vncPassword' "$CONFIG_FILE")
+PREFERRED_WORLD=$(jq -e -r '.preferredWorld' "$CONFIG_FILE")
+
+# Ironman config
+IRONMAN_ENABLED=$(jq -e -r '.ironman.enabled' "$CONFIG_FILE")
+IRONMAN_TYPE=$(jq -r '.ironman.type // ""' "$CONFIG_FILE")
+HCIM_SAFETY_LEVEL=$(jq -r '.ironman.hcimSafetyLevel // ""' "$CONFIG_FILE")
+
+# Set display and timezone exports
 export DISPLAY=:${DISPLAY_NUM}
+export TZ="$TIMEZONE"
 
-# =============================================================================
-# Environment Fingerprint: Read from profile-specific env vars
-# These MUST be set by docker.ts - no fallbacks, fail if missing
-# =============================================================================
-
-# Timezone from profile (should match proxy geolocation)
-# Prefer TIMEZONE from profile, fall back to TZ if set by docker
-if [ -n "$TIMEZONE" ]; then
-    export TZ="$TIMEZONE"
-fi
 echo "Timezone: $TZ"
-
-# Screen resolution from profile (required)
-if [ -z "$SCREEN_RESOLUTION" ]; then
-    echo "ERROR: SCREEN_RESOLUTION env var not set - profile configuration error"
-    exit 1
-fi
-SCREEN_RES="$SCREEN_RESOLUTION"
 echo "Screen resolution: $SCREEN_RES"
-
-# Screen depth from profile (required)
-if [ -z "$SCREEN_DEPTH" ]; then
-    echo "ERROR: SCREEN_DEPTH env var not set - profile configuration error"
-    exit 1
-fi
 echo "Screen depth: $SCREEN_DEPTH"
-
-# Display DPI from profile (required)
-if [ -z "$DISPLAY_DPI" ]; then
-    echo "ERROR: DISPLAY_DPI env var not set - profile configuration error"
-    exit 1
-fi
 echo "Display DPI: $DISPLAY_DPI"
 echo "Display number: $DISPLAY_NUM"
-
-# Additional fonts from profile (optional, can be empty)
 echo "Additional fonts: ${ADDITIONAL_FONTS:-none}"
 
 # Clean up stale Xvfb processes and lock files from previous runs
@@ -187,11 +186,12 @@ pulseaudio --start --exit-idle-time=-1 2>/dev/null || true
 # Start VNC server on Unix socket (not TCP - reduces fingerprint)
 # Socket path is in the bind-mounted status directory for web server access
 # -viewonly: Enforces read-only at VNC protocol level (belt-and-suspenders with proxy filter)
+# VNC_PASSWORD already loaded from config.json at start of script
 VNC_SOCKET_PATH="$HOME/.local/share/bolt-launcher/.runelite/rocinante/vnc.sock"
 echo "Starting VNC server on Unix socket: $VNC_SOCKET_PATH"
 rm -f "$VNC_SOCKET_PATH" 2>/dev/null || true
 
-x11vnc -display :${DISPLAY_NUM} -bg -nopw -unixsock "$VNC_SOCKET_PATH" -xkb -forever -shared -nocursorshape -viewonly
+x11vnc -display :${DISPLAY_NUM} -bg -passwd "$VNC_PASSWORD" -unixsock "$VNC_SOCKET_PATH" -xkb -forever -shared -nocursorshape -viewonly
 sleep 1
 
 # Verify x11vnc started
@@ -264,11 +264,7 @@ RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS --add-opens=java.desktop/sun.awt=ALL-UNNAM
 RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -Xmx${JVM_HEAP_MAX:-2G}"
 RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -Xms${JVM_HEAP_MIN:-1G}"
 
-# GC algorithm from profile (required)
-if [ -z "$GC_ALGORITHM" ]; then
-    echo "ERROR: GC_ALGORITHM env var not set - profile configuration error"
-    exit 1
-fi
+# GC algorithm from config (already loaded, required)
 case "$GC_ALGORITHM" in
     G1GC)
         RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -XX:+UseG1GC"
@@ -286,10 +282,8 @@ case "$GC_ALGORITHM" in
 esac
 echo "GC Algorithm: $GC_ALGORITHM"
 
-# Configure Rocinante via environment variables
-if [ -n "$IRONMAN_MODE" ]; then
-    RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -Drocinante.ironman.enabled=$IRONMAN_MODE"
-fi
+# Configure Rocinante via JVM args (values loaded from config.json)
+RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -Drocinante.ironman.enabled=$IRONMAN_ENABLED"
 
 if [ -n "$IRONMAN_TYPE" ]; then
     RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -Drocinante.ironman.type=$IRONMAN_TYPE"
@@ -299,26 +293,18 @@ if [ -n "$HCIM_SAFETY_LEVEL" ]; then
     RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -Drocinante.hcim.safetyLevel=$HCIM_SAFETY_LEVEL"
 fi
 
-if [ -n "$LAMP_SKILL" ]; then
-    RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -Drocinante.random.lampSkill=$LAMP_SKILL"
-fi
-
-if [ -n "$CLAUDE_API_KEY" ]; then
-    RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -Drocinante.claude.apiKey=$CLAUDE_API_KEY"
-fi
+RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -Drocinante.random.lampSkill=$LAMP_SKILL"
 
 export RUNELITE_JVM_ARGS
 
-# Display configuration
+# Display configuration (values loaded from config.json)
 echo "================================================="
-echo "Account Email: ${ACCOUNT_EMAIL:-<not set>}"
-echo "Character Name: ${CHARACTER_NAME:-<not set>}"
-echo "2FA Enabled: $([ -n "$TOTP_SECRET" ] && echo 'Yes (TOTP)' || echo 'No')"
-echo "Ironman Mode: ${IRONMAN_MODE:-false}"
+echo "Character Name: $CHARACTER_NAME"
+echo "Ironman Mode: $IRONMAN_ENABLED"
 echo "Ironman Type: ${IRONMAN_TYPE:-N/A}"
-echo "Game Size: ${GAME_SIZE:-960x540}"
+echo "Preferred World: $PREFERRED_WORLD"
 echo "Quest Helper / Shortest Path: Pre-configured for auto-install"
-echo "VNC: Enabled (port 5900)"
+echo "VNC: Enabled (Unix socket)"
 echo "Fast Track: $([ -f "$JAGEX_SESSION_FILE" ] && [ -s "$JAGEX_SESSION_FILE" ] && echo 'Available (saved session)' || echo 'Not available (first run)')"
 echo "================================================="
 
@@ -341,8 +327,9 @@ QUEST_HELPER_JAR="$BOLT_HOME/.runelite/plugins/quest-helper.jar"
 SHORT_PATH_JAR="$BOLT_HOME/.runelite/plugins/shortest-path.jar"
 CREDENTIALS_FILE="$BOLT_HOME/.runelite/credentials.properties"
 BOLT_RUNELITE_PLUGINS="$BOLT_HOME/.runelite/plugins"
-# Persistent Jagex session env vars - enables fast track on subsequent launches
-JAGEX_SESSION_FILE="$BOLT_HOME/jagex_session.env"
+# Persistent Jagex session - enables fast track on subsequent launches
+# JSON format to avoid shell injection via source
+JAGEX_SESSION_FILE="$BOLT_HOME/jagex_session.json"
 
 # Copy plugins to Bolt's RuneLite plugins directory
 mkdir -p "$BOLT_RUNELITE_PLUGINS"
@@ -418,8 +405,8 @@ configure_runelite_settings() {
     GAME_SIZE="${GAME_SIZE:-960x540}"
     echo "Configuring RuneLite for resolution: $GAME_SIZE"
     
-    # Set default world from environment (default to 418 - safe F2P world)
-    DEFAULT_WORLD="${PREFERRED_WORLD:-418}"
+    # Default world loaded from config.json
+    DEFAULT_WORLD="$PREFERRED_WORLD"
     echo "Configuring default world: $DEFAULT_WORLD"
     
     # Update global settings.properties (preserve externalPlugins)
@@ -537,9 +524,11 @@ if [ -f "$JAGEX_SESSION_FILE" ] && [ -s "$JAGEX_SESSION_FILE" ] && [ -f "$PLUGIN
     echo "FAST TRACK: Found saved Jagex session"
     echo "================================================="
     
-    # Source the saved session variables
+    # Load session from JSON (no shell execution - safe from injection)
     echo "Loading Jagex session from: $JAGEX_SESSION_FILE"
-    source "$JAGEX_SESSION_FILE"
+    JX_SESSION_ID=$(jq -r '.sessionId // empty' "$JAGEX_SESSION_FILE")
+    JX_CHARACTER_ID=$(jq -r '.characterId // empty' "$JAGEX_SESSION_FILE")
+    JX_DISPLAY_NAME=$(jq -r '.displayName // empty' "$JAGEX_SESSION_FILE")
     
     # Verify we got the vars
     if [ -n "$JX_SESSION_ID" ] && [ -n "$JX_CHARACTER_ID" ]; then
@@ -632,17 +621,13 @@ echo "================================================="
     # Give Bolt a moment to initialize
     sleep 5
     
-    # Run login automation script if credentials are provided
-    if [ -n "$ACCOUNT_EMAIL" ] && [ -n "$ACCOUNT_PASSWORD" ]; then
-        echo "Running login automation..."
-        if /home/runelite/bolt-login.sh; then
-            echo "Login automation completed successfully"
-        else
-            echo "WARNING: Login automation encountered issues"
-            echo "Please check VNC connection for manual intervention"
-        fi
+    # Run login automation script (credentials loaded from config.json)
+    echo "Running login automation..."
+    if python3 /home/runelite/bolt_login.py --config "$CONFIG_FILE"; then
+        echo "Login automation completed successfully"
     else
-        echo "No credentials provided - manual login required via VNC"
+        echo "WARNING: Login automation encountered issues"
+        echo "Please check VNC connection for manual intervention"
     fi
     
     # Wait for RuneLite process (launched by Bolt)
@@ -702,16 +687,15 @@ echo "================================================="
             export JX_CHARACTER_ID
             export JX_DISPLAY_NAME
             
-            # SAVE session to persistent file for fast track on future launches
+            # SAVE session to persistent JSON file for fast track on future launches
+            # JSON format avoids shell injection risk from source command
             if [ -n "$JX_SESSION_ID" ] && [ -n "$JX_CHARACTER_ID" ]; then
                 echo "Saving Jagex session for fast track..."
-                cat > "$JAGEX_SESSION_FILE" << EOF
-# Jagex session captured from Bolt - enables fast track on restart
-# Generated: $(date)
-export JX_SESSION_ID="$JX_SESSION_ID"
-export JX_CHARACTER_ID="$JX_CHARACTER_ID"
-export JX_DISPLAY_NAME="$JX_DISPLAY_NAME"
-EOF
+                jq -n \
+                    --arg sid "$JX_SESSION_ID" \
+                    --arg cid "$JX_CHARACTER_ID" \
+                    --arg dn "$JX_DISPLAY_NAME" \
+                    '{sessionId: $sid, characterId: $cid, displayName: $dn}' > "$JAGEX_SESSION_FILE"
                 echo "Session saved to: $JAGEX_SESSION_FILE"
             fi
         else

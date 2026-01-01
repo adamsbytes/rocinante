@@ -1,14 +1,18 @@
 import { type Component, createSignal, Show } from 'solid-js';
+import { z } from 'zod';
 import { requestMagicLink } from '../lib/auth';
 
 export const Login: Component = () => {
   const [email, setEmail] = createSignal('');
   const [status, setStatus] = createSignal<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = createSignal('');
+  const emailSchema = z.string().trim().email().max(256);
+
+  const isEmailValid = () => emailSchema.safeParse(email().trim()).success;
 
   async function handleSubmit(e: Event) {
     e.preventDefault();
-    if (!email().trim()) return;
+    if (!isEmailValid()) return;
 
     setStatus('sending');
     setErrorMsg('');
@@ -16,9 +20,8 @@ export const Login: Component = () => {
     const { error } = await requestMagicLink(email().trim());
 
     if (error) {
-      setStatus('error');
-      setErrorMsg(error.message || 'Failed to send magic link');
-      return;
+      // Avoid disclosing whether the account exists; log for debugging only
+      console.warn('Magic link request error (suppressed):', error);
     }
 
     setStatus('sent');
@@ -60,7 +63,7 @@ export const Login: Component = () => {
 
               <button
                 type="submit"
-                disabled={status() === 'sending' || !email().trim()}
+                disabled={status() === 'sending' || !isEmailValid()}
                 class="w-full py-3 px-4 bg-[var(--accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
               >
                 {status() === 'sending' ? (
@@ -93,11 +96,11 @@ export const Login: Component = () => {
               <h2 class="text-xl font-semibold text-[var(--text-primary)]">Check your email</h2>
               
               <p class="text-[var(--text-secondary)]">
-                We sent a magic link to <span class="text-[var(--text-primary)] font-medium">{email()}</span>
+                If your email exists, a magic link was sent to <span class="text-[var(--text-primary)] font-medium">{email()}</span>
               </p>
 
               <p class="text-[var(--text-secondary)] text-sm">
-                Click the link in the email to sign in. In dev mode, check your server terminal.
+                Click the link in the email to sign in.
               </p>
 
               <button

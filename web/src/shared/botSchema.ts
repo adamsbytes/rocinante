@@ -1,8 +1,21 @@
 import { z } from 'zod';
 
-const optionalTrimmedString = z
+// Regex to detect dangerous characters: null bytes, newlines, and control chars (ASCII 0-31 except tab)
+const DANGEROUS_CHARS = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/;
+
+/** Validate that string contains no control characters, null bytes, or newlines */
+const noControlChars = (fieldName: string) => (value: string) => {
+  if (DANGEROUS_CHARS.test(value) || value.includes('\n') || value.includes('\r')) {
+    return false;
+  }
+  return true;
+};
+
+const optionalSafeString = z
   .string()
   .trim()
+  .max(256, { message: 'Must be 256 characters or fewer' })
+  .refine(noControlChars('field'), { message: 'Must not contain control characters or newlines' })
   .optional()
   .transform((value) => (value && value.length > 0 ? value : undefined));
 
@@ -40,21 +53,33 @@ const ironmanTypeSchema = z
 
 const hcimSafetySchema = z.enum(['NORMAL', 'CAUTIOUS', 'PARANOID']).nullable();
 
+// Proxy host: hostname, IPv4, or IPv6 (bracketed)
+// Allows: proxy.example.com, 192.168.1.1, [::1], [2001:db8::1]
+const PROXY_HOST_PATTERN = /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*|\d{1,3}(?:\.\d{1,3}){3}|\[[a-fA-F0-9:]+\])$/;
+
 export const proxySchema = z.object({
   host: z
     .string()
     .trim()
-    .min(1, { message: 'Proxy host is required' }),
+    .min(1, { message: 'Proxy host is required' })
+    .max(256, { message: 'Proxy host must be 256 characters or fewer' })
+    .refine(noControlChars('Proxy host'), { message: 'Proxy host must not contain control characters' })
+    .refine((v) => PROXY_HOST_PATTERN.test(v), { message: 'Proxy host must be a valid hostname or IP address' }),
   port: z
     .coerce.number()
     .int({ message: 'Proxy port must be a whole number' })
-    .min(1, { message: 'Proxy port must be a positive number' }),
-  user: optionalTrimmedString,
-  pass: optionalTrimmedString,
+    .min(1, { message: 'Proxy port must be at least 1' })
+    .max(65535, { message: 'Proxy port must be at most 65535' }),
+  user: optionalSafeString,
+  pass: optionalSafeString,
 });
 
 // Shared schema parts
-const usernameSchema = z.string().trim().email({ message: 'Valid Jagex account email is required' });
+const usernameSchema = z
+  .string()
+  .trim()
+  .email({ message: 'Valid Jagex account email is required' })
+  .max(256, { message: 'Username must be 256 characters or fewer' });
 const characterNameSchema = z
   .string()
   .trim()
@@ -66,6 +91,7 @@ const totpSecretSchema = z
   .string()
   .trim()
   .min(1, { message: '2FA TOTP secret is required' })
+  .max(256, { message: 'TOTP secret must be 256 characters or fewer' })
   .regex(/^[A-Z2-7]+=*$/i, { message: 'TOTP secret must be valid Base32 format (A-Z, 2-7)' });
 const preferredWorldSchema = z.coerce.number().int({ message: 'Preferred world must be a whole number' }).min(301, { message: 'Preferred world must be between 301 and 638' }).max(638, { message: 'Preferred world must be between 301 and 638' }).optional();
 const proxyFieldSchema = z.union([proxySchema, z.null()]).transform((value) => value ?? null);
@@ -103,7 +129,11 @@ const ironmanSchema = z
 export const botCreateSchema = z
   .object({
     username: usernameSchema,
-    password: z.string().min(1, { message: 'Password is required' }),
+    password: z
+      .string()
+      .min(1, { message: 'Password is required' })
+      .max(256, { message: 'Password must be 256 characters or fewer' })
+      .refine(noControlChars('Password'), { message: 'Password must not contain control characters or newlines' }),
     totpSecret: totpSecretSchema,
     characterName: characterNameSchema,
     lampSkill: lampSkillSchema,
@@ -129,9 +159,15 @@ export const botUpdateSchema = z
   .object({
     username: usernameSchema,
     // Empty string transforms to undefined = no change
-    password: z.string().optional().transform((v) => (v && v.trim().length > 0 ? v : undefined)),
+    password: z
+      .string()
+      .max(256, { message: 'Password must be 256 characters or fewer' })
+      .refine((v) => !v || noControlChars('Password')(v), { message: 'Password must not contain control characters or newlines' })
+      .optional()
+      .transform((v) => (v && v.trim().length > 0 ? v : undefined)),
     totpSecret: z
       .string()
+      .max(256, { message: 'TOTP secret must be 256 characters or fewer' })
       .optional()
       .refine((v) => {
         // Allow empty (means no change) or valid Base32 format

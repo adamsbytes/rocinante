@@ -6,10 +6,11 @@ Uses image template matching for reliable UI navigation.
 Built step-by-step - add templates as we discover each screen.
 """
 
+import argparse
+import json
 import subprocess
 import sys
 import time
-import os
 import random
 from pathlib import Path
 
@@ -21,6 +22,9 @@ TEMPLATES_DIR = Path(__file__).parent / "templates"
 SCREENSHOT_PATH = "/tmp/screen.png"
 MATCH_THRESHOLD = 0.8
 POLL_INTERVAL = 0.5  # seconds between checks
+
+# Global config dict (loaded from JSON file)
+CONFIG: dict = {}
 
 
 class Colors:
@@ -241,10 +245,36 @@ def wait_for_window(window_name: str, timeout: float = 60) -> str | None:
     return None
 
 
+def load_config(config_path: str) -> dict:
+    """Load and validate config from JSON file."""
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+    
+    # Required fields - fail loud if missing (KeyError)
+    _ = config['username']
+    _ = config['password']
+    _ = config['totpSecret']
+    _ = config['characterName']
+    
+    return config
+
+
 def main():
+    global CONFIG
+    
+    parser = argparse.ArgumentParser(description='Bolt Launcher Login Automation')
+    parser.add_argument('--config', required=True, help='Path to config.json')
+    args = parser.parse_args()
+    
     log_info("=" * 50)
     log_info("Bolt Launcher Login Automation")
     log_info("=" * 50)
+    
+    # Load config from JSON file (fail loud if missing required fields)
+    log_info(f"Loading config from: {args.config}")
+    CONFIG = load_config(args.config)
+    log_info(f"Account: {CONFIG['username']}")
+    log_info(f"Character: {CONFIG['characterName']}")
     
     # Check if RuneLite is already running
     result = subprocess.run(
@@ -318,12 +348,9 @@ def main():
         # =========================================
         log_step("Step 4: Entering email...")
         
-        email = os.environ.get('ACCOUNT_EMAIL')
-        password = os.environ.get('ACCOUNT_PASSWORD')
-        
-        if not email or not password:
-            log_warn("ACCOUNT_EMAIL or ACCOUNT_PASSWORD not set - cannot proceed")
-            return 1
+        # Credentials loaded from config.json (fail loud if missing)
+        email = CONFIG['username']
+        password = CONFIG['password']
         
         # Wait a bit longer before typing (let page fully load)
         time.sleep(random.uniform(1.3, 1.6))
@@ -361,9 +388,9 @@ def main():
         time.sleep(3)  # Wait for login to process
         
         # =========================================
-        # STEP 6: Handle 2FA if configured
+        # STEP 6: Handle 2FA (required - fail loud if missing)
         # =========================================
-        totp_secret = os.environ.get('TOTP_SECRET')
+        totp_secret = CONFIG['totpSecret']
         if totp_secret:
             log_step("Step 6: Handling 2FA...")
             

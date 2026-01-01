@@ -91,6 +91,8 @@ RUN apt-get update && apt-get install -y \
     unzip \
     # Process management
     procps \
+    # JSON processing for config file parsing
+    jq \
     # System utilities (standard on desktops, missing in minimal containers)
     lsb-release \
     pciutils \

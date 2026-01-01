@@ -1,7 +1,9 @@
 import { randomUUIDv7 } from 'bun';
 import type { ServerWebSocket, Socket } from 'bun';
+import { createHash, randomBytes, randomInt, timingSafeEqual } from 'crypto';
 import { join, normalize, resolve, sep } from 'path';
 import { z } from 'zod';
+import { RateLimiterMemory } from 'rate-limiter-flexible';
 import {
   getBots,
   getBot,
@@ -18,8 +20,7 @@ import {
   getContainerLogs,
   checkDockerConnection,
   checkBotImage,
-  buildBotImage,
-} from './docker';
+} from './docker-client';
 import {
   readBotStatus,
   sendBotCommand,
@@ -27,6 +28,7 @@ import {
   watchBotStatus,
   getVncSocketPath,
 } from './status';
+import { VncHandshake, RfbState } from './vnc-auth';
 import {
   getTrainingMethods,
   getTrainingMethodsBySkill,
@@ -40,9 +42,54 @@ import { botCreateSchema, botUpdateSchema, type BotFormData, type BotUpdateData 
 import { botCommandPayloadSchema } from '../shared/commandSchema';
 
 // =============================================================================
+// Rate Limiting
+// =============================================================================
+
+// Unauthenticated: 10 requests per minute per IP (protects auth endpoints)
+const unauthRateLimiter = new RateLimiterMemory({
+  points: 10,
+  duration: 60,
+});
+
+// Authenticated: 10 requests per second per user (generous but capped)
+const authRateLimiter = new RateLimiterMemory({
+  points: 10,
+  duration: 1,
+});
+
+// =============================================================================
 // Bot ID Validation (UUIDv7)
 // =============================================================================
 const botIdSchema = z.uuidv7({ message: 'Invalid bot ID: must be a valid UUIDv7' });
+
+const OWNERSHIP_DELAY_MIN_MS = 100;
+const OWNERSHIP_DELAY_JITTER_MS = 100;
+
+const sleep = (ms: number) => (ms <= 0 ? Promise.resolve() : new Promise((resolve) => setTimeout(resolve, ms)));
+const hashId = (value: string) => createHash('sha256').update(value).digest();
+const timingSafeOwnerMatch = (a: string, b: string) => timingSafeEqual(hashId(a), hashId(b));
+async function padOwnershipTiming(start: number): Promise<void> {
+  const target = OWNERSHIP_DELAY_MIN_MS + randomInt(0, OWNERSHIP_DELAY_JITTER_MS + 1);
+  const elapsed = Date.now() - start;
+  const remaining = target - elapsed;
+  if (remaining > 0) {
+    await sleep(remaining);
+  }
+}
+
+/** Get client IP from request (checks X-Forwarded-For for proxies, falls back to direct connection) */
+function getClientIp(req: Request, server: ReturnType<typeof Bun.serve>): string {
+  // Check proxy headers first (trusted reverse proxy scenario)
+  const forwarded = req.headers.get('x-forwarded-for');
+  if (forwarded) {
+    // X-Forwarded-For can be comma-separated list; first is original client
+    return forwarded.split(',')[0].trim();
+  }
+  
+  // Fall back to direct connection IP
+  const socketAddr = server.requestIP(req);
+  return socketAddr?.address ?? 'unknown';
+}
 
 type BotIdResult = 
   | { ok: true; botId: string; bot: BotConfig }
@@ -77,36 +124,24 @@ async function withBotId(path: string, pattern: RegExp): Promise<BotIdResult> {
  * Fetch bot and check ownership against pre-validated session.
  * Session must already be validated before calling this.
  */
-function withOwnedBot(session: NonNullable<Session>, path: string, pattern: RegExp): Promise<BotIdResult> {
-  return withBotId(path, pattern).then(result => {
-    if (!result.ok) return result;
-    
-    if (result.bot.ownerId !== session.user.id) {
-      console.warn(`IDOR blocked: user ${session.user.id} tried to access bot ${result.botId} owned by ${result.bot.ownerId}`);
-      return { ok: false, response: error('Forbidden', 403) };
-    }
-    
-    return result;
-  });
-}
+async function withOwnedBot(session: NonNullable<Session>, path: string, pattern: RegExp): Promise<BotIdResult> {
+  const start = Date.now();
+  const result = await withBotId(path, pattern);
 
-/**
- * Extract and validate bot ID from path (without fetching bot).
- * Use when you only need to validate the ID format.
- */
-function extractBotId(path: string, pattern: RegExp): { ok: true; botId: string } | { ok: false; response: Response } {
-  const match = path.match(pattern);
-  if (!match) {
+  if (!result.ok) {
+    await padOwnershipTiming(start);
+    return result;
+  }
+
+  const ownerMatches = timingSafeOwnerMatch(result.bot.ownerId, session.user.id);
+  if (!ownerMatches) {
+    console.warn(`IDOR blocked: user ${session.user.id} tried to access bot ${result.botId} owned by ${result.bot.ownerId}`);
+    await padOwnershipTiming(start);
     return { ok: false, response: error('Not found', 404) };
   }
-  
-  const rawId = match[1];
-  const validation = botIdSchema.safeParse(rawId);
-  if (!validation.success) {
-    return { ok: false, response: error('Invalid bot ID format', 400) };
-  }
-  
-  return { ok: true, botId: validation.data };
+
+  await padOwnershipTiming(start);
+  return result;
 }
 
 // =============================================================================
@@ -191,12 +226,26 @@ function toBotWithStatusDTO(bot: BotConfig, status: BotStatus): BotWithStatusDTO
 const PORT = parseInt(process.env.PORT || '3000');
 
 // WebSocket connection types
+type VncSocketData = { 
+  ws: ServerWebSocket<VncWebSocketData>;
+  handshake: VncHandshake | null;
+};
+
 type VncWebSocketData = {
   type: 'vnc';
   botId: string;
-  tcpSocket: Socket<{ ws: ServerWebSocket<VncWebSocketData> }> | null;
+  tcpSocket: Socket<VncSocketData> | null;
   /** Track if we've ever had a successful VNC connection on this WebSocket */
   hadConnection: boolean;
+  /** VNC password for authentication */
+  vncPassword: string | null;
+  /** 
+   * Bytes to ignore from browser during handshake transition.
+   * After we auth with x11vnc and send fake "None" auth to browser,
+   * the browser responds with: version (12 bytes) + security selection (1 byte) = 13 bytes.
+   * We ignore these and start proxying after.
+   */
+  browserHandshakeIgnoreBytes: number;
 };
 
 type StatusWebSocketData = {
@@ -266,9 +315,9 @@ function generateSeed(str: string): number {
   return Math.abs(hash);
 }
 
-/** Generate environment fingerprint data for a bot */
-function generateEnvironmentFingerprint(botId: string): EnvironmentConfig {
-  const seed = generateSeed(botId);
+/** Generate environment fingerprint data from a random seed (not botId - unpredictable) */
+function generateEnvironmentFingerprint(fingerprintSeed: string): EnvironmentConfig {
+  const seed = generateSeed(fingerprintSeed);
   const random = seededRandom(seed);
 
   // Machine ID: 32 hex characters
@@ -314,10 +363,37 @@ function generateEnvironmentFingerprint(botId: string): EnvironmentConfig {
   };
 }
 
+/** Generate an 8-character alphanumeric VNC password */
+function generateVncPassword(): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const bytes = randomBytes(8);
+  return Array.from(bytes).map(b => chars[b % chars.length]).join('');
+}
+
 async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>): Promise<Response | undefined> {
   const url = new URL(req.url);
   const path = url.pathname;
   const method = req.method;
+
+  // ==========================================================================
+  // SESSION & RATE LIMITING (applied to all API requests)
+  // ==========================================================================
+  let session: Session = null;
+  
+  if (path.startsWith('/api')) {
+    // Get session once, used for both rate limiting and auth
+    session = await getSession(req);
+    
+    // Rate limit: authenticated users get 10/sec by userId, others get 10/min by IP
+    const limiter = session?.user?.id ? authRateLimiter : unauthRateLimiter;
+    const key = session?.user?.id ?? getClientIp(req, server);
+    
+    try {
+      await limiter.consume(key);
+    } catch {
+      return error('Too Many Requests', 429);
+    }
+  }
 
   // ==========================================================================
   // PUBLIC ROUTES (no auth required)
@@ -328,28 +404,17 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
     return auth.handler(req);
   }
 
-  // Health check (public for monitoring)
+  // Health check (public for monitoring - no internal state disclosure)
   if (path === '/api/health' && method === 'GET') {
-    const dockerOk = await checkDockerConnection();
-    const imageOk = await checkBotImage();
-    return success({
-      status: 'ok',
-      docker: dockerOk,
-      botImage: imageOk,
-    });
+    return success({ status: 'ok' });
   }
 
   // ==========================================================================
   // DEFAULT DENY: All other /api/* routes require authentication
   // ==========================================================================
-  let session: Session = null;
-  
-  if (path.startsWith('/api')) {
-    session = await getSession(req);
-    if (!session?.user?.id) {
-      console.warn(`Auth failed: ${method} ${path} - no valid session`);
-      return error('Unauthorized', 401);
-    }
+  if (path.startsWith('/api') && !session?.user?.id) {
+    console.warn(`Auth failed: ${method} ${path} - no valid session`);
+    return error('Unauthorized', 401);
   }
 
   // From here on, session is guaranteed valid for all /api/* routes
@@ -363,13 +428,16 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
   if (path.match(/^\/api\/vnc\/[^/]+$/) && req.headers.get('upgrade') === 'websocket') {
     const result = await withOwnedBot(session!, path, /^\/api\/vnc\/([^/]+)$/);
     if (!result.ok) return result.response;
-    const { botId } = result;
+    const { botId, bot } = result;
 
     // Check if bot is running
     const status = await getContainerStatus(botId);
     if (status.state !== 'running') {
       return error('Bot is not running', 400);
     }
+
+    // Get VNC password from bot config
+    const vncPassword = bot.vncPassword;
 
     // Upgrade to WebSocket
     const upgraded = server.upgrade(req, {
@@ -378,6 +446,8 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
         botId,
         tcpSocket: null,
         hadConnection: false,
+        vncPassword,
+        browserHandshakeIgnoreBytes: 0,
       } as VncWebSocketData,
     });
 
@@ -509,15 +579,22 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
       const botData: BotFormData = parsed.data;
       const botId = randomUUIDv7();
       
-      // Generate environment fingerprint data (deterministic from bot ID)
-      const environment = generateEnvironmentFingerprint(botId);
+      // Generate random seed for fingerprint (unpredictable, stored in DB)
+      const fingerprintSeed = randomBytes(32).toString('hex');
+      
+      // Generate environment fingerprint data (deterministic from random seed, not botId)
+      const environment = generateEnvironmentFingerprint(fingerprintSeed);
 
       const newBot: BotConfig = {
         id: botId,
         ownerId: session!.user.id,  // Set owner to authenticated user
         ...botData,
-        // Environment fingerprint (auto-generated, deterministic per bot)
+        // Environment fingerprint (auto-generated, deterministic per seed)
         environment,
+        // VNC password for remote viewing
+        vncPassword: generateVncPassword(),
+        // Random seed for fingerprint generation (never exposed to client)
+        fingerprintSeed,
       };
 
       await createBot(newBot);
@@ -529,22 +606,12 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
 
   // Single bot routes
   if (path.match(/^\/api\/bots\/[^/]+$/)) {
-    // Validate bot ID first for all methods
-    const idResult = extractBotId(path, /^\/api\/bots\/([^/]+)$/);
-    if (!idResult.ok) return idResult.response;
-    const botId = idResult.botId;
+    const owned = await withOwnedBot(session!, path, /^\/api\/bots\/([^/]+)$/);
+    if (!owned.ok) return owned.response;
+    const { botId, bot } = owned;
 
     // Get single bot (returns DTO - no sensitive fields)
     if (method === 'GET') {
-      const bot = await getBot(botId);
-      if (!bot) {
-        return error('Bot not found', 404);
-      }
-      // Check ownership
-      if (bot.ownerId !== session!.user.id) {
-        console.warn(`IDOR blocked: user ${session!.user.id} tried to access bot ${botId} owned by ${bot.ownerId}`);
-        return error('Forbidden', 403);
-      }
       return success(toBotWithStatusDTO(bot, await getContainerStatus(bot.id)));
     }
 
@@ -552,16 +619,6 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
     // Password/TOTP: empty = no change, non-empty = update
     if (method === 'PUT') {
       try {
-        const existingBot = await getBot(botId);
-        if (!existingBot) {
-          return error('Bot not found', 404);
-        }
-        // Check ownership
-        if (existingBot.ownerId !== session!.user.id) {
-          console.warn(`IDOR blocked: user ${session!.user.id} tried to update bot ${botId} owned by ${existingBot.ownerId}`);
-          return error('Forbidden', 403);
-        }
-
         const body = await req.json();
         const parsed = botUpdateSchema.safeParse(body);
 
@@ -572,8 +629,8 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
         // Merge: keep existing password/TOTP if not provided in update
         const updateData: BotFormData = {
           ...parsed.data,
-          password: parsed.data.password ?? existingBot.password,
-          totpSecret: parsed.data.totpSecret ?? existingBot.totpSecret,
+          password: parsed.data.password ?? bot.password,
+          totpSecret: parsed.data.totpSecret ?? bot.totpSecret,
         };
 
         const updated = await updateBot(botId, updateData);
@@ -589,16 +646,6 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
     // Delete bot
     if (method === 'DELETE') {
       try {
-        const existingBot = await getBot(botId);
-        if (!existingBot) {
-          return error('Bot not found', 404);
-        }
-        // Check ownership
-        if (existingBot.ownerId !== session!.user.id) {
-          console.warn(`IDOR blocked: user ${session!.user.id} tried to delete bot ${botId} owned by ${existingBot.ownerId}`);
-          return error('Forbidden', 403);
-        }
-
         // Stop and remove container if running
         await removeContainer(botId);
         const deleted = await deleteBot(botId);
@@ -623,7 +670,7 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
     try {
       switch (action) {
         case 'start':
-          await startBot(result.bot);
+          await startBot(result.botId);
           return success({ started: true });
 
         case 'stop':
@@ -631,7 +678,7 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
           return success({ stopped: true });
 
         case 'restart':
-          await restartBot(result.bot);
+          await restartBot(result.botId);
           return success({ restarted: true });
 
         default:
@@ -734,30 +781,20 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
 
 // Check prerequisites on startup
 async function checkPrerequisites(): Promise<void> {
-  console.log('Checking Docker connection...');
+  console.log('Checking Docker worker connection...');
   const dockerOk = await checkDockerConnection();
   if (!dockerOk) {
-    console.error('WARNING: Cannot connect to Docker socket. Make sure /var/run/docker.sock is mounted.');
+    console.warn('WARNING: Docker worker not available yet. Status file not found or stale.');
+    console.warn('Make sure the Docker worker is running: bun run dev:worker');
     return;
   }
-  console.log('Docker connection OK');
+  console.log('Docker worker connection OK');
 
   console.log('Checking bot image...');
   const imageOk = await checkBotImage();
   if (!imageOk) {
-    const botPath = process.env.BOT_PATH;
-    if (botPath) {
-      console.log(`Bot image not found. Building from ${botPath}...`);
-      try {
-        await buildBotImage();
-      } catch (err) {
-        console.error('Failed to build bot image:', err);
-        console.error('You can manually build it with: docker build -t rocinante-bot:latest ./bot');
-      }
-    } else {
-      console.warn(`WARNING: Bot image '${process.env.BOT_IMAGE || 'rocinante-bot:latest'}' not found.`);
-      console.warn('Set BOT_PATH env var to auto-build, or manually run: docker build -t rocinante-bot:latest ./bot');
-    }
+    console.warn(`WARNING: Bot image '${process.env.BOT_IMAGE || 'rocinante-bot:latest'}' not found.`);
+    console.warn('Run: docker build -t rocinante-bot:latest ./bot');
   } else {
     console.log('Bot image OK');
   }
@@ -788,7 +825,7 @@ const bunServer = Bun.serve({
     async open(ws: ServerWebSocket<WebSocketData>) {
       if (ws.data.type === 'vnc') {
         const vncData = ws.data as VncWebSocketData;
-        const { botId } = vncData;
+        const { botId, vncPassword } = vncData;
         console.log(`VNC WebSocket opened for bot ${botId}`);
         
         // Get VNC socket path from status directory
@@ -808,13 +845,52 @@ const bunServer = Bun.serve({
           }
           
           try {
+            // Create handshake handler for this connection
+            const handshake = new VncHandshake(vncPassword!);
+            
             // Connect to VNC server via Unix socket
-            const tcpSocket = await Bun.connect({
+            const tcpSocket = await Bun.connect<VncSocketData>({
               unix: vncSocketPath,
               socket: {
                 data(socket, data) {
-                  // Forward VNC server data to WebSocket client
                   const wsConn = socket.data.ws;
+                  const wsData = wsConn.data as VncWebSocketData;
+                  const hs = socket.data.handshake;
+                  
+                  // During handshake phase, process through handshake state machine
+                  if (hs && !hs.isComplete()) {
+                    hs.processServerData(Buffer.from(data));
+                    
+                    // Send any data needed for handshake to VNC server
+                    const toServer = hs.getServerData();
+                    if (toServer) {
+                      socket.write(toServer);
+                    }
+                    
+                    // Check if handshake completed
+                    if (hs.isComplete()) {
+                      if (hs.isAuthenticated()) {
+                        console.log(`[VNC] Authentication complete for bot ${botId}`);
+                        // Send accumulated browser data (version + security result)
+                        const toBrowser = hs.getBrowserData();
+                        if (toBrowser && wsConn.readyState === 1) {
+                          wsConn.send(toBrowser);
+                        }
+                        // Browser will respond with version (12 bytes) + security selection (1 byte)
+                        // We need to ignore these before proxying
+                        wsData.browserHandshakeIgnoreBytes = 13;
+                        // Clear handshake reference - we're now in proxy mode
+                        socket.data.handshake = null;
+                      } else {
+                        console.error(`[VNC] Authentication failed for bot ${botId}`);
+                        socket.end();
+                        wsConn.close(1008, 'VNC authentication failed');
+                      }
+                    }
+                    return;
+                  }
+                  
+                  // Proxy mode - forward VNC server data to WebSocket client
                   if (wsConn.readyState === 1) { // OPEN
                     const bytesSent = wsConn.send(data);
                     if (bytesSent === 0) {
@@ -868,7 +944,7 @@ const bunServer = Bun.serve({
                   }
                 },
               },
-              data: { ws: ws as ServerWebSocket<VncWebSocketData> },
+              data: { ws: ws as ServerWebSocket<VncWebSocketData>, handshake },
             });
             
             vncData.tcpSocket = tcpSocket;
@@ -935,6 +1011,22 @@ const bunServer = Bun.serve({
     // Called when WebSocket receives a message from client
     message(ws: ServerWebSocket<WebSocketData>, message) {
       if (ws.data.type === 'vnc') {
+        const vncData = ws.data as VncWebSocketData;
+        const { tcpSocket, botId } = vncData;
+        
+        if (!tcpSocket) return;
+        
+        let buffer = typeof message === 'string' ? Buffer.from(message) : Buffer.from(message);
+        
+        // During handshake transition, ignore browser's version + security selection
+        // (we've already authenticated with x11vnc on behalf of the browser)
+        if (vncData.browserHandshakeIgnoreBytes > 0) {
+          const bytesToIgnore = Math.min(vncData.browserHandshakeIgnoreBytes, buffer.length);
+          vncData.browserHandshakeIgnoreBytes -= bytesToIgnore;
+          buffer = buffer.subarray(bytesToIgnore);
+          if (buffer.length === 0) return;
+        }
+        
         // VNC View-only mode: Defense-in-depth filter (x11vnc -viewonly is the primary control)
         // This filter provides early rejection and logging, but isn't foolproof against
         // message smuggling attacks. The VNC server enforces view-only authoritatively.
@@ -946,15 +1038,6 @@ const bunServer = Bun.serve({
         //   5 = PointerEvent (BLOCK - mouse input)
         //   6 = ClientCutText (BLOCK - clipboard)
         // Handshake messages don't follow this format, so we allow short messages
-        const vncData = ws.data as VncWebSocketData;
-        const { tcpSocket, botId } = vncData;
-        
-        if (!tcpSocket) return;
-        
-        const buffer = typeof message === 'string' ? Buffer.from(message) : message;
-        
-        // Allow handshake messages (they're short and don't have the same format)
-        // After handshake, RFB messages have type byte at position 0
         if (buffer.length > 0) {
           const messageType = buffer[0];
           

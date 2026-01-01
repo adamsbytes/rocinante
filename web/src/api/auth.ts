@@ -49,6 +49,8 @@ export const auth = betterAuth({
       
       // Token expires in 15 minutes
       expiresIn: 60 * 15,
+      // Do not auto-create accounts via magic links
+      disableSignUp: true,
     }),
   ],
   

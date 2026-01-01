@@ -9,8 +9,8 @@ import { z } from 'zod';
  */
 const skillTaskSpecSchema = z.object({
   taskType: z.literal('SKILL'),
-  methodId: z.string().min(1, { message: 'Training method ID is required' }),
-  locationId: z.string().optional(),
+  methodId: z.string().min(1, { message: 'Training method ID is required' }).max(256, { message: 'Training method ID must be 256 characters or fewer' }),
+  locationId: z.string().max(256, { message: 'Location ID must be 256 characters or fewer' }).optional(),
   targetType: z.enum(['LEVEL', 'XP', 'DURATION'], { message: 'Target type must be LEVEL, XP, or DURATION' }),
   targetValue: z.number().positive({ message: 'Target value must be positive' }),
   bankInsteadOfDrop: z.boolean().optional(),
@@ -23,7 +23,7 @@ const skillTaskSpecSchema = z.object({
  */
 const combatTaskSpecSchema = z.object({
   taskType: z.literal('COMBAT'),
-  targetNpcs: z.array(z.string()).optional(),
+  targetNpcs: z.array(z.string().max(256, { message: 'NPC target must be 256 characters or fewer' })).optional(),
   targetNpcIds: z.array(z.number().int()).optional(),
   completionType: z.enum(['KILL_COUNT', 'DURATION'], { message: 'Completion type must be KILL_COUNT or DURATION' }),
   completionValue: z.number().positive({ message: 'Completion value must be positive' }),
@@ -48,12 +48,12 @@ const combatTaskSpecSchema = z.object({
  */
 const navigationTaskSpecSchema = z.object({
   taskType: z.literal('NAVIGATION'),
-  locationId: z.string().optional(),
+  locationId: z.string().max(256, { message: 'Location ID must be 256 characters or fewer' }).optional(),
   x: z.number().int().optional(),
   y: z.number().int().optional(),
   plane: z.number().int().optional(),
   randomRadius: z.number().int().nonnegative().optional(),
-  description: z.string().optional(),
+  description: z.string().max(256, { message: 'Description must be 256 characters or fewer' }).optional(),
 }).superRefine((value, ctx) => {
   // Must provide either locationId OR coordinates
   if (!value.locationId && (value.x === undefined || value.y === undefined)) {
@@ -70,7 +70,7 @@ const navigationTaskSpecSchema = z.object({
  */
 const questTaskSpecSchema = z.object({
   taskType: z.literal('QUEST'),
-  questId: z.string().min(1, { message: 'Quest ID is required' }),
+  questId: z.string().min(1, { message: 'Quest ID is required' }).max(256, { message: 'Quest ID must be 256 characters or fewer' }),
 });
 
 /**
