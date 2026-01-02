@@ -197,6 +197,22 @@ public class FiremakingConfig {
     @Builder.Default
     int burnHereWalkThreshold = 15;
 
+    /**
+     * Anchor point to constrain dynamic burn locations.
+     * When set, burn locations must be within {@link #maxDistanceFromAnchor} of this point.
+     * Prevents drifting too far from training area during dynamic mode.
+     * Only used when startPosition is null (dynamic burn mode).
+     */
+    @Nullable
+    WorldPoint anchorPoint;
+
+    /**
+     * Maximum distance from anchor point for burn locations.
+     * Only used when anchorPoint is set in dynamic burn mode.
+     */
+    @Builder.Default
+    int maxDistanceFromAnchor = 20;
+
     // ========================================================================
     // Banking Configuration
     // ========================================================================

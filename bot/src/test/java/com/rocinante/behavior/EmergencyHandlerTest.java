@@ -159,12 +159,12 @@ public class EmergencyHandlerTest {
         // First trigger
         emergencyHandler.checkEmergencies(taskContext);
         
-        // Resolve to clear active emergency (also clears cooldown)
-        emergencyHandler.emergencyResolved("EMERGENCY_1");
+        // Success clears both active emergency AND cooldown
+        emergencyHandler.emergencySucceeded("EMERGENCY_1");
         
         // Should trigger again immediately (no wait needed)
         Optional<Task> task = emergencyHandler.checkEmergencies(taskContext);
-        assertTrue("Should trigger after resolution", task.isPresent());
+        assertTrue("Should trigger after success", task.isPresent());
     }
 
     @Test
@@ -175,12 +175,12 @@ public class EmergencyHandlerTest {
         // First trigger
         emergencyHandler.checkEmergencies(taskContext);
         
-        // Resolve to clear active emergency
-        emergencyHandler.emergencyResolved("EMERGENCY_1");
+        // Success clears active emergency and cooldown
+        emergencyHandler.emergencySucceeded("EMERGENCY_1");
         
-        // Should trigger again immediately (resolution already cleared cooldown)
+        // Should trigger again immediately (success cleared cooldown)
         Optional<Task> task = emergencyHandler.checkEmergencies(taskContext);
-        assertTrue("Should trigger after resolution", task.isPresent());
+        assertTrue("Should trigger after success", task.isPresent());
     }
 
     // ========================================================================
@@ -188,44 +188,65 @@ public class EmergencyHandlerTest {
     // ========================================================================
 
     @Test
-    public void testEmergencyResolved_ClearsActive() {
+    public void testEmergencySucceeded_ClearsActive() {
         when(condition1.isTriggered(any())).thenReturn(true);
         emergencyHandler.registerCondition(condition1);
         
         emergencyHandler.checkEmergencies(taskContext);
         assertTrue(emergencyHandler.hasActiveEmergency());
         
-        emergencyHandler.emergencyResolved("EMERGENCY_1");
+        emergencyHandler.emergencySucceeded("EMERGENCY_1");
         
         assertFalse(emergencyHandler.hasActiveEmergency());
         assertNull(emergencyHandler.getActiveEmergencyId());
     }
 
     @Test
-    public void testEmergencyResolved_ClearsCooldown() {
+    public void testEmergencySucceeded_ClearsCooldown() {
         when(condition1.isTriggered(any())).thenReturn(true);
         emergencyHandler.registerCondition(condition1);
         
         // Trigger emergency
         emergencyHandler.checkEmergencies(taskContext);
         
-        // Resolve it
-        emergencyHandler.emergencyResolved("EMERGENCY_1");
+        // Success clears cooldown
+        emergencyHandler.emergencySucceeded("EMERGENCY_1");
         
         // Should be able to trigger immediately (cooldown cleared)
         Optional<Task> task = emergencyHandler.checkEmergencies(taskContext);
-        assertTrue("Should retrigger after resolution clears cooldown", task.isPresent());
+        assertTrue("Should retrigger after success clears cooldown", task.isPresent());
     }
 
     @Test
-    public void testEmergencyResolved_WrongId_NoEffect() {
+    public void testEmergencyFailed_ClearsActiveButRetainsCooldown() {
+        when(condition1.isTriggered(any())).thenReturn(true);
+        when(condition1.getCooldownMs()).thenReturn(60000L); // Long cooldown
+        emergencyHandler.registerCondition(condition1);
+        
+        // Trigger emergency
+        emergencyHandler.checkEmergencies(taskContext);
+        assertTrue(emergencyHandler.hasActiveEmergency());
+        
+        // Failure clears active but KEEPS cooldown
+        emergencyHandler.emergencyFailed("EMERGENCY_1");
+        
+        // Active should be cleared
+        assertFalse(emergencyHandler.hasActiveEmergency());
+        
+        // But should NOT retrigger immediately due to retained cooldown
+        Optional<Task> task = emergencyHandler.checkEmergencies(taskContext);
+        assertFalse("Should NOT retrigger after failure - cooldown retained", task.isPresent());
+    }
+
+    @Test
+    public void testEmergencySucceeded_WrongId_NoEffect() {
         when(condition1.isTriggered(any())).thenReturn(true);
         emergencyHandler.registerCondition(condition1);
         
         emergencyHandler.checkEmergencies(taskContext);
         assertTrue(emergencyHandler.hasActiveEmergency());
         
-        emergencyHandler.emergencyResolved("WRONG_ID");
+        emergencyHandler.emergencySucceeded("WRONG_ID");
         
         assertTrue("Wrong ID should not clear emergency", emergencyHandler.hasActiveEmergency());
     }

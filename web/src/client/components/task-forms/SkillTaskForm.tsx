@@ -61,7 +61,7 @@ export const SkillTaskForm: Component<SkillTaskFormProps> = (props) => {
   const currentLevel = () => {
     const skill = selectedSkill();
     if (!skill || !props.playerSkills) return 1;
-    return props.playerSkills[skill.toLowerCase()]?.level ?? 1;
+    return props.playerSkills[skill]?.level ?? 1;
   };
 
   // Filter methods by selected skill
@@ -198,8 +198,8 @@ export const SkillTaskForm: Component<SkillTaskFormProps> = (props) => {
             {(skill) => (
               <option value={skill}>
                 {skill} 
-                {props.playerSkills?.[skill.toLowerCase()]?.level 
-                  ? ` (Level ${props.playerSkills[skill.toLowerCase()].level})`
+                {props.playerSkills?.[skill]?.level 
+                  ? ` (Level ${props.playerSkills[skill].level})`
                   : ''
                 }
               </option>

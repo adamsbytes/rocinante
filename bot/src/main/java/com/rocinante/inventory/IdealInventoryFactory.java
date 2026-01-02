@@ -8,9 +8,10 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ItemID;
 import net.runelite.api.Skill;
 
-import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Factory methods for creating {@link IdealInventory} specifications from common patterns.
@@ -96,7 +97,19 @@ public final class IdealInventoryFactory {
     }
 
     /**
-     * Add tool requirements based on skill type.
+     * Add tool requirements based on training method configuration.
+     *
+     * <p>This method scans the method's requiredItemIds list and identifies tool collections
+     * (axes, pickaxes, fishing equipment, etc.) to use level-based best-item selection.
+     * Items that don't match any known tool collection are added as specific items.
+     *
+     * <p>Key features:
+     * <ul>
+     *   <li>Handles compound methods (e.g., chop+fletch needs axe AND knife)</li>
+     *   <li>Uses collection-based selection for levelable tools (best axe for WC level)</li>
+     *   <li>Falls back to skill-based inference if no requiredItemIds specified</li>
+     *   <li>Handles consumables (feathers, bait) with appropriate quantities</li>
+     * </ul>
      */
     private static void addToolsForSkill(
             IdealInventory.IdealInventoryBuilder builder,
@@ -106,42 +119,161 @@ public final class IdealInventoryFactory {
         Skill skill = method.getSkill();
         List<Integer> requiredItems = method.getRequiredItemIds();
 
-        // If method has explicit required items, use those
+        // If method has explicit required items, process ALL of them
         if (requiredItems != null && !requiredItems.isEmpty()) {
-            // Check if these are tools (single quantity) or materials
-            // Tools are typically collections like axes, pickaxes
-            List<Integer> axes = ItemCollections.AXES;
-            List<Integer> pickaxes = ItemCollections.PICKAXES;
-
-            // See if required items match a tool collection
-            if (hasAnyMatch(requiredItems, axes)) {
-                builder.requiredItem(InventorySlotSpec.forToolCollection(
-                        axes,
-                        ItemCollections.AXE_LEVELS,
-                        Skill.WOODCUTTING,
-                        EquipPreference.PREFER_EQUIP
-                ));
-                return;
-            }
-
-            if (hasAnyMatch(requiredItems, pickaxes)) {
-                builder.requiredItem(InventorySlotSpec.forToolCollection(
-                        pickaxes,
-                        ItemCollections.PICKAXE_LEVELS,
-                        Skill.MINING,
-                        EquipPreference.PREFER_EQUIP
-                ));
-                return;
-            }
-
-            // For other required items, add them directly
-            for (int itemId : requiredItems) {
-                builder.requiredItem(InventorySlotSpec.forItem(itemId));
-            }
+            addToolsFromRequiredItems(builder, requiredItems);
             return;
         }
 
         // No explicit required items - infer from skill
+        addToolsFromSkill(builder, skill);
+    }
+
+    /**
+     * Process explicit requiredItemIds from method config.
+     * Identifies tool collections and adds appropriate specs for each.
+     */
+    private static void addToolsFromRequiredItems(
+            IdealInventory.IdealInventoryBuilder builder,
+            List<Integer> requiredItems) {
+
+        // Track which items have been handled via collections
+        Set<Integer> handledItems = new HashSet<>();
+
+        // Check for axes (woodcutting tools) - equippable, level-based selection
+        if (hasAnyMatch(requiredItems, ItemCollections.AXES)) {
+            builder.requiredItem(InventorySlotSpec.forToolCollection(
+                    ItemCollections.AXES,
+                    ItemCollections.AXE_LEVELS,
+                    Skill.WOODCUTTING,
+                    EquipPreference.PREFER_EQUIP
+            ));
+            handledItems.addAll(ItemCollections.AXES);
+        }
+
+        // Check for pickaxes (mining tools) - equippable, level-based selection
+        if (hasAnyMatch(requiredItems, ItemCollections.PICKAXES)) {
+            builder.requiredItem(InventorySlotSpec.forToolCollection(
+                    ItemCollections.PICKAXES,
+                    ItemCollections.PICKAXE_LEVELS,
+                    Skill.MINING,
+                    EquipPreference.PREFER_EQUIP
+            ));
+            handledItems.addAll(ItemCollections.PICKAXES);
+        }
+
+        // Check for harpoons (fishing tools) - some equippable, level-based selection
+        if (hasAnyMatch(requiredItems, ItemCollections.HARPOONS)) {
+            builder.requiredItem(InventorySlotSpec.forToolCollection(
+                    ItemCollections.HARPOONS,
+                    ItemCollections.HARPOON_LEVELS,
+                    Skill.FISHING,
+                    EquipPreference.PREFER_EQUIP  // Dragon/infernal/crystal harpoons can be equipped
+            ));
+            handledItems.addAll(ItemCollections.HARPOONS);
+        }
+
+        // Check for tinderboxes (firemaking)
+        if (hasAnyMatch(requiredItems, ItemCollections.TINDERBOXES)) {
+            builder.requiredItem(InventorySlotSpec.forAnyFromCollection(
+                    ItemCollections.TINDERBOXES, 1));
+            handledItems.addAll(ItemCollections.TINDERBOXES);
+        }
+
+        // Check for knives (fletching, crafting)
+        if (hasAnyMatch(requiredItems, ItemCollections.KNIVES)) {
+            builder.requiredItem(InventorySlotSpec.forAnyFromCollection(
+                    ItemCollections.KNIVES, 1));
+            handledItems.addAll(ItemCollections.KNIVES);
+        }
+
+        // Check for hammers (smithing, construction)
+        if (hasAnyMatch(requiredItems, ItemCollections.HAMMERS)) {
+            builder.requiredItem(InventorySlotSpec.forAnyFromCollection(
+                    ItemCollections.HAMMERS, 1));
+            handledItems.addAll(ItemCollections.HAMMERS);
+        }
+
+        // Check for chisels (crafting)
+        if (hasAnyMatch(requiredItems, ItemCollections.CHISELS)) {
+            builder.requiredItem(InventorySlotSpec.forAnyFromCollection(
+                    ItemCollections.CHISELS, 1));
+            handledItems.addAll(ItemCollections.CHISELS);
+        }
+
+        // Check for fishing rods (bait fishing)
+        if (hasAnyMatch(requiredItems, ItemCollections.FISHING_RODS)) {
+            builder.requiredItem(InventorySlotSpec.forAnyFromCollection(
+                    ItemCollections.FISHING_RODS, 1));
+            handledItems.addAll(ItemCollections.FISHING_RODS);
+        }
+
+        // Check for fly fishing rods
+        if (hasAnyMatch(requiredItems, ItemCollections.FLY_FISHING_RODS)) {
+            builder.requiredItem(InventorySlotSpec.forAnyFromCollection(
+                    ItemCollections.FLY_FISHING_RODS, 1));
+            handledItems.addAll(ItemCollections.FLY_FISHING_RODS);
+        }
+
+        // Check for barbarian rods
+        if (hasAnyMatch(requiredItems, ItemCollections.BARBARIAN_RODS)) {
+            builder.requiredItem(InventorySlotSpec.forAnyFromCollection(
+                    ItemCollections.BARBARIAN_RODS, 1));
+            handledItems.addAll(ItemCollections.BARBARIAN_RODS);
+        }
+
+        // Check for small fishing nets
+        if (hasAnyMatch(requiredItems, ItemCollections.SMALL_FISHING_NETS)) {
+            builder.requiredItem(InventorySlotSpec.forAnyFromCollection(
+                    ItemCollections.SMALL_FISHING_NETS, 1));
+            handledItems.addAll(ItemCollections.SMALL_FISHING_NETS);
+        }
+
+        // Check for big fishing nets
+        if (hasAnyMatch(requiredItems, ItemCollections.BIG_FISHING_NETS)) {
+            builder.requiredItem(InventorySlotSpec.forAnyFromCollection(
+                    ItemCollections.BIG_FISHING_NETS, 1));
+            handledItems.addAll(ItemCollections.BIG_FISHING_NETS);
+        }
+
+        // Check for lobster pots
+        if (hasAnyMatch(requiredItems, ItemCollections.LOBSTER_POTS)) {
+            builder.requiredItem(InventorySlotSpec.forAnyFromCollection(
+                    ItemCollections.LOBSTER_POTS, 1));
+            handledItems.addAll(ItemCollections.LOBSTER_POTS);
+        }
+
+        // Check for fishing bait (consumable - need quantity)
+        if (hasAnyMatch(requiredItems, ItemCollections.FISHING_BAIT)) {
+            builder.requiredItem(InventorySlotSpec.forAnyFromCollection(
+                    ItemCollections.FISHING_BAIT, 1000)
+                    .toBuilder().optional(false).build());
+            handledItems.addAll(ItemCollections.FISHING_BAIT);
+        }
+
+        // Check for feathers (consumable - need quantity)
+        if (hasAnyMatch(requiredItems, ItemCollections.FEATHERS)) {
+            builder.requiredItem(InventorySlotSpec.forAnyFromCollection(
+                    ItemCollections.FEATHERS, 1000)
+                    .toBuilder().optional(false).build());
+            handledItems.addAll(ItemCollections.FEATHERS);
+        }
+
+        // Add any remaining items that weren't matched to a collection
+        for (int itemId : requiredItems) {
+            if (!handledItems.contains(itemId)) {
+                builder.requiredItem(InventorySlotSpec.forItem(itemId));
+            }
+        }
+    }
+
+    /**
+     * Infer tool requirements from skill type when no explicit requiredItemIds.
+     */
+    private static void addToolsFromSkill(
+            IdealInventory.IdealInventoryBuilder builder,
+            Skill skill) {
+
         switch (skill) {
             case WOODCUTTING:
                 builder.requiredItem(InventorySlotSpec.forToolCollection(
@@ -162,21 +294,57 @@ public final class IdealInventoryFactory {
                 break;
 
             case FIREMAKING:
-                builder.requiredItem(InventorySlotSpec.forItem(ItemID.TINDERBOX));
+                builder.requiredItem(InventorySlotSpec.forAnyFromCollection(
+                        ItemCollections.TINDERBOXES, 1));
                 break;
 
             case FLETCHING:
+                builder.requiredItem(InventorySlotSpec.forAnyFromCollection(
+                        ItemCollections.KNIVES, 1));
+                break;
+
             case CRAFTING:
-                // These often need a knife
-                builder.requiredItem(InventorySlotSpec.forItem(ItemID.KNIFE));
+                // Crafting can need various tools - knife is common default
+                builder.requiredItem(InventorySlotSpec.forAnyFromCollection(
+                        ItemCollections.KNIVES, 1));
                 break;
 
             case SMITHING:
-                builder.requiredItem(InventorySlotSpec.forItem(ItemID.HAMMER));
+                builder.requiredItem(InventorySlotSpec.forAnyFromCollection(
+                        ItemCollections.HAMMERS, 1));
                 break;
 
-            // Add more skills as needed
+            case FISHING:
+                // Without explicit equipment, can't determine type
+                // Caller should use forFishing() with explicit type
+                log.warn("Fishing skill without explicit equipment - use forFishing() factory");
+                break;
+
+            case COOKING:
+                // Cooking typically doesn't need tools (fire/range interaction)
+                break;
+
+            case PRAYER:
+                // Prayer typically doesn't need tools (altar interaction)
+                break;
+
+            case AGILITY:
+                // Agility doesn't need tools
+                break;
+
+            case THIEVING:
+                // Thieving typically doesn't need tools (NPC interaction)
+                break;
+
+            case CONSTRUCTION:
+                builder.requiredItem(InventorySlotSpec.forAnyFromCollection(
+                        ItemCollections.HAMMERS, 1));
+                builder.requiredItem(InventorySlotSpec.forAnyFromCollection(
+                        ItemCollections.SAWS, 1));
+                break;
+
             default:
+                // Other skills don't have standard tool requirements
                 break;
         }
     }

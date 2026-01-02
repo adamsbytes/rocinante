@@ -187,9 +187,11 @@ public class DeathTask extends AbstractTask {
     // ========================================================================
 
     /**
-     * Death's Office location (north of Lumbridge).
+     * Lumbridge Graveyard portal location (to access Death's Domain).
+     * Death's Office is instanced - you can't walk there directly.
+     * The portal at Lumbridge Graveyard teleports you to your gravestone.
      */
-    public static final WorldPoint DEATHS_OFFICE_LOCATION = new WorldPoint(3230, 3220, 0);
+    public static final WorldPoint LUMBRIDGE_GRAVEYARD_PORTAL = new WorldPoint(3237, 3195, 0);
 
     /**
      * Common respawn locations.
@@ -312,6 +314,18 @@ public class DeathTask extends AbstractTask {
     private boolean actionPending = false;
     private int waitTicks = 0;
     private static final int MAX_WAIT_TICKS = 10;
+
+    /**
+     * Transition to a new phase and mark progress to prevent timeout.
+     */
+    private void setPhase(Phase newPhase) {
+        if (phase != newPhase) {
+            log.debug("DeathTask phase: {} -> {}", phase, newPhase);
+            phase = newPhase;
+            recordProgress();
+        }
+        waitTicks = 0;
+    }
 
     /**
      * Gravestone location retrieved from VarClient.
@@ -521,7 +535,7 @@ public class DeathTask extends AbstractTask {
             log.info("Ultimate Ironman detected - Death's Office cannot retrieve items. Items are on ground at death location.");
             // UIM just needs to leave Death's Office and return to death location
             if (returnLocation != null || deathLocation != null) {
-                phase = Phase.RETURN_TO_LOCATION;
+                setPhase(Phase.RETURN_TO_LOCATION);
             } else {
                 // No death location known, just complete
                 log.warn("UIM death recovery: no death location known, completing without item retrieval");
@@ -610,48 +624,42 @@ public class DeathTask extends AbstractTask {
                 }
             }
             
-            // We have gravestone coordinates - go there directly
+            // We have gravestone coordinates - go there directly!
             log.info("Death recovery: heading to gravestone at {} (from VarClient)", gravestoneLocation);
-            phase = Phase.GO_TO_GRAVESTONE;
+            setPhase(Phase.GO_TO_GRAVESTONE);
+            return;
         } else if (preferGravestone && deathLocation != null) {
             // Use provided death location
             gravestoneLocation = deathLocation;
             log.info("Death recovery: heading to gravestone at {} (provided location)", deathLocation);
-            phase = Phase.GO_TO_GRAVESTONE;
+            setPhase(Phase.GO_TO_GRAVESTONE);
+            return;
         } else if (hasActiveGravestone(client) && gravestoneLocation == null) {
-            // Timer is active but no coordinates from VarClient yet
+            // Timer is active but no coordinates from VarClient yet - KEEP WAITING
             int ticksLeft = getGravestoneTicksRemaining(client);
-            log.warn("Gravestone active ({} ticks remaining) but coordinates not yet available", ticksLeft);
+            waitTicks++;
+            recordProgress(); // We're actively waiting, don't timeout
             
-            if (isInDeathsOffice(client)) {
-                // In Death's Office - use the portal to teleport to gravestone
-                log.info("In Death's Office - will use Death's Domain portal");
-                phase = Phase.USE_GRAVE_PORTAL;
-        } else {
-                // Not in Death's Office - wait for coordinates to populate
-                // VarClients may sync after a few ticks
-                waitTicks++;
-                if (waitTicks < 10) {
-                    log.debug("Waiting for gravestone coordinates to sync (tick {}/10)", waitTicks);
-                    return; // Stay in DETECT_STATE, retry next tick
-                }
-                
-                // Still no coords after waiting - log extensively for debugging
-                log.error("Gravestone coordinates still empty after {} ticks! Timer: {} ticks remaining",
-                        waitTicks, ticksLeft);
-                log.error("This is unexpected - please check the debug logs for VarPlayer values");
-                
-                // For now, complete the task but don't mark as success
-                // User can manually retrieve or we need more research
-                complete();
-                return;
+            if (waitTicks % 20 == 1) { // Log every 20 ticks (~12 seconds)
+                log.warn("Gravestone active ({} ticks / ~{} mins remaining) but coordinates not yet available (waiting {} ticks)",
+                        ticksLeft, ticksLeft * 600 / 60000, waitTicks);
             }
+            
+            // If we've waited a LONG time and still no coords, something is wrong
+            // But we still have time - keep trying
+            if (waitTicks > 100 && ticksLeft > 100) {
+                log.error("Gravestone coordinates still empty after {} ticks! This is a bug - please report. Timer: {} ticks remaining",
+                        waitTicks, ticksLeft);
+            }
+            
+            // Never give up while gravestone timer is active - coords might sync eventually
+            return;
         } else if (dialogueCompleted) {
             // We completed dialogue (first-death tutorial) but there's no gravestone
             // This means the tutorial is done - nothing more to do
             log.info("Death tutorial completed, no gravestone to retrieve - task complete");
             if (returnLocation != null) {
-                phase = Phase.RETURN_TO_LOCATION;
+                setPhase(Phase.RETURN_TO_LOCATION);
             } else {
                 complete();
                 return;
@@ -999,24 +1007,22 @@ public class DeathTask extends AbstractTask {
             WalkToTask walkTask = new WalkToTask(targetLocation);
             walkTask.setDescription("Walk to gravestone");
             activeSubTask = walkTask;
+            recordProgress();
         }
 
         // Check if walk task completed or failed
         if (activeSubTask != null && activeSubTask.getState().isTerminal()) {
+            recordProgress();
             if (activeSubTask.getState() == TaskState.COMPLETED) {
                 log.debug("Arrived at gravestone area");
                 activeSubTask = null;
-                phase = Phase.RETRIEVE_FROM_GRAVESTONE;
-                waitTicks = 0;
+                setPhase(Phase.RETRIEVE_FROM_GRAVESTONE);
             } else {
-                log.warn("Failed to walk to gravestone, retrying");
+                // Walk failed - just retry, we KNOW where the gravestone is
+                log.warn("Walk to gravestone failed, retrying (attempt {})", waitTicks + 1);
                 activeSubTask = null;
                 waitTicks++;
-                if (waitTicks > MAX_WAIT_TICKS) {
-                    log.warn("Cannot reach gravestone, falling back to Death's Office");
-                    phase = Phase.GO_TO_DEATHS_OFFICE;
-                    waitTicks = 0;
-                }
+                // No fallback - if we have coordinates, keep trying until gravestone expires
             }
         }
     }
@@ -1056,7 +1062,7 @@ public class DeathTask extends AbstractTask {
             if (waitTicks > MAX_WAIT_TICKS) {
                     // Interface open but no button - items may already be recovered
                     log.info("Items may already be recovered, returning to activity");
-                    phase = Phase.RETURN_TO_LOCATION;
+                    setPhase(Phase.RETURN_TO_LOCATION);
                     waitTicks = 0;
             }
             return;
@@ -1123,15 +1129,17 @@ public class DeathTask extends AbstractTask {
             return;
         }
 
-        // Walk to Death's Office
+        // Walk to Lumbridge Graveyard portal (to access Death's Domain)
         if (activeSubTask == null) {
-            log.debug("Walking to Death's Office");
-            WalkToTask walkTask = new WalkToTask(DEATHS_OFFICE_LOCATION);
-            walkTask.setDescription("Walk to Death's Office");
+            log.debug("Walking to Lumbridge Graveyard portal");
+            WalkToTask walkTask = new WalkToTask(LUMBRIDGE_GRAVEYARD_PORTAL);
+            walkTask.setDescription("Walk to Lumbridge Graveyard");
             activeSubTask = walkTask;
+            recordProgress();
         } else if (activeSubTask.getState().isTerminal()) {
             // Walk task finished - will re-check distance on next tick
             activeSubTask = null;
+            recordProgress();
         }
     }
 
@@ -1211,7 +1219,7 @@ public class DeathTask extends AbstractTask {
         // Check if we've already exited (no longer in Death's Office)
         if (!isInDeathsOffice(client)) {
             log.info("Already exited Death's Office, region is now {}", playerPos.getRegionID());
-            phase = Phase.RETURN_TO_LOCATION;
+            setPhase(Phase.RETURN_TO_LOCATION);
             waitTicks = 0;
             return;
         }
@@ -1250,7 +1258,7 @@ public class DeathTask extends AbstractTask {
                 if (waitTicks > MAX_WAIT_TICKS * 2) {
                     // Give up and try to return anyway (might already be outside)
                     log.warn("Timeout interacting with exit portal, attempting return");
-                    phase = Phase.RETURN_TO_LOCATION;
+                    setPhase(Phase.RETURN_TO_LOCATION);
                     waitTicks = 0;
                 }
             }

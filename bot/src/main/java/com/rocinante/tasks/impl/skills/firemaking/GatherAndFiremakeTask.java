@@ -319,11 +319,17 @@ public class GatherAndFiremakeTask extends AbstractTask {
         if (currentSubTask == null) {
             int logCount = inventory.countItem(logId);
 
+            // Use training area as anchor to prevent drifting too far
+            MethodLocation location = config.getLocation();
+            WorldPoint anchor = location != null ? location.getTrainingArea() : null;
+
             FiremakingConfig fmConfig = FiremakingConfig.builder()
                     .logItemId(logId)
                     .startPosition(null)  // Dynamic mode - burn here!
                     .burnHereSearchRadius(15)  // Search a bit wider for clear spots
                     .burnHereWalkThreshold(20)  // Willing to walk back to trees
+                    .anchorPoint(anchor)  // Constrain to training area
+                    .maxDistanceFromAnchor(25)  // Stay within 25 tiles of trees
                     .targetLogsBurned(logCount)  // Burn all logs in inventory
                     .bankForLogs(false)  // Never bank - we're in gather-burn cycle
                     .build();

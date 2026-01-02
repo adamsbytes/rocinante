@@ -604,4 +604,183 @@ public final class ItemCollections {
             ItemID.ANCIENT_WYVERN_SHIELD,
             ItemID.ANCIENT_WYVERN_SHIELD_21634
     );
+
+    // ========================================================================
+    // Fishing Equipment
+    // ========================================================================
+
+    /**
+     * Small fishing nets for shrimp/anchovies.
+     */
+    public static final List<Integer> SMALL_FISHING_NETS = List.of(
+            ItemID.SMALL_FISHING_NET
+    );
+
+    /**
+     * Fishing rods for bait fishing.
+     */
+    public static final List<Integer> FISHING_RODS = List.of(
+            ItemID.FISHING_ROD
+    );
+
+    /**
+     * Fly fishing rods for trout/salmon.
+     */
+    public static final List<Integer> FLY_FISHING_RODS = List.of(
+            ItemID.FLY_FISHING_ROD
+    );
+
+    /**
+     * Barbarian fishing rods for barbarian fishing.
+     */
+    public static final List<Integer> BARBARIAN_RODS = List.of(
+            ItemID.BARBARIAN_ROD
+    );
+
+    /**
+     * Harpoons for tuna/swordfish/shark.
+     * Ordered by effectiveness: regular → barb-tail → dragon → infernal → crystal.
+     */
+    public static final List<Integer> HARPOONS = List.of(
+            ItemID.HARPOON,
+            ItemID.BARBTAIL_HARPOON,
+            ItemID.DRAGON_HARPOON,
+            ItemID.INFERNAL_HARPOON,
+            ItemID.CRYSTAL_HARPOON
+    );
+
+    /**
+     * Fishing level requirements for harpoons.
+     */
+    public static final Map<Integer, Integer> HARPOON_LEVELS = Map.of(
+            ItemID.HARPOON, 1,
+            ItemID.BARBTAIL_HARPOON, 1,
+            ItemID.DRAGON_HARPOON, 61,
+            ItemID.INFERNAL_HARPOON, 75,
+            ItemID.CRYSTAL_HARPOON, 71
+    );
+
+    /**
+     * Lobster pots for lobster fishing.
+     */
+    public static final List<Integer> LOBSTER_POTS = List.of(
+            ItemID.LOBSTER_POT
+    );
+
+    /**
+     * Karambwan vessels for karambwan fishing.
+     */
+    public static final List<Integer> KARAMBWAN_VESSELS = List.of(
+            ItemID.KARAMBWAN_VESSEL,
+            ItemID.KARAMBWAN_VESSEL_3159  // Raw karambwanji filled variant
+    );
+
+    /**
+     * Big fishing nets for bass/mackerel.
+     */
+    public static final List<Integer> BIG_FISHING_NETS = List.of(
+            ItemID.BIG_FISHING_NET
+    );
+
+    /**
+     * Fishing bait items.
+     */
+    public static final List<Integer> FISHING_BAIT = List.of(
+            ItemID.FISHING_BAIT,
+            ItemID.SANDWORMS  // For Anglerfish
+    );
+
+    /**
+     * Feathers for fly fishing.
+     */
+    public static final List<Integer> FEATHERS = List.of(
+            ItemID.FEATHER,
+            ItemID.STRIPY_FEATHER  // From hunting
+    );
+
+    // ========================================================================
+    // Crafting/Processing Tools
+    // ========================================================================
+
+    /**
+     * Knives for fletching and crafting.
+     */
+    public static final List<Integer> KNIVES = List.of(
+            ItemID.KNIFE
+    );
+
+    /**
+     * Hammers for smithing and construction.
+     */
+    public static final List<Integer> HAMMERS = List.of(
+            ItemID.HAMMER,
+            ItemID.IMCANDO_HAMMER
+    );
+
+    /**
+     * Chisels for crafting.
+     */
+    public static final List<Integer> CHISELS = List.of(
+            ItemID.CHISEL
+    );
+
+    /**
+     * Needles for crafting leather.
+     */
+    public static final List<Integer> NEEDLES = List.of(
+            ItemID.NEEDLE
+    );
+
+    /**
+     * Glassblowing pipes for crafting glass.
+     */
+    public static final List<Integer> GLASSBLOWING_PIPES = List.of(
+            ItemID.GLASSBLOWING_PIPE
+    );
+
+    /**
+     * Saws for construction.
+     */
+    public static final List<Integer> SAWS = List.of(
+            ItemID.SAW,
+            ItemID.CRYSTAL_SAW
+    );
+
+    /**
+     * Spades for digging.
+     */
+    public static final List<Integer> SPADES = List.of(
+            ItemID.SPADE
+    );
+
+    // ========================================================================
+    // All Skilling Tools Combined
+    // ========================================================================
+
+    /**
+     * Check if an item ID is any type of skilling tool.
+     * Useful for detecting tools to keep during banking.
+     *
+     * @param itemId the item ID to check
+     * @return true if the item is a recognized skilling tool
+     */
+    public static boolean isSkillingTool(int itemId) {
+        return AXES.contains(itemId)
+                || PICKAXES.contains(itemId)
+                || TINDERBOXES.contains(itemId)
+                || KNIVES.contains(itemId)
+                || HAMMERS.contains(itemId)
+                || CHISELS.contains(itemId)
+                || NEEDLES.contains(itemId)
+                || GLASSBLOWING_PIPES.contains(itemId)
+                || SAWS.contains(itemId)
+                || SPADES.contains(itemId)
+                || SMALL_FISHING_NETS.contains(itemId)
+                || FISHING_RODS.contains(itemId)
+                || FLY_FISHING_RODS.contains(itemId)
+                || BARBARIAN_RODS.contains(itemId)
+                || HARPOONS.contains(itemId)
+                || LOBSTER_POTS.contains(itemId)
+                || BIG_FISHING_NETS.contains(itemId);
+    }
 }

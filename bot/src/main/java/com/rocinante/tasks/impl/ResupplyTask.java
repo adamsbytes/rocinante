@@ -16,7 +16,9 @@ import net.runelite.api.widgets.Widget;
 
 import javax.annotation.Nullable;
 import java.awt.event.KeyEvent;
+import java.util.Collections;
 import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -114,6 +116,14 @@ public class ResupplyTask extends AbstractTask {
     @Getter
     private final int returnProximityThreshold;
 
+    /**
+     * Item IDs to keep when depositing inventory (not deposited).
+     * When depositInventory is true and this set is non-empty, items in this set
+     * are preserved in inventory while all other items are deposited.
+     */
+    @Getter
+    private final Set<Integer> exceptItemIds;
+
     // ========================================================================
     // Execution State
     // ========================================================================
@@ -189,7 +199,8 @@ public class ResupplyTask extends AbstractTask {
             Boolean depositEquipment,
             @Nullable WorldPoint returnPosition,
             Integer bankProximityThreshold,
-            Integer returnProximityThreshold) {
+            Integer returnProximityThreshold,
+            @Singular("exceptItem") Set<Integer> exceptItemIds) {
         
         this.bankLocation = bankLocation;
         this.withdrawItems = withdrawItems != null 
@@ -201,6 +212,9 @@ public class ResupplyTask extends AbstractTask {
         this.returnPosition = returnPosition;
         this.bankProximityThreshold = bankProximityThreshold != null ? bankProximityThreshold : 5;
         this.returnProximityThreshold = returnProximityThreshold != null ? returnProximityThreshold : 3;
+        this.exceptItemIds = exceptItemIds != null && !exceptItemIds.isEmpty()
+                ? new HashSet<>(exceptItemIds)
+                : Collections.emptySet();
     }
 
     /**
@@ -397,8 +411,12 @@ public class ResupplyTask extends AbstractTask {
         
         // Deposit inventory if requested and not yet done
         if (depositInventory && !inventoryDeposited) {
-            log.debug("Depositing inventory");
+            log.debug("Depositing inventory{}", 
+                    exceptItemIds.isEmpty() ? "" : " (keeping " + exceptItemIds.size() + " item types)");
             BankTask depositTask = BankTask.depositAll();
+            if (!exceptItemIds.isEmpty()) {
+                depositTask.exceptItems(exceptItemIds);
+            }
             depositTask.setCloseAfter(false);
             activeSubTask = depositTask;
             inventoryDeposited = true;

@@ -156,9 +156,9 @@ public class FiremakingSkillTask extends AbstractTask {
     private boolean clickPending = false;
 
     /**
-     * Current click phase (tinderbox or logs).
+     * Current click phase - drives the entire click state machine.
      */
-    private ClickPhase clickPhase = ClickPhase.CLICK_TINDERBOX;
+    private ClickPhase clickPhase = ClickPhase.TINDERBOX;
 
     // ========================================================================
     // Constructor
@@ -361,7 +361,7 @@ public class FiremakingSkillTask extends AbstractTask {
             return;
         }
 
-        if (clickPhase == ClickPhase.CLICK_TINDERBOX) {
+        if (clickPhase == ClickPhase.TINDERBOX) {
             int tinderboxSlot = findTinderboxSlot(inventory);
             if (tinderboxSlot < 0) {
                 fail("Tinderbox not found in inventory");
@@ -375,7 +375,7 @@ public class FiremakingSkillTask extends AbstractTask {
                     .thenAccept(success -> {
                         clickPending = false;
                         if (success) {
-                            clickPhase = ClickPhase.CLICK_LOGS;
+                            clickPhase = ClickPhase.LOGS;
                         } else {
                             log.warn("Failed to click tinderbox");
                         }
@@ -385,7 +385,7 @@ public class FiremakingSkillTask extends AbstractTask {
                         log.error("Tinderbox click failed", e);
                         return null;
                     });
-        } else if (clickPhase == ClickPhase.CLICK_LOGS) {
+        } else if (clickPhase == ClickPhase.LOGS) {
             int logSlot = inventory.getSlotOf(config.getLogItemId());
             if (logSlot < 0) {
                 fail("Logs not found in inventory");
@@ -399,18 +399,18 @@ public class FiremakingSkillTask extends AbstractTask {
                     .thenAccept(success -> {
                         clickPending = false;
                         if (success) {
-                            clickPhase = ClickPhase.CLICK_TINDERBOX;
+                            clickPhase = ClickPhase.TINDERBOX;
                             waitTicks = 0;
                             transitionToPhase(FiremakingPhase.WAITING_FOR_FIRE);
                         } else {
                             log.warn("Failed to click logs");
-                            clickPhase = ClickPhase.CLICK_TINDERBOX;
+                            clickPhase = ClickPhase.TINDERBOX;
                         }
                     })
                     .exceptionally(e -> {
                         clickPending = false;
                         log.error("Logs click failed", e);
-                        clickPhase = ClickPhase.CLICK_TINDERBOX;
+                        clickPhase = ClickPhase.TINDERBOX;
                         return null;
                     });
         }
@@ -435,18 +435,73 @@ public class FiremakingSkillTask extends AbstractTask {
         // Check for timeout
         if (waitTicks > config.getLightingTimeoutTicks()) {
             log.debug("Fire lighting timed out at same position, repositioning");
+            clickPhase = ClickPhase.TINDERBOX;
                 transitionToPhase(FiremakingPhase.REPOSITIONING);
             return;
         }
 
-        // Check for fire lighting animation (still in progress)
-        if (player.getAnimationId() == FIRE_LIGHTING_ANIMATION) {
-            log.debug("Fire lighting animation detected");
+        // While animating, pre-position for next fire using clickPhase state machine
+        if (player.getAnimationId() == FIRE_LIGHTING_ANIMATION && !clickPending) {
+            advancePrePosition(ctx);
             return;
         }
 
-        // Still waiting (no animation, no movement)
         log.debug("Waiting for fire... tick {}", waitTicks);
+    }
+
+    /**
+     * Advance the pre-positioning state machine while fire is lighting.
+     * Uses clickPhase to track progress: TINDERBOX → LOGS → PRE_HOVERED
+     */
+    private void advancePrePosition(TaskContext ctx) {
+        InventoryState inventory = ctx.getInventoryState();
+        
+        // Don't pre-position if this is the last log
+        if (inventory.countItem(config.getLogItemId()) <= 1) {
+            return;
+        }
+
+        InventoryClickHelper clickHelper = ctx.getInventoryClickHelper();
+        if (clickHelper == null) {
+            return;
+        }
+
+        switch (clickPhase) {
+            case TINDERBOX:
+                int tinderboxSlot = findTinderboxSlot(inventory);
+                if (tinderboxSlot < 0) return;
+                
+                clickPending = true;
+                clickHelper.executeClick(tinderboxSlot, "Pre-click tinderbox")
+                        .thenAccept(success -> {
+                            clickPending = false;
+                            if (success) {
+                                clickPhase = ClickPhase.LOGS;
+                            }
+                        })
+                        .exceptionally(e -> { clickPending = false; return null; });
+                break;
+
+            case LOGS:
+                int logSlot = inventory.getSlotOf(config.getLogItemId());
+                if (logSlot < 0) return;
+                
+                clickPending = true;
+                clickHelper.hoverSlot(logSlot)
+                        .thenAccept(success -> {
+                            clickPending = false;
+                            if (success) {
+                                clickPhase = ClickPhase.PRE_HOVERED;
+                                log.debug("Pre-positioned: hovering log slot {}", logSlot);
+                            }
+                        })
+                        .exceptionally(e -> { clickPending = false; return null; });
+                break;
+
+            case PRE_HOVERED:
+                // Already pre-positioned, nothing to do
+                break;
+        }
     }
 
     /**
@@ -454,35 +509,65 @@ public class FiremakingSkillTask extends AbstractTask {
      */
     private void onFireLit(TaskContext ctx) {
         logsBurned++;
-        log.debug("Fire lit! Total logs burned: {}", logsBurned);
-
-        // Small delay before next fire (humanization)
+        log.debug("Fire lit! Total burned: {}", logsBurned);
         waitTicks = 0;
 
-        // Check if we need to reposition (blocked or end of line)
-        PlayerState player = ctx.getPlayerState();
-        WorldPoint currentPos = player.getWorldPosition();
-
-        // Dynamic mode: always check if current position is good, reposition if needed
-        if (config.isDynamicBurnMode()) {
-            // In dynamic mode, just try to continue - will reposition if blocked
-            transitionToPhase(FiremakingPhase.LIGHTING_FIRE);
-            return;
-        }
-
-        // Fixed mode: If we've moved significantly west, we might be at end of line
+        // Fixed mode: check if at end of line
+        WorldPoint currentPos = ctx.getPlayerState().getWorldPosition();
         WorldPoint startPos = config.getStartPosition();
-        if (startPos != null) {
+        if (!config.isDynamicBurnMode() && startPos != null) {
             int distanceFromStart = Math.abs(currentPos.getX() - startPos.getX());
             if (distanceFromStart >= config.getMinLineTiles()) {
                 log.debug("Reached end of line (distance {}), repositioning", distanceFromStart);
+                clickPhase = ClickPhase.TINDERBOX;
                 transitionToPhase(FiremakingPhase.REPOSITIONING);
                 return;
             }
         }
 
-        // Continue with next fire
+        // If pre-positioned (PRE_HOVERED), instant click and stay in WAITING_FOR_FIRE
+        if (clickPhase == ClickPhase.PRE_HOVERED) {
+            clickPrePositionedLog(ctx);
+            return;
+        }
+
+        // Not pre-positioned, go through normal LIGHTING_FIRE phase
+        clickPhase = ClickPhase.TINDERBOX;
         transitionToPhase(FiremakingPhase.LIGHTING_FIRE);
+    }
+
+    /**
+     * Click the log we're already hovering over (instant, no mouse movement).
+     */
+    private void clickPrePositionedLog(TaskContext ctx) {
+        InventoryClickHelper clickHelper = ctx.getInventoryClickHelper();
+        if (clickHelper == null) {
+            clickPhase = ClickPhase.TINDERBOX;
+            transitionToPhase(FiremakingPhase.LIGHTING_FIRE);
+            return;
+        }
+
+        positionBeforeFire = ctx.getPlayerState().getWorldPosition();
+        clickPending = true;
+
+        clickHelper.clickCurrentPosition("Instant log click")
+                .thenAccept(success -> {
+                    clickPending = false;
+                    if (success) {
+                        // Reset for next pre-position cycle
+                        clickPhase = ClickPhase.TINDERBOX;
+                        // Stay in WAITING_FOR_FIRE - will pre-position again during animation
+                    } else {
+                        clickPhase = ClickPhase.TINDERBOX;
+                        transitionToPhase(FiremakingPhase.LIGHTING_FIRE);
+                    }
+                })
+                .exceptionally(e -> {
+                    clickPending = false;
+                    clickPhase = ClickPhase.TINDERBOX;
+                    transitionToPhase(FiremakingPhase.LIGHTING_FIRE);
+                    return null;
+                });
     }
 
     // ========================================================================
@@ -542,7 +627,9 @@ public class FiremakingSkillTask extends AbstractTask {
                 currentPos,
                 config.getBurnHereSearchRadius(),
                 config.getBurnHereWalkThreshold(),
-                desiredLineLength
+                desiredLineLength,
+                config.getAnchorPoint(),
+                config.getMaxDistanceFromAnchor()
         );
 
         if (burnLoc.isPresent()) {
@@ -805,8 +892,9 @@ public class FiremakingSkillTask extends AbstractTask {
     }
 
     private enum ClickPhase {
-        CLICK_TINDERBOX,
-        CLICK_LOGS
+        TINDERBOX,    // Need to click tinderbox
+        LOGS,         // Tinderbox selected, need to interact with logs (click or hover depending on context)
+        PRE_HOVERED   // Pre-positioned: hovering logs, ready for instant click
     }
 }
 

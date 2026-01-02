@@ -168,6 +168,87 @@ public class InventoryClickHelper {
         });
     }
 
+    /**
+     * Hover over an inventory slot without clicking.
+     * Used for pre-positioning the mouse for quick subsequent clicks.
+     *
+     * @param slot the inventory slot index (0-27)
+     * @return CompletableFuture that completes with true if hover succeeded
+     */
+    public CompletableFuture<Boolean> hoverSlot(int slot) {
+        // Validate slot
+        if (slot < 0 || slot >= INVENTORY_SIZE) {
+            log.warn("Invalid inventory slot for hover: {} (must be 0-27)", slot);
+            return CompletableFuture.completedFuture(false);
+        }
+
+        CompletableFuture<int[]> coordsFuture = new CompletableFuture<>();
+
+        clientThread.invokeLater(() -> {
+            try {
+                Widget inventoryWidget = getVisibleInventoryWidget();
+                if (inventoryWidget == null) {
+                    log.warn("No inventory widget visible for hover");
+                    coordsFuture.complete(null);
+                    return;
+                }
+
+                Rectangle slotBounds = getInventorySlotBounds(inventoryWidget, slot);
+                if (slotBounds == null) {
+                    log.warn("Could not get bounds for hover slot {}", slot);
+                    coordsFuture.complete(null);
+                    return;
+                }
+
+                // Calculate hover point with humanization
+                int hoverX = slotBounds.x + randomOffset(slotBounds.width);
+                int hoverY = slotBounds.y + randomOffset(slotBounds.height);
+
+                coordsFuture.complete(new int[]{hoverX, hoverY});
+            } catch (Exception e) {
+                log.error("Error getting hover slot coordinates: {}", e.getMessage(), e);
+                coordsFuture.completeExceptionally(e);
+            }
+        });
+
+        return coordsFuture.thenCompose(coords -> {
+            if (coords == null) {
+                return CompletableFuture.completedFuture(false);
+            }
+
+            return mouseController.moveToCanvas(coords[0], coords[1])
+                    .thenApply(v -> true);
+        }).exceptionally(e -> {
+            log.error("Failed to hover inventory slot {}: {}", slot, e.getMessage(), e);
+            return false;
+        });
+    }
+
+    /**
+     * Click at the current mouse position without moving.
+     * Used after pre-hovering to execute an instant click.
+     *
+     * @param description optional description for logging
+     * @return CompletableFuture that completes with true if click succeeded
+     */
+    public CompletableFuture<Boolean> clickCurrentPosition(@Nullable String description) {
+        if (description != null) {
+            log.debug("{} - clicking at current position", description);
+        }
+
+        return mouseController.click()
+                .thenApply(v -> {
+                    if (description != null) {
+                        log.debug("{} - click completed (no movement)", description);
+                    }
+                    return true;
+                })
+                .exceptionally(e -> {
+                    log.error("Failed to click at current position: {}", e.getMessage(), e);
+                    return false;
+                });
+    }
+
     // ========================================================================
     // Slot Bounds Calculation
     // ========================================================================

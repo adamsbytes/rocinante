@@ -71,14 +71,13 @@ public class EntityOverlapChecker {
         // Check if any entity would intercept the click
         boolean targetFound = false;
         ClickableEntity blockingEntity = null;
+        int objectCount = 0;
         
         for (ClickableEntity entity : entitiesAtPoint) {
-            if (entity.getType() == EntityType.OBJECT && entity.getTileObject() == intendedTarget) {
+            if (entity.getType() == EntityType.OBJECT) {
+                objectCount++;
+                if (entity.getTileObject() == intendedTarget) {
                 targetFound = true;
-                // Target is in the list - but is it the TOP entity?
-                if (entitiesAtPoint.indexOf(entity) == 0) {
-                    // Target is topmost - safe to click
-                    return new OverlapResult(false, null, targetFound, entitiesAtPoint);
                 }
             }
             
@@ -86,6 +85,17 @@ public class EntityOverlapChecker {
             if (blockingEntity == null && 
                 (entity.getType() != EntityType.OBJECT || entity.getTileObject() != intendedTarget)) {
                 blockingEntity = entity;
+            }
+        }
+        
+        // If multiple objects at this point, treat as blocked - we can't reliably predict
+        // which object OSRS will click (render priority is complex and unpredictable)
+        if (objectCount > 1) {
+            // Find the other object to report as blocker
+            for (ClickableEntity entity : entitiesAtPoint) {
+                if (entity.getType() == EntityType.OBJECT && entity.getTileObject() != intendedTarget) {
+                    return new OverlapResult(true, entity, targetFound, entitiesAtPoint);
+                }
             }
         }
         
@@ -105,18 +115,29 @@ public class EntityOverlapChecker {
         
         boolean targetFound = false;
         ClickableEntity blockingEntity = null;
+        int npcCount = 0;
         
         for (ClickableEntity entity : entitiesAtPoint) {
-            if (entity.getType() == EntityType.NPC && entity.getNpc() == intendedNpc) {
+            if (entity.getType() == EntityType.NPC) {
+                npcCount++;
+                if (entity.getNpc() == intendedNpc) {
                 targetFound = true;
-                if (entitiesAtPoint.indexOf(entity) == 0) {
-                    return new OverlapResult(false, null, targetFound, entitiesAtPoint);
                 }
             }
             
             if (blockingEntity == null && 
                 (entity.getType() != EntityType.NPC || entity.getNpc() != intendedNpc)) {
                 blockingEntity = entity;
+            }
+        }
+        
+        // If multiple NPCs at this point, treat as blocked - we can't reliably predict
+        // which NPC OSRS will click (render priority is complex)
+        if (npcCount > 1) {
+            for (ClickableEntity entity : entitiesAtPoint) {
+                if (entity.getType() == EntityType.NPC && entity.getNpc() != intendedNpc) {
+                    return new OverlapResult(true, entity, targetFound, entitiesAtPoint);
+                }
             }
         }
         
@@ -178,9 +199,16 @@ public class EntityOverlapChecker {
             
             OverlapResult result = checkPointForObject(candidate, targetObject);
             if (!result.hasBlockingEntity()) {
+                // Double-check: ensure ONLY the target object is at this point
+                // (checkPointForObject now handles multiple objects, but be explicit)
+                long otherObjects = result.getAllEntitiesAtPoint().stream()
+                        .filter(e -> e.getType() == EntityType.OBJECT && e.getTileObject() != targetObject)
+                        .count();
+                if (otherObjects == 0) {
                 log.debug("Found clear click point at ({}, {}) on attempt {}", 
                         candidate.x, candidate.y, attempt + 1);
                 return candidate;
+                }
             }
         }
         
@@ -216,9 +244,15 @@ public class EntityOverlapChecker {
             
             OverlapResult result = checkPointForNpc(candidate, targetNpc);
             if (!result.hasBlockingEntity()) {
+                // Double-check: ensure ONLY the target NPC is at this point
+                long otherNpcs = result.getAllEntitiesAtPoint().stream()
+                        .filter(e -> e.getType() == EntityType.NPC && e.getNpc() != targetNpc)
+                        .count();
+                if (otherNpcs == 0) {
                 log.debug("Found clear NPC click point at ({}, {}) on attempt {}", 
                         candidate.x, candidate.y, attempt + 1);
                 return candidate;
+                }
             }
         }
         

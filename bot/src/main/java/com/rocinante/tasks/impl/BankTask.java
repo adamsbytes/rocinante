@@ -27,6 +27,10 @@ import net.runelite.api.widgets.Widget;
 import java.awt.Rectangle;
 import java.awt.event.KeyEvent;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadLocalRandom;
@@ -221,7 +225,7 @@ public class BankTask extends AbstractTask {
      */
     @Getter
     @Setter
-    private int searchRadius = 25;
+    private int searchRadius = 50;
 
     /**
      * Description for logging.
@@ -235,6 +239,13 @@ public class BankTask extends AbstractTask {
     @Getter
     @Setter
     private boolean withdrawNoted = false;
+
+    /**
+     * Item IDs to exclude when depositing (for DEPOSIT_ALL operation).
+     * When non-empty, deposits items individually instead of using "Deposit All" button.
+     */
+    @Getter
+    private Set<Integer> exceptItemIds = Collections.emptySet();
 
     // ========================================================================
     // Execution State
@@ -314,6 +325,37 @@ public class BankTask extends AbstractTask {
      * Whether we've checked for redundant action injection.
      */
     private boolean redundantActionChecked = false;
+
+    /**
+     * Index tracking progress through individual item deposits (for except mode).
+     */
+    private int depositIndex = 0;
+
+    /**
+     * List of item IDs to deposit individually (populated when exceptItemIds is used).
+     */
+    private List<Integer> itemsToDepositIndividually = null;
+
+    /**
+     * Cached current quantity mode (tracked from widget state).
+     */
+    private WithdrawQuantity currentQuantityMode = null;
+
+    /**
+     * Whether we've determined the deposit strategy for this task.
+     */
+    private boolean depositStrategyDetermined = false;
+
+    /**
+     * Chosen deposit strategy for this task.
+     */
+    private DepositStrategy depositStrategy = DepositStrategy.BUTTON;
+
+    /**
+     * Override quantity mode to set before performing operation.
+     * Used when deposit strategy requires ALL mode but it's not currently set.
+     */
+    private WithdrawQuantity quantityModeOverride = null;
 
     // ========================================================================
     // Constructors
@@ -461,6 +503,40 @@ public class BankTask extends AbstractTask {
      */
     public BankTask withWithdrawNoted(boolean noted) {
         this.withdrawNoted = noted;
+        return this;
+    }
+
+    /**
+     * Set items to exclude when depositing.
+     * When used with {@link #depositAll()}, deposits items individually,
+     * skipping the specified item IDs.
+     *
+     * <p>Example usage:
+     * <pre>{@code
+     * // Deposit all except axe and knife (keep tools)
+     * BankTask task = BankTask.depositAll()
+     *     .exceptItems(Set.of(ItemID.RUNE_AXE, ItemID.KNIFE));
+     * }</pre>
+     *
+     * @param itemIds item IDs to keep in inventory
+     * @return this task for chaining
+     */
+    public BankTask exceptItems(Set<Integer> itemIds) {
+        if (itemIds != null && !itemIds.isEmpty()) {
+            this.exceptItemIds = new HashSet<>(itemIds);
+        }
+        return this;
+    }
+
+    /**
+     * Set a single item to exclude when depositing.
+     * Convenience method for {@link #exceptItems(Set)}.
+     *
+     * @param itemId item ID to keep in inventory
+     * @return this task for chaining
+     */
+    public BankTask exceptItem(int itemId) {
+        this.exceptItemIds = Set.of(itemId);
         return this;
     }
 
@@ -860,7 +936,20 @@ public class BankTask extends AbstractTask {
     // ========================================================================
 
     private void executeSetQuantityMode(TaskContext ctx) {
-        // For deposit all/equipment, skip quantity selection
+        // Handle override from deposit strategy (e.g., need ALL mode for left-click deposits)
+        if (quantityModeOverride != null) {
+            int overrideWidget = getQuantityWidget(quantityModeOverride);
+            if (overrideWidget >= 0) {
+                log.debug("Setting quantity mode to {} for deposit strategy", quantityModeOverride);
+                currentQuantityMode = quantityModeOverride;
+                quantityModeOverride = null;  // Clear override
+                clickQuantityButton(ctx, overrideWidget, BankPhase.PERFORM_OPERATION);
+                return;
+            }
+            quantityModeOverride = null;
+        }
+        
+        // For deposit all/equipment, skip quantity selection (unless strategy requires it)
         if (operation == BankOperation.DEPOSIT_ALL || operation == BankOperation.DEPOSIT_EQUIPMENT) {
             phase = BankPhase.PERFORM_OPERATION;
             return;
@@ -968,13 +1057,272 @@ public class BankTask extends AbstractTask {
     }
 
     private void clickDepositAll(TaskContext ctx, Client client) {
+        // Determine deposit strategy on first call (humanized behavior)
+        if (!depositStrategyDetermined) {
+            depositStrategyDetermined = true;
+            currentQuantityMode = detectCurrentQuantityMode(client);
+            
+            if (exceptItemIds.isEmpty()) {
+                // True "deposit all" - no exceptions
+                depositStrategy = determineDepositAllStrategy(ctx);
+            } else {
+                // "Deposit all except" - need to deposit items individually
+                buildItemsToDepositList(ctx);
+                depositStrategy = determineDepositExceptStrategy(ctx, currentQuantityMode);
+            }
+            
+            log.debug("Deposit strategy: {} (quantity mode: {}, {} items to deposit)",
+                    depositStrategy, currentQuantityMode, 
+                    itemsToDepositIndividually != null ? itemsToDepositIndividually.size() : "all");
+        }
+
+        // Execute based on strategy
+        switch (depositStrategy) {
+            case BUTTON:
+                executeDepositButton(ctx, client);
+                break;
+            case LEFT_CLICK_ALL_MODE:
+                executeDepositLeftClick(ctx, client);
+                break;
+            case RIGHT_CLICK_MENU:
+                executeDepositRightClick(ctx, client);
+                break;
+        }
+    }
+
+    /**
+     * Determine strategy for true "deposit all" (no exceptions).
+     * 95% use button, 5% use All mode + left-click items.
+     */
+    private DepositStrategy determineDepositAllStrategy(TaskContext ctx) {
+        double roll = ThreadLocalRandom.current().nextDouble();
+        
+        // Get profile preference if available (some players never use button)
+        double buttonPreference = 0.95;
+        if (ctx.getPlayerProfile() != null) {
+            // Use click variance as a proxy for "efficiency" - higher variance = more likely to click items
+            buttonPreference = 0.90 + (1.0 - ctx.getPlayerProfile().getClickVarianceModifier()) * 0.08;
+        }
+        
+        if (roll < buttonPreference) {
+            return DepositStrategy.BUTTON;
+        } else {
+            // Build item list for left-click approach
+            buildItemsToDepositList(ctx);
+            return DepositStrategy.LEFT_CLICK_ALL_MODE;
+        }
+    }
+
+    /**
+     * Determine strategy for "deposit all except" cases.
+     * Behavior depends on current quantity mode and number of items.
+     */
+    private DepositStrategy determineDepositExceptStrategy(TaskContext ctx, WithdrawQuantity currentMode) {
+        int numUniqueItems = itemsToDepositIndividually != null ? itemsToDepositIndividually.size() : 0;
+        double roll = ThreadLocalRandom.current().nextDouble();
+        
+        // Profile-based modifier
+        double leftClickBias = 0.90;  // Base 90% left-click preference
+        if (ctx.getPlayerProfile() != null) {
+            // Players with faster mouse speed tend to prefer left-click
+            leftClickBias = 0.85 + ctx.getPlayerProfile().getMouseSpeedMultiplier() * 0.08;
+            leftClickBias = Math.min(0.98, leftClickBias);
+        }
+        
+        if (currentMode == WithdrawQuantity.ALL) {
+            // "All" mode is already selected - can left-click efficiently
+            if (numUniqueItems > 2) {
+                // >2 unique items: 100% left-click (no one right-clicks 3+ items)
+                return DepositStrategy.LEFT_CLICK_ALL_MODE;
+            } else {
+                // ≤2 unique items: 90% left-click, 10% right-click
+                return roll < leftClickBias 
+                        ? DepositStrategy.LEFT_CLICK_ALL_MODE 
+                        : DepositStrategy.RIGHT_CLICK_MENU;
+            }
+        } else {
+            // "All" mode NOT selected
+            if (numUniqueItems > 2) {
+                // >2 unique items: 95% select "All" mode first (via SET_QUANTITY_MODE phase)
+                if (roll < 0.95) {
+                    // Need to set quantity mode to ALL first
+                    phase = BankPhase.SET_QUANTITY_MODE;
+                    quantityModeOverride = WithdrawQuantity.ALL;
+                    return DepositStrategy.LEFT_CLICK_ALL_MODE;
+                } else {
+                    return DepositStrategy.RIGHT_CLICK_MENU;
+                }
+            } else {
+                // ≤2 unique items: either right-click (common) or spam left-click
+                return roll < 0.70 
+                        ? DepositStrategy.RIGHT_CLICK_MENU 
+                        : DepositStrategy.LEFT_CLICK_ALL_MODE;
+            }
+        }
+    }
+
+    /**
+     * Build list of unique item IDs to deposit (excluding excepted items).
+     */
+    private void buildItemsToDepositList(TaskContext ctx) {
+        itemsToDepositIndividually = new ArrayList<>();
+        InventoryState inventory = ctx.getInventoryState();
+        
+        if (inventory != null) {
+            Set<Integer> seen = new HashSet<>();
+            for (net.runelite.api.Item item : inventory.getAllItems()) {
+                if (item != null && item.getId() > 0) {
+                    int itemId = item.getId();
+                    if (!exceptItemIds.contains(itemId) && !seen.contains(itemId)) {
+                        itemsToDepositIndividually.add(itemId);
+                        seen.add(itemId);
+                    }
+                }
+            }
+        }
+        
+        depositIndex = 0;
+    }
+
+    /**
+     * Detect the currently selected quantity mode from bank widget state.
+     */
+    private WithdrawQuantity detectCurrentQuantityMode(Client client) {
+        // Check which quantity button appears "pressed" (sprite state)
+        // The pressed button typically has a different sprite ID or state
+        
+        // Check ALL button first (most relevant for deposit operations)
+        Widget allBtn = client.getWidget(WIDGET_BANK_GROUP, WIDGET_QUANTITY_ALL);
+        if (allBtn != null && !allBtn.isHidden()) {
+            // Sprite ID for "pressed" state varies, but we can check common patterns
+            // For now, assume default is not ALL unless we explicitly set it
+        }
+        
+        // If we previously set a quantity mode this session, use that
+        // Otherwise default to unknown (assume not ALL)
+        return null;  // Unknown/not ALL
+    }
+
+    /**
+     * Execute deposit using the "Deposit Inventory" button.
+     */
+    private void executeDepositButton(TaskContext ctx, Client client) {
         Widget depositBtn = client.getWidget(WIDGET_BANK_GROUP, WIDGET_DEPOSIT_INVENTORY);
         if (depositBtn == null || depositBtn.isHidden()) {
             fail("Deposit inventory button not found");
             return;
         }
-
         clickWidget(ctx, depositBtn, "Deposit all");
+    }
+
+    /**
+     * Execute deposit by left-clicking items (requires ALL mode).
+     */
+    private void executeDepositLeftClick(TaskContext ctx, Client client) {
+        // Ensure we have items list
+        if (itemsToDepositIndividually == null) {
+            buildItemsToDepositList(ctx);
+        }
+        
+        // Check if done
+        if (depositIndex >= itemsToDepositIndividually.size()) {
+            log.debug("Left-click deposits complete");
+            waitTicks = 0;
+            phase = BankPhase.WAIT_OPERATION;
+            return;
+        }
+        
+        int itemIdToDeposit = itemsToDepositIndividually.get(depositIndex);
+        
+        Widget invContainer = client.getWidget(WIDGET_BANK_INVENTORY_GROUP, WIDGET_BANK_INV_ITEMS);
+        if (invContainer == null) {
+            fail("Bank inventory widget not found");
+            return;
+        }
+
+        Widget itemWidget = findItemInWidget(invContainer, itemIdToDeposit);
+        if (itemWidget == null) {
+            log.debug("Item {} not found in inventory, skipping", itemIdToDeposit);
+            depositIndex++;
+            return;
+        }
+
+        log.debug("Left-click depositing item {} ({}/{})", 
+                itemIdToDeposit, depositIndex + 1, itemsToDepositIndividually.size());
+        
+        // Simple left-click (uses current quantity mode)
+        operationPending = true;
+        ctx.getWidgetClickHelper().clickWidget(itemWidget, "Deposit item")
+                .thenAccept(success -> {
+                    operationPending = false;
+                    depositIndex++;
+                })
+                .exceptionally(e -> {
+                    operationPending = false;
+                    log.debug("Left-click deposit failed for item {}, skipping", itemIdToDeposit);
+                    depositIndex++;
+                    return null;
+                });
+    }
+
+    /**
+     * Execute deposit by right-clicking and selecting "Deposit-All".
+     */
+    private void executeDepositRightClick(TaskContext ctx, Client client) {
+        // Ensure we have items list
+        if (itemsToDepositIndividually == null) {
+            buildItemsToDepositList(ctx);
+        }
+        
+        // Check if done
+        if (depositIndex >= itemsToDepositIndividually.size()) {
+            log.debug("Right-click deposits complete");
+            waitTicks = 0;
+            phase = BankPhase.WAIT_OPERATION;
+            return;
+        }
+        
+        int itemIdToDeposit = itemsToDepositIndividually.get(depositIndex);
+        
+        Widget invContainer = client.getWidget(WIDGET_BANK_INVENTORY_GROUP, WIDGET_BANK_INV_ITEMS);
+        if (invContainer == null) {
+            fail("Bank inventory widget not found");
+            return;
+        }
+
+        Widget itemWidget = findItemInWidget(invContainer, itemIdToDeposit);
+        if (itemWidget == null) {
+            log.debug("Item {} not found in inventory, skipping", itemIdToDeposit);
+            depositIndex++;
+            return;
+        }
+
+        log.debug("Right-click depositing all of item {} ({}/{})", 
+                itemIdToDeposit, depositIndex + 1, itemsToDepositIndividually.size());
+        
+        Rectangle bounds = itemWidget.getBounds();
+        if (bounds == null || bounds.width == 0) {
+            depositIndex++;
+            return;
+        }
+
+        operationPending = true;
+        ctx.getMenuHelper().selectMenuEntry(bounds, MENU_DEPOSIT_ALL)
+                .thenAccept(success -> {
+                    operationPending = false;
+                    if (success) {
+                        depositIndex++;
+                    } else {
+                        log.debug("Deposit-All menu failed, skipping item");
+                        depositIndex++;
+                    }
+                })
+                .exceptionally(e -> {
+                    operationPending = false;
+                    log.debug("Deposit failed for item {}, skipping", itemIdToDeposit);
+                    depositIndex++;
+                    return null;
+                });
     }
 
     private void clickDepositEquipment(TaskContext ctx, Client client) {
@@ -1216,7 +1564,12 @@ public class BankTask extends AbstractTask {
 
         switch (operation) {
             case DEPOSIT_ALL:
-                operationComplete = ctx.getInventoryState().isEmpty();
+                if (exceptItemIds.isEmpty()) {
+                    operationComplete = ctx.getInventoryState().isEmpty();
+                } else {
+                    // Check that inventory only contains excepted items
+                    operationComplete = inventoryOnlyContainsExceptedItems(ctx.getInventoryState());
+                }
                 break;
             case DEPOSIT:
                 operationComplete = !ctx.getInventoryState().hasItem(itemId);
@@ -1311,6 +1664,25 @@ public class BankTask extends AbstractTask {
     public static boolean isBankOpen(Client client) {
         Widget bankContainer = client.getWidget(WIDGET_BANK_GROUP, WIDGET_BANK_CONTAINER);
         return bankContainer != null && !bankContainer.isHidden();
+    }
+
+    /**
+     * Check if inventory only contains items from the exceptItemIds set.
+     * Used to determine if "deposit all except" operation is complete.
+     */
+    private boolean inventoryOnlyContainsExceptedItems(InventoryState inventory) {
+        if (inventory == null || inventory.isEmpty()) {
+            return true;
+        }
+        
+        for (net.runelite.api.Item item : inventory.getAllItems()) {
+            if (item != null && item.getId() > 0) {
+                if (!exceptItemIds.contains(item.getId())) {
+                    return false; // Found an item that should have been deposited
+                }
+            }
+        }
+        return true;
     }
 
     // ========================================================================
@@ -1673,6 +2045,18 @@ public class BankTask extends AbstractTask {
         ENTER_QUANTITY,
         WAIT_OPERATION,
         CLOSE_BANK
+    }
+
+    /**
+     * Strategy for depositing items (humanized behavior).
+     */
+    private enum DepositStrategy {
+        /** Use the "Deposit Inventory" button (most common for true deposit-all) */
+        BUTTON,
+        /** Left-click items with "All" quantity mode selected */
+        LEFT_CLICK_ALL_MODE,
+        /** Right-click and select "Deposit-All" from menu */
+        RIGHT_CLICK_MENU
     }
 }
 

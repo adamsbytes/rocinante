@@ -4,6 +4,8 @@ import com.rocinante.agility.AgilityCourse;
 import com.rocinante.agility.AgilityCourseRepository;
 import com.rocinante.inventory.IdealInventory;
 import com.rocinante.inventory.InventoryPreparation;
+import com.rocinante.inventory.InventorySlotSpec;
+import com.rocinante.inventory.ToolSelection;
 import com.rocinante.progression.GroundItemWatch;
 import com.rocinante.progression.MethodLocation;
 import com.rocinante.progression.MethodType;
@@ -377,8 +379,17 @@ public class SkillTask extends AbstractTask {
             
             // Check if inventory already matches ideal state
             if (!inventoryPrep.isInventoryReady(ideal, ctx)) {
-                // Use analyzeAndPrepare to get detailed result without throwing
-                InventoryPreparation.PreparationResult result = inventoryPrep.analyzeAndPrepare(ideal, ctx);
+                // Compute optimal bank location using smart routing
+                PlayerState player = ctx.getPlayerState();
+                WorldPoint playerPos = player.getWorldPosition();
+                WorldPoint trainingArea = getTrainingAreaPosition();
+                
+                WorldPoint optimalBank = computeOptimalBankLocation(ctx, playerPos, trainingArea);
+                WorldPoint returnPos = (optimalBank != null && trainingArea != null) ? trainingArea : null;
+                
+                // Use analyzeAndPrepare with smart bank routing
+                InventoryPreparation.PreparationResult result = inventoryPrep.analyzeAndPrepare(
+                        ideal, ctx, optimalBank, returnPos);
                 
                 if (result.isFailed()) {
                     // Required items are missing and cannot be obtained
@@ -1343,18 +1354,19 @@ public class SkillTask extends AbstractTask {
      * Create a ResupplyTask for banking during skill training.
      * Uses the existing ResupplyTask which handles:
      * - Walking to bank (specific or nearest)
-     * - Depositing inventory
+     * - Depositing inventory (keeping required tools)
      * - Returning to training position
+     *
+     * <p>Automatically extracts required item IDs from the IdealInventory
+     * and passes them as exceptions so tools aren't deposited.
      *
      * @param bankPosition the specific bank position, or null to use nearest
      * @return configured ResupplyTask
      */
     private Task createResupplyTask(WorldPoint bankPosition) {
-        TrainingMethod method = config.getMethod();
-        
         // Use ResupplyTask.Builder for clean configuration
         ResupplyTask.ResupplyTaskBuilder builder = ResupplyTask.builder()
-                .depositInventory(true)  // Deposit all gathered resources
+                .depositInventory(true)  // Deposit gathered resources
                 .depositEquipment(false); // Keep equipped tools
         
         // Set specific bank location if provided
@@ -1367,7 +1379,139 @@ public class SkillTask extends AbstractTask {
             builder.returnPosition(trainingPosition);
         }
         
+        // Extract required item IDs from IdealInventory to preserve tools
+        Set<Integer> keepItems = getRequiredItemIds();
+        if (!keepItems.isEmpty()) {
+            for (int itemId : keepItems) {
+                builder.exceptItem(itemId);
+            }
+            log.debug("Banking will preserve {} tool types: {}", keepItems.size(), keepItems);
+        }
+        
         return builder.build();
+    }
+
+    /**
+     * Get item IDs that should be kept during banking.
+     *
+     * <p>Extracts all required item IDs from the IdealInventory spec,
+     * resolving collection-based specs to actual item IDs where possible.
+     *
+     * @return set of item IDs to preserve during banking
+     */
+    private Set<Integer> getRequiredItemIds() {
+        Set<Integer> itemIds = new HashSet<>();
+        
+        IdealInventory ideal = config.getOrCreateIdealInventory(null);
+        if (ideal == null || !ideal.hasRequiredItems()) {
+            return itemIds;
+        }
+        
+        for (InventorySlotSpec spec : ideal.getRequiredItems()) {
+            if (spec.isSpecificItem()) {
+                // Specific item - add directly
+                itemIds.add(spec.getItemId());
+            } else if (spec.isCollectionBased()) {
+                // Collection-based - add all items in the collection
+                // This ensures we keep whatever tool variant the player has
+                List<Integer> collection = spec.getItemCollection();
+                if (collection != null) {
+                    itemIds.addAll(collection);
+                }
+            }
+        }
+        
+        return itemIds;
+    }
+
+    /**
+     * Get the training area position from the selected location.
+     *
+     * @return training area WorldPoint, or null if none configured
+     */
+    private WorldPoint getTrainingAreaPosition() {
+        MethodLocation location = getSelectedLocation();
+        if (location == null) {
+            return null;
+        }
+        
+        if (location.getExactPosition() != null) {
+            return location.getExactPosition();
+        }
+        return location.getTrainingArea();
+    }
+
+    /**
+     * Compute the optimal bank location for smart routing.
+     *
+     * <p>Compares two options:
+     * <ol>
+     *   <li>Bank nearest to player's current position, then walk to training area</li>
+     *   <li>Walk to training area first, then bank at nearest bank to training area</li>
+     * </ol>
+     *
+     * <p>Returns the bank that results in the shorter total travel distance.
+     *
+     * @param ctx           task context with navigation service
+     * @param playerPos     player's current position
+     * @param trainingArea  the training area destination (may be null)
+     * @return optimal bank location, or null to use nearest (default behavior)
+     */
+    private WorldPoint computeOptimalBankLocation(
+            TaskContext ctx, 
+            WorldPoint playerPos, 
+            WorldPoint trainingArea) {
+        
+        // If no training area, just use nearest bank from player
+        if (trainingArea == null || playerPos == null) {
+            return null; // Let ResupplyTask find nearest
+        }
+        
+        // Find bank nearest to player
+        WorldPoint bankNearPlayer = ctx.getNavigationService().findNearestBank(playerPos);
+        
+        // Find bank nearest to training area
+        WorldPoint bankNearTraining = ctx.getNavigationService().findNearestBank(trainingArea);
+        
+        // If either lookup failed, fall back to default
+        if (bankNearPlayer == null || bankNearTraining == null) {
+            return bankNearPlayer != null ? bankNearPlayer : bankNearTraining;
+        }
+        
+        // If it's the same bank, no optimization needed
+        if (bankNearPlayer.equals(bankNearTraining)) {
+            log.debug("Same bank nearest to player and training area: {}", bankNearPlayer);
+            return bankNearPlayer;
+        }
+        
+        // Calculate total distances for each option:
+        // Option A: player -> bankNearPlayer -> trainingArea
+        int distPlayerToNearBank = playerPos.distanceTo(bankNearPlayer);
+        int distNearBankToTraining = bankNearPlayer.distanceTo(trainingArea);
+        int totalOptionA = distPlayerToNearBank + distNearBankToTraining;
+        
+        // Option B: player -> trainingArea -> bankNearTraining -> trainingArea
+        // (But since we return to training anyway, this is: player -> bankNearTraining -> training)
+        // Actually Option B is: player -> trainingArea (skip bank), then bank later
+        // Let's reconsider: the real choice is WHERE to bank first
+        //
+        // Correct framing:
+        // Option A: player -> bankNearPlayer -> trainingArea (total: distA1 + distA2)
+        // Option B: player -> bankNearTraining -> trainingArea (total: distB1 + distB2)
+        
+        int distPlayerToTrainingBank = playerPos.distanceTo(bankNearTraining);
+        int distTrainingBankToTraining = bankNearTraining.distanceTo(trainingArea);
+        int totalOptionB = distPlayerToTrainingBank + distTrainingBankToTraining;
+        
+        if (totalOptionA <= totalOptionB) {
+            log.debug("Smart bank routing: using bank near player {} (total {} tiles) vs training bank {} (total {} tiles)",
+                    bankNearPlayer, totalOptionA, bankNearTraining, totalOptionB);
+            return bankNearPlayer;
+        } else {
+            log.debug("Smart bank routing: using bank near training {} (total {} tiles) vs player bank {} (total {} tiles)",
+                    bankNearTraining, totalOptionB, bankNearPlayer, totalOptionA);
+            return bankNearTraining;
+        }
     }
 
     // ========================================================================

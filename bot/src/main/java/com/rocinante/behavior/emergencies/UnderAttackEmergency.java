@@ -124,7 +124,18 @@ public class UnderAttackEmergency implements EmergencyCondition {
         }
 
         AggressorInfo attacker = aggressors.get(0);
-        log.warn("Under attack by {} (level {}) while skilling!",
+
+        // If we're walking somewhere, DON'T INTERRUPT - the walk IS our escape
+        // Interrupting a walk to flee in a different direction makes no sense
+        // The walk destination is probably safer than random flee direction
+        // Exception: emergency teleport (not implemented yet)
+        if (activityTracker.isCurrentlyWalking()) {
+            log.debug("Under attack by {} (lvl {}) but already walking - continuing walk rather than interrupting",
+                    attacker.getNpcName(), attacker.getCombatLevel());
+            return false;
+        }
+
+        log.warn("Under attack by {} (level {}) while not walking!",
                 attacker.getNpcName(), attacker.getCombatLevel());
 
         return true;

@@ -116,6 +116,11 @@ public class WalkToTask extends AbstractTask {
     private int repathAttempts = 0;
     private boolean runTogglePending = false;
 
+    // Progress tracking for click pacing
+    private WorldPoint clickStartPosition;  // Position when we clicked
+    private WorldPoint clickTargetPosition; // Where we clicked to
+    private static final double MIN_PROGRESS_BEFORE_RECLICK = 0.75; // 75% progress required
+
     // Transport handling
     private List<com.rocinante.navigation.ShortestPathBridge.TransportSegment> transportSegments = new ArrayList<>();
     private int currentTransportIndex = 0;
@@ -183,6 +188,8 @@ public class WalkToTask extends AbstractTask {
         cameraRotationPending = false;
         repathAttempts = 0;
         runTogglePending = false;
+        clickStartPosition = null;
+        clickTargetPosition = null;
         transportSegments.clear();
         currentTransportIndex = 0;
         currentTravelTask = null;
@@ -396,10 +403,8 @@ public class WalkToTask extends AbstractTask {
             }
         }
 
-        // Click to walk
-        boolean shouldClick = ticksSinceLastClick >= MIN_TICKS_BETWEEN_CLICKS 
-                || !player.isMoving() 
-                || ticksSinceMove > 2;
+        // Click to walk - use progress-based pacing
+        boolean shouldClick = shouldClickToWalk(player, playerPos);
 
         if (!currentPath.isEmpty() && shouldClick) {
             clickNextPathPoint(ctx, playerPos);
@@ -543,6 +548,8 @@ public class WalkToTask extends AbstractTask {
         final WorldPoint finalTarget = clickTarget;
         clickPending = true;
         ticksSinceLastClick = 0;
+        clickStartPosition = playerPos;
+        clickTargetPosition = clickTarget;
 
         ctx.getMouseController().moveToCanvas(screenPoint.x, screenPoint.y)
                 .thenCompose(v -> ctx.getMouseController().click())
@@ -555,6 +562,48 @@ public class WalkToTask extends AbstractTask {
                     log.error("Walk click failed", e);
                     return null;
                 });
+    }
+
+    /**
+     * Determine if we should click to walk based on progress toward last click target.
+     * Uses progress-based pacing to avoid excessive clicking.
+     */
+    private boolean shouldClickToWalk(PlayerState player, WorldPoint playerPos) {
+        // Always click if not moving or stuck
+        if (!player.isMoving()) {
+            return true;
+        }
+        if (ticksSinceMove > 2) {
+            return true;
+        }
+
+        // If we haven't clicked yet or don't have tracking info, allow click
+        if (clickStartPosition == null || clickTargetPosition == null) {
+            return ticksSinceLastClick >= MIN_TICKS_BETWEEN_CLICKS;
+        }
+
+        // Calculate progress toward the click target
+        double totalDistance = clickStartPosition.distanceTo(clickTargetPosition);
+        if (totalDistance < 1) {
+            return true; // Already at target
+        }
+
+        double remainingDistance = playerPos.distanceTo(clickTargetPosition);
+        double progress = 1.0 - (remainingDistance / totalDistance);
+
+        // Only re-click after reaching threshold progress (75%)
+        if (progress >= MIN_PROGRESS_BEFORE_RECLICK) {
+            log.debug("Progress {}% toward click target, allowing re-click", (int) (progress * 100));
+            return true;
+        }
+
+        // Also allow click after safety timeout (prevent getting stuck)
+        if (ticksSinceLastClick >= MIN_TICKS_BETWEEN_CLICKS * 3) {
+            log.debug("Safety timeout reached ({} ticks), allowing re-click", ticksSinceLastClick);
+            return true;
+        }
+
+        return false;
     }
     
     /**

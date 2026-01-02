@@ -296,6 +296,26 @@ public class BotActivityTracker {
         return currentTask instanceof com.rocinante.tasks.impl.CombatTask;
     }
 
+    /**
+     * Check if we're currently in a walk/navigation task.
+     * Used by emergency handlers to decide if walking should continue vs. interrupting.
+     *
+     * @return true if a WalkToTask is currently running
+     */
+    public boolean isCurrentlyWalking() {
+        Task currentTask = currentTaskSupplier.get();
+        return currentTask instanceof com.rocinante.tasks.impl.WalkToTask;
+    }
+
+    /**
+     * Get the current task if available.
+     *
+     * @return the current task, or null if none
+     */
+    public Task getCurrentTask() {
+        return currentTaskSupplier.get();
+    }
+
     // ========================================================================
     // Interruption Logic
     // ========================================================================

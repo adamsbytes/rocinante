@@ -141,28 +141,24 @@ public class EmergencyHandler {
         // Sort by severity (highest first)
         triggeredEmergencies.sort((a, b) -> Integer.compare(b.severity, a.severity));
         
-        // Set cooldowns and active emergency for all triggered
-        for (EmergencyResponse emergency : triggeredEmergencies) {
-            cooldowns.put(emergency.id, now.plusMillis(emergency.condition.getCooldownMs()));
+        // Only execute the HIGHEST severity emergency - it suppresses lower ones
+        EmergencyResponse highest = triggeredEmergencies.get(0);
+        
+        // Set cooldown only for the emergency we're executing
+        cooldowns.put(highest.id, now.plusMillis(highest.condition.getCooldownMs()));
+        activeEmergencyId = highest.id;
+        
+        if (triggeredEmergencies.size() > 1) {
+            log.info("Multiple emergencies triggered ({}), executing highest severity: {} ({}), suppressing: {}", 
+                triggeredEmergencies.size(),
+                highest.condition.getDescription(),
+                highest.severity,
+                triggeredEmergencies.subList(1, triggeredEmergencies.size()).stream()
+                    .map(e -> e.condition.getDescription() + " (" + e.severity + ")")
+                    .collect(java.util.stream.Collectors.joining(", ")));
         }
         
-        // Set the highest severity as active
-        activeEmergencyId = triggeredEmergencies.get(0).id;
-        
-        // If only one emergency, return it directly
-        if (triggeredEmergencies.size() == 1) {
-            return Optional.of(triggeredEmergencies.get(0).task);
-        }
-        
-        // Multiple emergencies - create parallel composite
-        log.warn("Multiple emergencies triggered ({}), executing in parallel", triggeredEmergencies.size());
-        List<Task> emergencyTasks = triggeredEmergencies.stream()
-            .map(e -> e.task)
-            .collect(java.util.stream.Collectors.toList());
-        
-        return Optional.of(com.rocinante.tasks.CompositeTask.parallel(emergencyTasks.toArray(new Task[0]))
-            .withDescription("Multiple Emergencies")
-            .withFailurePolicy(com.rocinante.tasks.FailurePolicy.FAIL_SILENT));
+        return Optional.of(highest.task);
     }
     
     /**
@@ -183,17 +179,32 @@ public class EmergencyHandler {
     }
 
     /**
-     * Mark an emergency as resolved.
-     * Called when the emergency response task completes.
+     * Mark an emergency as resolved successfully.
+     * Clears both active status AND cooldown, allowing immediate retrigger if needed.
      * 
      * @param emergencyId the emergency ID
      */
-    public void emergencyResolved(String emergencyId) {
+    public void emergencySucceeded(String emergencyId) {
         if (emergencyId.equals(activeEmergencyId)) {
             activeEmergencyId = null;
             // Clear cooldown so emergency can retrigger if conditions occur again
             cooldowns.remove(emergencyId);
-            log.debug("Emergency resolved: {} (cooldown cleared)", emergencyId);
+            log.debug("Emergency succeeded: {} (cooldown cleared)", emergencyId);
+        }
+    }
+    
+    /**
+     * Mark an emergency as failed.
+     * Clears active status but KEEPS cooldown to prevent spam retriggers.
+     * 
+     * @param emergencyId the emergency ID
+     */
+    public void emergencyFailed(String emergencyId) {
+        if (emergencyId.equals(activeEmergencyId)) {
+            activeEmergencyId = null;
+            // DON'T clear cooldown - prevents spam when emergency task keeps failing
+            log.debug("Emergency failed: {} (cooldown retained until {})", emergencyId, 
+                cooldowns.getOrDefault(emergencyId, java.time.Instant.now()));
         }
     }
 

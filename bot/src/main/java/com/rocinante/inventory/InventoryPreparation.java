@@ -17,6 +17,7 @@ import net.runelite.api.Skill;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import net.runelite.api.coords.WorldPoint;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -153,6 +154,31 @@ public class InventoryPreparation {
      * @return preparation result with task, missing items info, and status
      */
     public PreparationResult analyzeAndPrepare(IdealInventory ideal, TaskContext ctx) {
+        return analyzeAndPrepare(ideal, ctx, null, null);
+    }
+
+    /**
+     * Generate tasks to prepare inventory with smart bank routing.
+     *
+     * <p>This overload allows specifying a preferred bank location and optional
+     * return position. This is useful for optimizing bank trips based on the
+     * relative positions of the player, bank, and training area.
+     *
+     * <p>Example: If player is near a bank but training spot is far, it's better
+     * to bank at the current location first, then travel to training area.
+     *
+     * @param ideal          the desired inventory state
+     * @param ctx            the task context with current game state
+     * @param bankLocation   preferred bank location, or null to use nearest
+     * @param returnPosition position to return to after banking, or null to stay at bank
+     * @return preparation result with task, missing items info, and status
+     */
+    public PreparationResult analyzeAndPrepare(
+            IdealInventory ideal, 
+            TaskContext ctx,
+            @Nullable WorldPoint bankLocation,
+            @Nullable WorldPoint returnPosition) {
+        
         if (ideal == null) {
             log.debug("No ideal inventory specified, skipping preparation");
             return PreparationResult.ready();
@@ -183,7 +209,7 @@ public class InventoryPreparation {
 
         // Phase 1: Banking (deposit + withdraw)
         if (plan.needsBanking()) {
-            ResupplyTask bankTask = buildBankTask(plan, ideal);
+            ResupplyTask bankTask = buildBankTask(plan, ideal, bankLocation, returnPosition);
             if (bankTask != null) {
                 tasks.add(bankTask);
             }
@@ -677,9 +703,19 @@ public class InventoryPreparation {
 
     /**
      * Build the ResupplyTask for banking operations.
+     *
+     * @param plan           the preparation plan
+     * @param ideal          the ideal inventory spec
+     * @param bankLocation   optional specific bank location
+     * @param returnPosition optional position to return to after banking
      */
     @Nullable
-    private ResupplyTask buildBankTask(PreparationPlan plan, IdealInventory ideal) {
+    private ResupplyTask buildBankTask(
+            PreparationPlan plan, 
+            IdealInventory ideal,
+            @Nullable WorldPoint bankLocation,
+            @Nullable WorldPoint returnPosition) {
+        
         if (!plan.needsBanking()) {
             return null;
         }
@@ -689,6 +725,16 @@ public class InventoryPreparation {
         // Set deposit behavior
         builder.depositInventory(plan.depositInventory);
         builder.depositEquipment(plan.depositEquipment);
+
+        // Set bank location if provided (for smart routing)
+        if (bankLocation != null) {
+            builder.bankLocation(bankLocation);
+        }
+
+        // Set return position if provided
+        if (returnPosition != null) {
+            builder.returnPosition(returnPosition);
+        }
 
         // Add items to withdraw
         for (Map.Entry<Integer, Integer> entry : plan.itemsToWithdraw.entrySet()) {

@@ -280,9 +280,9 @@
       "ironmanViable": true,
       "locations": [
         {
-          "id": "lumbridge",
-          "name": "Lumbridge Castle",
-          "trainingArea": {"x": 3203, "y": 3225, "plane": 0},
+          "id": "draynor_mage_tower",
+          "name": "Draynor (Near Mage Tower)",
+          "trainingArea": {"x": 3130, "y": 3210, "plane": 0},
           "actionsPerHour": 1000
         },
         {
@@ -2467,9 +2467,9 @@
       "ironmanViable": true,
       "locations": [
         {
-          "id": "lumbridge",
-          "name": "Lumbridge Castle",
-          "trainingArea": {"x": 3203, "y": 3225, "plane": 0},
+          "id": "draynor_mage_tower",
+          "name": "Draynor (Near Mage Tower)",
+          "trainingArea": {"x": 3130, "y": 3210, "plane": 0},
           "actionsPerHour": 600
         },
         {
@@ -2510,10 +2510,22 @@
       ],
       "locations": [
         {
+          "id": "al_kharid_gate",
+          "name": "Al Kharid Gate",
+          "trainingArea": {"x": 3295, "y": 3339, "plane": 0},
+          "actionsPerHour": 450
+        },
+        {
           "id": "draynor",
           "name": "Draynor Village",
           "trainingArea": {"x": 3101, "y": 3245, "plane": 0},
           "actionsPerHour": 500
+        },
+        {
+          "id": "varrock_east_bank",
+          "name": "Varrock East Bank",
+          "trainingArea": {"x": 3278, "y": 3424, "plane": 0},
+          "actionsPerHour": 450
         },
         {
           "id": "varrock_west",

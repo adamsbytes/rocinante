@@ -871,8 +871,10 @@ public class InteractObjectTask extends com.rocinante.tasks.AbstractInteractionT
             }
             
             if (stillAnimating) {
-                // Still gathering - update start inventory count to track ongoing gains
-                // but DON'T complete - keep gathering until resource depletes
+                // Still gathering - reset timeout since we ARE getting a response
+                interactionTicks = 0;
+                
+                // Update start inventory count to track ongoing gains
                 if (receivedItem) {
                     log.debug("Received item while gathering, continuing (inv: {} -> {})", 
                             startInventoryCount, currentInventoryCount);

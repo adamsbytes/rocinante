@@ -10,6 +10,8 @@ import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.coords.WorldPoint;
 
+import javax.annotation.Nullable;
+
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -113,6 +115,29 @@ public class BurnLocationFinder {
             int searchRadius,
             int walkThreshold,
             int desiredLogs) {
+        return findOptimalBurnLocation(ctx, currentPosition, searchRadius, walkThreshold, desiredLogs, null, 0);
+    }
+
+    /**
+     * Find the optimal burn location with anchor constraint.
+     *
+     * @param ctx                  TaskContext for navigation and world state
+     * @param currentPosition      current player position
+     * @param searchRadius         tiles to search around current position
+     * @param walkThreshold        maximum acceptable path cost
+     * @param desiredLogs          number of logs we want to burn
+     * @param anchorPoint          center point to constrain search (nullable)
+     * @param maxDistanceFromAnchor max distance from anchor (only used if anchorPoint is set)
+     * @return optimal burn location, or empty if no suitable spot found
+     */
+    public static Optional<BurnLocation> findOptimalBurnLocation(
+            TaskContext ctx,
+            WorldPoint currentPosition,
+            int searchRadius,
+            int walkThreshold,
+            int desiredLogs,
+            @Nullable WorldPoint anchorPoint,
+            int maxDistanceFromAnchor) {
 
         if (ctx == null || currentPosition == null) {
             return Optional.empty();
@@ -134,9 +159,19 @@ public class BurnLocationFinder {
             scanRing(ctx, currentPosition, radius, walkThreshold, fireTiles, navService, candidates);
         }
 
+        // Filter by anchor constraint if set
+        if (anchorPoint != null && maxDistanceFromAnchor > 0) {
+            int beforeCount = candidates.size();
+            candidates.removeIf(loc -> loc.getPosition().distanceTo(anchorPoint) > maxDistanceFromAnchor);
+            if (candidates.size() < beforeCount) {
+                log.debug("Filtered {} candidates outside anchor range ({} tiles from {})",
+                        beforeCount - candidates.size(), maxDistanceFromAnchor, anchorPoint);
+            }
+        }
+
         if (candidates.isEmpty()) {
-            log.debug("No valid burn locations found within {} tiles (threshold: {})",
-                    searchRadius, walkThreshold);
+            log.debug("No valid burn locations found within {} tiles (threshold: {}, anchor: {})",
+                    searchRadius, walkThreshold, anchorPoint);
             return Optional.empty();
         }
 

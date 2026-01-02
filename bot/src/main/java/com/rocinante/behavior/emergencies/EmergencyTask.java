@@ -11,7 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * Wrapper task for emergency response tasks.
  * 
- * This wrapper ensures that EmergencyHandler.emergencyResolved() is called
+ * This wrapper ensures that EmergencyHandler.emergencySucceeded/Failed() is called
  * when the emergency response task completes, allowing cooldowns to clear
  * and the same emergency to retrigger if conditions persist.
  * 
@@ -70,10 +70,10 @@ public class EmergencyTask extends AbstractTask {
         // Call wrapped task's completion handler
         responseTask.onComplete(context);
         
-        // Notify emergency handler that this emergency is resolved
+        // Notify emergency handler that this emergency succeeded - clear cooldown
         if (emergencyHandler != null) {
-            emergencyHandler.emergencyResolved(emergencyId);
-            log.debug("Emergency resolved and reported to handler: {}", emergencyId);
+            emergencyHandler.emergencySucceeded(emergencyId);
+            log.debug("Emergency succeeded and reported to handler: {}", emergencyId);
         }
     }
 
@@ -82,10 +82,10 @@ public class EmergencyTask extends AbstractTask {
         // Call wrapped task's failure handler
         responseTask.onFail(context, e);
         
-        // Still notify handler even on failure (don't want emergency to stay "active" forever)
+        // Notify handler of failure - keeps cooldown to prevent spam retriggers
         if (emergencyHandler != null) {
-            emergencyHandler.emergencyResolved(emergencyId);
-            log.warn("Emergency task failed but marking as resolved to allow retrigger: {}", emergencyId);
+            emergencyHandler.emergencyFailed(emergencyId);
+            log.warn("Emergency task failed, cooldown retained to prevent spam: {}", emergencyId);
         }
     }
 
