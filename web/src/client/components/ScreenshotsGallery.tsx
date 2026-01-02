@@ -1,4 +1,4 @@
-import { type Component, For, Show, createMemo, createSignal, createEffect, onCleanup } from 'solid-js';
+import { type Component, For, Show, createMemo, createSignal, createEffect, onCleanup, onMount } from 'solid-js';
 import type { ScreenshotEntry } from '../../shared/types';
 import { useScreenshotsQuery } from '../lib/api';
 
@@ -56,9 +56,43 @@ export const ScreenshotsGallery: Component<ScreenshotsGalleryProps> = (props) =>
   const [category, setCategory] = createSignal<string | null>('all');
   const [viewerIndex, setViewerIndex] = createSignal<number | null>(null);
   const [isGalleryOpen, setGalleryOpen] = createSignal(false);
+  
+  // Horizontal scroll state
+  let scrollContainerRef: HTMLDivElement | undefined;
+  const [canScrollLeft, setCanScrollLeft] = createSignal(false);
+  const [canScrollRight, setCanScrollRight] = createSignal(false);
+  
+  const updateScrollState = () => {
+    if (!scrollContainerRef) return;
+    const { scrollLeft, scrollWidth, clientWidth } = scrollContainerRef;
+    setCanScrollLeft(scrollLeft > 0);
+    setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 1); // -1 for rounding
+  };
+  
+  const scrollBy = (direction: 'left' | 'right') => {
+    if (!scrollContainerRef) return;
+    const scrollAmount = 240; // ~1 card width + gap
+    scrollContainerRef.scrollBy({
+      left: direction === 'left' ? -scrollAmount : scrollAmount,
+      behavior: 'smooth',
+    });
+  };
 
   const screenshotsQuery = useScreenshotsQuery(() => props.botId, category);
-  const entries = () => screenshotsQuery.data ?? [];
+  
+  // Stable entries memo - only updates when actual data changes (by path comparison)
+  let prevEntries: ScreenshotEntry[] = [];
+  const entries = createMemo<ScreenshotEntry[]>(() => {
+    const newData = screenshotsQuery.data ?? [];
+    // Compare by paths to avoid unnecessary updates
+    const prevPaths = prevEntries.map(e => e.path).join('|');
+    const newPaths = newData.map(e => e.path).join('|');
+    if (prevPaths === newPaths && prevEntries.length > 0) {
+      return prevEntries; // Return stable reference
+    }
+    prevEntries = newData;
+    return newData;
+  });
 
   const categories = createMemo<CategoryOption[]>(() => {
     const counts = new Map<string, number>();
@@ -73,13 +107,29 @@ export const ScreenshotsGallery: Component<ScreenshotsGalleryProps> = (props) =>
     return options;
   });
 
+  // Stable filtered memo - only updates when entries or category actually changes
+  let prevFiltered: ScreenshotEntry[] = [];
+  let prevFilterKey = '';
   const filtered = createMemo<ScreenshotEntry[]>(() => {
     const active = category();
-    if (!active || active === 'all') return entries();
-    return entries().filter((entry) => entry.category === active);
+    const data = entries();
+    const filterKey = `${active}|${data.map(e => e.path).join(',')}`;
+    
+    if (filterKey === prevFilterKey && prevFiltered.length > 0) {
+      return prevFiltered; // Return stable reference
+    }
+    
+    prevFilterKey = filterKey;
+    if (!active || active === 'all') {
+      prevFiltered = data;
+    } else {
+      prevFiltered = data.filter((entry) => entry.category === active);
+    }
+    return prevFiltered;
   });
 
-  const hasData = createMemo(() => !screenshotsQuery.isLoading && filtered().length > 0);
+  // hasData should only depend on actual data, not loading state
+  const hasData = createMemo(() => filtered().length > 0);
   const currentShot = createMemo(() => {
     const idx = viewerIndex();
     if (idx === null) return null;
@@ -135,6 +185,23 @@ export const ScreenshotsGallery: Component<ScreenshotsGalleryProps> = (props) =>
       setViewerIndex(0);
     }
   });
+  
+  // Update scroll state when filtered data changes
+  createEffect(() => {
+    // Track filtered() to re-run when data changes
+    filtered();
+    // Defer to next frame to allow DOM to update
+    requestAnimationFrame(updateScrollState);
+  });
+  
+  // Set up scroll listener
+  onMount(() => {
+    updateScrollState();
+    // Also update on window resize
+    const handleResize = () => updateScrollState();
+    window.addEventListener('resize', handleResize);
+    onCleanup(() => window.removeEventListener('resize', handleResize));
+  });
 
   return (
     <div class="mb-8">
@@ -154,9 +221,10 @@ export const ScreenshotsGallery: Component<ScreenshotsGalleryProps> = (props) =>
           </div>
         </button>
         <div class="flex items-center gap-2 flex-wrap justify-end">
-          <Show when={screenshotsQuery.isFetching}>
-            <div class="text-xs text-gray-400">Refreshing…</div>
-          </Show>
+          {/* Use opacity instead of Show to prevent layout shift */}
+          <div class={`text-xs text-gray-400 transition-opacity duration-200 ${screenshotsQuery.isFetching ? 'opacity-100' : 'opacity-0'}`}>
+            Refreshing…
+          </div>
           <div class="flex flex-wrap gap-2">
             <For each={categories()}>
               {(cat) => (
@@ -192,36 +260,70 @@ export const ScreenshotsGallery: Component<ScreenshotsGalleryProps> = (props) =>
           </div>
         }
       >
-        <div class="overflow-x-auto pb-2">
-          <div class="grid grid-flow-col auto-cols-[220px] gap-3">
-            <For each={filtered()}>
-              {(shot, idx) => (
-                <button
-                  class="text-left group"
-                  onClick={() => openViewer(idx())}
-                  aria-label={`Open screenshot ${shot.title}`}
-                >
-                  <div class="relative aspect-video rounded-lg overflow-hidden border border-[var(--border)] bg-black/40">
-                    <img
-                      src={buildImageUrl(shot)}
-                      loading="lazy"
-                      class="absolute inset-0 h-full w-full object-cover transition duration-200 group-hover:scale-[1.02] group-hover:opacity-95"
-                      alt={shot.title}
-                    />
-                    <div class="absolute inset-0 bg-gradient-to-t from-black/50 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition" />
-                    <div class="absolute bottom-1 left-2 right-2 text-xs text-white drop-shadow-sm">
-                      <div class="flex justify-between gap-2">
-                        <span class="truncate font-medium">{shot.title}</span>
-                        <span class="text-[11px] uppercase tracking-wide opacity-80">{shot.category}</span>
+        <div class="relative group/scroll">
+          {/* Left scroll button */}
+          <button
+            type="button"
+            onClick={() => scrollBy('left')}
+            class={`absolute left-0 top-0 bottom-6 z-10 w-10 flex items-center justify-center 
+              bg-gradient-to-r from-[var(--bg-primary)] via-[var(--bg-primary)]/80 to-transparent
+              transition-opacity duration-200
+              ${canScrollLeft() ? 'opacity-100 hover:from-[var(--bg-secondary)]' : 'opacity-0 pointer-events-none'}`}
+            aria-label="Scroll left"
+          >
+            <span class="text-white/70 hover:text-white text-xl">‹</span>
+          </button>
+          
+          {/* Right scroll button */}
+          <button
+            type="button"
+            onClick={() => scrollBy('right')}
+            class={`absolute right-0 top-0 bottom-6 z-10 w-10 flex items-center justify-center 
+              bg-gradient-to-l from-[var(--bg-primary)] via-[var(--bg-primary)]/80 to-transparent
+              transition-opacity duration-200
+              ${canScrollRight() ? 'opacity-100 hover:from-[var(--bg-secondary)]' : 'opacity-0 pointer-events-none'}`}
+            aria-label="Scroll right"
+          >
+            <span class="text-white/70 hover:text-white text-xl">›</span>
+          </button>
+          
+          {/* Scroll container - hide scrollbar */}
+          <div 
+            ref={scrollContainerRef}
+            onScroll={updateScrollState}
+            class="overflow-x-auto pb-2 scrollbar-hide"
+            style={{ "scrollbar-width": "none", "-ms-overflow-style": "none" }}
+          >
+            <div class="grid grid-flow-col auto-cols-[220px] gap-3 px-1">
+              <For each={filtered()}>
+                {(shot, idx) => (
+                  <button
+                    class="text-left group"
+                    onClick={() => openViewer(idx())}
+                    aria-label={`Open screenshot ${shot.title}`}
+                  >
+                    <div class="relative aspect-video rounded-lg overflow-hidden border border-[var(--border)] bg-black/40">
+                      <img
+                        src={buildImageUrl(shot)}
+                        loading="lazy"
+                        class="absolute inset-0 h-full w-full object-cover transition duration-200 group-hover:scale-[1.02] group-hover:opacity-95"
+                        alt={shot.title}
+                      />
+                      <div class="absolute inset-0 bg-gradient-to-t from-black/50 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition" />
+                      <div class="absolute bottom-1 left-2 right-2 text-xs text-white drop-shadow-sm">
+                        <div class="flex justify-between gap-2">
+                          <span class="truncate font-medium">{shot.title}</span>
+                          <span class="text-[11px] uppercase tracking-wide opacity-80">{shot.category}</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div class="mt-2 text-xs text-gray-400">
-                    {formatTimestamp(shot.capturedAt)}
-                  </div>
-                </button>
-              )}
-            </For>
+                    <div class="mt-2 text-xs text-gray-400">
+                      {formatTimestamp(shot.capturedAt)}
+                    </div>
+                  </button>
+                )}
+              </For>
+            </div>
           </div>
         </div>
       </Show>

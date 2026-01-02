@@ -11,7 +11,7 @@ echo "================================================="
 # All config comes from /home/runelite/config.json - NO environment variables
 # =============================================================================
 
-CONFIG_FILE="/home/runelite/config.json"
+CONFIG_FILE="/config.json"
 
 if [ ! -f "$CONFIG_FILE" ]; then
     echo "FATAL: Config file not found: $CONFIG_FILE"
@@ -35,8 +35,8 @@ CHARACTER_NAME=$(jq -e -r '.characterName' "$CONFIG_FILE")
 VNC_PASSWORD=$(jq -e -r '.vncPassword' "$CONFIG_FILE")
 PREFERRED_WORLD=$(jq -e -r '.preferredWorld' "$CONFIG_FILE")
 
-# Ironman config
-IRONMAN_ENABLED=$(jq -e -r '.ironman.enabled' "$CONFIG_FILE")
+# Ironman config (no -e flag because false is a valid value, not an error)
+IRONMAN_ENABLED=$(jq -r '.ironman.enabled' "$CONFIG_FILE")
 IRONMAN_TYPE=$(jq -r '.ironman.type // ""' "$CONFIG_FILE")
 HCIM_SAFETY_LEVEL=$(jq -r '.ironman.hcimSafetyLevel // ""' "$CONFIG_FILE")
 
@@ -194,7 +194,9 @@ VNC_SOCKET_PATH="$HOME/.local/share/bolt-launcher/.runelite/rocinante/vnc.sock"
 echo "Starting VNC server on Unix socket: $VNC_SOCKET_PATH"
 rm -f "$VNC_SOCKET_PATH" 2>/dev/null || true
 
-x11vnc -display :${DISPLAY_NUM} -bg -passwd "$VNC_PASSWORD" -unixsock "$VNC_SOCKET_PATH" -xkb -forever -shared -nocursorshape -viewonly
+# NOTE: VNC password auth disabled for now (debugging in progress)
+# TODO: Re-enable when web proxy auth is working: -passwd "$VNC_PASSWORD"
+x11vnc -display :${DISPLAY_NUM} -bg -nopw -unixsock "$VNC_SOCKET_PATH" -xkb -forever -shared -nocursorshape -viewonly
 sleep 1
 
 # Verify x11vnc started

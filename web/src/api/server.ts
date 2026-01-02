@@ -28,7 +28,8 @@ import {
   watchBotStatus,
   getVncSocketPath,
 } from './status';
-import { VncHandshake, RfbState } from './vnc-auth';
+// NOTE: VNC password auth disabled for now - see vnc-auth.ts for future use
+// import { VncHandshake, RfbState } from './vnc-auth';
 import {
   getTrainingMethods,
   getTrainingMethodsBySkill,
@@ -227,7 +228,7 @@ const PORT = parseInt(process.env.PORT || '3000');
 // WebSocket connection types
 type VncSocketData = { 
   ws: ServerWebSocket<VncWebSocketData>;
-  handshake: VncHandshake | null;
+  handshake: null;
 };
 
 type VncWebSocketData = {
@@ -237,15 +238,6 @@ type VncWebSocketData = {
   tcpSocket: Socket<VncSocketData> | null;
   /** Track if we've ever had a successful VNC connection on this WebSocket */
   hadConnection: boolean;
-  /** VNC password for authentication */
-  vncPassword: string | null;
-  /** 
-   * Bytes to ignore from browser during handshake transition.
-   * After we auth with x11vnc and send fake "None" auth to browser,
-   * the browser responds with: version (12 bytes) + security selection (1 byte) = 13 bytes.
-   * We ignore these and start proxying after.
-   */
-  browserHandshakeIgnoreBytes: number;
   /** Periodic session re-validation interval */
   sessionValidationInterval: ReturnType<typeof setInterval> | null;
   /** Stored session headers for periodic re-validation */
@@ -518,9 +510,6 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
       return error({ code: 'BOT_NOT_RUNNING', status: 400, details: `Bot ${botId} not running for VNC` });
     }
 
-    // Get VNC password from bot config
-    const vncPassword = bot.vncPassword;
-
     // Upgrade to WebSocket
     const upgraded = server.upgrade(req, {
       data: {
@@ -529,8 +518,6 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
         userId: session!.user.id,
         tcpSocket: null,
         hadConnection: false,
-        vncPassword,
-        browserHandshakeIgnoreBytes: 0,
         sessionValidationInterval: null,
         sessionHeaders: new Headers({ cookie: req.headers.get('cookie') || '' }),
       } as VncWebSocketData,
@@ -767,15 +754,16 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
       switch (action) {
         case 'start':
           await startBot(result.botId);
-          return success({ started: true });
+          // Return updated status for optimistic update reconciliation
+          return success({ started: true, status: await getContainerStatus(result.botId) });
 
         case 'stop':
           await stopBot(result.botId);
-          return success({ stopped: true });
+          return success({ stopped: true, status: await getContainerStatus(result.botId) });
 
         case 'restart':
           await restartBot(result.botId);
-          return success({ restarted: true });
+          return success({ restarted: true, status: await getContainerStatus(result.botId) });
 
         default:
           return error({ code: 'VALIDATION_ERROR', details: `Unknown action: ${action}` });
@@ -962,7 +950,7 @@ websocket: {
     async open(ws: ServerWebSocket<WebSocketData>) {
       if (ws.data.type === 'vnc') {
         const vncData = ws.data as VncWebSocketData;
-        const { botId, vncPassword } = vncData;
+        const { botId } = vncData;
         console.log(`VNC WebSocket opened for bot ${botId}`);
         
         // Get VNC socket path from status directory
@@ -982,52 +970,15 @@ websocket: {
           }
           
           try {
-            // Create handshake handler for this connection
-            const handshake = new VncHandshake(vncPassword!);
-            
             // Connect to VNC server via Unix socket
+            // NOTE: VNC password auth disabled for now - simple proxy mode
             const tcpSocket = await Bun.connect<VncSocketData>({
               unix: vncSocketPath,
               socket: {
                 data(socket, data) {
                   const wsConn = socket.data.ws;
-                  const wsData = wsConn.data as VncWebSocketData;
-                  const hs = socket.data.handshake;
                   
-                  // During handshake phase, process through handshake state machine
-                  if (hs && !hs.isComplete()) {
-                    hs.processServerData(Buffer.from(data));
-                    
-                    // Send any data needed for handshake to VNC server
-                    const toServer = hs.getServerData();
-                    if (toServer) {
-                      socket.write(toServer);
-                    }
-                    
-                    // Check if handshake completed
-                    if (hs.isComplete()) {
-                      if (hs.isAuthenticated()) {
-                        console.log(`[VNC] Authentication complete for bot ${botId}`);
-                        // Send accumulated browser data (version + security result)
-                        const toBrowser = hs.getBrowserData();
-                        if (toBrowser && wsConn.readyState === 1) {
-                          wsConn.send(toBrowser);
-                        }
-                        // Browser will respond with version (12 bytes) + security selection (1 byte)
-                        // We need to ignore these before proxying
-                        wsData.browserHandshakeIgnoreBytes = 13;
-                        // Clear handshake reference - we're now in proxy mode
-                        socket.data.handshake = null;
-                      } else {
-                        console.error(`[VNC] Authentication failed for bot ${botId}`);
-                        socket.end();
-                        wsConn.close(1008, 'VNC authentication failed');
-                      }
-                    }
-                    return;
-                  }
-                  
-                  // Proxy mode - forward VNC server data to WebSocket client
+                  // Simple proxy mode - forward VNC server data to WebSocket client
                   if (wsConn.readyState === 1) { // OPEN
                     const bytesSent = wsConn.send(data);
                     if (bytesSent === 0) {
@@ -1081,7 +1032,7 @@ websocket: {
                   }
                 },
               },
-              data: { ws: ws as ServerWebSocket<VncWebSocketData>, handshake },
+              data: { ws: ws as ServerWebSocket<VncWebSocketData>, handshake: null },
             });
             
             vncData.tcpSocket = tcpSocket;
@@ -1155,20 +1106,11 @@ websocket: {
     message(ws: ServerWebSocket<WebSocketData>, message) {
       if (ws.data.type === 'vnc') {
         const vncData = ws.data as VncWebSocketData;
-        const { tcpSocket, botId } = vncData;
+        const { tcpSocket } = vncData;
         
         if (!tcpSocket) return;
         
         let buffer = typeof message === 'string' ? Buffer.from(message) : Buffer.from(message);
-        
-        // During handshake transition, ignore browser's version + security selection
-        // (we've already authenticated with x11vnc on behalf of the browser)
-        if (vncData.browserHandshakeIgnoreBytes > 0) {
-          const bytesToIgnore = Math.min(vncData.browserHandshakeIgnoreBytes, buffer.length);
-          vncData.browserHandshakeIgnoreBytes -= bytesToIgnore;
-          buffer = buffer.subarray(bytesToIgnore);
-          if (buffer.length === 0) return;
-        }
         
         // VNC View-only mode: Defense-in-depth filter (x11vnc -viewonly is the primary control)
         // This filter provides early rejection and logging, but isn't foolproof against

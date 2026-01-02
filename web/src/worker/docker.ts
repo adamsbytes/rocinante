@@ -86,8 +86,8 @@ async function createConfigTar(bot: BotConfig): Promise<Buffer> {
   const pack = tar.pack();
   const configJson = JSON.stringify(bot, null, 2);
 
-  // Add config.json with read-only permissions for owner
-  pack.entry({ name: 'config.json', mode: 0o600 }, configJson);
+  // Add config.json owned by runelite user (uid/gid 1000) so entrypoint can read it
+  pack.entry({ name: 'config.json', mode: 0o644, uid: 1000, gid: 1000 }, configJson);
   pack.finalize();
 
   // Convert stream to buffer
@@ -337,8 +337,9 @@ async function startBotWithConfig(bot: BotConfig): Promise<void> {
   const botWithSecret = { ...bot, wikiCacheSecret: getWikiCacheSecret() };
 
   // Inject config.json directly into container from memory (never touches host disk)
+  // Extract to root (/) to avoid any /home/runelite overlay issues
   const configTar = await createConfigTar(botWithSecret);
-  await container.putArchive(configTar, { path: '/home/runelite' });
+  await container.putArchive(configTar, { path: '/' });
 
   await container.start();
 }

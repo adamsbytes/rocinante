@@ -268,9 +268,9 @@ export class VncHandshake {
     if (result === 0) {
       console.log('[VNC Auth] Authentication successful');
       // Forward security types to browser showing None auth (already authenticated)
-      // Browser sees: 1 security type, type 1 (None), then security result 0 (OK)
+      // Browser sees: 1 security type, type 1 (None)
+      // Security result is sent AFTER browser responds with its selection (RFB 3.8 requirement)
       this.toBrowser.push(Buffer.from([1, 1])); // 1 type, type 1 (None)
-      this.toBrowser.push(Buffer.from([0, 0, 0, 0])); // Security result OK
       this.state = RfbState.AUTHENTICATED;
     } else {
       console.error('[VNC Auth] Authentication failed');

@@ -280,6 +280,23 @@ public class BotActivityTracker {
     }
 
     // ========================================================================
+    // Task Inspection
+    // ========================================================================
+
+    /**
+     * Check if the bot is currently executing an intentional combat task.
+     * This distinguishes between:
+     * - Intentional combat (CombatTask) - player is fighting on purpose
+     * - Unintentional combat (being attacked while idle/skilling)
+     * 
+     * @return true if a CombatTask is currently running
+     */
+    public boolean isInIntentionalCombat() {
+        Task currentTask = currentTaskSupplier.get();
+        return currentTask instanceof com.rocinante.tasks.impl.CombatTask;
+    }
+
+    // ========================================================================
     // Interruption Logic
     // ========================================================================
 

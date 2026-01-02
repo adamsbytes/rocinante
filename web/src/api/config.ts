@@ -276,6 +276,6 @@ export function getWikiCacheSecret(): string {
   // Generate new secret
   const secret = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('hex');
   secretStatements.set.run({ $key: 'wiki_cache_secret', $value: secret });
-  console.log('Generated new wiki cache signing secret');
+  console.log('Generated new cache signing secret');
   return secret;
 }

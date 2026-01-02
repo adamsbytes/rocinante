@@ -89,7 +89,9 @@ export const NavigationTaskForm: Component<NavigationTaskFormProps> = (props) =>
     if (inputMode() === 'location') {
       const loc = selectedLocationObj();
       if (!loc) return;
-      task.locationId = loc.id;
+      task.x = loc.x;
+      task.y = loc.y;
+      task.plane = loc.plane;
       task.description = `Walk to ${loc.name}`;
     } else {
       if (!manualX() && !manualY()) return;

@@ -112,7 +112,9 @@ public class UnderAttackEmergency implements EmergencyCondition {
         }
 
         // Don't trigger if we're already in intentional combat (CombatTask handles it)
-        if (activityTracker.getCurrentActivity().isCombat()) {
+        // Note: We check for actual CombatTask, not just combat activity type,
+        // because being attacked while idle also sets activity to HIGH (combat)
+        if (activityTracker.isInIntentionalCombat()) {
             return false;
         }
 

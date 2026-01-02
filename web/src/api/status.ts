@@ -91,6 +91,7 @@ export function getMachineIdPath(botId: string): string {
  * Ensure status directory exists for a bot with proper permissions.
  * The directory must be writable by the container's runelite user (UID 1000).
  * We use chmod after mkdir because mkdir's mode is affected by umask.
+ * Container creates files as runelite (UID 1000) via bind mount - no chown needed.
  */
 export async function ensureStatusDir(botId: string): Promise<void> {
   const dir = getStatusDir(botId);
@@ -127,6 +128,7 @@ export async function ensureTrainingSpotCacheDir(): Promise<void> {
 
 /**
  * Ensure the bolt launcher data directory exists for a bot.
+ * Container creates files as runelite (UID 1000) via bind mount - no chown needed.
  */
 export async function ensureBoltDataDir(botId: string): Promise<void> {
   const dir = getBoltDataDir(botId);
