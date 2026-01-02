@@ -1,6 +1,7 @@
-import { type Component, createSignal, createEffect, createResource, For, Show, untrack } from 'solid-js';
+import { type Component, createSignal, createEffect, createMemo, For, Show, untrack } from 'solid-js';
 import type { SkillTaskSpec, TrainingMethodInfo, MethodLocationInfo, SkillName } from '../../../shared/types';
 import { SKILLS, calculateXpPerHour, getXpPerHourRange, formatXpShort } from '../../../shared/types';
+import { useTrainingMethodsQuery } from '../../lib/api';
 
 interface SkillTaskFormProps {
   onSubmit: (task: SkillTaskSpec) => void;
@@ -12,16 +13,6 @@ interface SkillTaskFormProps {
 const TRAINABLE_SKILLS = SKILLS.filter(s => 
   !['Hitpoints', 'Slayer'].includes(s)
 ) as SkillName[];
-
-/**
- * Fetch training methods from API.
- */
-async function fetchTrainingMethods(): Promise<Record<SkillName, TrainingMethodInfo[]>> {
-  const response = await fetch('/api/data/training-methods?grouped=true');
-  if (!response.ok) throw new Error('Failed to load training methods');
-  const data = await response.json();
-  return data.data;
-}
 
 /**
  * Format XP/hr range for display.
@@ -45,7 +36,9 @@ function formatXpRange(min: number, max: number): string {
  * - Optional settings (banking, world hopping)
  */
 export const SkillTaskForm: Component<SkillTaskFormProps> = (props) => {
-  const [methods] = createResource(fetchTrainingMethods);
+  // Use TanStack Query - data is cached globally, survives tab switches
+  const methodsQuery = useTrainingMethodsQuery();
+  const methods = () => methodsQuery.data;
   
   const [selectedSkill, setSelectedSkill] = createSignal<SkillName | ''>('');
   const [selectedMethod, setSelectedMethod] = createSignal<string>('');
@@ -71,12 +64,6 @@ export const SkillTaskForm: Component<SkillTaskFormProps> = (props) => {
     return methods()![skill] || [];
   };
 
-  // Filter methods by current level
-  const validMethods = () => {
-    const level = currentLevel();
-    return availableMethods().filter(m => m.minLevel <= level);
-  };
-
   // Get the selected method object
   const selectedMethodObj = () => {
     const methodId = selectedMethod();
@@ -99,10 +86,26 @@ export const SkillTaskForm: Component<SkillTaskFormProps> = (props) => {
     return calculateXpPerHour(method, currentLevel(), location);
   };
 
-  // Get XP/hr range for display in method dropdown
-  const getMethodXpRange = (method: TrainingMethodInfo) => {
-    const range = getXpPerHourRange(method, currentLevel());
-    return formatXpRange(range.min, range.max);
+  // Sorted methods list - stable reference, only changes when skill changes
+  const sortedMethods = createMemo(() => {
+    return availableMethods().slice().sort((a, b) => a.minLevel - b.minLevel);
+  });
+
+  // Pre-computed XP ranges - Map lookup is O(1) during render
+  // Recomputes when methods or level change, but doesn't affect sortedMethods stability
+  const xpRangeMap = createMemo(() => {
+    const level = currentLevel();
+    const map = new Map<string, string>();
+    for (const method of availableMethods()) {
+      const range = getXpPerHourRange(method, level);
+      map.set(method.id, formatXpRange(range.min, range.max));
+    }
+    return map;
+  });
+
+  // Helper to check if player meets method requirements
+  const meetsRequirements = (method: TrainingMethodInfo) => {
+    return method.minLevel <= currentLevel();
   };
 
   // Reset method when skill changes
@@ -122,14 +125,28 @@ export const SkillTaskForm: Component<SkillTaskFormProps> = (props) => {
     }
   });
 
-  // Set default target value based on target type
-  // Only re-run when targetType changes, not when currentLevel changes (from status refreshes)
+  // Track the last skill/type combo we set defaults for
+  // This prevents re-setting when playerSkills updates from polling
+  let lastDefaultsKey = '';
+
+  // Set default target value when skill or target type changes
+  // Does NOT re-run when playerSkills updates (that would overwrite user input)
   createEffect(() => {
     const type = targetType();
-    // Use untrack to read currentLevel without adding it as a dependency
+    const skill = selectedSkill();
+    
+    // Create a key for this skill/type combo
+    const key = `${skill}:${type}`;
+    
+    // Only set defaults if this is a NEW combo (user changed skill or type)
+    if (key === lastDefaultsKey) return;
+    lastDefaultsKey = key;
+    
+    // Read level without tracking - we just want the current value
     const level = untrack(currentLevel);
     
     if (type === 'LEVEL') {
+      // Default to current level + 10, capped at 99
       setTargetValue(Math.min(level + 10, 99));
     } else if (type === 'XP') {
       setTargetValue(50000);
@@ -177,8 +194,31 @@ export const SkillTaskForm: Component<SkillTaskFormProps> = (props) => {
   const isValid = () => {
     if (!selectedSkill() || !selectedMethod()) return false;
     if (targetValue() <= 0) return false;
-    if (targetType() === 'LEVEL' && (targetValue() < 1 || targetValue() > 99)) return false;
+    
+    if (targetType() === 'LEVEL') {
+      const level = currentLevel();
+      const target = targetValue();
+      // Target must be greater than current level and at most 99
+      if (target <= level || target > 99) return false;
+    }
+    
     return true;
+  };
+
+  // Get validation error message for target field
+  const getTargetError = () => {
+    if (targetType() !== 'LEVEL') return null;
+    
+    const level = currentLevel();
+    const target = targetValue();
+    
+    if (target <= level) {
+      return `Target must be greater than current level (${level})`;
+    }
+    if (target > 99) {
+      return 'Target cannot exceed 99';
+    }
+    return null;
   };
 
   return (
@@ -197,11 +237,9 @@ export const SkillTaskForm: Component<SkillTaskFormProps> = (props) => {
           <For each={TRAINABLE_SKILLS}>
             {(skill) => (
               <option value={skill}>
-                {skill} 
-                {props.playerSkills?.[skill]?.level 
-                  ? ` (Level ${props.playerSkills[skill].level})`
-                  : ''
-                }
+                {skill}{props.playerSkills?.[skill]?.level 
+                  ? ` [${props.playerSkills[skill].level}]`
+                  : ''}
               </option>
             )}
           </For>
@@ -215,7 +253,7 @@ export const SkillTaskForm: Component<SkillTaskFormProps> = (props) => {
             Training Method
           </label>
           <Show
-            when={!methods.loading}
+            when={!methodsQuery.isLoading}
             fallback={<div class="text-gray-400 text-sm">Loading methods...</div>}
           >
             <select
@@ -225,17 +263,20 @@ export const SkillTaskForm: Component<SkillTaskFormProps> = (props) => {
             >
               <option value="">Select a method...</option>
               {/* Show all methods, sorted by level - valid ones first, then locked ones */}
-              <For each={availableMethods().slice().sort((a, b) => a.minLevel - b.minLevel)}>
+              {/* Methods list is stable; XP ranges pre-computed in xpRangeMap */}
+              <For each={sortedMethods()}>
                 {(method) => {
-                  const meetsReqs = method.minLevel <= currentLevel();
+                  // Reactive lookups - O(1) from pre-computed map
+                  const meetsReqs = () => meetsRequirements(method);
+                  const xpRange = () => xpRangeMap().get(method.id) || '';
                   return (
                     <option 
-                      value={meetsReqs ? method.id : ''} 
-                      disabled={!meetsReqs}
-                      class={!meetsReqs ? 'text-gray-500' : ''}
+                      value={method.id}
+                      disabled={!meetsReqs()}
+                      class={!meetsReqs() ? 'text-gray-500' : ''}
                     >
-                      {meetsReqs 
-                        ? `${method.name} (Lvl ${method.minLevel}+, ~${getMethodXpRange(method)}/hr)`
+                      {meetsReqs() 
+                        ? `${method.name} (Lvl ${method.minLevel}+, ~${xpRange()}/hr)`
                         : `🔒 ${method.name} (Requires Lvl ${method.minLevel})`
                       }
                     </option>
@@ -354,8 +395,15 @@ export const SkillTaskForm: Component<SkillTaskFormProps> = (props) => {
               onInput={(e) => setTargetValue(parseInt(e.target.value) || 0)}
               min={targetType() === 'LEVEL' ? currentLevel() + 1 : 1}
               max={targetType() === 'LEVEL' ? 99 : undefined}
-              class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+              class={`w-full bg-gray-700 border rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 ${
+                getTargetError() 
+                  ? 'border-red-500 focus:ring-red-500' 
+                  : 'border-gray-600 focus:ring-amber-500'
+              }`}
             />
+            <Show when={getTargetError()}>
+              <p class="text-red-400 text-xs mt-1">{getTargetError()}</p>
+            </Show>
           </div>
         </div>
       </Show>

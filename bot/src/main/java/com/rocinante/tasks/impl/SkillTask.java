@@ -253,6 +253,34 @@ public class SkillTask extends AbstractTask {
     }
 
     // ========================================================================
+    // Reset (for interruption handling)
+    // ========================================================================
+
+    /**
+     * Reset task-specific state when task is re-queued after interruption.
+     * Critical: clears activeSubTask to force re-navigation from new position.
+     */
+    @Override
+    protected void resetImpl() {
+        // Clear sub-task so navigation recalculates from current position
+        activeSubTask = null;
+        
+        // Reset to preparation phase to re-evaluate location
+        phase = SkillPhase.PREPARE;
+        phaseWaitTicks = 0;
+        
+        // Clear cached position data that may be stale
+        trainingPosition = null;
+        currentTargetPosition = null;
+        
+        // Clear ranked candidates to re-evaluate
+        rankedCandidates = null;
+        rankedCandidatesComputed = false;
+        
+        log.debug("SkillTask reset after interruption - will re-navigate from current position");
+    }
+
+    // ========================================================================
     // Location Selection
     // ========================================================================
 
@@ -1581,69 +1609,96 @@ public class SkillTask extends AbstractTask {
     private void handleSubTaskComplete(TaskContext ctx) {
         TaskState subTaskState = activeSubTask.getState();
         String subTaskDesc = activeSubTask.getDescription();
+        boolean subTaskFailed = subTaskState == TaskState.FAILED;
 
-        if (subTaskState == TaskState.FAILED) {
+        if (subTaskFailed) {
             log.warn("Sub-task failed: {}", subTaskDesc);
-            // Don't fail the whole task, just retry
         }
 
         // Clear sub-task reference
         activeSubTask = null;
 
-        // Determine next phase based on current phase
+        // Determine next action based on current phase
+        // Key principle: on FAILURE, stay in current phase to allow retry
+        // On SUCCESS, either continue phase logic or transition appropriately
         switch (phase) {
             case PREPARE:
-                // Preparation travel complete
-                phase = SkillPhase.TRAIN;
+                // PREPARE has multiple sequential steps (inventory → travel → etc.)
+                // DON'T transition to TRAIN here - let executePrepare() handle progression
+                // On success: executePrepare will continue to next step or transition to TRAIN
+                // On failure: executePrepare will re-evaluate and retry the failed step
+                if (subTaskFailed) {
+                    log.debug("Preparation sub-task failed, will retry: {}", subTaskDesc);
+                } else {
+                    log.debug("Preparation sub-task complete: {}", subTaskDesc);
+                }
+                // Stay in PREPARE - executePrepare() handles all transitions
                 break;
 
             case TRAIN:
                 // Training interaction complete
-                interactionStarted = true;
-                phaseWaitTicks = 0;
+                if (!subTaskFailed) {
+                    interactionStarted = true;
+                }
+                // Stay in TRAIN - executeTrain will handle next action
                 break;
 
             case BANK:
-                // Banking complete, return to training spot
-                bankTripsCompleted++;
-                log.info("Bank trip {} complete", bankTripsCompleted);
-
-                if (config.isReturnToExactSpot() && trainingPosition != null) {
-                    activeSubTask = new WalkToTask(trainingPosition)
-                            .withDescription("Return to training spot");
+                if (subTaskFailed) {
+                    // Banking failed - stay in BANK to retry
+                    log.debug("Banking sub-task failed, will retry: {}", subTaskDesc);
                 } else {
-                    phase = SkillPhase.TRAIN;
+                    // Banking complete, return to training spot
+                    bankTripsCompleted++;
+                    log.info("Bank trip {} complete", bankTripsCompleted);
+
+                    if (config.isReturnToExactSpot() && trainingPosition != null) {
+                        activeSubTask = new WalkToTask(trainingPosition)
+                                .withDescription("Return to training spot");
+                    } else {
+                        phase = SkillPhase.TRAIN;
+                    }
                 }
                 break;
 
             case DROP:
-                // Dropping complete, resume training
-                log.debug("Drop complete, resuming training");
-                phase = SkillPhase.TRAIN;
+                if (subTaskFailed) {
+                    // Dropping failed - stay in DROP to retry
+                    log.debug("Drop sub-task failed, will retry: {}", subTaskDesc);
+                } else {
+                    // Dropping complete, resume training
+                    log.debug("Drop complete, resuming training");
+                    phase = SkillPhase.TRAIN;
+                }
                 break;
 
             case PROCESS:
-                // Processing complete, check if more materials or bank
-                InventoryState inventory = ctx.getInventoryState();
-                TrainingMethod method = config.getMethod();
-
-                if (!inventory.hasItem(method.getTargetItemId())) {
-                    if (config.shouldBank()) {
-                        log.debug("Out of materials, banking");
-                        phase = SkillPhase.BANK;
-                    } else {
-                        log.info("Out of materials");
-                        completeTask(ctx);
-                    }
+                if (subTaskFailed) {
+                    // Processing failed - stay in PROCESS to retry
+                    log.debug("Process sub-task failed, will retry: {}", subTaskDesc);
                 } else {
-                    // More materials available, continue processing
-                    log.debug("More materials available, continuing");
+                    // Processing complete, check if more materials or bank
+                    InventoryState inventory = ctx.getInventoryState();
+                    TrainingMethod method = config.getMethod();
+
+                    if (!inventory.hasItem(method.getTargetItemId())) {
+                        if (config.shouldBank()) {
+                            log.debug("Out of materials, banking");
+                            phase = SkillPhase.BANK;
+                        } else {
+                            log.info("Out of materials");
+                            completeTask(ctx);
+                        }
+                    } else {
+                        // More materials available, continue processing
+                        log.debug("More materials available, continuing");
+                    }
                 }
                 break;
 
             case PICKUP_ITEM:
                 // Ground item pickup complete
-                if (subTaskState == TaskState.COMPLETED) {
+                if (!subTaskFailed) {
                     groundItemsPickedUp++;
                     log.info("Picked up ground item: {} (total: {})",
                             pendingItemWatch != null ? pendingItemWatch.getItemName() : "unknown",
@@ -1654,7 +1709,7 @@ public class SkillTask extends AbstractTask {
                 pendingGroundItem = null;
                 pendingItemWatch = null;
 
-                // Return to previous phase
+                // Return to previous phase (even on failure - item may have despawned)
                 phase = returnPhaseAfterPickup != null ? returnPhaseAfterPickup : SkillPhase.TRAIN;
                 returnPhaseAfterPickup = null;
                 break;

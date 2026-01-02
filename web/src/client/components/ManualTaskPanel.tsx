@@ -1,6 +1,7 @@
-import { type Component, createSignal, Show, For, Switch, Match, Suspense } from 'solid-js';
+import { type Component, createSignal, Show, For, Switch, Match, Suspense, onMount } from 'solid-js';
+import { useQueryClient } from '@tanstack/solid-query';
 import type { StatusStore } from '../lib/statusStore';
-import type { TaskSpec, QuestsData } from '../../shared/types';
+import type { TaskSpec, QuestsData, TrainingMethodInfo, SkillName } from '../../shared/types';
 import { SkillTaskForm } from './task-forms/SkillTaskForm';
 import { CombatTaskForm } from './task-forms/CombatTaskForm';
 import { NavigationTaskForm } from './task-forms/NavigationTaskForm';
@@ -43,9 +44,25 @@ interface ManualTaskPanelProps {
  * - Dynamic forms for each task type
  */
 export const ManualTaskPanel: Component<ManualTaskPanelProps> = (props) => {
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = createSignal<TabId>('skills');
   const [submitting, setSubmitting] = createSignal(false);
   const [feedback, setFeedback] = createSignal<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Prefetch training methods on mount (before user clicks Skills tab)
+  // This ensures instant load when they do click the tab
+  onMount(() => {
+    queryClient.prefetchQuery({
+      queryKey: ['trainingMethods'],
+      queryFn: async () => {
+        const response = await fetch('/api/data/training-methods?grouped=true');
+        if (!response.ok) throw new Error('Failed to load training methods');
+        const data = await response.json();
+        return data.data as Record<SkillName, TrainingMethodInfo[]>;
+      },
+      staleTime: Infinity,
+    });
+  });
 
   /**
    * Handle task submission from any form.

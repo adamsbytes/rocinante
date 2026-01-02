@@ -65,9 +65,9 @@ export async function getTrainingMethods(): Promise<TrainingMethodInfo[]> {
     const data: TrainingMethodsFile = await file.json();
     
     cachedTrainingMethods = data.methods.map(m => {
-      // Parse locations array
-      const locations: MethodLocationInfo[] = (m.locations || []).map((loc, idx) => ({
-        id: `${m.id}_loc_${idx}`,
+      // Parse locations array - use actual location ID from JSON (must match bot's TrainingMethod)
+      const locations: MethodLocationInfo[] = (m.locations || []).map((loc) => ({
+        id: loc.id,
         name: loc.name,
         locationId: loc.locationId,
         actionsPerHour: loc.actionsPerHour,

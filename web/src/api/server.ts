@@ -46,15 +46,15 @@ import { botCommandPayloadSchema } from '../shared/commandSchema';
 // Rate Limiting
 // =============================================================================
 
-// Unauthenticated: 10 requests per minute per IP (protects auth endpoints)
+// Unauthenticated: 20 requests per minute per IP (protects auth endpoints)
 const unauthRateLimiter = new RateLimiterMemory({
-  points: 10,
+  points: 20,
   duration: 60,
 });
 
-// Authenticated: 10 requests per second per user (generous but capped)
+// Authenticated: 100 requests per second per user (prevents abuse, allows polling)
 const authRateLimiter = new RateLimiterMemory({
-  points: 10,
+  points: 100,
   duration: 1,
 });
 
@@ -459,14 +459,20 @@ async function handleRequest(req: Request, server: ReturnType<typeof Bun.serve>)
     // Get session once, used for both rate limiting and auth
     session = await getSession(req);
     
-    // Rate limit: authenticated users get 10/sec by userId, others get 10/min by IP
-    const limiter = session?.user?.id ? authRateLimiter : unauthRateLimiter;
-    const key = session?.user?.id ?? getClientIp(req, server);
+    // Skip rate limiting for static asset endpoints (images, etc.)
+    // These are high-volume but low-cost and already auth-protected
+    const isStaticAsset = path.includes('/screenshots/view');
     
-    try {
-      await limiter.consume(key);
-    } catch {
-      return error({ code: 'RATE_LIMITED', status: 429 });
+    if (!isStaticAsset) {
+      // Rate limit: authenticated users get 10/sec by userId, others get 10/min by IP
+      const limiter = session?.user?.id ? authRateLimiter : unauthRateLimiter;
+      const key = session?.user?.id ?? getClientIp(req, server);
+      
+      try {
+        await limiter.consume(key);
+      } catch {
+        return error({ code: 'RATE_LIMITED', status: 429 });
+      }
     }
   }
 
@@ -1004,29 +1010,41 @@ websocket: {
                   // Mark that we've had a successful connection
                   wsData.hadConnection = true;
                 },
-                close(socket) {
+                async close(socket) {
                   // VNC server disconnected (container restart, etc.)
-                  // Keep WebSocket open and try to reconnect
                   console.log(`Unix socket connection to VNC closed: ${vncSocketPath}`);
                   const wsConn = socket.data.ws;
                   const wsData = wsConn.data as VncWebSocketData;
                   wsData.tcpSocket = null;
                   
                   if (wsConn.readyState === 1) {
-                    // Don't close WebSocket - start reconnection attempts
+                    // Check if bot is still running before reconnecting
+                    const currentStatus = await getContainerStatus(botId);
+                    if (currentStatus.state !== 'running' && currentStatus.state !== 'starting') {
+                      console.log(`VNC: Bot ${botId} stopped, closing WebSocket`);
+                      wsConn.close(1000, 'Bot stopped');
+                      return;
+                    }
+                    // Bot is still running - start reconnection attempts
                     console.log(`VNC server disconnected for bot ${botId}, waiting for reconnect...`);
-                    // Small delay before starting reconnection to allow server to restart
                     setTimeout(() => tryConnect(0), 1000);
                   }
                 },
-                error(socket, err) {
+                async error(socket, err) {
                   console.error(`Unix socket error for VNC ${vncSocketPath}:`, err);
                   const wsConn = socket.data.ws;
                   const wsData = wsConn.data as VncWebSocketData;
                   wsData.tcpSocket = null;
                   
                   if (wsConn.readyState === 1) {
-                    // Don't close WebSocket - try to reconnect
+                    // Check if bot is still running before reconnecting
+                    const currentStatus = await getContainerStatus(botId);
+                    if (currentStatus.state !== 'running' && currentStatus.state !== 'starting') {
+                      console.log(`VNC: Bot ${botId} stopped, closing WebSocket`);
+                      wsConn.close(1000, 'Bot stopped');
+                      return;
+                    }
+                    // Bot is still running - try to reconnect
                     console.log(`VNC connection error for bot ${botId}, attempting reconnect...`);
                     setTimeout(() => tryConnect(0), 1000);
                   }
@@ -1040,6 +1058,14 @@ websocket: {
             // ENOENT = socket doesn't exist yet (container starting)
             // ECONNREFUSED = socket exists but nothing listening
             if (err?.code === 'ENOENT' || err?.code === 'ECONNREFUSED') {
+              // Check if bot is still running before retrying
+              const currentStatus = await getContainerStatus(botId);
+              if (currentStatus.state !== 'running' && currentStatus.state !== 'starting') {
+                console.log(`VNC: Bot ${botId} is ${currentStatus.state}, closing WebSocket`);
+                ws.close(1000, 'Bot is not running');
+                return;
+              }
+              
               if (attempt < MAX_RETRIES) {
                 // Calculate delay with exponential backoff (capped)
                 const delay = Math.min(BASE_DELAY_MS * Math.pow(1.2, attempt), MAX_DELAY_MS);
@@ -1049,7 +1075,7 @@ websocket: {
                 await new Promise((resolve) => setTimeout(resolve, delay));
                 return tryConnect(attempt + 1);
               } else {
-                // After max retries, just keep waiting silently with periodic checks
+                // After max retries, check status and either keep waiting or give up
                 console.log(`VNC socket still not ready for bot ${botId}, continuing to wait...`);
                 await new Promise((resolve) => setTimeout(resolve, MAX_DELAY_MS));
                 return tryConnect(0); // Reset attempt counter and keep trying

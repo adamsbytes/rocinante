@@ -1962,11 +1962,21 @@ public class GameStateService {
                 lastAttackTick = currentTick; // Use updated value
             }
 
-            // ONLY add to aggressors if they've actually attacked us
+            // ONLY add to aggressors if they've RECENTLY attacked us
             // Just "interacting" (dialogue, teaching, etc.) is NOT an attack
+            // Also exclude stale attackers - NPCs that haven't attacked in a while
             boolean hasAttackedUs = lastAttackTick != null;
             if (!hasAttackedUs) {
                 continue; // Skip NPCs that are just talking to us
+            }
+            
+            // Staleness check: if NPC hasn't attacked in 20+ ticks (~12 seconds), 
+            // they're probably not a threat anymore (combat ended, NPC reset, etc.)
+            int ticksSinceLastAttack = currentTick - lastAttackTick;
+            if (ticksSinceLastAttack > 20) {
+                // Clean up stale tracking data
+                npcLastAttackTicks.remove(npcIndex);
+                continue; // Skip stale attackers
             }
 
             aggressors.add(AggressorInfo.builder()

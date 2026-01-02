@@ -11,6 +11,7 @@ import com.rocinante.tasks.TaskContext;
 import com.rocinante.tasks.TaskState;
 import com.rocinante.timing.DelayProfile;
 import com.rocinante.util.Randomization;
+import com.rocinante.util.WidgetInteractionHelpers;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
@@ -132,6 +133,7 @@ public class BankTask extends AbstractTask {
     // Chatbox Widget Constants (for X quantity input)
     // ========================================================================
 
+
     /**
      * Chatbox widget group ID.
      */
@@ -175,6 +177,16 @@ public class BankTask extends AbstractTask {
             10355, 10583, 18491, 20325, 20326, 20327, 20328, 24101, 25808, 26707,
             27254, 27260, 27263, 27265, 27267, 27292, 28429, 28430, 28431, 28861,
             29085, 30015, 32666, 34752, 34810, 35647, 36559, 37474
+    );
+
+    /**
+     * Bank booth IDs that LOOK like bank booths but cannot be interacted with.
+     * These are typically the staff-side/back of bank booths or decorative variants.
+     */
+    private static final Set<Integer> BANK_BOOTH_BLACKLIST = Set.of(
+            10527,  // BANKPRIVATEBOOTH - back/staff side of Draynor bank booths
+            10528,  // Another private booth variant
+            10529   // Another private booth variant
     );
 
     /**
@@ -280,6 +292,16 @@ public class BankTask extends AbstractTask {
      * Ticks waiting for response.
      */
     private int waitTicks = 0;
+
+    /**
+     * Retry counter for failed operations.
+     */
+    private int operationRetryCount = 0;
+
+    /**
+     * Phase to return to after dismissing tutorial.
+     */
+    private BankPhase returnPhaseAfterTutorial = BankPhase.SET_QUANTITY_MODE;
 
     /**
      * Maximum distance (tiles) to directly interact without walking closer.
@@ -574,6 +596,9 @@ public class BankTask extends AbstractTask {
             case WAIT_BANK_OPEN:
                 executeWaitBankOpen(ctx);
                 break;
+            case DISMISS_TUTORIAL:
+                executeDismissTutorial(ctx);
+                break;
             case SET_QUANTITY_MODE:
                 executeSetQuantityMode(ctx);
                 break;
@@ -700,6 +725,11 @@ public class BankTask extends AbstractTask {
     }
 
     private boolean isBankBoothByName(Client client, int objectId) {
+        // Check blacklist first - some objects are named "bank booth" but can't be used
+        if (BANK_BOOTH_BLACKLIST.contains(objectId)) {
+            return false;
+        }
+        
         ObjectComposition def = client.getObjectDefinition(objectId);
         if (def == null) return false;
         String name = def.getName();
@@ -888,6 +918,20 @@ public class BankTask extends AbstractTask {
         if (isBankOpen(client)) {
             log.debug("Bank opened successfully");
             
+            // Debug: dump ALL visible bank widgets on first open
+            if (waitTicks == 0) {
+                logAllBankWidgets(client);
+            }
+            
+            // Check for first-time bank tutorial dialog blocking interaction
+            if (isBankTutorialVisible(client)) {
+                log.info("Bank tutorial dialog detected (first-time use) - will dismiss");
+                returnPhaseAfterTutorial = BankPhase.SET_QUANTITY_MODE;
+                phase = BankPhase.DISMISS_TUTORIAL;
+                waitTicks = 0;
+                return;
+            }
+            
             // Handle redundant action: close and reopen bank
             if (redundantActionsRemaining > 0) {
                 redundantActionsRemaining--;
@@ -929,6 +973,85 @@ public class BankTask extends AbstractTask {
             targetBanker = null;
             waitTicks = 0;
         }
+    }
+
+    // ========================================================================
+    // Phase: Dismiss Tutorial (first-time bank use)
+    // ========================================================================
+
+    /**
+     * Dismiss the tutorial dialog that appears on first use.
+     * Uses the generic tutorial system in WidgetInteractionHelpers.
+     */
+    private void executeDismissTutorial(TaskContext ctx) {
+        if (operationPending) {
+            return;
+        }
+
+        // Check if tutorial is still visible
+        if (!isBankTutorialVisible(ctx.getClient())) {
+            log.debug("Tutorial dismissed, returning to {}", returnPhaseAfterTutorial);
+            phase = returnPhaseAfterTutorial;
+            waitTicks = 0;
+            return;
+        }
+
+        // Use the shared utility to dismiss
+        operationPending = true;
+        WidgetInteractionHelpers.dismissGenericTutorial(ctx)
+                .thenAccept(success -> {
+                    operationPending = false;
+                    if (success) {
+                        log.info("Dismissed tutorial successfully");
+                        recordProgress();
+                    } else {
+                        log.warn("Failed to dismiss tutorial, will retry");
+                        waitTicks++;
+                    }
+                })
+                .exceptionally(e -> {
+                    operationPending = false;
+                    log.error("Tutorial dismiss failed", e);
+                    waitTicks++;
+                    return null;
+                });
+
+        // Safety timeout
+        if (waitTicks > 10) {
+            log.error("Could not dismiss tutorial after {} attempts!", waitTicks);
+            fail("Cannot dismiss tutorial");
+        }
+    }
+
+    /**
+     * Debug: brute force scan ALL widget groups to find the tutorial.
+     */
+    private void logAllBankWidgets(Client client) {
+        log.info("=== BRUTE FORCE SCAN: ALL WIDGET GROUPS ===");
+        
+        // Scan all groups 0-1000
+        for (int groupId = 0; groupId < 1000; groupId++) {
+            for (int childId = 0; childId < 30; childId++) {
+                Widget w = client.getWidget(groupId, childId);
+                if (w != null && !w.isHidden()) {
+                    String text = w.getText();
+                    if (text != null && !text.isEmpty()) {
+                        // Log ANY visible widget with text
+                        log.info("Widget {}:{} text='{}'", groupId, childId, 
+                                text.substring(0, Math.min(80, text.length())));
+                    }
+                }
+            }
+        }
+        log.info("=== END BRUTE FORCE SCAN ===");
+    }
+
+    /**
+     * Check if a screen highlight tutorial overlay is visible.
+     * Delegates to WidgetInteractionHelpers for the generic tutorial system.
+     */
+    private static boolean isBankTutorialVisible(Client client) {
+        return WidgetInteractionHelpers.isGenericTutorialVisible(client);
     }
 
     // ========================================================================
@@ -1036,6 +1159,15 @@ public class BankTask extends AbstractTask {
 
     private void executePerformOperation(TaskContext ctx) {
         Client client = ctx.getClient();
+
+        // Check if tutorial is blocking (can appear on first bank use)
+        if (isBankTutorialVisible(client)) {
+            log.warn("Bank tutorial blocking operation - dismissing first");
+            returnPhaseAfterTutorial = BankPhase.PERFORM_OPERATION;
+            phase = BankPhase.DISMISS_TUTORIAL;
+            waitTicks = 0;
+            return;
+        }
 
         switch (operation) {
             case DEPOSIT_ALL:
@@ -1557,7 +1689,17 @@ public class BankTask extends AbstractTask {
     // ========================================================================
 
     private void executeWaitOperation(TaskContext ctx) {
+        Client client = ctx.getClient();
         waitTicks++;
+
+        // Check if tutorial appeared and is blocking (can appear mid-operation)
+        if (isBankTutorialVisible(client)) {
+            log.warn("Bank tutorial appeared during operation - dismissing");
+            returnPhaseAfterTutorial = BankPhase.PERFORM_OPERATION;
+            phase = BankPhase.DISMISS_TUTORIAL;
+            waitTicks = 0;
+            return;
+        }
 
         // Check if operation completed based on operation type
         boolean operationComplete = false;
@@ -1586,7 +1728,7 @@ public class BankTask extends AbstractTask {
         }
 
         if (operationComplete) {
-            log.debug("Bank operation completed");
+            log.debug("Bank operation completed successfully");
             if (closeAfter) {
                 phase = BankPhase.CLOSE_BANK;
             } else {
@@ -1596,12 +1738,22 @@ public class BankTask extends AbstractTask {
         }
 
         if (waitTicks > OPERATION_TIMEOUT) {
-            // Operation might have failed or succeeded without detection
-            log.warn("Operation timeout, assuming success");
-            if (closeAfter) {
-                phase = BankPhase.CLOSE_BANK;
+            // Operation did NOT complete - this is a failure, not success!
+            log.error("Bank operation timed out - inventory state did not change as expected");
+            
+            // Check what might have gone wrong
+            if (!isBankOpen(client)) {
+                fail("Bank closed unexpectedly during operation");
             } else {
-                complete();
+                // Bank is still open but operation didn't work - retry
+                operationRetryCount++;
+                if (operationRetryCount >= 3) {
+                    fail("Bank operation failed after 3 retries - items not deposited/withdrawn");
+                } else {
+                    log.warn("Retrying bank operation (attempt {}/3)", operationRetryCount + 1);
+                    waitTicks = 0;
+                    phase = BankPhase.PERFORM_OPERATION;
+                }
             }
         }
     }
@@ -1822,6 +1974,11 @@ public class BankTask extends AbstractTask {
     }
 
     private static boolean isBankBoothByNameStatic(Client client, int objectId) {
+        // Check blacklist first - some objects are named "bank booth" but can't be used
+        if (BANK_BOOTH_BLACKLIST.contains(objectId)) {
+            return false;
+        }
+        
         ObjectComposition def = client.getObjectDefinition(objectId);
         if (def == null) return false;
         String name = def.getName();
@@ -2039,6 +2196,7 @@ public class BankTask extends AbstractTask {
         WALK_TO_BANK,
         OPEN_BANK,
         WAIT_BANK_OPEN,
+        DISMISS_TUTORIAL,
         SET_QUANTITY_MODE,
         PERFORM_OPERATION,
         WAIT_CHATBOX_INPUT,

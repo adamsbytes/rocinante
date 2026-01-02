@@ -120,6 +120,8 @@ public class WalkToTask extends AbstractTask {
     private WorldPoint clickStartPosition;  // Position when we clicked
     private WorldPoint clickTargetPosition; // Where we clicked to
     private static final double MIN_PROGRESS_BEFORE_RECLICK = 0.75; // 75% progress required
+    private static final int WAYPOINT_ARRIVAL_DISTANCE = 3; // Tiles to consider "at" a waypoint
+    private int lastClickedPathIndex = 0; // Track committed path progress to prevent backward movement
 
     // Transport handling
     private List<com.rocinante.navigation.ShortestPathBridge.TransportSegment> transportSegments = new ArrayList<>();
@@ -508,17 +510,22 @@ public class WalkToTask extends AbstractTask {
             return;
         }
 
-        Point screenPoint = calculateMinimapPoint(ctx, clickTarget);
+        WorldPoint originalTarget = clickTarget; // For logging
+        
+        // Calculate distance to final destination for precision scaling
+        int distanceToDestination = playerPos.distanceTo(destination);
+        
+        Point screenPoint = calculateMinimapPoint(ctx, clickTarget, distanceToDestination);
         
         // If minimap click fails, try intermediate point FIRST before viewport
         // Viewport clicks are risky - they can accidentally click objects while moving
         if (screenPoint == null) {
             WorldPoint intermediate = calculateIntermediatePoint(playerPos, clickTarget);
             if (intermediate != null && !intermediate.equals(clickTarget)) {
-                screenPoint = calculateMinimapPoint(ctx, intermediate);
+                screenPoint = calculateMinimapPoint(ctx, intermediate, distanceToDestination);
                 if (screenPoint != null) {
                     clickTarget = intermediate;
-                    log.debug("Using intermediate minimap point {} toward target", intermediate);
+                    log.debug("Using intermediate minimap point {} toward path target {}", intermediate, originalTarget);
                 }
             }
         }
@@ -631,7 +638,16 @@ public class WalkToTask extends AbstractTask {
             return destination;
         }
 
-        // Find point ahead in path within minimap range
+        int oldPathIndex = pathIndex;
+        
+        // First, advance pathIndex past any waypoints we've reached
+        while (pathIndex < currentPath.size() && 
+               playerPos.distanceTo(currentPath.get(pathIndex)) <= WAYPOINT_ARRIVAL_DISTANCE) {
+            pathIndex++;
+        }
+
+        // Find the farthest point along the path within minimap range
+        // KEY: we only look FORWARD from pathIndex, never backward - this prevents oscillation
         int targetIndex = pathIndex;
         for (int i = pathIndex; i < currentPath.size(); i++) {
             WorldPoint point = currentPath.get(i);
@@ -641,17 +657,36 @@ public class WalkToTask extends AbstractTask {
             targetIndex = i;
         }
 
-        // Update path index
-        for (int i = pathIndex; i < targetIndex; i++) {
-            if (playerPos.distanceTo(currentPath.get(i)) <= ARRIVAL_DISTANCE) {
-                pathIndex = i + 1;
-            }
+        // Update pathIndex to target - we commit to at least this far
+        // This ensures we don't pick an earlier point next time
+        if (targetIndex > pathIndex) {
+            pathIndex = targetIndex;
         }
 
-        return targetIndex < currentPath.size() ? currentPath.get(targetIndex) : destination;
+        WorldPoint target = targetIndex < currentPath.size() ? currentPath.get(targetIndex) : destination;
+        
+        if (oldPathIndex != pathIndex || targetIndex != pathIndex) {
+            log.debug("Path progress: index {} -> {}, targetIndex={}, target={}, pathSize={}", 
+                    oldPathIndex, pathIndex, targetIndex, target, currentPath.size());
+        }
+        
+        return target;
     }
 
-    private Point calculateMinimapPoint(TaskContext ctx, WorldPoint target) {
+    /**
+     * Calculate minimap click point with precision scaling based on distance to destination.
+     * 
+     * Precision strategy:
+     * - Far from destination (>20 tiles): looser clicks (stddev 4px) - doesn't matter as much
+     * - Medium distance (8-20 tiles): normal clicks (stddev 2px)
+     * - Close to destination (<8 tiles): precise clicks (stddev 1px) - accuracy matters
+     * 
+     * @param ctx task context
+     * @param target the world point to click toward
+     * @param distanceToDestination distance from player to final destination (not click target)
+     * @return screen point to click, or null if not clickable
+     */
+    private Point calculateMinimapPoint(TaskContext ctx, WorldPoint target, int distanceToDestination) {
         Client client = ctx.getClient();
         Player localPlayer = client.getLocalPlayer();
         if (localPlayer == null) return null;
@@ -681,8 +716,19 @@ public class WalkToTask extends AbstractTask {
             scaledY *= scale;
         }
 
-        int minimapX = minimap.centerX + (int) scaledX + Randomization.gaussianInt(0, 2);
-        int minimapY = minimap.centerY - (int) scaledY + Randomization.gaussianInt(0, 2);
+        // Scale click precision based on distance to final destination
+        // Close = precise (stddev 1), far = looser (stddev 4)
+        int precisionStdDev;
+        if (distanceToDestination <= 8) {
+            precisionStdDev = 1;  // Precise - we're almost there
+        } else if (distanceToDestination <= 20) {
+            precisionStdDev = 2;  // Normal precision
+        } else {
+            precisionStdDev = 4;  // Looser - long run, doesn't matter as much
+        }
+
+        int minimapX = minimap.centerX + (int) scaledX + Randomization.gaussianInt(0, precisionStdDev);
+        int minimapY = minimap.centerY - (int) scaledY + Randomization.gaussianInt(0, precisionStdDev);
 
         return new Point(minimapX, minimapY);
     }

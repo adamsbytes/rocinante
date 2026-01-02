@@ -17,12 +17,14 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.LinkedList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 /**
  * Task queue management and execution engine.
@@ -111,6 +113,17 @@ public class TaskExecutor {
      * Flag indicating an urgent task is pending.
      */
     private volatile boolean urgentPending = false;
+
+    /**
+     * Tracks consecutive ticks without combat for flee task cleanup.
+     * After TICKS_TO_CLEAR_FLEE_TASKS ticks of no combat, pending flee tasks are cancelled.
+     */
+    private int ticksOfNoCombat = 0;
+    
+    /**
+     * Number of ticks without combat before clearing pending flee tasks.
+     */
+    private static final int TICKS_TO_CLEAR_FLEE_TASKS = 10;
 
     /**
      * Callback for stuck task detection.
@@ -285,6 +298,43 @@ public class TaskExecutor {
         return tasks;
     }
 
+    /**
+     * Cancel all pending tasks that match a predicate.
+     * Does NOT cancel the currently running task.
+     *
+     * @param predicate the condition to match for cancellation
+     * @return the number of tasks cancelled
+     */
+    public int cancelPendingTasksMatching(Predicate<Task> predicate) {
+        List<QueuedTask> toRemove = new ArrayList<>();
+        for (QueuedTask qt : taskQueue) {
+            if (predicate.test(qt.task)) {
+                toRemove.add(qt);
+            }
+        }
+        
+        int cancelled = 0;
+        for (QueuedTask qt : toRemove) {
+            if (taskQueue.remove(qt)) {
+                cancelled++;
+                log.info("Cancelled pending task: {}", qt.task.getDescription());
+            }
+        }
+        
+        return cancelled;
+    }
+
+    /**
+     * Cancel all pending flee tasks from the queue.
+     * Called when combat has ended and flee tasks are no longer needed.
+     *
+     * @return the number of flee tasks cancelled
+     */
+    public int cancelPendingFleeTasks() {
+        return cancelPendingTasksMatching(task -> 
+                task.getDescription().toLowerCase().contains("flee"));
+    }
+
     // ========================================================================
     // Execution Control
     // ========================================================================
@@ -456,9 +506,53 @@ public class TaskExecutor {
 
     /**
      * Check for emergency conditions and queue response tasks.
+     * Also tracks combat state to clean up stale flee tasks.
      */
     private void checkForEmergencies() {
+        // Track combat state for flee task cleanup
+        var combatState = taskContext.getCombatState();
+        boolean isInCombat = combatState != null && combatState.isBeingAttacked();
+        
+        if (isInCombat) {
+            ticksOfNoCombat = 0;
+        } else {
+            ticksOfNoCombat++;
+            
+            // After enough ticks of no combat, clear pending flee tasks
+            if (ticksOfNoCombat == TICKS_TO_CLEAR_FLEE_TASKS) {
+                int cancelled = cancelPendingFleeTasks();
+                if (cancelled > 0) {
+                    log.info("Combat ended for {} ticks - cancelled {} pending flee task(s)", 
+                            ticksOfNoCombat, cancelled);
+                }
+                
+                // Also clear the UNDER_ATTACK_EMERGENCY active state so it can retrigger if needed
+                if ("UNDER_ATTACK_EMERGENCY".equals(emergencyHandler.getActiveEmergencyId())) {
+                    emergencyHandler.emergencySucceeded("UNDER_ATTACK_EMERGENCY");
+                    log.debug("Cleared UNDER_ATTACK_EMERGENCY active state after combat ended");
+                }
+            }
+        }
+        
+        // Check for new emergencies
         emergencyHandler.checkEmergencies(taskContext).ifPresent(emergencyTask -> {
+            // Prevent queuing duplicate flee tasks
+            if (emergencyTask.getDescription().toLowerCase().contains("flee")) {
+                // Check if there's already a flee task running
+                if (currentTask != null && currentTask.getDescription().toLowerCase().contains("flee")
+                        && !currentTask.getState().isTerminal()) {
+                    log.debug("Skipping flee task - already fleeing");
+                    return;
+                }
+                // Check if there's already a flee task queued
+                boolean hasQueuedFleeTask = taskQueue.stream()
+                        .anyMatch(qt -> qt.task.getDescription().toLowerCase().contains("flee"));
+                if (hasQueuedFleeTask) {
+                    log.debug("Skipping flee task - one already queued");
+                    return;
+                }
+            }
+            
             log.warn("Queuing emergency task: {}", emergencyTask.getDescription());
             queueTask(emergencyTask, TaskPriority.URGENT);
         });
@@ -676,15 +770,18 @@ public class TaskExecutor {
 
     /**
      * Re-queue the current task (for interruption handling).
+     * Calls resetForRetry() on the task to clear any stale sub-task state (e.g., old WalkToTask paths).
      */
     private void requeueCurrentTask() {
         if (currentTask != null && currentTask.getState() == TaskState.RUNNING) {
-            // Reset state to PENDING
+            // CRITICAL: Reset the task to clear stale internal state
+            // This ensures sub-tasks like WalkToTask recalculate paths from new position
+            // after the player moved due to emergency flee/death recovery
             if (currentTask instanceof AbstractTask) {
-                ((AbstractTask) currentTask).state = TaskState.PENDING;
+                ((AbstractTask) currentTask).resetForRetry();
             }
             queueTask(currentTask, currentTask.getPriority());
-            log.debug("Re-queued interrupted task: {}", currentTask.getDescription());
+            log.debug("Re-queued interrupted task (reset): {}", currentTask.getDescription());
         }
     }
 

@@ -1,5 +1,6 @@
 package com.rocinante.tasks.impl;
 
+import com.rocinante.navigation.NavigationService;
 import com.rocinante.state.AggressorInfo;
 import com.rocinante.tasks.AbstractTask;
 import com.rocinante.tasks.TaskContext;
@@ -10,9 +11,9 @@ import net.runelite.api.Client;
 import net.runelite.api.NPC;
 import net.runelite.api.coords.WorldPoint;
 
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.OptionalInt;
 
 /**
  * Task to flee from combat by running away from attackers.
@@ -29,6 +30,12 @@ public class FleeTask extends AbstractTask {
     private static final int FLEE_DISTANCE = 40;
     private static final int SCAN_RADIUS = 15;
     private static final int DIRECTION_SAMPLES = 8; // Check 8 compass directions
+    
+    /**
+     * Distance from flee destination at which we consider ourselves "safe enough" to stop,
+     * as long as we're no longer in combat.
+     */
+    private static final int SAFE_ARRIVAL_DISTANCE = 7;
 
     @Getter
     private final AggressorInfo attacker;
@@ -143,32 +150,46 @@ public class FleeTask extends AbstractTask {
             return;
         }
 
+        // Check if we've fled far enough AND are no longer in combat
+        // This allows early completion once we're safe, rather than walking all 40 tiles
+        WorldPoint playerPos = ctx.getPlayerState().getWorldPosition();
+        boolean closeEnoughToDestination = playerPos != null && fleeDestination != null 
+                && playerPos.distanceTo(fleeDestination) <= SAFE_ARRIVAL_DISTANCE;
+        boolean notInCombat = ctx.getCombatState() == null || !ctx.getCombatState().isBeingAttacked();
+        
+        if (closeEnoughToDestination && notInCombat) {
+            log.info("Fled successfully - within {} tiles of destination and no longer in combat", 
+                    SAFE_ARRIVAL_DISTANCE);
+            handleFleeComplete();
+            return;
+        }
+
         // Execute the walk task
         walkTask.execute(ctx);
 
         if (walkTask.getState().isTerminal()) {
             if (walkTask.getState() == TaskState.COMPLETED) {
                 log.info("Fled successfully to {}", fleeDestination);
-
-                if (shouldReturn && returnLocation != null) {
-                    log.info("Will return to task location: {}", returnLocation);
-                    walkTask = new WalkToTask(returnLocation);
-                    walkTask.setDescription("Return after fleeing");
-                    phase = FleePhase.RETURNING;
-                } else {
-                    complete();
-                }
+                handleFleeComplete();
             } else {
                 // Flee failed but we're probably safer now anyway
                 log.warn("Flee walk failed, but continuing (may have partially escaped)");
+                handleFleeComplete();
+            }
+        }
+    }
+    
+    /**
+     * Handle flee completion - either return to original location or complete.
+     */
+    private void handleFleeComplete() {
                 if (shouldReturn && returnLocation != null) {
+            log.info("Will return to task location: {}", returnLocation);
                     walkTask = new WalkToTask(returnLocation);
                     walkTask.setDescription("Return after fleeing");
                     phase = FleePhase.RETURNING;
                 } else {
                     complete();
-                }
-            }
         }
     }
 
@@ -214,10 +235,12 @@ public class FleeTask extends AbstractTask {
 
     /**
      * Calculate the best destination to flee to.
+     * Uses actual path cost estimation to avoid expensive routes (toll gates, long detours).
      * Avoids directions with many NPCs of the same type as the attacker.
      */
     private WorldPoint calculateFleeDestination(TaskContext ctx, WorldPoint playerPos) {
         Client client = ctx.getClient();
+        NavigationService navService = ctx.getNavigationService();
         int attackerNpcId = attacker.getNpcId();
 
         // Find all nearby NPCs of the same type
@@ -232,14 +255,20 @@ public class FleeTask extends AbstractTask {
             }
         }
 
-        // Score each direction (8 compass directions)
+        // Score each direction at multiple distances (8 compass directions x 3 distances)
+        // This helps find good intermediate points if full distance is unreachable/expensive
+        int[] distances = {FLEE_DISTANCE, 25, 15}; // Try full, medium, short
+        
         double bestScore = Double.NEGATIVE_INFINITY;
         WorldPoint bestDestination = null;
+        int bestPathCost = Integer.MAX_VALUE;
 
         for (int i = 0; i < DIRECTION_SAMPLES; i++) {
             double angle = (2 * Math.PI * i) / DIRECTION_SAMPLES;
-            int dx = (int) (Math.cos(angle) * FLEE_DISTANCE);
-            int dy = (int) (Math.sin(angle) * FLEE_DISTANCE);
+            
+            for (int distance : distances) {
+                int dx = (int) (Math.cos(angle) * distance);
+                int dy = (int) (Math.sin(angle) * distance);
 
             WorldPoint candidate = new WorldPoint(
                     playerPos.getX() + dx,
@@ -247,41 +276,80 @@ public class FleeTask extends AbstractTask {
                     playerPos.getPlane()
             );
 
-            double score = scoreFleeDirection(playerPos, candidate, dangerousNpcPositions);
+                // Get actual path cost - skip if unreachable
+                OptionalInt pathCostOpt = navService.getPathCost(ctx, playerPos, candidate);
+                if (pathCostOpt.isEmpty()) {
+                    continue; // Unreachable - skip this candidate
+                }
+                
+                int pathCost = pathCostOpt.getAsInt();
+                int straightLineDistance = playerPos.distanceTo(candidate);
+                
+                // Penalize paths that are much longer than straight-line distance
+                // This catches toll gates, long detours, etc.
+                // Ratio > 2.0 means path is more than twice the straight-line distance
+                double pathEfficiency = (double) straightLineDistance / Math.max(1, pathCost);
+                if (pathEfficiency < 0.5) {
+                    log.debug("Skipping {} - path cost {} is too high for distance {} (efficiency: {})",
+                            candidate, pathCost, straightLineDistance, String.format("%.2f", pathEfficiency));
+                    continue; // Path is too inefficient (probably involves toll gate or major detour)
+                }
 
-            if (score > bestScore) {
+                double score = scoreFleeDirection(playerPos, candidate, dangerousNpcPositions, pathCost);
+
+                // Prefer this candidate if score is better, or same score but shorter path
+                if (score > bestScore || (score == bestScore && pathCost < bestPathCost)) {
                 bestScore = score;
                 bestDestination = candidate;
+                    bestPathCost = pathCost;
+                }
             }
+        }
+
+        if (bestDestination != null) {
+            log.debug("Best flee destination: {} (score: {}, path cost: {})", 
+                    bestDestination, String.format("%.1f", bestScore), bestPathCost);
         }
 
         return bestDestination;
     }
 
     /**
-     * Score a flee direction based on distance from dangerous NPCs.
+     * Score a flee direction based on path cost and distance from dangerous NPCs.
      * Higher score = safer direction.
+     * 
+     * @param from starting position
+     * @param to candidate destination
+     * @param dangerousNpcs positions of dangerous NPCs
+     * @param pathCost actual path cost in tiles
+     * @return score (higher is better)
      */
-    private double scoreFleeDirection(WorldPoint from, WorldPoint to, List<WorldPoint> dangerousNpcs) {
+    private double scoreFleeDirection(WorldPoint from, WorldPoint to, 
+                                       List<WorldPoint> dangerousNpcs, int pathCost) {
         double score = 0;
 
-        // Base score: distance from starting position (we want to flee far)
-        score += from.distanceTo(to) * 0.5;
+        // Penalize path cost - we want efficient routes
+        // Lower path cost = better (so subtract it)
+        score -= pathCost * 0.3;
 
-        // Penalty for each dangerous NPC near the destination
+        // Score based on distance from dangerous NPCs at destination
         for (WorldPoint npcPos : dangerousNpcs) {
             int distFromDest = to.distanceTo(npcPos);
+            
+            // Reward being far from NPCs at destination (this is actual safety distance)
+            score += distFromDest * 0.5;
+            
+            // Extra penalty if NPCs are very close to destination
             if (distFromDest < 10) {
-                // Heavy penalty for NPCs near destination
-                score -= (10 - distFromDest) * 5;
+                score -= (10 - distFromDest) * 3;
             }
 
-            // Bonus for moving away from NPCs
+            // Bonus for moving away from NPCs (destination further than start)
             int distFromStart = from.distanceTo(npcPos);
             if (distFromDest > distFromStart) {
                 score += 5; // Moving away from this NPC
             } else {
-                score -= 10; // Moving toward this NPC
+                score -= 8; // Moving toward this NPC - bad
             }
         }
 

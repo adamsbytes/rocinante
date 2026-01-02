@@ -6,6 +6,7 @@
 import Docker from 'dockerode';
 import tar from 'tar-stream';
 import { writeFileSync } from 'fs';
+import { createHash } from 'crypto';
 import type { BotConfig } from '../shared/types';
 import type { ContainerStatus } from '../shared/worker-protocol';
 import {
@@ -27,6 +28,10 @@ import { getBot, getWikiCacheSecret } from '../api/config';
 const docker = new Docker({ socketPath: '/var/run/docker.sock' });
 
 const BOT_IMAGE = process.env.BOT_IMAGE || 'rocinante-bot:latest';
+
+// Label keys for container metadata
+const LABEL_CONFIG_HASH = 'rocinante.config-hash';
+const LABEL_IMAGE_ID = 'rocinante.image-id';  // Actual image ID (sha256), not tag
 const CONTAINER_PREFIX = 'rocinante_';
 
 // =============================================================================
@@ -101,6 +106,35 @@ async function createConfigTar(bot: BotConfig): Promise<Buffer> {
 function parseCpu(cpu: string): number {
   const value = parseFloat(cpu);
   return Math.floor(value * 1e9);
+}
+
+/**
+ * Compute a hash of config values that require container recreation if changed.
+ * This includes: memory, CPU, and bind mount paths (derived from botId).
+ * NOTE: Image ID is tracked separately since it changes independently of bot config.
+ * Runtime config (credentials, settings) can be injected via putArchive without recreation.
+ */
+function computeContainerSpecHash(bot: BotConfig): string {
+  const spec = {
+    memory: bot.resources.memoryLimit,
+    cpu: bot.resources.cpuLimit,
+    // Bind paths are derived from botId, so if botId changes we'd have a different container anyway
+  };
+  return createHash('sha256').update(JSON.stringify(spec)).digest('hex').slice(0, 16);
+}
+
+/**
+ * Get the actual image ID (sha256 digest) for an image tag.
+ * This allows us to detect when an image has been rebuilt with the same tag.
+ */
+async function getImageId(imageName: string): Promise<string | null> {
+  try {
+    const image = docker.getImage(imageName);
+    const info = await image.inspect();
+    return info.Id;  // e.g., "sha256:abc123..."
+  } catch {
+    return null;
+  }
 }
 
 // =============================================================================
@@ -225,43 +259,9 @@ export async function startBot(botId: string): Promise<void> {
 }
 
 /**
- * Start a bot container with provided config.
- * Config is injected directly from memory via putArchive - never touches host disk.
+ * Validate bot config has all required fields.
  */
-async function startBotWithConfig(bot: BotConfig): Promise<void> {
-  const containerName = `${CONTAINER_PREFIX}${bot.id}`;
-
-  // Always remove any existing container to ensure fresh state
-  const containers = await docker.listContainers({ all: true });
-  const existing = containers.find((c) =>
-    c.Names.some((n) => n === `/${containerName}`)
-  );
-
-  if (existing) {
-    const container = docker.getContainer(existing.Id);
-    const info = await container.inspect();
-
-    if (info.State.Running) {
-      await container.stop({ t: 10 });
-    }
-
-    await container.remove();
-  }
-
-  // Ensure directories exist for bind mounts
-  await ensureStatusDir(bot.id);
-  await ensureScreenshotsDir(bot.id);
-  await ensureSharedCacheDir();
-  await ensureTrainingSpotCacheDir();
-  await ensureBoltDataDir(bot.id);
-
-  const statusDir = getStatusDir(bot.id);
-  const screenshotsDir = getScreenshotsDir(bot.id);
-  const sharedCacheDir = getSharedCacheDir();
-  const trainingSpotCacheDir = getTrainingSpotCacheDir();
-  const boltDataDir = getBoltDataDir(bot.id);
-
-  // Validate required config fields (fail loud)
+function validateBotConfig(bot: BotConfig): void {
   if (!bot.environment) {
     throw new Error(`Bot ${bot.id} missing environment config`);
   }
@@ -304,48 +304,128 @@ async function startBotWithConfig(bot: BotConfig): Promise<void> {
   if (!bot.vncPassword) {
     throw new Error(`Bot ${bot.id} missing required vncPassword`);
   }
-
-  const machineIdPath = writeMachineIdFile(bot.id, bot.environment.machineId);
-  const hostname = generateHostname(bot.id);
-  const boltLauncherPath = '/home/runelite/.local/share/bolt-launcher/.runelite';
-
-  // No environment variables - all config comes from /home/runelite/config.json
-  const container = await docker.createContainer({
-    Image: BOT_IMAGE,
-    name: containerName,
-    Hostname: hostname,
-    Env: [],
-    HostConfig: {
-      Memory: parseMemory(bot.resources.memoryLimit),
-      NanoCpus: parseCpu(bot.resources.cpuLimit),
-      ShmSize: 256 * 1024 * 1024,
-      Binds: [
-        `${boltDataDir}:/home/runelite/.local/share/bolt-launcher`,
-        `${statusDir}:${boltLauncherPath}/rocinante`,
-        `${screenshotsDir}:${boltLauncherPath}/screenshots`,
-        `${sharedCacheDir}:${boltLauncherPath}/rocinante/wiki-cache`,
-        `${trainingSpotCacheDir}:${boltLauncherPath}/rocinante/training-spot-cache`,
-        `${machineIdPath}:/etc/machine-id:ro`,
-      ],
-      RestartPolicy: {
-        Name: 'unless-stopped',
-      },
-    },
-  });
-
-  // Inject wiki cache secret (shared across all bots for cache signing)
-  const botWithSecret = { ...bot, wikiCacheSecret: getWikiCacheSecret() };
-
-  // Inject config.json directly into container from memory (never touches host disk)
-  // Extract to root (/) to avoid any /home/runelite overlay issues
-  const configTar = await createConfigTar(botWithSecret);
-  await container.putArchive(configTar, { path: '/' });
-
-  await container.start();
 }
 
 /**
- * Stop a bot container.
+ * Start a bot container with provided config.
+ * 
+ * Optimized lifecycle:
+ * - If container exists and is stopped with matching config hash, just start it
+ * - If container exists but config changed (memory/CPU/image), recreate it
+ * - If container doesn't exist, create it
+ * 
+ * Config.json is always re-injected before starting to pick up runtime config changes.
+ */
+async function startBotWithConfig(bot: BotConfig): Promise<void> {
+  const containerName = `${CONTAINER_PREFIX}${bot.id}`;
+  
+  // Validate config first
+  validateBotConfig(bot);
+
+  // Ensure directories exist for bind mounts
+  await ensureStatusDir(bot.id);
+  await ensureScreenshotsDir(bot.id);
+  await ensureSharedCacheDir();
+  await ensureTrainingSpotCacheDir();
+  await ensureBoltDataDir(bot.id);
+
+  const statusDir = getStatusDir(bot.id);
+  const screenshotsDir = getScreenshotsDir(bot.id);
+  const sharedCacheDir = getSharedCacheDir();
+  const trainingSpotCacheDir = getTrainingSpotCacheDir();
+  const boltDataDir = getBoltDataDir(bot.id);
+  const machineIdPath = writeMachineIdFile(bot.id, bot.environment.machineId);
+  const hostname = generateHostname(bot.id);
+  const boltLauncherPath = '/home/runelite/.local/share/bolt-launcher/.runelite';
+  
+  // Compute config hash for this bot's container spec
+  const configHash = computeContainerSpecHash(bot);
+  
+  // Get current image ID (detects rebuilds of the same tag)
+  const currentImageId = await getImageId(BOT_IMAGE);
+  if (!currentImageId) {
+    throw new Error(`Image ${BOT_IMAGE} not found`);
+  }
+
+  // Check for existing container
+  const containers = await docker.listContainers({ all: true });
+  const existing = containers.find((c) =>
+    c.Names.some((n) => n === `/${containerName}`)
+  );
+
+  let container: Docker.Container;
+  let needsCreate = true;
+
+  if (existing) {
+    container = docker.getContainer(existing.Id);
+    const info = await container.inspect();
+
+    // If running, nothing to do (shouldn't happen in normal flow)
+    if (info.State.Running) {
+      console.log(`Container ${containerName} is already running`);
+      return;
+    }
+
+    // Check if container spec AND image ID match
+    const existingHash = info.Config.Labels?.[LABEL_CONFIG_HASH];
+    const existingImageId = info.Config.Labels?.[LABEL_IMAGE_ID];
+    
+    if (existingHash === configHash && existingImageId === currentImageId) {
+      // Container spec and image match - can reuse
+      console.log(`Reusing existing container ${containerName} (config hash and image match)`);
+      needsCreate = false;
+    } else {
+      // Config or image changed - need to recreate
+      const reason = existingHash !== configHash 
+        ? `config hash ${existingHash?.slice(0, 8)} -> ${configHash.slice(0, 8)}`
+        : `image ${existingImageId?.slice(7, 19)} -> ${currentImageId.slice(7, 19)}`;
+      console.log(`Recreating container ${containerName} (${reason})`);
+      await container.remove();
+    }
+  }
+
+  if (needsCreate) {
+    // Create new container with labels for tracking
+    container = await docker.createContainer({
+      Image: BOT_IMAGE,
+      name: containerName,
+      Hostname: hostname,
+      Env: [],
+      Labels: {
+        [LABEL_CONFIG_HASH]: configHash,
+        [LABEL_IMAGE_ID]: currentImageId,
+      },
+      HostConfig: {
+        Memory: parseMemory(bot.resources.memoryLimit),
+        NanoCpus: parseCpu(bot.resources.cpuLimit),
+        ShmSize: 256 * 1024 * 1024,
+        Binds: [
+          `${boltDataDir}:/home/runelite/.local/share/bolt-launcher`,
+          `${statusDir}:${boltLauncherPath}/rocinante`,
+          `${screenshotsDir}:${boltLauncherPath}/screenshots`,
+          `${sharedCacheDir}:${boltLauncherPath}/rocinante/wiki-cache`,
+          `${trainingSpotCacheDir}:${boltLauncherPath}/rocinante/training-spot-cache`,
+          `${machineIdPath}:/etc/machine-id:ro`,
+        ],
+        RestartPolicy: {
+          Name: 'unless-stopped',
+        },
+      },
+    });
+    console.log(`Created new container ${containerName}`);
+  }
+
+  // Always inject fresh config.json before starting (picks up any runtime config changes)
+  const botWithSecret = { ...bot, wikiCacheSecret: getWikiCacheSecret() };
+  const configTar = await createConfigTar(botWithSecret);
+  await container!.putArchive(configTar, { path: '/' });
+
+  await container!.start();
+  console.log(`Started container ${containerName}`);
+}
+
+/**
+ * Stop a bot container (but keep it for fast restart).
  */
 export async function stopBot(botId: string): Promise<void> {
   const containerName = `${CONTAINER_PREFIX}${botId}`;
@@ -365,17 +445,21 @@ export async function stopBot(botId: string): Promise<void> {
 
   if (info.State.Running) {
     await container.stop({ t: 10 });
+    console.log(`Stopped container ${containerName}`);
   }
 
-  await container.remove();
+  // Don't remove - keep for fast restart
   await resetStatusFile(botId);
 }
 
 /**
  * Restart a bot container.
+ * Uses stop+start to ensure fresh config is injected.
  */
 export async function restartBot(botId: string): Promise<void> {
+  // Stop first (keeps container)
   await stopBot(botId);
+  // Start will reuse container if config hash matches, otherwise recreate
   await startBot(botId);
 }
 

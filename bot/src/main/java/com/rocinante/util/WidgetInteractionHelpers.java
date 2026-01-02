@@ -288,5 +288,271 @@ public final class WidgetInteractionHelpers {
             default: return "tab " + tabIndex;
         }
     }
+
+    // ========================================================================
+    // Close Button Finding
+    // ========================================================================
+
+    /**
+     * Common sprite IDs for close/X buttons in OSRS interfaces.
+     */
+    private static final int[] CLOSE_BUTTON_SPRITE_IDS = {
+            535,   // Standard X button
+            536,   // X button hover state
+            537,   // Another X variant
+            831,   // Red X  
+            832,   // Red X hover
+            850,   // Close icon variant
+            851,   // Close icon hover
+    };
+
+    /**
+     * Find a close button (X) within a widget or its children.
+     * Searches by:
+     * 1. Widgets with "Close" action
+     * 2. Widgets with known close button sprite IDs
+     * 3. Small square widgets in top-right area (heuristic for X buttons)
+     *
+     * @param parentWidget the widget to search within
+     * @return the close button widget, or null if not found
+     */
+    public static Widget findCloseButton(Widget parentWidget) {
+        if (parentWidget == null) {
+            return null;
+        }
+
+        // First try static children
+        Widget[] children = parentWidget.getChildren();
+        Widget found = searchChildrenForCloseButton(children, parentWidget);
+        if (found != null) {
+            return found;
+        }
+
+        // Try dynamic children
+        Widget[] dynamicChildren = parentWidget.getDynamicChildren();
+        found = searchChildrenForCloseButton(dynamicChildren, parentWidget);
+        if (found != null) {
+            return found;
+        }
+
+        // Try nested children
+        Widget[] nestedChildren = parentWidget.getNestedChildren();
+        found = searchChildrenForCloseButton(nestedChildren, parentWidget);
+        if (found != null) {
+            return found;
+        }
+
+        return null;
+    }
+
+    /**
+     * Search an array of child widgets for a close button.
+     */
+    private static Widget searchChildrenForCloseButton(Widget[] children, Widget parent) {
+        if (children == null || children.length == 0) {
+            return null;
+        }
+
+        java.awt.Rectangle parentBounds = parent.getBounds();
+        Widget bestCandidate = null;
+        int bestScore = 0;
+
+        for (Widget child : children) {
+            if (child == null || child.isHidden()) {
+                continue;
+            }
+
+            int score = scoreAsCloseButton(child, parentBounds);
+            if (score > bestScore) {
+                bestScore = score;
+                bestCandidate = child;
+            }
+
+            // Also check nested children of this child
+            Widget nestedClose = findCloseButton(child);
+            if (nestedClose != null) {
+                int nestedScore = scoreAsCloseButton(nestedClose, parentBounds);
+                if (nestedScore > bestScore) {
+                    bestScore = nestedScore;
+                    bestCandidate = nestedClose;
+                }
+            }
+        }
+
+        // Only return if we have a reasonably confident match
+        return bestScore >= 50 ? bestCandidate : null;
+    }
+
+    /**
+     * Score a widget on how likely it is to be a close button.
+     * Higher score = more likely.
+     *
+     * @param widget the widget to score
+     * @param parentBounds bounds of the parent container (for position heuristics)
+     * @return score from 0-100
+     */
+    private static int scoreAsCloseButton(Widget widget, java.awt.Rectangle parentBounds) {
+        int score = 0;
+
+        // Check for "Close" action - very strong signal
+        String[] actions = widget.getActions();
+        if (actions != null) {
+            for (String action : actions) {
+                if (action != null && action.equalsIgnoreCase("Close")) {
+                    score += 80;
+                    break;
+                }
+            }
+        }
+
+        // Check sprite ID - strong signal
+        int spriteId = widget.getSpriteId();
+        for (int closeSprite : CLOSE_BUTTON_SPRITE_IDS) {
+            if (spriteId == closeSprite) {
+                score += 60;
+                break;
+            }
+        }
+
+        // Check if it's a small square widget (typical for X buttons)
+        java.awt.Rectangle bounds = widget.getBounds();
+        if (bounds != null && bounds.width > 0) {
+            // X buttons are typically small squares (10-25 pixels)
+            if (bounds.width >= 10 && bounds.width <= 30 && 
+                bounds.height >= 10 && bounds.height <= 30 &&
+                Math.abs(bounds.width - bounds.height) <= 5) {
+                score += 20;
+            }
+
+            // Check if positioned in top-right area of parent
+            if (parentBounds != null && parentBounds.width > 0) {
+                int rightEdge = parentBounds.x + parentBounds.width;
+                int topArea = parentBounds.y + 40; // Top 40 pixels
+                
+                if (bounds.x + bounds.width >= rightEdge - 30 && bounds.y <= topArea) {
+                    score += 15;
+                }
+            }
+        }
+
+        // Check widget name/text for hints
+        String name = widget.getName();
+        if (name != null && (name.toLowerCase().contains("close") || name.toLowerCase().contains("exit"))) {
+            score += 30;
+        }
+
+        return score;
+    }
+
+    /**
+     * Find a close button in a widget group by checking multiple child IDs.
+     *
+     * @param client the game client
+     * @param groupId the widget group ID
+     * @param possibleChildIds array of child IDs to check for the close button
+     * @return the close button widget, or null if not found
+     */
+    public static Widget findCloseButtonInGroup(Client client, int groupId, int... possibleChildIds) {
+        for (int childId : possibleChildIds) {
+            Widget widget = client.getWidget(groupId, childId);
+            if (widget != null && !widget.isHidden()) {
+                int score = scoreAsCloseButton(widget, null);
+                if (score >= 50) {
+                    log.debug("Found close button at {}:{} (score: {})", groupId, childId, score);
+                    return widget;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Log widget structure for debugging - useful when trying to find the right widget.
+     *
+     * @param widget the widget to log
+     * @param depth current recursion depth
+     * @param maxDepth maximum recursion depth
+     */
+    public static void logWidgetStructure(Widget widget, int depth, int maxDepth) {
+        if (widget == null || depth > maxDepth) {
+            return;
+        }
+
+        String indent = "  ".repeat(depth);
+        String[] actions = widget.getActions();
+        String actionStr = actions != null ? String.join(",", (CharSequence[]) actions) : "null";
+        
+        log.info("{}Widget id={} sprite={} bounds={} actions=[{}] hidden={} text='{}'",
+                indent, widget.getId(), widget.getSpriteId(), widget.getBounds(),
+                actionStr, widget.isHidden(),
+                widget.getText() != null ? widget.getText().substring(0, Math.min(20, widget.getText().length())) : "null");
+
+        Widget[] children = widget.getChildren();
+        if (children != null) {
+            for (int i = 0; i < Math.min(children.length, 10); i++) {
+                if (children[i] != null) {
+                    logWidgetStructure(children[i], depth + 1, maxDepth);
+                }
+            }
+        }
+    }
+
+    // ========================================================================
+    // Generic Tutorial / Screen Highlight System
+    // ========================================================================
+
+    /**
+     * Screen highlight / tutorial overlay group (664 = 0x0298).
+     * OSRS uses this for various first-time tutorials (bank, equipment, etc.)
+     */
+    public static final int WIDGET_SCREEN_HIGHLIGHT_GROUP = 664;
+    
+    /**
+     * Close button in the screen highlight tutorial (664:29 = 0x0298_001d).
+     */
+    public static final int WIDGET_SCREEN_HIGHLIGHT_CLOSE = 29;
+
+    /**
+     * Check if a generic tutorial overlay (screen highlight) is visible.
+     * This is used for various first-time tutorials in OSRS.
+     *
+     * @param client the game client
+     * @return true if a tutorial overlay is visible and blocking
+     */
+    public static boolean isGenericTutorialVisible(Client client) {
+        Widget closeButton = client.getWidget(WIDGET_SCREEN_HIGHLIGHT_GROUP, WIDGET_SCREEN_HIGHLIGHT_CLOSE);
+        return closeButton != null && !closeButton.isHidden();
+    }
+
+    /**
+     * Get the close button widget for the generic tutorial overlay.
+     *
+     * @param client the game client
+     * @return the close button widget, or null if tutorial not visible
+     */
+    public static Widget getGenericTutorialCloseButton(Client client) {
+        Widget closeButton = client.getWidget(WIDGET_SCREEN_HIGHLIGHT_GROUP, WIDGET_SCREEN_HIGHLIGHT_CLOSE);
+        if (closeButton != null && !closeButton.isHidden()) {
+            return closeButton;
+        }
+        return null;
+    }
+
+    /**
+     * Dismiss the generic tutorial overlay by clicking its close button.
+     *
+     * @param ctx the task context
+     * @return CompletableFuture that completes when the click is done
+     */
+    public static CompletableFuture<Boolean> dismissGenericTutorial(TaskContext ctx) {
+        Widget closeButton = getGenericTutorialCloseButton(ctx.getClient());
+        if (closeButton == null) {
+            log.debug("No generic tutorial visible to dismiss");
+            return CompletableFuture.completedFuture(false);
+        }
+        
+        log.info("Dismissing generic tutorial (clicking 664:29)");
+        return ctx.getWidgetClickHelper().clickWidget(closeButton, "Close tutorial");
+    }
 }
 

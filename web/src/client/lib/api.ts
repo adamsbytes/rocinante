@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/solid-query';
-import type { BotConfigDTO, BotWithStatusDTO, ApiResponse, ApiErrorCode, ScreenshotEntry } from '../../shared/types';
+import type { BotConfigDTO, BotWithStatusDTO, ApiResponse, ApiErrorCode, ScreenshotEntry, TrainingMethodInfo, SkillName } from '../../shared/types';
 import type { BotFormData } from '../../shared/botSchema';
 
 const API_BASE = '/api';
@@ -117,6 +117,28 @@ export function useScreenshotsQuery(id: () => string, category: () => string | n
     refetchOnWindowFocus: true,
     // Structural sharing ensures re-renders only when data actually changes
     structuralSharing: true,
+  }));
+}
+
+/**
+ * Query for training methods (skill training).
+ * Data is static, so cache indefinitely and never refetch.
+ */
+export function useTrainingMethodsQuery() {
+  return useQuery(() => ({
+    queryKey: ['trainingMethods'],
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE}/data/training-methods?grouped=true`);
+      if (!response.ok) throw new Error('Failed to load training methods');
+      const data = await response.json();
+      return data.data as Record<SkillName, TrainingMethodInfo[]>;
+    },
+    // Training methods are static - cache forever, never refetch
+    staleTime: Infinity,
+    gcTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
   }));
 }
 

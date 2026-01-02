@@ -373,6 +373,37 @@ public class DeathTask extends AbstractTask {
     }
 
     // ========================================================================
+    // Reset (for interruption handling)
+    // ========================================================================
+
+    /**
+     * Reset task-specific state when task is re-queued after interruption.
+     * Critical: clears stale gravestone location that may no longer be valid.
+     */
+    @Override
+    protected void resetImpl() {
+        // Clear gravestone state - must re-detect from VarClient
+        gravestoneLocation = null;
+        hasActiveGravestone = false;
+        
+        // Reset phase to re-detect current state
+        phase = Phase.DETECT_STATE;
+        waitTicks = 0;
+        
+        // Clear navigation state
+        activeSubTask = null;
+        actionPending = false;
+        preTeleportRegion = -1;
+        
+        // Clear retrieval flags - must re-verify
+        itemsRetrieved = false;
+        dialogueCompleted = false;
+        dialogueRetryCount = 0;
+        
+        log.debug("DeathTask reset after interruption - will re-detect gravestone state");
+    }
+
+    // ========================================================================
     // Builder Methods
     // ========================================================================
 
@@ -444,6 +475,25 @@ public class DeathTask extends AbstractTask {
     protected void executeImpl(TaskContext ctx) {
         if (actionPending) {
             return;
+        }
+
+        // =====================================================================
+        // CRITICAL: Check EVERY TICK if gravestone is gone (varbit = 0)
+        // If gravestone disappeared, we're DONE - items were recovered or timer expired
+        // This catches the case where right-click "Loot" puts items directly in inventory
+        // without opening any interface
+        // =====================================================================
+        if (phase != Phase.DETECT_STATE && phase != Phase.RETURN_TO_LOCATION && phase != Phase.DONE) {
+            if (!hasActiveGravestone(ctx.getClient())) {
+                log.info("Gravestone varbit = 0 (items recovered or timer expired) - task complete!");
+                itemsRetrieved = true;
+                if (returnLocation != null) {
+                    setPhase(Phase.RETURN_TO_LOCATION);
+                } else {
+                    complete();
+                }
+                return;
+            }
         }
 
         // CRITICAL: If being attacked outside Death's Office, yield to let emergency handler flee
@@ -1095,18 +1145,22 @@ public class DeathTask extends AbstractTask {
                 waitTicks++;
                 
             if (waitTicks > MAX_WAIT_TICKS) {
-                    // Re-check gravestone varbit - it might have expired
+                    // Re-check gravestone varbit - it might have expired or items were recovered
                     detectGravestoneFromVarClient(client);
                     
                     if (!hasActiveGravestone) {
-                        log.info("Gravestone no longer active - items may be at Death's Office");
-                        phase = Phase.GO_TO_DEATHS_OFFICE;
+                        // Gravestone varbit = 0 means the gravestone is GONE
+                        // Items are either in our inventory (recovered) or lost (timer expired)
+                        // Either way, we're done - DO NOT go to Death's Office
+                        log.info("Gravestone no longer active - items were recovered or timer expired. Task complete.");
+                        itemsRetrieved = true; // Assume success - we tried our best
+                        setPhase(Phase.RETURN_TO_LOCATION);
                     } else {
-                        // Try searching around the area
-                        log.warn("Cannot interact with gravestone, trying Death's Office");
-                phase = Phase.GO_TO_DEATHS_OFFICE;
-            }
+                        // Gravestone still active but can't find NPC - might be rendering issue
+                        // Try a few more times before giving up
+                        log.warn("Cannot find gravestone NPC but varbit still active, retrying...");
                     waitTicks = 0;
+                    }
         }
             }
         }
