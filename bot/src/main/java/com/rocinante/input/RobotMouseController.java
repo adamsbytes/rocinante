@@ -30,7 +30,7 @@ import static com.rocinante.input.uinput.LinuxInputConstants.*;
  * - Bezier curve-based movement with distance-dependent control points
  * - Sigmoid velocity profile (slow-fast-slow)
  * - Perlin noise injection for natural path variation
- * - Overshoot simulation (8-15% of movements)
+ * - Overshoot simulation (dynamic 2-40% based on target size, distance, speed)
  * - Micro-corrections (20% of movements)
  * - Click position variance (2D Gaussian)
  * - Misclick simulation (1-3%)
@@ -67,9 +67,9 @@ public class RobotMouseController {
     private static final double MAX_NOISE_AMPLITUDE = 3.0;
     private static final long NOISE_SAMPLE_INTERVAL_MS = 7; // 5-10ms, use middle
 
-    // Overshoot constants (8-15% probability, 3-12 pixels)
-    private static final double MIN_OVERSHOOT_PROBABILITY = 0.08;
-    private static final double MAX_OVERSHOOT_PROBABILITY = 0.15;
+    // Overshoot constants (base 8-15% probability, scaled by target/distance/speed, clamped 2-40%)
+    private static final double MIN_OVERSHOOT_PROBABILITY = 0.02;  // Floor after scaling
+    private static final double MAX_OVERSHOOT_PROBABILITY = 0.40;  // Cap after scaling
     private static final int MIN_OVERSHOOT_PIXELS = 3;
     private static final int MAX_OVERSHOOT_PIXELS = 12;
     private static final long MIN_OVERSHOOT_DELAY_MS = 50;
@@ -552,6 +552,9 @@ public class RobotMouseController {
             }
         }
 
+        // Track movement duration for overshoot probability calculation
+        long movementStartTime = System.currentTimeMillis();
+
         // Check if this movement should use sub-movements (direction corrections)
         if (shouldUseSubMovements(distance)) {
             executeMovementWithSubMovements(start, target, distance, targetWidth);
@@ -560,8 +563,11 @@ public class RobotMouseController {
             executeDirectMovement(targetX, targetY, targetWidth);
         }
 
+        long movementDuration = System.currentTimeMillis() - movementStartTime;
+
         // Handle overshoot simulation (pass start for direction calculation)
-        if (shouldOvershoot()) {
+        // Probability is dynamic based on target size, distance, and speed
+        if (shouldOvershoot(distance, targetWidth, movementDuration)) {
             executeOvershoot(start, target);
         }
         // Handle micro-correction (only if no overshoot)
@@ -722,11 +728,89 @@ public class RobotMouseController {
     }
 
     /**
-     * Check if this movement should include overshoot.
+     * Calculate dynamic overshoot probability based on movement characteristics.
+     * 
+     * Real human overshoot behavior depends on:
+     * 1. Target size: smaller targets = harder to stop precisely = more overshoots
+     * 2. Movement distance: short movements rarely overshoot (low inertia), long movements have more
+     * 3. Movement speed: faster movements = more momentum = more overshoot
+     * 
+     * Base probability comes from player profile (8-15%), then scaled by these factors.
+     * 
+     * @param distance the movement distance in pixels
+     * @param targetWidth the target width in pixels (smaller = harder to hit)
+     * @param movementDuration actual duration of the movement in ms
+     * @return true if this movement should overshoot
      */
-    private boolean shouldOvershoot() {
-        double probability = playerProfile.getOvershootProbability();
-        return randomization.chance(probability);
+    private boolean shouldOvershoot(double distance, double targetWidth, long movementDuration) {
+        double baseProbability = playerProfile.getOvershootProbability();
+        
+        // Factor 1: Target size effect
+        // Small targets (< 20px) = up to 1.5x multiplier (harder to stop precisely)
+        // Medium targets (20-80px) = linear interpolation
+        // Large targets (> 80px) = 0.5x multiplier (easy to stop)
+        // Reference: DEFAULT_TARGET_WIDTH = 50
+        double sizeFactor;
+        if (targetWidth < 20) {
+            sizeFactor = 1.5;
+        } else if (targetWidth < 50) {
+            // Linear: 1.5 at 20px -> 1.0 at 50px
+            sizeFactor = 1.5 - 0.5 * (targetWidth - 20) / 30;
+        } else if (targetWidth < 80) {
+            // Linear: 1.0 at 50px -> 0.5 at 80px
+            sizeFactor = 1.0 - 0.5 * (targetWidth - 50) / 30;
+        } else {
+            sizeFactor = 0.5;
+        }
+        
+        // Factor 2: Distance effect
+        // Short movements (< 100px) = 0.2x multiplier (rarely overshoot - precise, slow movements)
+        // Medium movements (100-400px) = 0.2x to 1.0x (increasing momentum)
+        // Long movements (> 400px) = 1.0x to 1.3x (high inertia)
+        double distanceFactor;
+        if (distance < 100) {
+            distanceFactor = 0.2;
+        } else if (distance < 400) {
+            // Linear: 0.2 at 100px -> 1.0 at 400px
+            distanceFactor = 0.2 + 0.8 * (distance - 100) / 300;
+        } else if (distance < 800) {
+            // Linear: 1.0 at 400px -> 1.3 at 800px
+            distanceFactor = 1.0 + 0.3 * (distance - 400) / 400;
+        } else {
+            distanceFactor = 1.3;
+        }
+        
+        // Factor 3: Speed effect (actual pixels/ms)
+        // Slow (< 0.5 px/ms) = 0.3x (careful, controlled movement)
+        // Normal (0.5-1.0 px/ms) = 0.3x to 1.0x
+        // Fast (1.0-2.0 px/ms) = 1.0x to 1.5x (momentum makes stopping harder)
+        // Very fast (> 2.0 px/ms) = 1.5x cap
+        double speed = movementDuration > 0 ? distance / movementDuration : 1.0;
+        double speedFactor;
+        if (speed < 0.5) {
+            speedFactor = 0.3;
+        } else if (speed < 1.0) {
+            // Linear: 0.3 at 0.5 -> 1.0 at 1.0
+            speedFactor = 0.3 + 0.7 * (speed - 0.5) / 0.5;
+        } else if (speed < 2.0) {
+            // Linear: 1.0 at 1.0 -> 1.5 at 2.0
+            speedFactor = 1.0 + 0.5 * (speed - 1.0);
+        } else {
+            speedFactor = 1.5;
+        }
+        
+        // Combine factors multiplicatively
+        double adjustedProbability = baseProbability * sizeFactor * distanceFactor * speedFactor;
+        
+        // Clamp to reasonable range (floor at 2% to prevent never-overshoot, cap at 40%)
+        adjustedProbability = Math.max(0.02, Math.min(0.40, adjustedProbability));
+        
+        log.debug("Overshoot probability: base={:.3f} × size={:.2f} × dist={:.2f} × speed={:.2f} = {:.3f} " +
+                "(targetWidth={:.0f}px, distance={:.0f}px, speed={:.2f}px/ms)",
+                baseProbability, sizeFactor, distanceFactor, speedFactor, adjustedProbability,
+                targetWidth, distance, speed);
+        
+        return randomization.chance(adjustedProbability);
     }
 
     /**

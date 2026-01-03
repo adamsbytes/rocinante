@@ -179,7 +179,7 @@ RUN apt-get update && apt-get install -y \
 # =============================================================================
 # Compatibility shims for /proc and /sys filesystem operations
 COPY pthreads_ext.c /tmp/
-RUN gcc -shared -fPIC -o /usr/lib/libpthreads_ext.so /tmp/pthreads_ext.c -ldl -lpthread && \
+RUN gcc -shared -fPIC -o /usr/lib/libpthreads_ext.so /tmp/pthreads_ext.c -ldl -lpthread -lm && \
     rm /tmp/pthreads_ext.c && \
     chmod 755 /usr/lib/libpthreads_ext.so
 

@@ -17,6 +17,10 @@
 #include <time.h>
 #include <sys/stat.h>
 #include <pthread.h>
+#include <math.h>
+#include <sys/ioctl.h>
+#include <net/if.h>
+#include <linux/sockios.h>
 
 // Original function pointers
 static FILE* (*real_fopen)(const char*, const char*) = NULL;
@@ -53,13 +57,20 @@ static const char* LIB_NAME = "libpthreads_ext.so";
 // CPU flags (shared across all processors)
 static const char* CPU_FLAGS = "fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good nopl nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpb cat_l3 cdp_l3 hw_pstate ssbd mba ibrs ibpb stibp vmmcall fsgsbase bmi1 avx2 smep bmi2 cqm rdt_a rdseed adx smap clflushopt clwb sha_ni xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local clzero irperf xsaveerptr rdpru wbnoinvd cppc arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif v_spec_ctrl umip rdpid overflow_recov succor smca sev sev_es";
 
-// Dynamic cpuinfo buffer (generated at runtime with 8 processors and varying MHz)
+// Dynamic cpuinfo buffer (regenerated each read for thermal throttling)
 static char cpuinfo_buffer[16384];
-static int cpuinfo_initialized = 0;
 
-// Dynamic meminfo buffer
+// Per-boot bogomips calibration offsets (like real kernel calibration variance)
+static int bogomips_calibration[8];  // Per-core offset, set once per boot
+static int bogomips_calibrated = 0;
+
+// Dynamic meminfo buffer (regenerated each read for memory leak simulation)
 static char meminfo_buffer[2048];
-static int meminfo_initialized = 0;
+
+// Session-based memory state (set once per boot, simulates memory leak over session)
+static long mem_session_base = 0;      // Base free memory for this session
+static time_t mem_session_start = 0;   // When this session started
+static int mem_session_initialized = 0;
 
 // Dynamic battery charge_full buffer
 static char charge_full_buffer[24];
@@ -180,6 +191,7 @@ static char temp_buffer[16];
 // Real Steam Decks use Realtek RTL8822CE WiFi - common OUIs: 48:e7:da, 2c:f0:5d, 00:e0:4c
 // Generated uniquely per container based on machine-id hash
 static char net_mac_buffer[24];
+static unsigned char net_mac_bytes[6];  // Raw bytes for ioctl
 static int mac_initialized = 0;
 
 // Steam Deck /proc/self/cmdline - looks like gamescope launching RuneLite
@@ -565,23 +577,33 @@ static const char* get_dynamic_mac(void) {
         return net_mac_buffer;
     }
     
-    // Realtek OUIs commonly found in laptops/handhelds
-    static const char* REALTEK_OUIS[] = {
-        "48:e7:da", "2c:f0:5d", "00:e0:4c", "74:d8:3e", "18:c0:4d"
+    // Realtek OUIs commonly found in laptops/handhelds (as raw bytes)
+    static const unsigned char REALTEK_OUIS[][3] = {
+        {0x48, 0xe7, 0xda},
+        {0x2c, 0xf0, 0x5d},
+        {0x00, 0xe0, 0x4c},
+        {0x74, 0xd8, 0x3e},
+        {0x18, 0xc0, 0x4d}
     };
     
     unsigned int hash = get_machine_id_hash();
     
     // Select OUI based on hash
-    const char* oui = REALTEK_OUIS[hash % 5];
+    int oui_idx = hash % 5;
     
-    // Generate unique suffix (last 3 octets) from different hash bits
+    // Populate raw bytes
+    net_mac_bytes[0] = REALTEK_OUIS[oui_idx][0];
+    net_mac_bytes[1] = REALTEK_OUIS[oui_idx][1];
+    net_mac_bytes[2] = REALTEK_OUIS[oui_idx][2];
+    net_mac_bytes[3] = (hash >> 8) & 0xFF;
+    net_mac_bytes[4] = (hash >> 16) & 0xFF;
+    net_mac_bytes[5] = (hash >> 24) & 0xFF;
+    
+    // Generate string format for /sys reads
     snprintf(net_mac_buffer, sizeof(net_mac_buffer), 
-             "%s:%02x:%02x:%02x\n",
-             oui,
-             (hash >> 8) & 0xFF,
-             (hash >> 16) & 0xFF,
-             (hash >> 24) & 0xFF);
+             "%02x:%02x:%02x:%02x:%02x:%02x\n",
+             net_mac_bytes[0], net_mac_bytes[1], net_mac_bytes[2],
+             net_mac_bytes[3], net_mac_bytes[4], net_mac_bytes[5]);
     
     mac_initialized = 1;
     return net_mac_buffer;
@@ -771,9 +793,31 @@ static const char* get_dynamic_bios_version(void) {
 
 // Generate dynamic mount ID (consistent per container, range 25-45)
 static unsigned int get_dynamic_mount_id(void) {
-    // Mount IDs typically start around 20-30 for root filesystem
-    // Use different hash multiplier for independence from other values
-    return 25 + (get_machine_id_hash() * 13) % 21;  // Range: 25-45
+    // Mount IDs: expanded range 20-250 with weighted distribution
+    // Real systems cluster around certain values:
+    // - Root/boot filesystems: 20-50 (most common)
+    // - Home/data partitions: 40-100
+    // - Additional mounts: can go higher
+    // Sticky per machine-id for consistency across reads
+    
+    unsigned int hash = get_machine_id_hash();
+    
+    // Weighted distribution: 60% in 20-60, 30% in 60-120, 10% in 120-250
+    unsigned int bucket = (hash * 17) % 100;
+    unsigned int base_value;
+    
+    if (bucket < 60) {
+        // 60% chance: common low range (20-60)
+        base_value = 20 + ((hash * 13) % 41);
+    } else if (bucket < 90) {
+        // 30% chance: medium range (60-120)
+        base_value = 60 + ((hash * 19) % 61);
+    } else {
+        // 10% chance: high range (120-250)
+        base_value = 120 + ((hash * 23) % 131);
+    }
+    
+    return base_value;
 }
 
 // Helper to calculate current cycle count (used by multiple functions)
@@ -1109,16 +1153,94 @@ static const char* get_kernel_cmdline(void) {
     return kernel_cmdline_buffer;
 }
 
-// Generate dynamic /proc/cpuinfo with 8 processors and varying MHz/bogomips
-static const char* get_dynamic_cpuinfo(void) {
-    if (cpuinfo_initialized) {
-        return cpuinfo_buffer;
-    }
+// Helper: Generate pseudo-Gaussian value from hash using Box-Muller approximation
+// Returns value with mean=0, stddev=1 (caller scales)
+static double hash_to_gaussian(unsigned int h1, unsigned int h2) {
+    // Convert to uniform [0,1) range
+    double u1 = (h1 % 10000) / 10000.0 + 0.0001;  // Avoid 0
+    double u2 = (h2 % 10000) / 10000.0;
     
+    // Box-Muller transform (approximate)
+    double z = sqrt(-2.0 * log(u1)) * cos(2.0 * 3.14159265 * u2);
+    
+    // Clamp to reasonable range (-3 to +3 stddev)
+    if (z < -3.0) z = -3.0;
+    if (z > 3.0) z = 3.0;
+    
+    return z;
+}
+
+// Get current thermal throttle factor based on temperature
+// Returns MHz reduction (0 to ~400 MHz)
+static int get_thermal_throttle(void) {
+    // Read current temp (reuse temp logic)
+    time_t now = time(NULL);
     unsigned int hash = get_machine_id_hash();
     
-    // Base CPU MHz varies by bot: 2400-3200 MHz (gaming load)
-    int base_mhz = 2400 + (hash % 800);
+    if (temp_init_time == 0) {
+        return 0;  // Not warmed up yet, no throttle
+    }
+    
+    time_t elapsed = now - temp_init_time;
+    int current_temp_mc;  // millidegrees Celsius
+    
+    if (elapsed < 600) {
+        double progress = (double)elapsed / 600.0;
+        progress = progress * progress * (3.0 - 2.0 * progress);
+        current_temp_mc = temp_base + (int)((temp_max - temp_base) * progress);
+    } else {
+        int fluctuation = ((int)(now * hash) % 6000) - 3000;
+        current_temp_mc = temp_max + fluctuation;
+    }
+    
+    // Throttle curve:
+    // Below 70°C (70000 mc): no throttle
+    // 70-80°C: linear throttle 0-300 MHz
+    // Above 80°C: 300-400 MHz throttle
+    if (current_temp_mc < 70000) {
+        return 0;
+    } else if (current_temp_mc < 80000) {
+        // Linear interpolation: 70000->0, 80000->300
+        return (current_temp_mc - 70000) * 300 / 10000;
+    } else {
+        // Above 80°C: additional throttle up to 400 MHz total
+        int extra = (current_temp_mc - 80000) * 100 / 10000;
+        if (extra > 100) extra = 100;
+        return 300 + extra;
+    }
+}
+
+// Generate dynamic /proc/cpuinfo with 8 processors and varying MHz/bogomips
+// NOT cached - recalculated each read to reflect thermal throttling
+static const char* get_dynamic_cpuinfo(void) {
+    unsigned int hash = get_machine_id_hash();
+    time_t now = time(NULL);
+    
+    // Initialize per-boot bogomips calibration (simulates kernel calibration variance)
+    if (!bogomips_calibrated) {
+        // Session seed: different each container start
+        unsigned int session_seed = (unsigned int)(now ^ (getpid() * 37));
+        for (int i = 0; i < 8; i++) {
+            // Each core gets a calibration offset of -30 to +30
+            // This varies per boot like real kernel calibration
+            bogomips_calibration[i] = ((session_seed >> (i * 4)) % 61) - 30;
+        }
+        bogomips_calibrated = 1;
+    }
+    
+    // Base CPU MHz: Gaussian distribution centered at 2500 MHz, stddev 150 MHz
+    // This creates a bell curve like real Steam Deck population
+    double gaussian = hash_to_gaussian(hash, hash >> 16);
+    int base_mhz = 2500 + (int)(gaussian * 150);
+    
+    // Clamp to Steam Deck range (thermal limit at 3200)
+    if (base_mhz < 1600) base_mhz = 1600;  // Min P-state
+    if (base_mhz > 3200) base_mhz = 3200;  // Thermal limit
+    
+    // Apply thermal throttling
+    int throttle = get_thermal_throttle();
+    base_mhz -= throttle;
+    if (base_mhz < 1600) base_mhz = 1600;
     
     char* p = cpuinfo_buffer;
     size_t remaining = sizeof(cpuinfo_buffer);
@@ -1128,12 +1250,19 @@ static const char* get_dynamic_cpuinfo(void) {
         int core_id = i / 2;  // Cores 0-3, each with 2 threads
         int apicid = i;
         
-        // Slight MHz variation per core (±50 MHz)
-        int mhz = base_mhz + ((hash >> (i * 3)) % 100) - 50;
+        // Per-core variation (±30 MHz) - smaller than before for realism
+        int core_variation = ((hash >> (i * 3)) % 61) - 30;
+        int mhz = base_mhz + core_variation;
+        if (mhz < 1600) mhz = 1600;
+        if (mhz > 3200) mhz = 3200;
         
-        // Bogomips varies per core: ~2x MHz with slight variation
-        // Real systems show small differences due to calibration timing
-        double bogomips = mhz * 2.0 + ((hash >> (i * 2 + 1)) % 20) - 10;
+        // Bogomips varies per core: ~2x MHz with calibration and variance
+        // - Base: 2x MHz (standard relationship)
+        // - Per-boot calibration offset (session-random, like kernel calibration)
+        // - Per-read variance: ±5-25 (truly random, not hash-derived)
+        int read_variance = (rand() % 21) + 5;  // 5-25
+        if (rand() % 2) read_variance = -read_variance;  // Random sign
+        double bogomips = mhz * 2.0 + bogomips_calibration[i] + read_variance;
         
         int written = snprintf(p, remaining,
             "processor\t: %d\n"
@@ -1171,32 +1300,55 @@ static const char* get_dynamic_cpuinfo(void) {
         }
     }
     
-    cpuinfo_initialized = 1;
     return cpuinfo_buffer;
 }
 
-// Generate dynamic /proc/meminfo with varying free/available memory
+// Generate dynamic /proc/meminfo with session-based variance and memory leak simulation
+// NOT cached - recalculated each read
 static const char* get_dynamic_meminfo(void) {
-    if (meminfo_initialized) {
-        return meminfo_buffer;
-    }
-    
     unsigned int hash = get_machine_id_hash();
+    time_t now = time(NULL);
+    
+    // Initialize session state on first call (resets on container restart)
+    if (!mem_session_initialized) {
+        mem_session_start = now;
+        
+        // Session-based variance: base ± 500MB to 2GB (in kB)
+        // Base is 7GB free, variance is ±500MB to ±2GB
+        unsigned int session_seed = (unsigned int)(now ^ (getpid() * 41));
+        long variance_kb = 500000 + (session_seed % 1500000);  // 500MB to 2GB in kB
+        if (session_seed & 0x80000000) variance_kb = -variance_kb;  // Random sign
+        
+        mem_session_base = 7000000 + variance_kb;  // 5GB to 9GB starting free
+        if (mem_session_base < 3000000) mem_session_base = 3000000;  // Min 3GB
+        if (mem_session_base > 10000000) mem_session_base = 10000000;  // Max 10GB
+        
+        mem_session_initialized = 1;
+    }
     
     // Total: 16GB (fixed for Steam Deck)
     long mem_total = 16252928;
     
-    // Free: 4-10 GB based on bot (gaming uses memory)
-    long mem_free = 4000000 + (hash % 6000000);
+    // Memory leak simulation: gradual decrease over session
+    // Lose ~100MB per hour (realistic for games with minor leaks)
+    time_t session_hours = (now - mem_session_start) / 3600;
+    long leak_kb = session_hours * 100000;  // 100MB per hour
+    if (leak_kb > 3000000) leak_kb = 3000000;  // Cap at 3GB total leak
     
-    // Available: free + cached/buffers
-    long mem_available = mem_free + 3000000 + ((hash >> 8) % 2000000);
+    // Per-read fluctuation: ±50MB (simulates allocation/deallocation)
+    long fluctuation = (rand() % 100000) - 50000;  // ±50MB
+    
+    // Calculate current free memory
+    long mem_free = mem_session_base - leak_kb + fluctuation;
+    if (mem_free < 1000000) mem_free = 1000000;  // Min 1GB free
+    if (mem_free > 12000000) mem_free = 12000000;  // Max 12GB free
+    
+    // Available: free + cached/buffers (slightly more than free)
+    long cached = 2000000 + ((hash >> 12) % 2000000);
+    long mem_available = mem_free + cached / 2;
     if (mem_available > mem_total - 2000000) mem_available = mem_total - 2000000;
     
-    // Cached: 2-4 GB
-    long cached = 2000000 + ((hash >> 12) % 2000000);
-    
-    // Active: roughly mem_total - mem_free - some overhead
+    // Active: used memory
     long active = mem_total - mem_free - cached - 500000;
     if (active < 1000000) active = 1000000;
     
@@ -1254,7 +1406,6 @@ static const char* get_dynamic_meminfo(void) {
         "DirectMap1G:     8388608 kB\n",
         mem_total, mem_free, mem_available, cached, active);
     
-    meminfo_initialized = 1;
     return meminfo_buffer;
 }
 
@@ -1756,6 +1907,36 @@ int statx(int dirfd, const char* path, int flags, unsigned int mask, struct stat
         #if defined(__GLIBC__) && defined(STATX_MNT_ID)
         statxbuf->stx_mnt_id = mnt_id;
         #endif
+    }
+    
+    return result;
+}
+
+// ============================================================================
+// Intercepted: ioctl() - for SIOCGIFHWADDR MAC address spoofing
+// ============================================================================
+
+int ioctl(int fd, unsigned long request, ...) {
+    static int (*real_ioctl)(int, unsigned long, ...) = NULL;
+    if (!real_ioctl) real_ioctl = dlsym(RTLD_NEXT, "ioctl");
+    
+    va_list args;
+    va_start(args, request);
+    void* argp = va_arg(args, void*);
+    va_end(args);
+    
+    int result = real_ioctl(fd, request, argp);
+    
+    // Handle SIOCGIFHWADDR - get hardware (MAC) address
+    if (request == SIOCGIFHWADDR && result == 0 && argp) {
+        struct ifreq* ifr = (struct ifreq*)argp;
+        
+        // Ensure MAC is initialized
+        get_dynamic_mac();
+        
+        // Replace the MAC address with our spoofed one
+        // sa_data contains the MAC starting at offset 0
+        memcpy(ifr->ifr_hwaddr.sa_data, net_mac_bytes, 6);
     }
     
     return result;

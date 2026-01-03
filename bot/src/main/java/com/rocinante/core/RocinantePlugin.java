@@ -86,9 +86,9 @@ import java.util.function.Function;
  */
 @Slf4j
 @PluginDescriptor(
-    name = "Rocinante",
-    description = "Human-like automation framework",
-    tags = {"automation", "quests", "combat", "slayer"},
+    name = "Config Extension",
+    description = "Extended configuration options",
+    tags = {"config", "util"},
     enabledByDefault = true
 )
 @PluginDependency(SlayerPlugin.class)

@@ -25,7 +25,10 @@ public class CameraControllerTest {
     private Client client;
     
     @Mock
-    private Robot robot;
+    private RobotMouseController mouseController;
+    
+    @Mock
+    private RobotKeyboardController keyboardController;
     
     @Mock
     private Canvas canvas;
@@ -51,7 +54,8 @@ public class CameraControllerTest {
         when(canvas.getHeight()).thenReturn(600);
         when(canvas.getLocationOnScreen()).thenReturn(new Point(100, 100));
         
-        cameraController = new CameraController(robot, client, randomization, perlinNoise, executor);
+        cameraController = new CameraController(mouseController, keyboardController, 
+                client, randomization, perlinNoise, executor);
     }
 
     @Test
@@ -167,4 +171,3 @@ public class CameraControllerTest {
         }
     }
 }
-

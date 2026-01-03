@@ -10,6 +10,7 @@ import javax.inject.Provider;
 import javax.inject.Singleton;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -20,7 +21,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * 
  * Fatigue Accumulation (0.0 = fresh, 1.0 = exhausted):
  * - +0.0005 per action performed
- * - +0.00002 per second of active session time
+ * - +0.00002 per second of active session time (with quadratic term for extended sessions)
  * - -0.1 per minute of break time
  * - -0.3 at session start (simulating return from AFK)
  * 
@@ -28,6 +29,11 @@ import java.util.concurrent.atomic.AtomicLong;
  * - Delay multiplier: 1.0 + (fatigue * 0.5) — up to 50% slower when exhausted
  * - Click variance multiplier: 1.0 + (fatigue * 0.4) — less precise when tired
  * - Misclick probability multiplier: 1.0 + (fatigue * 2.0) — up to 3x more misclicks
+ * 
+ * Realism Features (jagged curves like real players):
+ * - Performance crashes: Random sudden fatigue spikes (zoning out, frustration)
+ * - Coffee breaks: Mini-recoveries without actual breaks (stretch, sip water, mental reset)
+ * - Non-linear accumulation: Extended sessions compound fatigue faster (quadratic term)
  * 
  * Activity intensity modifies accumulation rates via ActivityType.fatigueMultiplier.
  */
@@ -85,6 +91,77 @@ public class FatigueModel {
      * Factor for misclick probability: misclick_mult = 1.0 + (fatigue * this)
      */
     private static final double MISCLICK_FACTOR = 2.0;
+    
+    // === Realism features: jagged fatigue curves ===
+    
+    /**
+     * Performance crash: probability per second (~1.5% per minute = 0.00025 per second).
+     * Simulates: zoning out, frustration spike, phone distraction.
+     */
+    private static final double CRASH_PROBABILITY_PER_SECOND = 0.00025;
+    
+    /**
+     * Performance crash: minimum fatigue spike.
+     */
+    private static final double CRASH_MIN_SPIKE = 0.15;
+    
+    /**
+     * Performance crash: maximum fatigue spike.
+     */
+    private static final double CRASH_MAX_SPIKE = 0.25;
+    
+    /**
+     * Performance crash: minimum fatigue level before crashes can occur.
+     */
+    private static final double CRASH_MIN_FATIGUE = 0.20;
+    
+    /**
+     * Performance crash: minimum seconds between crashes.
+     */
+    private static final double CRASH_COOLDOWN_SECONDS = 300; // 5 minutes
+    
+    /**
+     * Coffee break: probability per second (~2% per minute = 0.00033 per second).
+     * Simulates: stretch, sip water, quick mental reset.
+     */
+    private static final double COFFEE_BREAK_PROBABILITY_PER_SECOND = 0.00033;
+    
+    /**
+     * Coffee break: minimum recovery amount.
+     */
+    private static final double COFFEE_BREAK_MIN_RECOVERY = 0.05;
+    
+    /**
+     * Coffee break: maximum recovery amount.
+     */
+    private static final double COFFEE_BREAK_MAX_RECOVERY = 0.12;
+    
+    /**
+     * Coffee break: minimum fatigue level before coffee breaks can occur.
+     */
+    private static final double COFFEE_BREAK_MIN_FATIGUE = 0.30;
+    
+    /**
+     * Coffee break: minimum seconds between coffee breaks.
+     */
+    private static final double COFFEE_BREAK_COOLDOWN_SECONDS = 600; // 10 minutes
+    
+    /**
+     * Coffee break: increased probability after a crash (human "snap out of it").
+     */
+    private static final double COFFEE_BREAK_POST_CRASH_MULTIPLIER = 3.0;
+    
+    /**
+     * Coffee break: window after crash where probability is elevated (seconds).
+     */
+    private static final double COFFEE_BREAK_POST_CRASH_WINDOW = 180; // 3 minutes
+    
+    /**
+     * Non-linear accumulation: quadratic factor for extended sessions.
+     * fatigue_rate *= (1 + session_hours² * this)
+     * At 2 hours: 1.6x, at 3 hours: 2.35x, at 4 hours: 3.4x
+     */
+    private static final double SESSION_QUADRATIC_FACTOR = 0.15;
 
     // === Dependencies ===
     
@@ -107,6 +184,11 @@ public class FatigueModel {
     private volatile Instant lastUpdateTime = Instant.now();
     
     /**
+     * Timestamp of session start (for quadratic accumulation term).
+     */
+    private volatile Instant sessionStartTime = Instant.now();
+    
+    /**
      * Whether currently on break (affects time accumulation).
      */
     private final AtomicBoolean onBreak = new AtomicBoolean(false);
@@ -120,6 +202,26 @@ public class FatigueModel {
      * Total actions this session (for debugging/stats).
      */
     private final AtomicLong sessionActionCount = new AtomicLong(0);
+    
+    /**
+     * Timestamp of last performance crash (for cooldown tracking).
+     */
+    private volatile Instant lastCrashTime = null;
+    
+    /**
+     * Timestamp of last coffee break (for cooldown tracking).
+     */
+    private volatile Instant lastCoffeeBreakTime = null;
+    
+    /**
+     * Count of performance crashes this session (for stats).
+     */
+    private final AtomicLong crashCount = new AtomicLong(0);
+    
+    /**
+     * Count of coffee breaks this session (for stats).
+     */
+    private final AtomicLong coffeeBreakCount = new AtomicLong(0);
 
     @Inject
     public FatigueModel(Provider<BotActivityTracker> activityTrackerProvider, PlayerProfile playerProfile) {
@@ -179,10 +281,18 @@ public class FatigueModel {
         double oldFatigue = getFatigueLevel();
         setFatigueLevelInternal(clampFatigue(oldFatigue - SESSION_START_RECOVERY));
         
-        lastUpdateTime = Instant.now();
+        Instant now = Instant.now();
+        lastUpdateTime = now;
+        sessionStartTime = now;
         sessionActionCount.set(0);
         onBreak.set(false);
         breakStartTime = null;
+        
+        // Reset crash/coffee break tracking for new session
+        lastCrashTime = null;
+        lastCoffeeBreakTime = null;
+        crashCount.set(0);
+        coffeeBreakCount.set(0);
         
         log.info("Session started: fatigue {} -> {} (recovered {})",
                 String.format("%.3f", oldFatigue),
@@ -194,8 +304,12 @@ public class FatigueModel {
      * Called at session end. Could persist fatigue state if desired.
      */
     public void onSessionEnd() {
-        log.info("Session ended: final fatigue={}, actions={}",
-                String.format("%.3f", getFatigueLevel()), getSessionActionCount());
+        log.info("Session ended: final fatigue={}, actions={}, duration={}h, crashes={}, coffeeBreaks={}",
+                String.format("%.3f", getFatigueLevel()), 
+                getSessionActionCount(),
+                String.format("%.1f", getSessionDurationHours()),
+                crashCount.get(),
+                coffeeBreakCount.get());
     }
 
     // ========================================================================
@@ -262,6 +376,7 @@ public class FatigueModel {
 
     /**
      * Accumulate time-based fatigue since last update.
+     * Includes non-linear accumulation, performance crashes, and coffee breaks.
      */
     private void accumulateTimeFatigue() {
         Instant now = Instant.now();
@@ -272,10 +387,146 @@ public class FatigueModel {
             return;
         }
         
-        double intensityMultiplier = getIntensityMultiplier();
-        double fatigueIncrease = FATIGUE_PER_SECOND * secondsElapsed * intensityMultiplier;
+        double currentFatigue = getFatigueLevel();
         
-        setFatigueLevelInternal(clampFatigue(getFatigueLevel() + fatigueIncrease));
+        // Check for random events first (before normal accumulation)
+        // This creates the "jagged" patterns real players have
+        
+        // Performance crash check (sudden fatigue spike)
+        if (maybePerformanceCrash(now, secondsElapsed, currentFatigue)) {
+            currentFatigue = getFatigueLevel(); // Re-read after crash
+        }
+        
+        // Coffee break check (mini-recovery)
+        if (maybeCoffeeBreak(now, secondsElapsed, currentFatigue)) {
+            currentFatigue = getFatigueLevel(); // Re-read after recovery
+        }
+        
+        // Calculate base fatigue increase with intensity multiplier
+        double intensityMultiplier = getIntensityMultiplier();
+        double baseFatigueIncrease = FATIGUE_PER_SECOND * secondsElapsed * intensityMultiplier;
+        
+        // Apply quadratic term for extended sessions
+        // fatigue_rate *= (1 + session_hours² * factor)
+        // This models cognitive load compounding over time
+        double sessionHours = getSessionDurationHours();
+        double quadraticMultiplier = 1.0 + (sessionHours * sessionHours * SESSION_QUADRATIC_FACTOR);
+        double fatigueIncrease = baseFatigueIncrease * quadraticMultiplier;
+        
+        setFatigueLevelInternal(clampFatigue(currentFatigue + fatigueIncrease));
+    }
+    
+    /**
+     * Get session duration in hours.
+     */
+    private double getSessionDurationHours() {
+        if (sessionStartTime == null) {
+            return 0.0;
+        }
+        return Duration.between(sessionStartTime, Instant.now()).toMillis() / 3600000.0;
+    }
+    
+    /**
+     * Check for and apply a random performance crash.
+     * Simulates: zoning out, frustration, phone distraction, sudden tiredness.
+     * 
+     * @param now current timestamp
+     * @param secondsElapsed seconds since last tick
+     * @param currentFatigue current fatigue level
+     * @return true if a crash occurred
+     */
+    private boolean maybePerformanceCrash(Instant now, double secondsElapsed, double currentFatigue) {
+        // Only crash if fatigue is above threshold
+        if (currentFatigue < CRASH_MIN_FATIGUE) {
+            return false;
+        }
+        
+        // Check cooldown
+        if (lastCrashTime != null) {
+            double secondsSinceCrash = Duration.between(lastCrashTime, now).toMillis() / 1000.0;
+            if (secondsSinceCrash < CRASH_COOLDOWN_SECONDS) {
+                return false;
+            }
+        }
+        
+        // Probability scales with time elapsed (more ticks = more chances)
+        // Also slightly more likely when already fatigued (tired people crash more)
+        double fatigueScaling = 1.0 + (currentFatigue * 0.5); // Up to 1.5x at max fatigue
+        double crashProbability = CRASH_PROBABILITY_PER_SECOND * secondsElapsed * fatigueScaling;
+        
+        if (ThreadLocalRandom.current().nextDouble() < crashProbability) {
+            // Crash! Apply sudden fatigue spike
+            double spike = CRASH_MIN_SPIKE + ThreadLocalRandom.current().nextDouble() * (CRASH_MAX_SPIKE - CRASH_MIN_SPIKE);
+            double newFatigue = clampFatigue(currentFatigue + spike);
+            setFatigueLevelInternal(newFatigue);
+            
+            lastCrashTime = now;
+            crashCount.incrementAndGet();
+            
+            log.info("⚡ Performance crash! Fatigue {} -> {} (+{}) [session crashes: {}]",
+                    String.format("%.3f", currentFatigue),
+                    String.format("%.3f", newFatigue),
+                    String.format("%.3f", spike),
+                    crashCount.get());
+            return true;
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Check for and apply a random coffee break (mini-recovery).
+     * Simulates: stretch, sip water, quick mental reset, deep breath.
+     * 
+     * @param now current timestamp
+     * @param secondsElapsed seconds since last tick
+     * @param currentFatigue current fatigue level
+     * @return true if a coffee break occurred
+     */
+    private boolean maybeCoffeeBreak(Instant now, double secondsElapsed, double currentFatigue) {
+        // Only coffee break if fatigue is above threshold
+        if (currentFatigue < COFFEE_BREAK_MIN_FATIGUE) {
+            return false;
+        }
+        
+        // Check cooldown
+        if (lastCoffeeBreakTime != null) {
+            double secondsSinceCoffee = Duration.between(lastCoffeeBreakTime, now).toMillis() / 1000.0;
+            if (secondsSinceCoffee < COFFEE_BREAK_COOLDOWN_SECONDS) {
+                return false;
+            }
+        }
+        
+        // Base probability
+        double coffeeProbability = COFFEE_BREAK_PROBABILITY_PER_SECOND * secondsElapsed;
+        
+        // Elevated probability after a recent crash (human "snap out of it" behavior)
+        if (lastCrashTime != null) {
+            double secondsSinceCrash = Duration.between(lastCrashTime, now).toMillis() / 1000.0;
+            if (secondsSinceCrash < COFFEE_BREAK_POST_CRASH_WINDOW) {
+                coffeeProbability *= COFFEE_BREAK_POST_CRASH_MULTIPLIER;
+            }
+        }
+        
+        if (ThreadLocalRandom.current().nextDouble() < coffeeProbability) {
+            // Coffee break! Apply mini-recovery
+            double recovery = COFFEE_BREAK_MIN_RECOVERY + 
+                ThreadLocalRandom.current().nextDouble() * (COFFEE_BREAK_MAX_RECOVERY - COFFEE_BREAK_MIN_RECOVERY);
+            double newFatigue = clampFatigue(currentFatigue - recovery);
+            setFatigueLevelInternal(newFatigue);
+            
+            lastCoffeeBreakTime = now;
+            coffeeBreakCount.incrementAndGet();
+            
+            log.info("☕ Coffee break! Fatigue {} -> {} (-{}) [session recoveries: {}]",
+                    String.format("%.3f", currentFatigue),
+                    String.format("%.3f", newFatigue),
+                    String.format("%.3f", recovery),
+                    coffeeBreakCount.get());
+            return true;
+        }
+        
+        return false;
     }
 
     /**
@@ -466,14 +717,32 @@ public class FatigueModel {
      */
     public String getSummary() {
         return String.format(
-                "Fatigue[level=%.1f%%, delayMult=%.2f, varianceMult=%.2f, misclickMult=%.2f, actions=%d, onBreak=%s]",
+                "Fatigue[level=%.1f%%, delayMult=%.2f, varianceMult=%.2f, misclickMult=%.2f, " +
+                "actions=%d, onBreak=%s, sessionHrs=%.1f, crashes=%d, coffeeBreaks=%d]",
                 getFatigueLevel() * 100,
                 getDelayMultiplier(),
                 getClickVarianceMultiplier(),
                 getMisclickMultiplier(),
                 getSessionActionCount(),
-                isOnBreak()
+                isOnBreak(),
+                getSessionDurationHours(),
+                crashCount.get(),
+                coffeeBreakCount.get()
         );
+    }
+    
+    /**
+     * Get count of performance crashes this session.
+     */
+    public long getCrashCount() {
+        return crashCount.get();
+    }
+    
+    /**
+     * Get count of coffee breaks this session.
+     */
+    public long getCoffeeBreakCount() {
+        return coffeeBreakCount.get();
     }
 
     @Override

@@ -23,6 +23,7 @@ public class MenuHelperTest {
 
     private Client client;
     private RobotMouseController mouseController;
+    private RobotKeyboardController keyboardController;
     private HumanTimer humanTimer;
     private MenuHelper menuHelper;
 
@@ -30,9 +31,10 @@ public class MenuHelperTest {
     public void setup() {
         client = mock(Client.class);
         mouseController = mock(RobotMouseController.class);
+        keyboardController = mock(RobotKeyboardController.class);
         humanTimer = mock(HumanTimer.class);
 
-        menuHelper = new MenuHelper(client, mouseController, humanTimer);
+        menuHelper = new MenuHelper(client, mouseController, keyboardController, humanTimer);
 
         when(mouseController.rightClick(any(Rectangle.class))).thenReturn(CompletableFuture.completedFuture(null));
         when(mouseController.moveToCanvas(anyInt(), anyInt())).thenReturn(CompletableFuture.completedFuture(null));
@@ -72,4 +74,3 @@ public class MenuHelperTest {
         verify(mouseController).rightClick(hitbox);
     }
 }
-
