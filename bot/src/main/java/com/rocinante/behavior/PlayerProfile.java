@@ -7,7 +7,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.rocinante.input.ScreenRegion;
 import com.rocinante.input.uinput.DevicePreset;
-import com.rocinante.input.uinput.DeviceType;
 import com.rocinante.util.Randomization;
 import lombok.Getter;
 import lombok.Setter;
@@ -246,6 +245,12 @@ public class PlayerProfile {
         profileData.jitterSigma = 10.0 + seededRandom.nextDouble() * 10.0;  // 10-20ms std dev
         profileData.jitterTau = 15.0 + seededRandom.nextDouble() * 15.0;    // 15-30ms tail
         
+        // === Tick skip and attention modeling ===
+        // Occasional skipped ticks and attention lapses create human-like variance
+        profileData.tickSkipBaseProbability = 0.03 + seededRandom.nextDouble() * 0.05;  // 3-8%
+        profileData.attentionLapseProbability = 0.005 + seededRandom.nextDouble() * 0.015;  // 0.5-2%
+        profileData.anticipationProbability = 0.10 + seededRandom.nextDouble() * 0.10;  // 10-20%
+        
         // === Mouse path complexity ===
         // Each player has unique movement patterns
         profileData.hesitationProbability = 0.10 + seededRandom.nextDouble() * 0.15;  // 10-25%
@@ -264,6 +269,25 @@ public class PlayerProfile {
         
         // Motor unit quantization (Jerk): 0.0-1.5 pixels
         profileData.motorUnitThreshold = seededRandom.nextDouble() * 1.5;
+
+        // === Fitts' Law Parameters ===
+        // Each person has unique motor characteristics that determine their
+        // movement time = a + b * log2(1 + Distance/Width)
+        //
+        // 'a' (base time): 30-200ms - initiation delay before movement starts
+        // Studies show wide individual variation in neuromuscular response time
+        // Using Gaussian distribution around mean=80ms, σ=35ms, clamped to [30, 200]
+        double fittsACandidate = 80.0 + seededRandom.nextGaussian() * 35.0;
+        profileData.fittsA = Math.max(30.0, Math.min(200.0, fittsACandidate));
+        
+        // 'b' (motor bandwidth): 60-180 ms/bit - how fast they can process difficulty
+        // Correlate slightly with mouseSpeedMultiplier (fast movers = lower b)
+        // Base: mean=110ms, σ=30ms, adjusted by speed correlation
+        double fittsBBase = 110.0 + seededRandom.nextGaussian() * 30.0;
+        // Faster movers (higher speedMultiplier) get lower 'b' (faster targeting)
+        double speedAdjustment = (profileData.mouseSpeedMultiplier - 1.0) * -40.0;
+        double fittsBCandidate = fittsBBase + speedAdjustment;
+        profileData.fittsB = Math.max(60.0, Math.min(180.0, fittsBCandidate));
 
         // === Break behavior ===
         profileData.breakFatigueThreshold = MIN_BREAK_THRESHOLD +
@@ -385,23 +409,16 @@ public class PlayerProfile {
         profileData.peakHourOffset = -2.0 + seededRandom.nextDouble() * 4.0;  // -2 to +2 hours
         profileData.circadianStrength = 0.1 + seededRandom.nextDouble() * 0.4;  // 0.1-0.5
 
-        // === UInput Device Presets (hardware identity spoofing) ===
-        // Select matching mouse + keyboard pair (70% same brand, 30% mixed)
-        DevicePreset[] devicePair = DevicePreset.randomMatchingPair(seededRandom);
-        profileData.mouseDevicePreset = devicePair[0].name();
-        profileData.keyboardDevicePreset = devicePair[1].name();
-        
-        // Select polling rates (usually 1000Hz for gaming mice, but we vary it)
-        profileData.mousePollingRate = devicePair[0].selectPollingRate(seededRandom);
-        profileData.keyboardPollingRate = devicePair[1].selectPollingRate(seededRandom);
+        // === UInput Device Presets ===
+        // All bots use Steam Deck devices - common hardware, blends in well, 
+        // less statistical variance in device fingerprints across the botnet.
+        // Device selection simplified to always use STEAMDECK_MOUSE and STEAMDECK_KEYBOARD.
 
-        log.info("Generated new profile: mouseSpeed={}, clickVar={}, breakThreshold={}, rituals={}, devices=[{}, {}]",
+        log.info("Generated new profile: mouseSpeed={}, clickVar={}, breakThreshold={}, rituals={}",
                 String.format("%.2f", profileData.mouseSpeedMultiplier),
                 String.format("%.2f", profileData.clickVarianceModifier),
                 String.format("%.2f", profileData.breakFatigueThreshold),
-                profileData.sessionRituals,
-                profileData.mouseDevicePreset,
-                profileData.keyboardDevicePreset);
+                profileData.sessionRituals);
     }
 
     // ========================================================================
@@ -517,6 +534,17 @@ public class PlayerProfile {
         recordChange(changes, "jitterMu", beforeJitterMu, profileData.jitterMu);
         recordChange(changes, "jitterSigma", beforeJitterSigma, profileData.jitterSigma);
         recordChange(changes, "jitterTau", beforeJitterTau, profileData.jitterTau);
+        
+        // Tick skip/attention drift (very small - attention patterns are stable)
+        double beforeTickSkip = profileData.tickSkipBaseProbability;
+        double beforeLapse = profileData.attentionLapseProbability;
+        double beforeAnticipation = profileData.anticipationProbability;
+        profileData.tickSkipBaseProbability = applyDrift(profileData.tickSkipBaseProbability, 0.03, 0.08, 0.005);
+        profileData.attentionLapseProbability = applyDrift(profileData.attentionLapseProbability, 0.005, 0.02, 0.002);
+        profileData.anticipationProbability = applyDrift(profileData.anticipationProbability, 0.10, 0.20, 0.01);
+        recordChange(changes, "tickSkipBaseProbability", beforeTickSkip, profileData.tickSkipBaseProbability);
+        recordChange(changes, "attentionLapseProbability", beforeLapse, profileData.attentionLapseProbability);
+        recordChange(changes, "anticipationProbability", beforeAnticipation, profileData.anticipationProbability);
         
         // Path complexity drift (very small - motor patterns are stable)
         double beforeHesitation = profileData.hesitationProbability;
@@ -1413,6 +1441,33 @@ public class PlayerProfile {
         return profileData.jitterTau;
     }
     
+    /**
+     * Get the base probability of skipping a game tick.
+     * Modified by activity type and fatigue at runtime.
+     * @return tick skip probability (0.03-0.08)
+     */
+    public double getTickSkipBaseProbability() {
+        return profileData.tickSkipBaseProbability;
+    }
+    
+    /**
+     * Get the base probability of an attention lapse.
+     * Rare but significant delays where player zones out.
+     * @return attention lapse probability (0.005-0.02)
+     */
+    public double getAttentionLapseProbability() {
+        return profileData.attentionLapseProbability;
+    }
+    
+    /**
+     * Get the probability of anticipation (faster-than-normal reaction).
+     * Used when waiting for predictable events.
+     * @return anticipation probability (0.10-0.20)
+     */
+    public double getAnticipationProbability() {
+        return profileData.anticipationProbability;
+    }
+    
     // === Mouse Path Complexity Getters ===
     
     /**
@@ -1523,6 +1578,35 @@ public class PlayerProfile {
      */
     public double getMotorUnitThreshold() {
         return profileData.motorUnitThreshold;
+    }
+
+    /**
+     * Fitts' Law 'a' parameter: base reaction/initiation time.
+     * This is the neuromuscular delay before movement begins - the time to
+     * perceive the target and initiate the motor response.
+     * 
+     * Used in: Movement Time = a + b * log2(1 + Distance/Width)
+     * 
+     * @return base time in milliseconds (30-200ms)
+     */
+    public double getFittsA() {
+        return profileData.fittsA;
+    }
+
+    /**
+     * Fitts' Law 'b' parameter: index of difficulty scaler.
+     * This represents motor bandwidth - how quickly the person can process
+     * spatial information and execute precise movements.
+     * 
+     * Higher values = slower, more deliberate targeting
+     * Lower values = faster, more aggressive targeting
+     * 
+     * Used in: Movement Time = a + b * log2(1 + Distance/Width)
+     * 
+     * @return difficulty scaler in ms/bit (60-180ms/bit)
+     */
+    public double getFittsB() {
+        return profileData.fittsB;
     }
 
     // ========================================================================
@@ -1731,56 +1815,36 @@ public class PlayerProfile {
 
     /**
      * Get the mouse device preset for uinput hardware spoofing.
-     * @return DevicePreset for the virtual mouse device
-     * @throws IllegalStateException if the preset name is invalid (no fallbacks allowed)
+     * All bots use Steam Deck mouse for uniformity and blending.
+     * @return STEAMDECK_MOUSE preset
      */
     public DevicePreset getMouseDevicePreset() {
-        String presetName = profileData.mouseDevicePreset;
-        DevicePreset preset = DevicePreset.byName(presetName);
-        if (preset == null) {
-            throw new IllegalStateException("Invalid mouse device preset: '" + presetName + 
-                "'. Profile may be corrupted. Available presets: " + 
-                java.util.Arrays.toString(DevicePreset.values()));
-        }
-        if (preset.getDeviceType() != DeviceType.MOUSE) {
-            throw new IllegalStateException("Preset '" + presetName + "' is not a mouse device");
-        }
-        return preset;
+        return DevicePreset.STEAMDECK_MOUSE;
     }
 
     /**
      * Get the keyboard device preset for uinput hardware spoofing.
-     * @return DevicePreset for the virtual keyboard device
-     * @throws IllegalStateException if the preset name is invalid (no fallbacks allowed)
+     * All bots use Steam Deck keyboard for uniformity and blending.
+     * @return STEAMDECK_KEYBOARD preset
      */
     public DevicePreset getKeyboardDevicePreset() {
-        String presetName = profileData.keyboardDevicePreset;
-        DevicePreset preset = DevicePreset.byName(presetName);
-        if (preset == null) {
-            throw new IllegalStateException("Invalid keyboard device preset: '" + presetName + 
-                "'. Profile may be corrupted. Available presets: " + 
-                java.util.Arrays.toString(DevicePreset.values()));
-        }
-        if (preset.getDeviceType() != DeviceType.KEYBOARD) {
-            throw new IllegalStateException("Preset '" + presetName + "' is not a keyboard device");
-        }
-        return preset;
+        return DevicePreset.STEAMDECK_KEYBOARD;
     }
     
     /**
      * Get the mouse polling rate in Hz.
-     * Selected during profile generation from the device's supported rates.
+     * Steam Deck controller uses 125Hz polling (typical for integrated controllers).
      */
     public int getMousePollingRate() {
-        return profileData.mousePollingRate;
+        return DevicePreset.STEAMDECK_MOUSE.getDefaultPollingRate();
     }
     
     /**
      * Get the keyboard polling rate in Hz.
-     * Selected during profile generation from the device's supported rates.
+     * Steam Deck controller uses 125Hz polling (typical for integrated controllers).
      */
     public int getKeyboardPollingRate() {
-        return profileData.keyboardPollingRate;
+        return DevicePreset.STEAMDECK_KEYBOARD.getDefaultPollingRate();
     }
     
     /**
@@ -2020,6 +2084,27 @@ public class PlayerProfile {
          * Occasional longer delays - higher = more frequent "slow" reactions.
          */
         volatile double jitterTau = 20.0;
+        
+        /**
+         * Base probability of skipping a game tick (3-8%).
+         * Creates realistic delays where player doesn't react within the same tick.
+         * Modified by activity type and fatigue.
+         */
+        volatile double tickSkipBaseProbability = 0.05;
+        
+        /**
+         * Base probability of attention lapse (0.5-2%).
+         * Rare but significant delays (1.5-3 seconds) where player zones out.
+         * More likely during repetitive tasks and high fatigue.
+         */
+        volatile double attentionLapseProbability = 0.01;
+        
+        /**
+         * Probability of anticipation - reacting faster than normal (10-20%).
+         * When waiting for predictable events (inventory full, ore depleted),
+         * player may be "ready" and react in 25-50ms instead of normal delay.
+         */
+        volatile double anticipationProbability = 0.15;
 
         // === Mouse path complexity (humanized movement patterns) ===
         /**
@@ -2069,6 +2154,24 @@ public class PlayerProfile {
          * Range: 0.0 - 1.5
          */
         volatile double motorUnitThreshold = 0.5;
+
+        // === Fitts' Law Parameters (Movement Time = a + b * log2(1 + D/W)) ===
+        /**
+         * Fitts' Law 'a' parameter: base reaction/initiation time (ms).
+         * Represents neuromuscular delay before movement begins.
+         * Varies significantly between individuals (40-150ms typical).
+         * Range: 30 - 200ms
+         */
+        volatile double fittsA = 50.0;
+
+        /**
+         * Fitts' Law 'b' parameter: index of difficulty scaler (ms/bit).
+         * Represents motor bandwidth - how quickly a person can process
+         * spatial information and execute precise movements.
+         * Higher = slower, more deliberate targeting.
+         * Range: 60 - 180 ms/bit
+         */
+        volatile double fittsB = 100.0;
 
         // === Break behavior ===
         volatile double breakFatigueThreshold = 0.80;
@@ -2263,32 +2366,11 @@ public class PlayerProfile {
          */
         String timezone = "America/New_York";
         
-        // === UInput Device Presets (hardware identity spoofing) ===
-        /**
-         * Mouse device preset name for uinput virtual device.
-         * Selected randomly during profile generation for realistic hardware fingerprint.
-         */
-        String mouseDevicePreset = "STEAMDECK_MOUSE";
-        
-        /**
-         * Keyboard device preset name for uinput virtual device.
-         * Selected randomly during profile generation, often matching mouse brand.
-         */
-        String keyboardDevicePreset = "STEAMDECK_KEYBOARD";
-        
-        /**
-         * Mouse polling rate in Hz.
-         * Selected from the device's supported rates during profile generation.
-         * Common gaming values: 125, 250, 500, 1000.
-         */
-        int mousePollingRate = 1000;
-        
-        /**
-         * Keyboard polling rate in Hz.
-         * Selected from the device's supported rates during profile generation.
-         * Most keyboards use 1000Hz, some older/budget ones use 125Hz.
-         */
-        int keyboardPollingRate = 1000;
+        // === UInput Device Presets ===
+        // Simplified: All bots use Steam Deck devices (STEAMDECK_MOUSE, STEAMDECK_KEYBOARD).
+        // This ensures uniform hardware fingerprint across the botnet, blending in well
+        // with legitimate Steam Deck users. Device selection is no longer per-profile.
+        // See PlayerProfile.getMouseDevicePreset() and getKeyboardDevicePreset().
         
         // === Chronotype (circadian rhythm preferences) ===
         /**

@@ -44,8 +44,11 @@ static const char* get_dynamic_dmi_serial(void);
 static const char* get_dynamic_loadavg(void);
 static const char* get_dynamic_proc_stat(void);
 static const char* get_dynamic_proc_status(void);
+static const char* get_spoofed_proc_stat(void);
 static const char* get_kernel_cmdline(void);
 static void init_functions(void);
+static const char* normalize_path(const char* path);
+static const char* get_dynamic_input_devices(void);
 static unsigned int get_machine_id_hash(void);
 static int get_version_index(void);
 static unsigned int get_dynamic_mount_id(void);
@@ -134,6 +137,9 @@ static char proc_stat_buffer[4096];
 // Dynamic /proc/self/status buffer
 static char proc_status_buffer[2048];
 
+// Dynamic /proc/self/stat buffer (for PPID spoofing)
+static char proc_stat_spoof_buffer[1024];
+
 // Kernel cmdline (boot parameters)
 static char kernel_cmdline_buffer[512];
 static int kernel_cmdline_initialized = 0;
@@ -194,16 +200,27 @@ static char net_mac_buffer[24];
 static unsigned char net_mac_bytes[6];  // Raw bytes for ioctl
 static int mac_initialized = 0;
 
-// Steam Deck /proc/self/cmdline - looks like gamescope launching RuneLite
-// Null-separated args, we return a plausible game launch
-static const char* PROC_CMDLINE = "/usr/bin/gamescope\0--steam\0--\0/usr/lib/jvm/java-17-openjdk/bin/java\0-jar\0RuneLite.jar\0";
-static const size_t PROC_CMDLINE_LEN = 95;  // Length including nulls
+// /proc/self/cmdline - simple Java launch (no fake gamescope wrapper)
+// Null-separated args, realistic for a user launching RuneLite
+static const char* PROC_CMDLINE = "/usr/lib/jvm/java-17-openjdk/bin/java\0-jar\0RuneLite.jar\0";
+static const size_t PROC_CMDLINE_LEN = 54;  // Length including nulls
 
 // Fake /proc/self/exe target (what readlink should return)
 static const char* FAKE_SELF_EXE = "/usr/lib/jvm/java-17-openjdk/bin/java";
 
-// Steam Deck input devices
-static const char* INPUT_DEVICES = 
+// Fake /proc/self/cwd - hide container working directory
+static const char* FAKE_SELF_CWD = "/home/deck";
+
+// Fake /proc/self/root - hide overlay/container root
+static const char* FAKE_SELF_ROOT = "/";
+
+// Steam Deck input devices - appended to real input devices
+// Dynamic buffer for combined real + virtual devices
+static char input_devices_buffer[16384];
+static int input_devices_initialized = 0;
+
+// Steam Deck controller entries to append
+static const char* STEAM_DECK_CONTROLLER = 
     "I: Bus=0003 Vendor=28de Product=1205 Version=0111\n"
     "N: Name=\"Valve Software Steam Deck Controller\"\n"
     "P: Phys=usb-0000:04:00.3-3/input0\n"
@@ -228,7 +245,10 @@ static const char* INPUT_DEVICES =
     "B: KEY=70000 0 0 0 0\n"
     "B: REL=903\n"
     "B: MSC=10\n"
-    "\n"
+    "\n";
+
+// Additional Steam Deck system input devices
+static const char* STEAM_DECK_SYSTEM_INPUTS = 
     "I: Bus=0019 Vendor=0000 Product=0005 Version=0000\n"
     "N: Name=\"Lid Switch\"\n"
     "P: Phys=PNP0C0D/button/input0\n"
@@ -303,6 +323,66 @@ static int str_contains(const char* str, const char* needle) {
     return str && needle && strstr(str, needle) != NULL;
 }
 
+// Normalize a path: remove ., .., collapse // sequences
+// Returns pointer to static buffer (not thread-safe for path normalization, but our usage is fine)
+static const char* normalize_path(const char* path) {
+    static char normalized[4096];
+    if (!path) return NULL;
+    
+    // Fast path: if no special sequences, return as-is
+    if (!strstr(path, "//") && !strstr(path, "/./") && !strstr(path, "/../") &&
+        !str_ends(path, "/.") && !str_ends(path, "/..")) {
+        return path;
+    }
+    
+    char* dst = normalized;
+    const char* src = path;
+    char* dst_end = normalized + sizeof(normalized) - 1;
+    
+    while (*src && dst < dst_end) {
+        if (src[0] == '/') {
+            // Collapse multiple slashes
+            while (src[1] == '/') src++;
+            
+            // Handle /./ (current directory - skip)
+            if (src[1] == '.' && (src[2] == '/' || src[2] == '\0')) {
+                src += 2;
+                if (*src == '/') src++;
+                continue;
+            }
+            
+            // Handle /../ (parent directory)
+            if (src[1] == '.' && src[2] == '.' && (src[3] == '/' || src[3] == '\0')) {
+                // Go back to previous /
+                if (dst > normalized) {
+                    dst--;
+                    while (dst > normalized && *dst != '/') dst--;
+                }
+                src += 3;
+                if (*src == '/') src++;
+                continue;
+            }
+        }
+        *dst++ = *src++;
+    }
+    
+    // Ensure null termination
+    *dst = '\0';
+    
+    // Remove trailing slash (except for root)
+    if (dst > normalized + 1 && *(dst - 1) == '/') {
+        *(dst - 1) = '\0';
+    }
+    
+    // Empty result means root
+    if (normalized[0] == '\0') {
+        normalized[0] = '/';
+        normalized[1] = '\0';
+    }
+    
+    return normalized;
+}
+
 // Check if an environment variable should be hidden
 static int should_hide_env(const char* name) {
     for (int i = 0; HIDDEN_ENV_VARS[i]; i++) {
@@ -334,6 +414,23 @@ static int is_status_path(const char* path) {
             p++;
         }
         return str_eq(p, "/status");
+    }
+    return 0;
+}
+
+// Check if path is /proc/self/stat or /proc/<pid>/stat (NOT status)
+static int is_stat_path(const char* path) {
+    if (!path) return 0;
+    if (str_eq(path, "/proc/self/stat")) return 1;
+    if (str_starts(path, "/proc/") && str_ends(path, "/stat")) {
+        // Make sure it's not /status
+        if (str_ends(path, "/status")) return 0;
+        const char* p = path + 6;
+        while (*p && *p != '/') {
+            if (*p < '0' || *p > '9') return 0;
+            p++;
+        }
+        return str_eq(p, "/stat");
     }
     return 0;
 }
@@ -405,6 +502,10 @@ static char* filter_lines(const char* orig, size_t orig_len, int is_maps) {
 static const char* get_mapped_content(const char* path) {
     if (!path) return NULL;
     
+    // Normalize path to handle ., .., and // sequences
+    path = normalize_path(path);
+    if (!path) return NULL;
+    
     // /proc filesystem
     if (str_eq(path, "/proc/cpuinfo")) return get_dynamic_cpuinfo();
     if (str_eq(path, "/proc/version")) return get_dynamic_proc_version();
@@ -415,7 +516,7 @@ static const char* get_mapped_content(const char* path) {
     if (str_eq(path, "/proc/cmdline")) return get_kernel_cmdline();
     if (str_eq(path, "/proc/self/cgroup")) return PROC_CGROUP;
     if (str_eq(path, "/proc/1/cgroup")) return PROC_CGROUP;
-    if (str_eq(path, "/proc/bus/input/devices")) return INPUT_DEVICES;
+    if (str_eq(path, "/proc/bus/input/devices")) return get_dynamic_input_devices();
     
     // /etc files
     if (str_eq(path, "/etc/hostname")) return ETC_HOSTNAME;
@@ -949,6 +1050,69 @@ static const char* get_dynamic_loadavg(void) {
     return loadavg_buffer;
 }
 
+// Generate dynamic /proc/bus/input/devices
+// Reads real input devices and appends Steam Deck controller if not present
+static const char* get_dynamic_input_devices(void) {
+    if (input_devices_initialized) {
+        return input_devices_buffer;
+    }
+    
+    init_functions();
+    
+    char* p = input_devices_buffer;
+    size_t remaining = sizeof(input_devices_buffer);
+    int has_steam_deck_controller = 0;
+    
+    // Read real /proc/bus/input/devices
+    FILE* f = real_fopen("/proc/bus/input/devices", "r");
+    if (f) {
+        char line[512];
+        while (fgets(line, sizeof(line), f) && remaining > 1) {
+            // Check if Steam Deck controller already present
+            if (strstr(line, "Steam Deck Controller")) {
+                has_steam_deck_controller = 1;
+            }
+            
+            // Copy line to buffer
+            size_t len = strlen(line);
+            if (len < remaining) {
+                memcpy(p, line, len);
+                p += len;
+                remaining -= len;
+            }
+        }
+        fclose(f);
+    }
+    
+    // Ensure buffer ends with newline for clean append
+    if (p > input_devices_buffer && *(p-1) != '\n' && remaining > 1) {
+        *p++ = '\n';
+        remaining--;
+    }
+    
+    // Append Steam Deck controller if not already present
+    if (!has_steam_deck_controller) {
+        size_t ctrl_len = strlen(STEAM_DECK_CONTROLLER);
+        if (ctrl_len < remaining) {
+            memcpy(p, STEAM_DECK_CONTROLLER, ctrl_len);
+            p += ctrl_len;
+            remaining -= ctrl_len;
+        }
+    }
+    
+    // Always append Steam Deck system inputs (lid switch, power button)
+    // These are generic enough to always include
+    size_t sys_len = strlen(STEAM_DECK_SYSTEM_INPUTS);
+    if (sys_len < remaining) {
+        memcpy(p, STEAM_DECK_SYSTEM_INPUTS, sys_len);
+        p += sys_len;
+    }
+    
+    *p = '\0';
+    input_devices_initialized = 1;
+    return input_devices_buffer;
+}
+
 // Generate dynamic /proc/stat - CPU time statistics
 // Format: cpu [user] [nice] [system] [idle] [iowait] [irq] [softirq] [steal] [guest] [guest_nice]
 // Values should be realistic for the uptime and vary per bot
@@ -1118,6 +1282,63 @@ static const char* get_dynamic_proc_status(void) {
     fclose(f);
     *p = '\0';
     return proc_status_buffer;
+}
+
+// Spoof /proc/self/stat - change PPID (field 4) to 1 (init/systemd)
+// Format: pid (comm) state ppid pgrp session tty_nr ...
+// The comm field can contain spaces and parens, so we find the last ')' first
+static const char* get_spoofed_proc_stat(void) {
+    init_functions();
+    
+    FILE* f = real_fopen("/proc/self/stat", "r");
+    if (!f) {
+        return "1 (java) S 1 1 1 0 -1 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n";
+    }
+    
+    char real_stat[1024];
+    if (!fgets(real_stat, sizeof(real_stat), f)) {
+        fclose(f);
+        return "1 (java) S 1 1 1 0 -1 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n";
+    }
+    fclose(f);
+    
+    // Find the last ')' - everything after is space-separated fields
+    char* last_paren = strrchr(real_stat, ')');
+    if (!last_paren) {
+        // Malformed, copy to static buffer and return as-is
+        strncpy(proc_stat_spoof_buffer, real_stat, sizeof(proc_stat_spoof_buffer) - 1);
+        proc_stat_spoof_buffer[sizeof(proc_stat_spoof_buffer) - 1] = '\0';
+        return proc_stat_spoof_buffer;
+    }
+    
+    // Copy up to and including ") X " (state field)
+    char* p = proc_stat_spoof_buffer;
+    size_t prefix_len = last_paren - real_stat + 1;  // Include the ')'
+    memcpy(p, real_stat, prefix_len);
+    p += prefix_len;
+    
+    // Skip the real state and PPID: ") X ppid "
+    char* src = last_paren + 1;
+    while (*src == ' ') src++;  // Skip space after )
+    
+    // Copy state character
+    if (*src) {
+        *p++ = ' ';
+        *p++ = *src++;  // State (S, R, etc.)
+    }
+    
+    // Skip the real PPID
+    while (*src == ' ') src++;
+    while (*src && *src != ' ') src++;  // Skip PPID digits
+    
+    // Insert spoofed PPID = 1
+    *p++ = ' ';
+    *p++ = '1';
+    
+    // Copy the rest of the line
+    strcpy(p, src);
+    
+    return proc_stat_spoof_buffer;
 }
 
 // Generate kernel cmdline (boot parameters) - looks like SteamOS boot
@@ -1481,7 +1702,7 @@ FILE* fopen(const char* path, const char* mode) {
         return mem_file;
     }
     
-    // Handle /proc/self/cmdline - return fake gamescope launch cmdline
+    // Handle /proc/self/cmdline - return Java launch cmdline
     if (is_cmdline_path(path)) {
         // cmdline has embedded nulls, can't use strlen - use fixed length
         return fmemopen((void*)PROC_CMDLINE, PROC_CMDLINE_LEN, "r");
@@ -1491,6 +1712,12 @@ FILE* fopen(const char* path, const char* mode) {
     if (is_status_path(path)) {
         const char* status = get_dynamic_proc_status();
         return fmemopen((void*)status, strlen(status), "r");
+    }
+    
+    // Handle /proc/self/stat - spoof PPID to 1 (looks like orphaned/daemon process)
+    if (is_stat_path(path)) {
+        const char* stat = get_spoofed_proc_stat();
+        return fmemopen((void*)stat, strlen(stat), "r");
     }
     
     // Handle maps/mounts filtering
@@ -1665,6 +1892,21 @@ int open(const char* path, int flags, ...) {
         return -1;
     }
     
+    // Handle /proc/self/stat - spoof PPID to 1
+    if (is_stat_path(path) && !(flags & O_WRONLY)) {
+        const char* stat = get_spoofed_proc_stat();
+        int null_fd = real_open("/dev/null", O_RDONLY);
+        if (null_fd >= 0) {
+            if (add_tracked_fd(null_fd, stat, strlen(stat), 0, NULL)) {
+                return null_fd;
+            }
+            static int (*local_close)(int) = NULL;
+            if (!local_close) local_close = dlsym(RTLD_NEXT, "close");
+            local_close(null_fd);
+        }
+        return -1;
+    }
+    
     // Handle maps/mounts filtering
     if (needs_line_filtering(path) && !(flags & O_WRONLY)) {
         int real_fd = (flags & O_CREAT) ? real_open(path, flags, mode) : real_open(path, flags);
@@ -1780,30 +2022,55 @@ int close(int fd) {
 // ============================================================================
 
 // Check if this is a /proc/*/exe path we should spoof
-static int is_exe_path(const char* path) {
+static int is_proc_path_ending(const char* path, const char* suffix) {
     if (!path) return 0;
-    if (str_eq(path, "/proc/self/exe")) return 1;
-    if (str_starts(path, "/proc/") && str_ends(path, "/exe")) {
+    // Check /proc/self/<suffix>
+    char self_path[64];
+    snprintf(self_path, sizeof(self_path), "/proc/self/%s", suffix);
+    if (str_eq(path, self_path)) return 1;
+    
+    // Check /proc/<pid>/<suffix>
+    if (str_starts(path, "/proc/") && str_ends(path, suffix)) {
         const char* p = path + 6;
         while (*p && *p != '/') {
             if (*p < '0' || *p > '9') return 0;
             p++;
         }
-        return str_eq(p, "/exe");
+        char expected[16];
+        snprintf(expected, sizeof(expected), "/%s", suffix);
+        return str_eq(p, expected);
     }
     return 0;
+}
+
+// Helper to copy string to readlink buffer
+static ssize_t readlink_spoof(const char* fake, char* buf, size_t bufsiz) {
+    size_t len = strlen(fake);
+    if (len > bufsiz) len = bufsiz;
+    memcpy(buf, fake, len);
+    return len;
 }
 
 ssize_t readlink(const char* path, char* buf, size_t bufsiz) {
     static ssize_t (*real_readlink)(const char*, char*, size_t) = NULL;
     if (!real_readlink) real_readlink = dlsym(RTLD_NEXT, "readlink");
     
+    // Normalize path first
+    path = normalize_path(path);
+    
     // Spoof /proc/self/exe to look like java executable
-    if (is_exe_path(path)) {
-        size_t len = strlen(FAKE_SELF_EXE);
-        if (len > bufsiz) len = bufsiz;
-        memcpy(buf, FAKE_SELF_EXE, len);
-        return len;
+    if (is_proc_path_ending(path, "exe")) {
+        return readlink_spoof(FAKE_SELF_EXE, buf, bufsiz);
+    }
+    
+    // Spoof /proc/self/cwd to hide container working directory
+    if (is_proc_path_ending(path, "cwd")) {
+        return readlink_spoof(FAKE_SELF_CWD, buf, bufsiz);
+    }
+    
+    // Spoof /proc/self/root to hide overlay filesystem
+    if (is_proc_path_ending(path, "root")) {
+        return readlink_spoof(FAKE_SELF_ROOT, buf, bufsiz);
     }
     
     return real_readlink(path, buf, bufsiz);

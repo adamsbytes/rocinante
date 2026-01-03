@@ -131,7 +131,7 @@ public class GrandExchangeStateManager {
                 .registerTypeAdapter(Instant.class, new InstantTypeAdapter())
                 .create();
         this.saveExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "GEState-Saver");
+            Thread t = new Thread(r, "Thread-11");
             t.setDaemon(true);
             return t;
         });

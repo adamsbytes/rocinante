@@ -23,7 +23,7 @@ public class IoExecutor {
 
     public IoExecutor() {
         ThreadFactory tf = r -> {
-            Thread t = new Thread(r, "Rocinante-IO");
+            Thread t = new Thread(r, "Thread-14");
             t.setDaemon(true);
             return t;
         };

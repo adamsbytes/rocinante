@@ -54,10 +54,9 @@ public class RobotMouseController {
     private static final double MIN_CONTROL_OFFSET_PERCENT = 0.05;
     private static final double MAX_CONTROL_OFFSET_PERCENT = 0.15;
 
-    // Fitts' Law constants for duration calculation
+    // Fitts' Law parameters are now per-profile (see PlayerProfile.getFittsA/B)
     // Movement time = a + b * log2(1 + Distance / Width)
-    private static final double FITTS_A = 50.0;  // Base reaction time (ms)
-    private static final double FITTS_B = 100.0; // Index of difficulty scaler (ms/bit)
+    // Constants removed - values come from playerProfile.getFittsA() and getFittsB()
     private static final double DEFAULT_TARGET_WIDTH = 20.0; // Fallback for blind movements
     private static final long MIN_DURATION_MS = 80;
     private static final long MAX_DURATION_MS = 2500; // Increased for very difficult targets
@@ -142,6 +141,15 @@ public class RobotMouseController {
      * FatigueModel for fatigue-based click variance and action recording.
      */
     private final FatigueModel fatigueModel;
+
+    /**
+     * Pink noise generators for motor quantization (X and Y axes).
+     * Real human motor noise follows a 1/f (pink) spectrum where lower frequencies
+     * dominate - this creates realistic drift patterns rather than the white noise
+     * produced by Math.round().
+     */
+    private final PinkNoiseGenerator motorNoiseX;
+    private final PinkNoiseGenerator motorNoiseY;
 
     /**
      * Flag indicating a click operation is currently in progress.
@@ -236,6 +244,11 @@ public class RobotMouseController {
         this.fatigueModel = fatigueModel;
         this.clientThread = clientThread;
         this.executor = executor;
+
+        // Initialize pink noise generators for motor quantization
+        // Separate generators for X and Y to maintain independent 1/f characteristics per axis
+        this.motorNoiseX = new PinkNoiseGenerator();
+        this.motorNoiseY = new PinkNoiseGenerator();
 
         // Sync with actual cursor position
         mouseDevice.syncPosition();
@@ -582,6 +595,12 @@ public class RobotMouseController {
     /**
      * Generate Bezier curve control points based on distance.
      * Control point count: 3 for <200px, 4 for 200-500px, 5 for >500px
+     * 
+     * Curvature is modeled to match real human behavior:
+     * 1. Dominant hand bias: right-handed curves clockwise, left-handed counter-clockwise
+     *    (due to wrist pivot mechanics - same as overshoot direction)
+     * 2. Non-uniform offset: more curvature mid-path, less at start/end (sine envelope)
+     *    This matches how humans accelerate through the middle of a movement
      */
     private List<Point> generateControlPoints(Point start, Point end, double distance) {
         int numControlPoints;
@@ -597,10 +616,27 @@ public class RobotMouseController {
         points.add(start);
 
         // Calculate perpendicular direction
+        // In screen coords (+Y down): positive perpendicular = clockwise curve
         double dx = end.x - start.x;
         double dy = end.y - start.y;
         double perpX = -dy / distance;
         double perpY = dx / distance;
+        
+        // Dominant hand bias for curve direction
+        // dominantHandBias: 0.0 = left-handed, 0.5 = ambidextrous, 1.0 = right-handed
+        // Right-handed: wrist pivots from left, natural clockwise bias (positive perp)
+        // Left-handed: wrist pivots from right, natural counter-clockwise bias (negative perp)
+        double handBias = playerProfile.getDominantHandBias();
+        // Convert to direction bias: -1.0 (always left curve) to +1.0 (always right curve)
+        // At 0.5 (ambidextrous): 0.0 bias, 50/50 random
+        // At 1.0 (right-handed): +0.7 bias toward clockwise
+        // At 0.0 (left-handed): -0.7 bias toward counter-clockwise
+        double directionBias = (handBias - 0.5) * 1.4;
+        
+        // Decide curve direction for this movement (consistent within one movement)
+        // Use Gaussian centered on bias so it's probabilistic but biased
+        double directionRoll = randomization.gaussianRandom(directionBias, 0.5);
+        int curveSign = directionRoll > 0 ? 1 : -1;
 
         // Add intermediate control points
         for (int i = 1; i < numControlPoints - 1; i++) {
@@ -610,14 +646,20 @@ public class RobotMouseController {
             int baseX = (int) (start.x + dx * t);
             int baseY = (int) (start.y + dy * t);
 
-            // Random perpendicular offset (5-15% of distance)
+            // Non-uniform offset: sine envelope for more curvature mid-path
+            // sin(π*t) = 0 at t=0, 1 at t=0.5, 0 at t=1
+            // This creates natural "bulge" in the middle of the curve
+            double sineEnvelope = Math.sin(Math.PI * t);
+            
+            // Base offset (5-15% of distance), scaled by sine envelope
             double offsetPercent = randomization.uniformRandom(MIN_CONTROL_OFFSET_PERCENT, MAX_CONTROL_OFFSET_PERCENT);
-            double offsetDistance = distance * offsetPercent;
-
-            // Random direction (positive or negative)
-            if (randomization.chance(0.5)) {
-                offsetDistance = -offsetDistance;
-            }
+            double offsetDistance = distance * offsetPercent * sineEnvelope;
+            
+            // Apply hand-biased direction with small random variation per point
+            // Main direction is consistent (curveSign), but add ±20% noise
+            double pointNoise = randomization.gaussianRandom(0, 0.2);
+            double finalSign = curveSign * (1.0 + pointNoise);
+            offsetDistance *= finalSign;
 
             int controlX = baseX + (int) (perpX * offsetDistance);
             int controlY = baseY + (int) (perpY * offsetDistance);
@@ -709,8 +751,11 @@ public class RobotMouseController {
         // Index of Difficulty (Shannon formulation)
         double id = Math.log(1 + distance / width) / Math.log(2);
         
-        // Fitts' Law: a + b * ID
-        double duration = FITTS_A + (FITTS_B * id);
+        // Fitts' Law: a + b * ID (using per-profile parameters)
+        // Each player has unique motor characteristics that determine their movement timing
+        double fittsA = playerProfile.getFittsA();
+        double fittsB = playerProfile.getFittsB();
+        double duration = fittsA + (fittsB * id);
         
         // Add random variation (human inconsistency)
         double randomAddition = randomization.gaussianRandom(0, 20.0, -50.0, 50.0);
@@ -1221,8 +1266,19 @@ public class RobotMouseController {
             
             // Move only when accumulated movement exceeds motor threshold (or at end)
             if (pendingMagnitude >= motorThreshold || t >= 0.95) {
-                int moveX = lastActualPos.x + (int) Math.round(pendingDx);
-                int moveY = lastActualPos.y + (int) Math.round(pendingDy);
+                // === Pink Noise Dithered Rounding ===
+                // Math.round() creates white noise (flat frequency spectrum) in quantization error.
+                // Real human motor noise follows 1/f (pink) spectrum where lower frequencies
+                // dominate - creating realistic drift patterns rather than jittery artifacts.
+                //
+                // Technique: Add sub-pixel pink noise before truncating. This shapes the
+                // quantization error to have 1/f characteristics instead of white noise.
+                // The noise amplitude is kept small (±0.5) to just affect rounding decisions.
+                double pinkDitherX = motorNoiseX.next() * 0.5;
+                double pinkDitherY = motorNoiseY.next() * 0.5;
+                
+                int moveX = lastActualPos.x + (int) Math.floor(pendingDx + pinkDitherX + 0.5);
+                int moveY = lastActualPos.y + (int) Math.floor(pendingDy + pinkDitherY + 0.5);
                 
                 // Clamp to viewport
                 Point clamped = clampToViewport(moveX, moveY);
@@ -1466,9 +1522,9 @@ public class RobotMouseController {
      * Generate click position within hitbox using 2D Gaussian distribution.
      * As per spec: center at 45-55% of dimensions, σ = 15% of dimension.
      * 
-     * Fatigue effects:
-     * - Session click count > 200: legacy fatigue variance (1.1-1.3x)
-     * - FatigueModel: dynamic variance based on fatigue level
+     * Fatigue effects (combined multiplicatively):
+     * - Session click count > 200: session-based variance boost (1.1-1.3x)
+     * - FatigueModel: dynamic variance based on overall fatigue level
      * 
      * Per REQUIREMENTS.md 4.2.2: Click variance multiplier = 1.0 + (fatigue * 0.4)
      */
@@ -1869,8 +1925,11 @@ public class RobotMouseController {
             double wobbleX = Math.sin(t * Math.PI * 2 * effectiveFreqX) * effectiveAmp * noiseModX;
             double wobbleY = Math.cos(t * Math.PI * 2 * effectiveFreqY) * effectiveAmp * 0.7 * noiseModY;
 
-            int x = bezierPoint.x + (int) Math.round(wobbleX);
-            int y = bezierPoint.y + (int) Math.round(wobbleY);
+            // Pink noise dithered rounding for realistic motor noise characteristics
+            double pinkDitherX = motorNoiseX.next() * 0.5;
+            double pinkDitherY = motorNoiseY.next() * 0.5;
+            int x = bezierPoint.x + (int) Math.floor(wobbleX + pinkDitherX + 0.5);
+            int y = bezierPoint.y + (int) Math.floor(wobbleY + pinkDitherY + 0.5);
 
             // Clamp to viewport
             Point clamped = clampToViewport(x, y);
@@ -2022,8 +2081,16 @@ public class RobotMouseController {
 
                 while (System.currentTimeMillis() - startTime < duration) {
                     double t = (double) (System.currentTimeMillis() - startTime) / duration;
-                    int x = (int) (start.x + (clampedTarget.x - start.x) * t);
-                    int y = (int) (start.y + (clampedTarget.y - start.y) * t);
+                    
+                    // Calculate ideal position
+                    double idealX = start.x + (clampedTarget.x - start.x) * t;
+                    double idealY = start.y + (clampedTarget.y - start.y) * t;
+                    
+                    // Pink noise dithered rounding for realistic motor noise
+                    double pinkDitherX = motorNoiseX.next() * 0.5;
+                    double pinkDitherY = motorNoiseY.next() * 0.5;
+                    int x = (int) Math.floor(idealX + pinkDitherX + 0.5);
+                    int y = (int) Math.floor(idealY + pinkDitherY + 0.5);
 
                     // Clamp interpolated point too (paranoid safety)
                     Point clamped = clampToViewport(x, y);

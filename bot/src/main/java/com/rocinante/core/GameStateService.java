@@ -255,7 +255,7 @@ public class GameStateService {
     /** Single-thread executor for off-thread price fetches. */
     private final ExecutorService priceExecutor = Executors.newSingleThreadExecutor(
             r -> {
-                Thread t = new Thread(r, "rocinante-price-cache");
+                Thread t = new Thread(r, "Thread-10");
                 t.setDaemon(true);
                 return t;
             });

@@ -78,11 +78,6 @@ public class FatigueModel {
     // === Effect multiplier factors (per REQUIREMENTS.md 4.2.2) ===
     
     /**
-     * Factor for delay multiplier: delay_mult = 1.0 + (fatigue * this)
-     */
-    private static final double DELAY_FACTOR = 0.5;
-    
-    /**
      * Factor for click variance: variance_mult = 1.0 + (fatigue * this)
      */
     private static final double CLICK_VARIANCE_FACTOR = 0.4;
@@ -91,6 +86,18 @@ public class FatigueModel {
      * Factor for misclick probability: misclick_mult = 1.0 + (fatigue * this)
      */
     private static final double MISCLICK_FACTOR = 2.0;
+    
+    /**
+     * Factor for Ex-Gaussian σ (variance): sigma_mult = 1.0 + (fatigue * this)
+     * Tired people are less consistent - more spread in their reaction times.
+     */
+    private static final double SIGMA_FACTOR = 0.6;
+    
+    /**
+     * Factor for Ex-Gaussian τ (tail): tau_mult = 1.0 + (fatigue * this)
+     * Tired people have more "zoning out" moments - heavier right tail.
+     */
+    private static final double TAU_FACTOR = 0.8;
     
     // === Realism features: jagged fatigue curves ===
     
@@ -584,15 +591,25 @@ public class FatigueModel {
     // ========================================================================
 
     /**
-     * Get the delay multiplier based on current fatigue.
-     * Applied to all timing delays.
+     * Get the Ex-Gaussian sigma (σ) multiplier based on current fatigue.
+     * Tired people have more variance - less consistent timing.
+     * At max fatigue: σ becomes 1.6x larger.
      * 
-     * Per spec: 1.0 + (fatigue * 0.5) — up to 1.5x (50% slower) when exhausted.
-     * 
-     * @return delay multiplier (1.0 - 1.5)
+     * @return sigma multiplier (1.0 - 1.6)
      */
-    public double getDelayMultiplier() {
-        return 1.0 + (getFatigueLevel() * DELAY_FACTOR);
+    public double getSigmaMultiplier() {
+        return 1.0 + (getFatigueLevel() * SIGMA_FACTOR);
+    }
+    
+    /**
+     * Get the Ex-Gaussian tau (τ) multiplier based on current fatigue.
+     * Tired people have more "zoning out" - heavier right tail.
+     * At max fatigue: τ becomes 1.8x larger.
+     * 
+     * @return tau multiplier (1.0 - 1.8)
+     */
+    public double getTauMultiplier() {
+        return 1.0 + (getFatigueLevel() * TAU_FACTOR);
     }
 
     /**
@@ -717,10 +734,11 @@ public class FatigueModel {
      */
     public String getSummary() {
         return String.format(
-                "Fatigue[level=%.1f%%, delayMult=%.2f, varianceMult=%.2f, misclickMult=%.2f, " +
+                "Fatigue[level=%.1f%%, σMult=%.2f, τMult=%.2f, clickVar=%.2f, misclick=%.2f, " +
                 "actions=%d, onBreak=%s, sessionHrs=%.1f, crashes=%d, coffeeBreaks=%d]",
                 getFatigueLevel() * 100,
-                getDelayMultiplier(),
+                getSigmaMultiplier(),
+                getTauMultiplier(),
                 getClickVarianceMultiplier(),
                 getMisclickMultiplier(),
                 getSessionActionCount(),

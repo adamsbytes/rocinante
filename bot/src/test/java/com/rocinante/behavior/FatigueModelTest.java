@@ -172,18 +172,33 @@ public class FatigueModelTest {
     // ========================================================================
 
     @Test
-    public void testGetDelayMultiplier_ZeroFatigue_ReturnsOne() {
+    public void testGetSigmaMultiplier_ZeroFatigue_ReturnsOne() {
         fatigueModel.setFatigueLevel(0.0);
         
-        assertEquals(1.0, fatigueModel.getDelayMultiplier(), 0.001);
+        assertEquals(1.0, fatigueModel.getSigmaMultiplier(), 0.001);
     }
 
     @Test
-    public void testGetDelayMultiplier_MaxFatigue_ReturnsOnePointFive() {
+    public void testGetSigmaMultiplier_MaxFatigue_ReturnsOnePointSix() {
         fatigueModel.setFatigueLevel(1.0);
         
-        // 1.0 + (1.0 * 0.5) = 1.5
-        assertEquals(1.5, fatigueModel.getDelayMultiplier(), 0.001);
+        // 1.0 + (1.0 * 0.6) = 1.6
+        assertEquals(1.6, fatigueModel.getSigmaMultiplier(), 0.001);
+    }
+    
+    @Test
+    public void testGetTauMultiplier_ZeroFatigue_ReturnsOne() {
+        fatigueModel.setFatigueLevel(0.0);
+        
+        assertEquals(1.0, fatigueModel.getTauMultiplier(), 0.001);
+    }
+
+    @Test
+    public void testGetTauMultiplier_MaxFatigue_ReturnsOnePointEight() {
+        fatigueModel.setFatigueLevel(1.0);
+        
+        // 1.0 + (1.0 * 0.8) = 1.8
+        assertEquals(1.8, fatigueModel.getTauMultiplier(), 0.001);
     }
 
     @Test

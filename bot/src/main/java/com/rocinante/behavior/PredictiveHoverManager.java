@@ -76,7 +76,7 @@ import java.util.stream.Collectors;
  * 
  * @see PredictiveHoverState
  * @see PlayerProfile#getBasePredictionRate()
- * @see FatigueModel#getDelayMultiplier()
+ * @see FatigueModel#getSigmaMultiplier()
  * @see AttentionModel#getCurrentState()
  */
 @Slf4j

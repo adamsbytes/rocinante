@@ -113,7 +113,7 @@ public class BankStateManager {
                 .setPrettyPrinting()
                 .create();
         this.saveExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "BankState-Saver");
+            Thread t = new Thread(r, "Thread-12");
             t.setDaemon(true);
             return t;
         });

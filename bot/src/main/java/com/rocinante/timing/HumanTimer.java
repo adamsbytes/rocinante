@@ -33,29 +33,15 @@ public class HumanTimer {
     private final ScheduledExecutorService executor;
 
     /**
-     * Legacy fatigue multiplier - deprecated, use FatigueModel instead.
-     * Kept for backwards compatibility.
-     * Default: 1.0 (no fatigue effect)
-     */
-    @Getter
-    @Setter
-    @Deprecated
-    private volatile double fatigueMultiplier = 1.0;
-
-    /**
-     * FatigueModel for dynamic fatigue effects.
-     * When set, fatigue multiplier is obtained from this model.
+     * FatigueModel for fatigue-based timing effects.
      */
     @Setter
-    @Nullable
     private FatigueModel fatigueModel;
 
     /**
      * AttentionModel for attention state effects.
-     * When set, attention multiplier is obtained from this model.
      */
     @Setter
-    @Nullable
     private AttentionModel attentionModel;
 
     @Inject
@@ -103,7 +89,7 @@ public class HumanTimer {
      */
     public long getDelay(DelayProfile profile) {
         long baseDelay = calculateBaseDelay(profile, profile.getMean());
-        return applyFatigue(baseDelay);
+        return applyModifiers(baseDelay);
     }
 
     /**
@@ -119,7 +105,7 @@ public class HumanTimer {
         }
         double adjustedMean = DelayProfile.DIALOGUE_READ.getAdjustedMeanForDialogue(wordCount);
         long baseDelay = calculateBaseDelay(DelayProfile.DIALOGUE_READ, adjustedMean);
-        return applyFatigue(baseDelay);
+        return applyModifiers(baseDelay);
     }
 
     // ========================================================================
@@ -204,7 +190,7 @@ public class HumanTimer {
      */
     public long getCustomDelay(DistributionType type, double mean, double stdDev) {
         long baseDelay = calculateFromDistribution(type, mean, stdDev, null, null);
-        return applyFatigue(baseDelay);
+        return applyModifiers(baseDelay);
     }
 
     /**
@@ -219,7 +205,7 @@ public class HumanTimer {
      */
     public long getCustomDelay(DistributionType type, double mean, double stdDev, Long min, Long max) {
         long baseDelay = calculateFromDistribution(type, mean, stdDev, min, max);
-        return applyFatigue(baseDelay);
+        return applyModifiers(baseDelay);
     }
 
     /**
@@ -232,7 +218,7 @@ public class HumanTimer {
      */
     public long getUniformDelay(long min, long max) {
         long baseDelay = randomization.uniformRandomLong(min, max);
-        return applyFatigue(baseDelay);
+        return applyModifiers(baseDelay);
     }
 
     /**
@@ -246,7 +232,7 @@ public class HumanTimer {
     public long getGaussianDelay(double mean, double stdDev) {
         long baseDelay = Math.round(randomization.gaussianRandom(mean, stdDev));
         baseDelay = Math.max(0, baseDelay); // Ensure non-negative
-        return applyFatigue(baseDelay);
+        return applyModifiers(baseDelay);
     }
 
     /**
@@ -260,7 +246,7 @@ public class HumanTimer {
      */
     public long getGaussianDelay(double mean, double stdDev, long min, long max) {
         long baseDelay = randomization.gaussianRandomLong(mean, stdDev, min, max);
-        return applyFatigue(baseDelay);
+        return applyModifiers(baseDelay);
     }
 
     /**
@@ -272,7 +258,7 @@ public class HumanTimer {
      */
     public long getPoissonDelay(double lambda) {
         long baseDelay = randomization.poissonRandom(lambda);
-        return applyFatigue(baseDelay);
+        return applyModifiers(baseDelay);
     }
 
     /**
@@ -285,7 +271,7 @@ public class HumanTimer {
      */
     public long getPoissonDelay(double lambda, long min, long max) {
         long baseDelay = randomization.poissonRandomLong(lambda, min, max);
-        return applyFatigue(baseDelay);
+        return applyModifiers(baseDelay);
     }
 
     /**
@@ -297,7 +283,7 @@ public class HumanTimer {
      */
     public long getExponentialDelay(double lambda) {
         long baseDelay = Math.round(randomization.exponentialRandom(lambda));
-        return applyFatigue(baseDelay);
+        return applyModifiers(baseDelay);
     }
 
     /**
@@ -310,7 +296,7 @@ public class HumanTimer {
      */
     public long getExponentialDelay(double lambda, long min, long max) {
         long baseDelay = randomization.exponentialRandomLong(lambda, min, max);
-        return applyFatigue(baseDelay);
+        return applyModifiers(baseDelay);
     }
 
     // ========================================================================
@@ -461,67 +447,41 @@ public class HumanTimer {
     }
 
     /**
-     * Calculate a delay value from the specified distribution (legacy overload without tau).
-     * For backward compatibility with getCustomDelay methods.
+     * Calculate a delay value from the specified distribution (overload without tau).
      */
     private long calculateFromDistribution(DistributionType type, double mean, double stdDev,
                                            Long min, Long max) {
-        // Default tau to 0 (no effect for non-Ex-Gaussian distributions)
         return calculateFromDistribution(type, mean, stdDev, 0.0, min, max);
     }
 
     /**
-     * Apply fatigue and attention modifiers to a base delay.
-     * 
-     * Order of application:
-     * 1. Fatigue multiplier (from FatigueModel or legacy field)
-     * 2. Attention multiplier (from AttentionModel)
-     * 
-     * Combined multiplier: baseDelay * fatigueMult * attentionMult
+     * Get the fatigue sigma multiplier (for Ex-Gaussian σ parameter).
+     */
+    private double getFatigueSigmaMultiplier() {
+        return fatigueModel != null ? fatigueModel.getSigmaMultiplier() : 1.0;
+    }
+    
+    /**
+     * Get the fatigue tau multiplier (for Ex-Gaussian τ parameter).
+     */
+    private double getFatigueTauMultiplier() {
+        return fatigueModel != null ? fatigueModel.getTauMultiplier() : 1.0;
+    }
+
+    /**
+     * Get the attention multiplier from AttentionModel.
+     */
+    private double getAttentionMultiplier() {
+        return attentionModel != null ? attentionModel.getDelayMultiplier() : 1.0;
+    }
+
+    /**
+     * Apply modifiers to a base delay (for non-distribution-based delays).
      */
     private long applyModifiers(long baseDelay) {
-        double effectiveFatigueMultiplier = getEffectiveFatigueMultiplier();
-        double effectiveAttentionMultiplier = getEffectiveAttentionMultiplier();
-        
-        double combinedMultiplier = effectiveFatigueMultiplier * effectiveAttentionMultiplier;
-        
-        if (combinedMultiplier <= 0) {
-            log.warn("Invalid combined multiplier: {}, using 1.0", combinedMultiplier);
-            return baseDelay;
-        }
-        
-        return Math.round(baseDelay * combinedMultiplier);
-    }
-
-    /**
-     * Get the effective fatigue multiplier.
-     * Uses FatigueModel if available, otherwise falls back to legacy field.
-     */
-    private double getEffectiveFatigueMultiplier() {
-        if (fatigueModel != null) {
-            return fatigueModel.getDelayMultiplier();
-        }
-        return fatigueMultiplier;
-    }
-
-    /**
-     * Get the effective attention multiplier.
-     * Uses AttentionModel if available, otherwise returns 1.0.
-     */
-    private double getEffectiveAttentionMultiplier() {
-        if (attentionModel != null) {
-            return attentionModel.getDelayMultiplier();
-        }
-        return 1.0;
-    }
-
-    /**
-     * Apply fatigue multiplier to a base delay.
-     * @deprecated Use applyModifiers instead for full behavioral support
-     */
-    @Deprecated
-    private long applyFatigue(long baseDelay) {
-        return applyModifiers(baseDelay);
+        double sigmaMult = getFatigueSigmaMultiplier();
+        double attentionMult = getAttentionMultiplier();
+        return Math.round(baseDelay * sigmaMult * attentionMult);
     }
 
     // ========================================================================
@@ -559,16 +519,6 @@ public class HumanTimer {
     }
 
     /**
-     * Reset fatigue multiplier to default (1.0).
-     * @deprecated Use FatigueModel.reset() instead for full behavioral support
-     */
-    @Deprecated
-    public void resetFatigue() {
-        this.fatigueMultiplier = 1.0;
-        log.debug("Fatigue multiplier reset to 1.0");
-    }
-
-    /**
      * Check if actions can be performed (not in AFK state).
      * 
      * @return true if actions can be taken
@@ -583,10 +533,10 @@ public class HumanTimer {
     /**
      * Get the current combined delay multiplier for debugging.
      * 
-     * @return combined multiplier (fatigue * attention)
+     * @return combined multiplier (fatigue sigma * attention)
      */
     public double getCombinedMultiplier() {
-        return getEffectiveFatigueMultiplier() * getEffectiveAttentionMultiplier();
+        return getFatigueSigmaMultiplier() * getAttentionMultiplier();
     }
 
     /**

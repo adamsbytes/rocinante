@@ -221,7 +221,9 @@ RUN mkdir -p /var/lib/dbus && \
     ln -sf /etc/machine-id /var/lib/dbus/machine-id
 
 # Create deck user (Steam Deck default username, UID 1000, GID 998 wheel group)
-RUN groupadd -g 998 wheel 2>/dev/null || true && \
+# Delete existing UID 1000 user if present (e.g., 'ubuntu' in base image)
+RUN userdel -r $(getent passwd 1000 | cut -d: -f1) 2>/dev/null || true && \
+    groupadd -g 998 wheel 2>/dev/null || true && \
     useradd -m -s /bin/bash -u 1000 -g 998 deck
 USER deck
 WORKDIR /home/deck

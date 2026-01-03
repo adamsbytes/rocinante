@@ -192,6 +192,14 @@ public class CameraController {
     private final ScheduledExecutorService executor;
     
     /**
+     * Pink noise generators for motor quantization during drag movements.
+     * Real human motor noise follows a 1/f (pink) spectrum - this creates
+     * realistic drift patterns rather than white noise from simple rounding.
+     */
+    private final PinkNoiseGenerator dragNoiseX;
+    private final PinkNoiseGenerator dragNoiseY;
+    
+    /**
      * PlayerProfile for camera preferences.
      */
     @Setter
@@ -225,10 +233,14 @@ public class CameraController {
         this.randomization = randomization;
         this.perlinNoise = perlinNoise;
         this.executor = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "CameraController");
+            Thread t = new Thread(r, "Thread-7");
             t.setDaemon(true);
             return t;
         });
+        
+        // Initialize pink noise generators for motor quantization
+        this.dragNoiseX = new PinkNoiseGenerator();
+        this.dragNoiseY = new PinkNoiseGenerator();
         
         log.info("CameraController initialized (delegating to Mouse/Keyboard controllers)");
     }
@@ -245,6 +257,10 @@ public class CameraController {
         this.randomization = randomization;
         this.perlinNoise = perlinNoise;
         this.executor = executor;
+        
+        // Initialize pink noise generators for motor quantization
+        this.dragNoiseX = new PinkNoiseGenerator();
+        this.dragNoiseY = new PinkNoiseGenerator();
     }
 
     // ========================================================================
@@ -358,14 +374,21 @@ public class CameraController {
             // Smooth ease-in-out curve
             double smoothT = smoothStep(t);
             
-            // Calculate position along drag path
-            int currentX = startX + (int) (totalDragX * smoothT);
-            int currentY = startY + (int) (totalDragY * smoothT);
+            // Calculate ideal position along drag path
+            double idealX = startX + totalDragX * smoothT;
+            double idealY = startY + totalDragY * smoothT;
             
             // Add Perlin noise for natural variation
             double[] noiseOffset = perlinNoise.getPathOffset(t, 2.0, movementSeed);
-            currentX += (int) noiseOffset[0];
-            currentY += (int) noiseOffset[1];
+            idealX += noiseOffset[0];
+            idealY += noiseOffset[1];
+            
+            // Pink noise dithered rounding for realistic motor noise
+            // Real human motor noise follows 1/f spectrum, not white noise
+            double pinkDitherX = dragNoiseX.next() * 0.5;
+            double pinkDitherY = dragNoiseY.next() * 0.5;
+            int currentX = (int) Math.floor(idealX + pinkDitherX + 0.5);
+            int currentY = (int) Math.floor(idealY + pinkDitherY + 0.5);
             
             // Move by delta (relative movement during drag)
             int deltaX = currentX - prevX;

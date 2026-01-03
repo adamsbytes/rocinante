@@ -5,11 +5,11 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
-import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Controls tick jitter to desync action timing from game tick boundaries.
@@ -37,23 +37,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class TickJitterController {
 
     // ========================================================================
-    // Default Jitter Parameters (Ex-Gaussian)
+    // Jitter Constants
     // ========================================================================
-    
-    /**
-     * Default Ex-Gaussian μ (Gaussian mean) - base perception delay.
-     */
-    private static final double DEFAULT_JITTER_MU = 40.0;
-    
-    /**
-     * Default Ex-Gaussian σ (Gaussian std dev) - consistency.
-     */
-    private static final double DEFAULT_JITTER_SIGMA = 15.0;
-    
-    /**
-     * Default Ex-Gaussian τ (exponential mean) - occasional longer delays.
-     */
-    private static final double DEFAULT_JITTER_TAU = 20.0;
     
     /**
      * Minimum jitter to avoid 0ms (still detectable).
@@ -61,12 +46,42 @@ public class TickJitterController {
     private static final long MIN_JITTER_MS = 15;
     
     /**
-     * Maximum jitter to avoid excessive delay.
+     * Maximum jitter cap (allows tick skips and attention lapses).
      */
-    private static final long MAX_JITTER_MS = 150;
+    private static final long MAX_JITTER_MS = 10_000;
+    
+    /**
+     * One game tick in milliseconds.
+     */
+    private static final long GAME_TICK_MS = 600;
+    
+    /**
+     * Threshold for logging long delays (only log DEBUG if >= this).
+     */
+    private static final long LOG_THRESHOLD_MS = 1000;
+    
+    /**
+     * Minimum delay for anticipation (player was ready).
+     */
+    private static final long ANTICIPATION_MIN_MS = 25;
+    
+    /**
+     * Maximum delay for anticipation.
+     */
+    private static final long ANTICIPATION_MAX_MS = 50;
+    
+    /**
+     * Minimum delay for attention lapse (zone out).
+     */
+    private static final long ATTENTION_LAPSE_MIN_MS = 1500;
+    
+    /**
+     * Maximum delay for attention lapse.
+     */
+    private static final long ATTENTION_LAPSE_MAX_MS = 3000;
     
     // ========================================================================
-    // Activity Scaling Factors
+    // Activity Scaling Factors (for Ex-Gaussian jitter)
     // ========================================================================
     
     /**
@@ -93,21 +108,55 @@ public class TickJitterController {
      * Jitter multiplier for IDLE activities (very relaxed).
      */
     private static final double IDLE_SCALE = 1.5;
+    
+    // ========================================================================
+    // Tick Skip Activity Scaling (different from jitter - affects probability)
+    // ========================================================================
+    
+    /**
+     * Tick skip multiplier for CRITICAL (almost never skip in boss fights).
+     */
+    private static final double CRITICAL_SKIP_SCALE = 0.1;
+    
+    /**
+     * Tick skip multiplier for HIGH (rarely skip in combat).
+     */
+    private static final double HIGH_SKIP_SCALE = 0.3;
+    
+    /**
+     * Tick skip multiplier for MEDIUM (standard).
+     */
+    private static final double MEDIUM_SKIP_SCALE = 1.0;
+    
+    /**
+     * Tick skip multiplier for LOW (more likely during grinding).
+     */
+    private static final double LOW_SKIP_SCALE = 1.5;
+    
+    /**
+     * Tick skip multiplier for AFK_COMBAT (NMZ, crabs - zoning out expected).
+     */
+    private static final double AFK_COMBAT_SKIP_SCALE = 2.0;
+    
+    /**
+     * Tick skip multiplier for IDLE (very relaxed, high skip rate).
+     */
+    private static final double IDLE_SKIP_SCALE = 2.5;
 
     // ========================================================================
-    // Dependencies
+    // Dependencies (all required - no fallbacks)
     // ========================================================================
     
     private final Randomization randomization;
     private final ScheduledExecutorService executor;
+    private final PlayerProfile playerProfile;
+    private final FatigueModel fatigueModel;
+    private final BotActivityTracker activityTracker;
     
     /**
-     * PlayerProfile for per-account jitter characteristics.
-     * If null, uses default parameters.
+     * Thread name counter for obfuscation.
      */
-    @Setter
-    @Nullable
-    private PlayerProfile playerProfile;
+    private static final AtomicInteger THREAD_COUNTER = new AtomicInteger(13);
 
     // ========================================================================
     // State
@@ -142,10 +191,16 @@ public class TickJitterController {
     // ========================================================================
 
     @Inject
-    public TickJitterController(Randomization randomization) {
+    public TickJitterController(Randomization randomization,
+                                PlayerProfile playerProfile,
+                                FatigueModel fatigueModel,
+                                BotActivityTracker activityTracker) {
         this.randomization = randomization;
+        this.playerProfile = playerProfile;
+        this.fatigueModel = fatigueModel;
+        this.activityTracker = activityTracker;
         this.executor = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "TickJitter");
+            Thread t = new Thread(r, "Thread-" + THREAD_COUNTER.getAndIncrement());
             t.setDaemon(true);
             return t;
         });
@@ -155,8 +210,15 @@ public class TickJitterController {
     /**
      * Constructor for testing with custom executor.
      */
-    public TickJitterController(Randomization randomization, ScheduledExecutorService executor) {
+    public TickJitterController(Randomization randomization,
+                                PlayerProfile playerProfile,
+                                FatigueModel fatigueModel,
+                                BotActivityTracker activityTracker,
+                                ScheduledExecutorService executor) {
         this.randomization = randomization;
+        this.playerProfile = playerProfile;
+        this.fatigueModel = fatigueModel;
+        this.activityTracker = activityTracker;
         this.executor = executor;
     }
 
@@ -166,6 +228,12 @@ public class TickJitterController {
 
     /**
      * Calculate jitter delay for the given activity type.
+     * Incorporates:
+     * - Ex-Gaussian base distribution (profile-specific)
+     * - Activity-based scaling
+     * - Fatigue-based increases
+     * - Tick skip probability (occasionally delay 1-2 game ticks)
+     * - Attention lapse probability (rare but significant delays)
      * 
      * @param activity the current activity type
      * @return jitter delay in milliseconds
@@ -180,19 +248,84 @@ public class TickJitterController {
         double sigma = getJitterSigma();
         double tau = getJitterTau();
         
+        // Apply fatigue-based increases to distribution parameters
+        double fatigueLevel = getFatigueLevel();
+        double fatiguedMu = mu * (1.0 + fatigueLevel * 0.5);  // Up to 50% slower mean
+        double fatiguedSigma = sigma * getFatigueSigmaMultiplier();
+        double fatiguedTau = tau * getFatigueTauMultiplier();
+        
         // Apply activity-based scaling
         double scale = getActivityScale(activity);
-        double scaledMu = mu * scale;
-        double scaledSigma = sigma * scale;
-        double scaledTau = tau * scale;
+        double scaledMu = fatiguedMu * scale;
+        double scaledSigma = fatiguedSigma * scale;
+        double scaledTau = fatiguedTau * scale;
         
-        // Generate Ex-Gaussian distributed jitter
+        // Generate Ex-Gaussian distributed base jitter
         double jitter = randomization.exGaussianRandom(
                 scaledMu, scaledSigma, scaledTau,
                 MIN_JITTER_MS, MAX_JITTER_MS);
         
+        // === Tick Skip Check ===
+        // Occasionally skip 1-2 game ticks (600-1200ms additional delay)
+        double tickSkipProb = getEffectiveTickSkipProbability(activity);
+        if (randomization.chance(tickSkipProb)) {
+            // 70% chance of 1 tick, 30% chance of 2 ticks
+            int ticksToSkip = randomization.chance(0.70) ? 1 : 2;
+            long skipDelay = ticksToSkip * GAME_TICK_MS;
+            jitter += skipDelay;
+        }
+        
+        // === Attention Lapse Check ===
+        // Rare but significant delays where player zones out
+        double lapseProb = getEffectiveAttentionLapseProbability(activity);
+        if (randomization.chance(lapseProb)) {
+            long lapseDelay = randomization.uniformRandomLong(
+                    ATTENTION_LAPSE_MIN_MS, ATTENTION_LAPSE_MAX_MS);
+            jitter += lapseDelay;
+        }
+        
+        // Clamp to max (should rarely hit this with new parameters)
+        jitter = Math.min(jitter, MAX_JITTER_MS);
+        
         lastJitterMs = Math.round(jitter);
+        
+        // Only log long delays to reduce noise
+        if (lastJitterMs >= LOG_THRESHOLD_MS) {
+            log.debug("Long jitter: {}ms (activity={}, fatigue={:.2f}, tickSkipProb={:.3f})",
+                    lastJitterMs, activity, fatigueLevel, tickSkipProb);
+        }
+        
         return lastJitterMs;
+    }
+    
+    /**
+     * Calculate jitter with anticipation support.
+     * When waiting for predictable events (inventory full, ore depleted),
+     * player may react faster than normal.
+     * 
+     * @param activity the current activity type
+     * @param predictableEvent true if this is a predictable event
+     * @return jitter delay in milliseconds
+     */
+    public long calculateJitterWithAnticipation(ActivityType activity, boolean predictableEvent) {
+        if (!enabled) {
+            return 0;
+        }
+        
+        // Check for anticipation (faster-than-normal reaction)
+        if (predictableEvent) {
+            double anticipationProb = getAnticipationProbability();
+            if (randomization.chance(anticipationProb)) {
+                // Player was ready - fast reaction
+                lastJitterMs = randomization.uniformRandomLong(
+                        ANTICIPATION_MIN_MS, ANTICIPATION_MAX_MS);
+                log.debug("Anticipation triggered: {}ms", lastJitterMs);
+                return lastJitterMs;
+            }
+        }
+        
+        // Normal jitter calculation
+        return calculateJitter(activity);
     }
 
     /**
@@ -244,7 +377,10 @@ public class TickJitterController {
             return false;
         }
         
-        log.debug("Scheduling {} execution: {}ms", context, delayMs);
+        // Only log long delays to reduce noise
+        if (delayMs >= LOG_THRESHOLD_MS) {
+            log.debug("Scheduling {} execution: {}ms", context, delayMs);
+        }
         
         pendingTask = executor.schedule(() -> {
             try {
@@ -323,10 +459,6 @@ public class TickJitterController {
      * Get the activity-based jitter scale factor.
      */
     private double getActivityScale(ActivityType activity) {
-        if (activity == null) {
-            return MEDIUM_SCALE;
-        }
-        
         return switch (activity) {
             case CRITICAL -> CRITICAL_SCALE;
             case HIGH -> HIGH_SCALE;
@@ -337,32 +469,175 @@ public class TickJitterController {
     }
 
     /**
-     * Get jitter μ (mean) from profile or default.
+     * Get jitter μ (mean) from profile.
      */
     private double getJitterMu() {
-        if (playerProfile != null) {
-            return playerProfile.getJitterMu();
-        }
-        return DEFAULT_JITTER_MU;
+        return playerProfile.getJitterMu();
     }
 
     /**
-     * Get jitter σ (std dev) from profile or default.
+     * Get jitter σ (std dev) from profile.
      */
     private double getJitterSigma() {
-        if (playerProfile != null) {
-            return playerProfile.getJitterSigma();
-        }
-        return DEFAULT_JITTER_SIGMA;
+        return playerProfile.getJitterSigma();
     }
 
     /**
-     * Get jitter τ (tail) from profile or default.
+     * Get jitter τ (tail) from profile.
      */
     private double getJitterTau() {
-        if (playerProfile != null) {
-            return playerProfile.getJitterTau();
+        return playerProfile.getJitterTau();
+    }
+
+    // ========================================================================
+    // Tick Skip / Attention / Anticipation Methods
+    // ========================================================================
+
+    /**
+     * Get the activity-based tick skip scale factor.
+     * Different from jitter scaling - this affects tick skip probability.
+     */
+    private double getActivitySkipScale(ActivityType activity) {
+        return switch (activity) {
+            case CRITICAL -> CRITICAL_SKIP_SCALE;
+            case HIGH -> HIGH_SKIP_SCALE;
+            case MEDIUM -> MEDIUM_SKIP_SCALE;
+            case LOW -> LOW_SKIP_SCALE;
+            case AFK_COMBAT -> AFK_COMBAT_SKIP_SCALE;
+            case IDLE -> IDLE_SKIP_SCALE;
+        };
+    }
+
+    /**
+     * Get the effective tick skip probability, accounting for:
+     * - Profile base probability
+     * - Activity type scaling
+     * - Fatigue level
+     * - Task repetitiveness
+     * 
+     * @param activity the current activity type
+     * @return effective probability (0.0-1.0)
+     */
+    private double getEffectiveTickSkipProbability(ActivityType activity) {
+        // Base probability from profile
+        double baseProb = getTickSkipBaseProbability();
+        
+        // Activity scaling
+        double activityScale = getActivitySkipScale(activity);
+        
+        // Fatigue increases tick skip probability
+        // At max fatigue, probability is 2.5x base
+        double fatigueLevel = getFatigueLevel();
+        double fatigueMultiplier = 1.0 + fatigueLevel * 1.5;
+        
+        // Repetitiveness increases tick skip probability
+        // Doing the same task for 100+ ticks doubles the probability
+        double repetitivenessMultiplier = getRepetitivenessMultiplier();
+        
+        // Combine all factors
+        double effectiveProb = baseProb * activityScale * fatigueMultiplier * repetitivenessMultiplier;
+        
+        // Cap at 25% to avoid excessive tick skipping
+        return Math.min(0.25, effectiveProb);
+    }
+
+    /**
+     * Get the effective attention lapse probability, accounting for:
+     * - Profile base probability
+     * - Activity type (critical = almost never)
+     * - Fatigue level (tired = more lapses)
+     * - Task repetitiveness
+     * 
+     * @param activity the current activity type
+     * @return effective probability (0.0-1.0)
+     */
+    private double getEffectiveAttentionLapseProbability(ActivityType activity) {
+        // No attention lapses during critical activities
+        if (activity == ActivityType.CRITICAL) {
+            return 0.0;
         }
-        return DEFAULT_JITTER_TAU;
+        
+        // Very rare during high activities
+        if (activity == ActivityType.HIGH) {
+            return getAttentionLapseProbability() * 0.1;
+        }
+        
+        // Base probability from profile
+        double baseProb = getAttentionLapseProbability();
+        
+        // Fatigue significantly increases lapse probability
+        // At max fatigue, probability is 4x base
+        double fatigueLevel = getFatigueLevel();
+        double fatigueMultiplier = 1.0 + fatigueLevel * 3.0;
+        
+        // Repetitiveness increases lapse probability
+        double repetitivenessMultiplier = getRepetitivenessMultiplier();
+        
+        // Activity-based boost for AFK/IDLE
+        double activityMultiplier = 1.0;
+        if (activity == ActivityType.AFK_COMBAT || activity == ActivityType.IDLE) {
+            activityMultiplier = 2.0;
+        } else if (activity == ActivityType.LOW) {
+            activityMultiplier = 1.5;
+        }
+        
+        // Combine all factors
+        double effectiveProb = baseProb * fatigueMultiplier * repetitivenessMultiplier * activityMultiplier;
+        
+        // Cap at 8% to avoid excessive lapses
+        return Math.min(0.08, effectiveProb);
+    }
+
+    /**
+     * Get base tick skip probability from profile.
+     */
+    private double getTickSkipBaseProbability() {
+        return playerProfile.getTickSkipBaseProbability();
+    }
+
+    /**
+     * Get base attention lapse probability from profile.
+     */
+    private double getAttentionLapseProbability() {
+        return playerProfile.getAttentionLapseProbability();
+    }
+
+    /**
+     * Get anticipation probability from profile.
+     */
+    private double getAnticipationProbability() {
+        return playerProfile.getAnticipationProbability();
+    }
+
+    // ========================================================================
+    // Fatigue Integration
+    // ========================================================================
+
+    /**
+     * Get current fatigue level (0.0-1.0).
+     */
+    private double getFatigueLevel() {
+        return fatigueModel.getFatigueLevel();
+    }
+
+    /**
+     * Get fatigue-based sigma multiplier for Ex-Gaussian distribution.
+     */
+    private double getFatigueSigmaMultiplier() {
+        return fatigueModel.getSigmaMultiplier();
+    }
+
+    /**
+     * Get fatigue-based tau multiplier for Ex-Gaussian distribution.
+     */
+    private double getFatigueTauMultiplier() {
+        return fatigueModel.getTauMultiplier();
+    }
+
+    /**
+     * Get repetitiveness multiplier from activity tracker.
+     */
+    private double getRepetitivenessMultiplier() {
+        return activityTracker.getRepetitivenessMultiplier();
     }
 }

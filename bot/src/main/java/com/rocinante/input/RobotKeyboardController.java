@@ -176,7 +176,7 @@ public class RobotKeyboardController {
         this.playerProfile = playerProfile;
         this.fatigueModel = fatigueModel;
         this.executor = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "RobotKeyboardController");
+            Thread t = new Thread(r, "Thread-5");
             t.setDaemon(true);
             return t;
         });

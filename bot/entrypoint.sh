@@ -284,7 +284,12 @@ generate_junk_files() {
         fi
         
         local days_ago=$(( (seed + i * 7) % 90 + 1 ))
-        touch -d "$days_ago days ago" "$path" 2>/dev/null || true
+        # Generate random time of day (not midnight - real users create files at various times)
+        local hours=$(( (seed + i * 13) % 24 ))
+        local minutes=$(( (seed + i * 19) % 60 ))
+        local seconds=$(( (seed + i * 23) % 60 ))
+        local time_str=$(printf "%02d:%02d:%02d" $hours $minutes $seconds)
+        touch -d "$days_ago days ago $time_str" "$path" 2>/dev/null || true
         
         echo "  Created: $file"
     done
@@ -649,13 +654,15 @@ launch_runelite_with_plugin() {
         -Djava.vendor="Arch Linux" \
         -Djava.vendor.url="https://archlinux.org/" \
         -Djava.vm.vendor="Arch Linux" \
+        -Djava.library.path="/usr/lib/jvm/java-17-openjdk/lib:/usr/lib" \
+        -Djava.version="17.0.10+7-1" \
         -Djava.specification.vendor="Oracle Corporation" \
         -Djava.vm.specification.vendor="Oracle Corporation" \
         -Dos.version="6.1.52-valve16-1-neptune-61" \
         -Djava.home="/usr/lib/jvm/java-17-openjdk" \
         -Drunelite.insecure-skip-tls-verification=true \
         $JAVA_OPENS \
-        com.rocinante.RocinanteLauncher --debug --insecure-write-credentials &
+        com.sun.jna.boot.Launcher --debug --insecure-write-credentials &
     
     RUNELITE_PID=$!
     echo "RuneLite launched with PID: $RUNELITE_PID"

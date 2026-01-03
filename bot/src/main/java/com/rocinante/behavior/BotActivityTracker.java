@@ -68,6 +68,18 @@ public class BotActivityTracker {
     private volatile ActivityType explicitActivity = null;
     
     /**
+     * Tracks how many ticks the same task type has been running.
+     * Used to detect repetitive tasks and increase tick skip probability.
+     */
+    @Getter
+    private volatile int repetitivenessCounter = 0;
+    
+    /**
+     * The class name of the last task type (for repetitiveness tracking).
+     */
+    private volatile String lastTaskClassName = null;
+    
+    /**
      * Cached account type (updated from IronmanState or varbit).
      */
     @Getter
@@ -154,6 +166,7 @@ public class BotActivityTracker {
         updateDangerousAreaStatus();
         updateBossFightStatus();
         updateCurrentActivity();
+        updateRepetitivenessCounter();
     }
 
     /**
@@ -162,6 +175,7 @@ public class BotActivityTracker {
     public void tick() {
         updateAccountType();
         updateDangerousAreaStatus();
+        updateRepetitivenessCounter();
         updateBossFightStatus();
         updateCurrentActivity();
     }
@@ -243,6 +257,54 @@ public class BotActivityTracker {
         
         // Default to idle
         return ActivityType.IDLE;
+    }
+
+    /**
+     * Update repetitiveness counter based on current task.
+     * Tracks how many consecutive ticks the same task type has been running.
+     */
+    private void updateRepetitivenessCounter() {
+        Task currentTask = currentTaskSupplier.get();
+        
+        if (currentTask == null) {
+            // No task - reset counter
+            repetitivenessCounter = 0;
+            lastTaskClassName = null;
+            return;
+        }
+        
+        String taskClassName = currentTask.getClass().getSimpleName();
+        
+        if (taskClassName.equals(lastTaskClassName)) {
+            // Same task type - increment counter
+            repetitivenessCounter++;
+        } else {
+            // Different task type - reset counter
+            repetitivenessCounter = 1;
+            lastTaskClassName = taskClassName;
+        }
+    }
+
+    /**
+     * Get a multiplier for tick skip probability based on task repetitiveness.
+     * The longer the same task type runs, the higher the multiplier.
+     * 
+     * @return multiplier (1.0 for fresh tasks, up to 2.0 for very repetitive tasks)
+     */
+    public double getRepetitivenessMultiplier() {
+        // Ramp up from 1.0 to 2.0 over 100 ticks (60 seconds at 600ms/tick)
+        // Formula: 1.0 + min(1.0, counter / 100)
+        double ramp = Math.min(1.0, repetitivenessCounter / 100.0);
+        return 1.0 + ramp;
+    }
+
+    /**
+     * Check if current task is considered "repetitive" (running for 50+ ticks).
+     * 
+     * @return true if task has been running for 50+ ticks (30+ seconds)
+     */
+    public boolean isRepetitiveTask() {
+        return repetitivenessCounter >= 50;
     }
 
     // ========================================================================

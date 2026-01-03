@@ -7,15 +7,14 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.io.Closeable;
 import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.rocinante.input.uinput.LinuxInputConstants.*;
+import static com.rocinante.input.uinput.LibCExt.*;
 
 /**
  * Base class for uinput virtual device management.
@@ -71,7 +70,7 @@ public abstract class UInputDevice implements Closeable {
     protected String physPath;
 
     // ========================================================================
-    // Polling Rate Emulation
+    // Polling Rate Emulation (Hardware-Precision via timerfd)
     // ========================================================================
 
     /**
@@ -86,9 +85,10 @@ public abstract class UInputDevice implements Closeable {
     protected final long pollIntervalNanos;
 
     /**
-     * Scheduled executor for polling rate emulation.
+     * timerfd file descriptor for hardware-precision polling.
+     * Uses kernel timers instead of Java's imprecise scheduler.
      */
-    private final ScheduledExecutorService pollExecutor;
+    private final int timerFd;
 
     /**
      * Queue of pending events to emit at the next poll interval.
@@ -101,14 +101,30 @@ public abstract class UInputDevice implements Closeable {
     private final AtomicBoolean pollingActive;
 
     /**
-     * Future for the scheduled polling task.
+     * The polling thread.
      */
-    private ScheduledFuture<?> pollFuture;
+    private Thread pollThread;
 
     /**
-     * Last time we emitted events (for timing accuracy).
+     * Buffer for reading timerfd expiration count (8 bytes = uint64_t).
      */
-    private volatile long lastEmitTimeNanos;
+    private final Memory timerReadBuffer;
+
+    /**
+     * Timespec for clock_gettime calls (reused to avoid allocation).
+     */
+    private final Timespec currentTime;
+
+    /**
+     * SecureRandom for hardware jitter simulation.
+     */
+    private final SecureRandom jitterRandom;
+
+    /**
+     * Maximum jitter in microseconds for USB polling variance.
+     * Real 1000Hz mice: ±15-50μs jitter from USB timing.
+     */
+    private static final int USB_JITTER_MICROS = 50;
 
     /**
      * A pending input event waiting to be emitted.
@@ -141,22 +157,26 @@ public abstract class UInputDevice implements Closeable {
         // Initialize polling infrastructure
         this.eventQueue = new LinkedBlockingQueue<>();
         this.pollingActive = new AtomicBoolean(false);
+        this.timerReadBuffer = new Memory(8);  // uint64_t for timerfd read
+        this.currentTime = new Timespec();
+        this.jitterRandom = new SecureRandom();
         
-        // Create a dedicated thread for polling with high priority
-        ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1, r -> {
-            Thread t = new Thread(r, "uinput-poll-" + preset.getDeviceType().name().toLowerCase());
-            t.setDaemon(true);
-            t.setPriority(Thread.MAX_PRIORITY);
-            return t;
-        });
-        executor.setRemoveOnCancelPolicy(true);
-        this.pollExecutor = executor;
+        // Create timerfd for hardware-precision polling
+        // Uses CLOCK_MONOTONIC for drift-free timing
+        this.timerFd = LibCExt.INSTANCE.timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC);
+        if (timerFd < 0) {
+            int errno = Native.getLastError();
+            throw new IllegalStateException(
+                "timerfd_create failed: errno=" + errno + 
+                " (" + LibCExt.INSTANCE.strerror(errno) + "). " +
+                "Kernel may not support timerfd.");
+        }
         
         // Open /dev/uinput via JNA
         this.fd = LibCExt.INSTANCE.open(UINPUT_PATH, O_WRONLY | O_NONBLOCK);
         if (fd < 0) {
             int errno = Native.getLastError();
-            pollExecutor.shutdownNow();
+            LibCExt.INSTANCE.close(timerFd);
             throw new IllegalStateException(
                 "Cannot open " + UINPUT_PATH + ": errno=" + errno + 
                 " (" + LibCExt.INSTANCE.strerror(errno) + "). " +
@@ -188,7 +208,7 @@ public abstract class UInputDevice implements Closeable {
 
             this.created = true;
             
-            // Start polling emulation
+            // Start polling emulation with hardware-precision timing
             startPolling();
 
             log.info("Created uinput device: {} (vendor={}, product={}, polling={}Hz, phys={})",
@@ -200,7 +220,7 @@ public abstract class UInputDevice implements Closeable {
 
         } catch (Exception e) {
             // Cleanup on failure
-            pollExecutor.shutdownNow();
+            LibCExt.INSTANCE.close(timerFd);
             LibCExt.INSTANCE.close(fd);
             throw new IllegalStateException("Failed to create uinput device: " + e.getMessage(), e);
         }
@@ -263,36 +283,84 @@ public abstract class UInputDevice implements Closeable {
     }
 
     // ========================================================================
-    // Polling Rate Emulation
+    // Polling Rate Emulation (Hardware-Precision via timerfd)
     // ========================================================================
 
     /**
-     * Start the polling emulation thread.
+     * Start the polling emulation thread using timerfd for hardware-precision timing.
+     * 
+     * Uses timerfd_settime with TFD_TIMER_ABSTIME for microsecond-precision polling
+     * that matches real USB hardware timing characteristics.
      */
     private void startPolling() {
         if (pollingActive.compareAndSet(false, true)) {
-            lastEmitTimeNanos = System.nanoTime();
+            // Configure the timer for periodic firing at the polling rate
+            ITimerspec timerSpec = new ITimerspec();
             
-            // Schedule polling at fixed rate
-            long intervalMicros = TimeUnit.NANOSECONDS.toMicros(pollIntervalNanos);
-            pollFuture = pollExecutor.scheduleAtFixedRate(
-                this::pollEmit,
-                intervalMicros,
-                intervalMicros,
-                TimeUnit.MICROSECONDS
-            );
+            // Set interval (repeating)
+            timerSpec.it_interval.tv_sec = 0;
+            timerSpec.it_interval.tv_nsec = pollIntervalNanos;
+            
+            // Set initial expiration (one interval from now)
+            LibCExt.INSTANCE.clock_gettime(CLOCK_MONOTONIC, currentTime);
+            long startNanos = currentTime.toNanos() + pollIntervalNanos;
+            timerSpec.it_value.setNanos(startNanos);
+            
+            // Arm the timer with absolute time for precision
+            int result = LibCExt.INSTANCE.timerfd_settime(timerFd, TFD_TIMER_ABSTIME, timerSpec, null);
+            if (result < 0) {
+                int errno = Native.getLastError();
+                throw new IllegalStateException(
+                    "timerfd_settime failed: errno=" + errno + 
+                    " (" + LibCExt.INSTANCE.strerror(errno) + ")");
+            }
+            
+            // Start the polling thread
+            // Thread name obfuscated to look like standard JVM thread (avoids detection)
+            int threadNum = 10 + (preset.getDeviceType() == DeviceType.MOUSE ? 3 : 7);
+            pollThread = new Thread(this::pollLoop, "Thread-" + threadNum);
+            pollThread.setDaemon(true);
+            pollThread.setPriority(Thread.MAX_PRIORITY);
+            pollThread.start();
         }
     }
 
     /**
-     * Poll and emit queued events.
-     * Called at the polling rate interval.
+     * Main polling loop - blocks on timerfd for hardware-precision timing.
+     * 
+     * The kernel wakes this thread at precise intervals determined by the USB
+     * polling rate, providing timing accuracy within ~10-50 microseconds.
+     */
+    private void pollLoop() {
+        while (pollingActive.get() && created) {
+            // Block until timer fires (hardware-precision wait)
+            // The read returns the number of expirations since last read
+            long bytesRead = LibCExt.INSTANCE.read(timerFd, timerReadBuffer, 8);
+            
+            if (bytesRead < 0) {
+                int errno = Native.getLastError();
+                if (errno == 4) {  // EINTR - interrupted by signal
+                    continue;
+                }
+                log.warn("timerfd read failed: errno={} ({})", 
+                    errno, LibCExt.INSTANCE.strerror(errno));
+                break;
+            }
+            
+            if (!pollingActive.get() || !created) {
+                break;
+            }
+            
+            // Emit all queued events
+            pollEmit();
+        }
+    }
+
+    /**
+     * Poll and emit queued events with hardware-realistic timestamps.
+     * Called at the polling rate interval by the timerfd-based loop.
      */
     private void pollEmit() {
-        if (!created || !pollingActive.get()) {
-            return;
-        }
-
         // Drain all queued events
         PendingEvent event;
         boolean hasEvents = false;
@@ -306,8 +374,6 @@ public abstract class UInputDevice implements Closeable {
         if (hasEvents) {
             emitEventImmediate(EV_SYN, SYN_REPORT, 0);
         }
-
-        lastEmitTimeNanos = System.nanoTime();
     }
 
     /**
@@ -356,6 +422,9 @@ public abstract class UInputDevice implements Closeable {
      * Emit an event immediately (bypassing the queue).
      * Use for synchronous operations or from the polling thread.
      * 
+     * Uses clock_gettime(CLOCK_MONOTONIC) for nanosecond-precision timestamps
+     * with realistic hardware jitter simulation (uniform ±50μs).
+     * 
      * THREAD SAFETY: This method is synchronized because the eventBuffer
      * is shared. Multiple threads could otherwise corrupt the buffer.
      * 
@@ -368,10 +437,35 @@ public abstract class UInputDevice implements Closeable {
             throw new IllegalStateException("Device not created");
         }
 
-        // Get current time
-        long timeMs = System.currentTimeMillis();
-        long timeSec = timeMs / 1000;
-        long timeUsec = (timeMs % 1000) * 1000;
+        // Get current time with nanosecond precision using CLOCK_REALTIME
+        // (kernel expects wall-clock time in input_event, not monotonic time)
+        Timespec now = new Timespec();
+        LibCExt.INSTANCE.clock_gettime(0, now);  // CLOCK_REALTIME = 0
+        
+        // Add realistic hardware jitter (uniform ±50μs)
+        // Real USB mice have timing variance from:
+        // - USB polling timing variance (±50μs for 1000Hz mice)
+        // - Kernel interrupt latency (±10-100μs)
+        // - HPET/TSC drift (±1-5μs)
+        // Using uniform distribution (not Gaussian) to match hardware characteristics
+        int jitterMicros = jitterRandom.nextInt(USB_JITTER_MICROS * 2 + 1) - USB_JITTER_MICROS;
+        long jitterNanos = jitterMicros * 1000L;
+        
+        // Apply jitter to timestamp
+        long totalNanos = now.tv_nsec + jitterNanos;
+        long timeSec = now.tv_sec;
+        
+        // Handle nanosecond overflow/underflow
+        if (totalNanos >= 1_000_000_000L) {
+            timeSec += 1;
+            totalNanos -= 1_000_000_000L;
+        } else if (totalNanos < 0) {
+            timeSec -= 1;
+            totalNanos += 1_000_000_000L;
+        }
+        
+        // Convert to microseconds for input_event (tv_usec field)
+        long timeUsec = totalNanos / 1000;
 
         // Write input_event struct to native memory
         eventBuffer.setLong(0, timeSec);
@@ -498,10 +592,21 @@ public abstract class UInputDevice implements Closeable {
     public void close() {
         // Stop polling
         pollingActive.set(false);
-        if (pollFuture != null) {
-            pollFuture.cancel(false);
+        
+        // Close timerfd to unblock the polling thread
+        LibCExt.INSTANCE.close(timerFd);
+        
+        // Wait for polling thread to finish
+        if (pollThread != null && pollThread.isAlive()) {
+            try {
+                pollThread.join(1000);  // Wait up to 1 second
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            if (pollThread.isAlive()) {
+                pollThread.interrupt();
+            }
         }
-        pollExecutor.shutdownNow();
         
         // Flush any remaining events
         if (created) {
@@ -518,7 +623,7 @@ public abstract class UInputDevice implements Closeable {
             created = false;
         }
 
-        // Close the file descriptor
+        // Close the uinput file descriptor
         LibCExt.INSTANCE.close(fd);
         
         log.info("Closed uinput device: {}", preset.getName());

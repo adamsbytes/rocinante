@@ -212,6 +212,9 @@ public class RocinantePlugin extends Plugin
     
     // Idle habit supplier - provides human-like idle behaviors when queue is empty
     private IdleHabitSupplier idleHabitSupplier;
+    
+    // Security monitor - detects debugging/tracing attempts
+    private SecurityMonitor securityMonitor;
 
     // === Behavioral Anti-Detection Components ===
 
@@ -292,6 +295,18 @@ public class RocinantePlugin extends Plugin
     protected void startUp() throws Exception
     {
         log.info("Rocinante plugin starting...");
+        
+        // Start security monitoring (detects debuggers/tracers)
+        // On detection, triggers graceful shutdown
+        securityMonitor = new SecurityMonitor(() -> {
+            log.error("Security check failed - initiating shutdown");
+            try {
+                shutDown();
+            } catch (Exception e) {
+                log.error("Shutdown failed: {}", e.getMessage());
+            }
+        });
+        securityMonitor.start();
 
         // Register GameStateService with the event bus
         // GameStateService needs to receive events for state tracking
@@ -893,6 +908,11 @@ public class RocinantePlugin extends Plugin
     protected void shutDown() throws Exception
     {
         log.info("Rocinante plugin stopping...");
+        
+        // Stop security monitoring first
+        if (securityMonitor != null) {
+            securityMonitor.stop();
+        }
 
         // Stop task execution first
         taskExecutor.stop();
