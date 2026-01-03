@@ -9,6 +9,7 @@ import com.rocinante.tasks.AbstractTask;
 import com.rocinante.tasks.TaskContext;
 import com.rocinante.tasks.TaskState;
 import com.rocinante.timing.DelayProfile;
+import com.rocinante.timing.HumanTimer.ReactionContext;
 import com.rocinante.ui.GrandExchangeWidgets;
 import lombok.Getter;
 import lombok.Setter;
@@ -861,7 +862,7 @@ public class GrandExchangeTask extends AbstractTask {
 
         operationPending = true;
         ctx.getKeyboardController().pressEnter()
-                .thenCompose(v -> ctx.getHumanTimer().sleep(DelayProfile.REACTION))
+                .thenCompose(v -> ctx.getHumanTimer().sleepContextual(ReactionContext.EXPECTED))
                 .thenRun(() -> {
                     operationPending = false;
                     waitTicks = 0;
@@ -922,7 +923,7 @@ public class GrandExchangeTask extends AbstractTask {
                     return ctx.getHumanTimer().sleep(DelayProfile.MENU_SELECT);
                 })
                 .thenCompose(v -> ctx.getKeyboardController().type(String.valueOf(calculatedPrice)))
-                .thenCompose(v -> ctx.getHumanTimer().sleep(DelayProfile.REACTION))
+                .thenCompose(v -> ctx.getHumanTimer().sleepContextual(ReactionContext.COMPLEX))
                 .thenCompose(v -> ctx.getKeyboardController().pressEnter())
                 .thenRun(() -> {
                     operationPending = false;
@@ -1001,7 +1002,7 @@ public class GrandExchangeTask extends AbstractTask {
         // Type the quantity
         operationPending = true;
         ctx.getKeyboardController().type(String.valueOf(quantity))
-                .thenCompose(v -> ctx.getHumanTimer().sleep(DelayProfile.REACTION))
+                .thenCompose(v -> ctx.getHumanTimer().sleepContextual(ReactionContext.EXPECTED))
                 .thenCompose(v -> ctx.getKeyboardController().pressEnter())
                 .thenRun(() -> {
                     operationPending = false;

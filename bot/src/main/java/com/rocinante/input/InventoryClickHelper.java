@@ -1,5 +1,7 @@
 package com.rocinante.input;
 
+import com.rocinante.behavior.PlayerProfile;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.widgets.Widget;
@@ -67,6 +69,14 @@ public class InventoryClickHelper {
     private final Client client;
     private final ClientThread clientThread;
     private final RobotMouseController mouseController;
+    
+    /**
+     * Player profile for per-player click position preferences.
+     * Set via setter because profile is loaded after plugin startup.
+     */
+    @Setter
+    @Nullable
+    private PlayerProfile playerProfile;
 
     // ========================================================================
     // Constructor
@@ -129,9 +139,10 @@ public class InventoryClickHelper {
                     return;
                 }
 
-                // Calculate click point with humanization (per Section 3.1.2)
-                int clickX = slotBounds.x + randomOffset(slotBounds.width);
-                int clickY = slotBounds.y + randomOffset(slotBounds.height);
+                // Calculate click point with humanization + profile bias (per Section 3.1.2)
+                int[] coords = calculateClickWithBias(slotBounds);
+                int clickX = coords[0];
+                int clickY = coords[1];
 
                 if (description != null) {
                     log.debug("{} - clicking slot {} at ({}, {})", description, slot, clickX, clickY);
@@ -139,7 +150,7 @@ public class InventoryClickHelper {
                     log.debug("Clicking inventory slot {} at ({}, {})", slot, clickX, clickY);
                 }
 
-                coordsFuture.complete(new int[]{clickX, clickY});
+                coordsFuture.complete(coords);
             } catch (Exception e) {
                 log.error("Error getting inventory slot coordinates: {}", e.getMessage(), e);
                 coordsFuture.completeExceptionally(e);
@@ -200,11 +211,10 @@ public class InventoryClickHelper {
                     return;
                 }
 
-                // Calculate hover point with humanization
-                int hoverX = slotBounds.x + randomOffset(slotBounds.width);
-                int hoverY = slotBounds.y + randomOffset(slotBounds.height);
+                // Calculate hover point with humanization + profile bias
+                int[] coords = calculateClickWithBias(slotBounds);
 
-                coordsFuture.complete(new int[]{hoverX, hoverY});
+                coordsFuture.complete(coords);
             } catch (Exception e) {
                 log.error("Error getting hover slot coordinates: {}", e.getMessage(), e);
                 coordsFuture.completeExceptionally(e);
@@ -427,6 +437,58 @@ public class InventoryClickHelper {
      */
     int randomOffset(int dimension) {
         return ClickPointCalculator.calculateGaussianOffset(dimension);
+    }
+
+    /**
+     * Generate a random offset with player profile bias applied.
+     * The bias shifts the center of the Gaussian distribution toward the player's preference.
+     * 
+     * @param dimension the width or height of the clickable area
+     * @param profileBias the bias from PlayerProfile (0.35-0.65, where 0.5 is center)
+     * @return humanized offset with profile bias applied
+     */
+    int randomOffsetWithBias(int dimension, double profileBias) {
+        // Base Gaussian offset centered at 45-55% (per REQUIREMENTS.md)
+        double baseCenter = 0.45 + ThreadLocalRandom.current().nextDouble() * 0.10;  // 0.45-0.55
+        
+        // Apply profile bias: shift center toward player's habitual click position
+        // profileBias ranges 0.35-0.65, where 0.5 is neutral
+        // This creates a consistent micro-offset unique to each player
+        double biasShift = (profileBias - 0.5) * 0.20;  // Max ±10% shift
+        double adjustedCenter = baseCenter + biasShift;
+        
+        // Clamp to valid range (0.35-0.65 of dimension)
+        adjustedCenter = Math.max(0.35, Math.min(0.65, adjustedCenter));
+        
+        // Generate Gaussian distributed point with σ = 15% of dimension
+        double sigma = dimension * 0.15;
+        double offset = adjustedCenter * dimension + ThreadLocalRandom.current().nextGaussian() * sigma;
+        
+        // Clamp to valid bounds
+        return (int) Math.max(1, Math.min(dimension - 1, offset));
+    }
+
+    /**
+     * Calculate click coordinates for an inventory slot with profile-based biases.
+     * Uses the player's habitual click position preferences within each slot.
+     * 
+     * @param slotBounds the bounds of the inventory slot
+     * @return click coordinates [x, y] with profile-based humanization
+     */
+    int[] calculateClickWithBias(Rectangle slotBounds) {
+        int clickX, clickY;
+        
+        if (playerProfile != null) {
+            // Apply player-specific click position biases
+            clickX = slotBounds.x + randomOffsetWithBias(slotBounds.width, playerProfile.getInventoryClickColBias());
+            clickY = slotBounds.y + randomOffsetWithBias(slotBounds.height, playerProfile.getInventoryClickRowBias());
+        } else {
+            // Fall back to standard randomization
+            clickX = slotBounds.x + randomOffset(slotBounds.width);
+            clickY = slotBounds.y + randomOffset(slotBounds.height);
+        }
+        
+        return new int[]{clickX, clickY};
     }
 }
 

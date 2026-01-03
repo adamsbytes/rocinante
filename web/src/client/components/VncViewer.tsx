@@ -115,7 +115,7 @@ export const VncViewer: Component<VncViewerProps> = (props) => {
       });
 
       // Configure RFB options
-      rfb.viewOnly = true;       // VIEW ONLY - no mouse/keyboard input
+      rfb.viewOnly = false;      // Allow mouse/keyboard input
       rfb.scaleViewport = true;  // Scale to fit container
       rfb.resizeSession = false; // Don't resize remote desktop
       rfb.clipViewport = false;  // Don't clip

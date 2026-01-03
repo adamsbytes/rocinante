@@ -544,6 +544,85 @@ public class CameraController {
     }
 
     // ========================================================================
+    // Camera Snap-Back (Returning to Preferred Angle)
+    // ========================================================================
+
+    /**
+     * Check if the camera should snap back to the player's preferred angle.
+     * 
+     * This simulates the unconscious tendency to return to a "home" camera angle.
+     * Players develop comfort with certain angles and naturally drift back to them.
+     * 
+     * @return true if snap-back should occur
+     */
+    public boolean shouldSnapBackToPreferred() {
+        if (playerProfile == null || rotating) {
+            return false;
+        }
+        
+        // Check if enough time has passed since last movement
+        long timeSinceMovement = getTimeSinceLastMovement();
+        if (timeSinceMovement < playerProfile.getCameraSnapBackDelayMs()) {
+            return false;
+        }
+        
+        // Check if we're far enough from preferred angle
+        double currentYaw = getCurrentYawDegrees();
+        double preferredYaw = playerProfile.getPreferredCompassAngle();
+        double deviation = Math.abs(angleDifference(currentYaw, preferredYaw));
+        
+        if (deviation < playerProfile.getCameraSnapBackTolerance()) {
+            return false; // Already close enough
+        }
+        
+        // Probability check
+        return randomization.chance(playerProfile.getCameraSnapBackProbability());
+    }
+
+    /**
+     * Snap camera back toward the preferred angle.
+     * 
+     * Doesn't go exactly to preferred - adds some natural variation.
+     * The movement is gradual and human-like.
+     * 
+     * @return CompletableFuture that completes when snap-back is done
+     */
+    public CompletableFuture<Void> snapToPreferredAngle() {
+        if (playerProfile == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+        
+        double currentYaw = getCurrentYawDegrees();
+        double preferredYaw = playerProfile.getPreferredCompassAngle();
+        
+        // Add some imprecision - don't go exactly to preferred (±5-15 degrees)
+        double imprecision = randomization.uniformRandom(-15, 15);
+        double targetYaw = (preferredYaw + imprecision + 360) % 360;
+        
+        // Calculate delta (shortest path)
+        double delta = angleDifference(currentYaw, targetYaw);
+        
+        log.debug("Camera snap-back: {}° → {}° (preferred={}°, delta={}°)", 
+                String.format("%.1f", currentYaw),
+                String.format("%.1f", targetYaw),
+                String.format("%.1f", preferredYaw),
+                String.format("%.1f", delta));
+        
+        return rotateBy(delta, 0);
+    }
+
+    /**
+     * Calculate the shortest angular difference between two angles.
+     * Result is in range [-180, 180].
+     */
+    private double angleDifference(double from, double to) {
+        double diff = to - from;
+        while (diff > 180) diff -= 360;
+        while (diff < -180) diff += 360;
+        return diff;
+    }
+
+    // ========================================================================
     // Idle Drift
     // ========================================================================
 

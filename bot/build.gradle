@@ -92,11 +92,12 @@ tasks.register('shadowJar', Jar) {
 }
 
 // Standard JAR for plugin installation
+// Named innocuously to avoid detection in classpath/filesystem scans
 jar {
-    archiveBaseName.set('rocinante')
+    archiveBaseName.set('qol-tweaks')
     manifest {
         attributes(
-            'Implementation-Title': 'Rocinante',
+            'Implementation-Title': 'QoL Tweaks',
             'Implementation-Version': project.version
         )
     }

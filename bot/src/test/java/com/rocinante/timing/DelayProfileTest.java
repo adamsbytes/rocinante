@@ -16,14 +16,21 @@ public class DelayProfileTest {
 
     @Test
     public void testReaction_DistributionType() {
-        assertEquals("REACTION should use Poisson distribution",
-                DistributionType.POISSON, DelayProfile.REACTION.getDistributionType());
+        // REACTION uses Ex-Gaussian for realistic human reaction time distribution
+        assertEquals("REACTION should use Ex-Gaussian distribution",
+                DistributionType.EX_GAUSSIAN, DelayProfile.REACTION.getDistributionType());
     }
 
     @Test
-    public void testReaction_Lambda() {
-        assertEquals("REACTION lambda should be 250ms",
-                250.0, DelayProfile.REACTION.getMean(), 0.001);
+    public void testReaction_ExGaussianParameters() {
+        // Ex-Gaussian: mu=200ms (Gaussian mean), sigma=30ms, tau=50ms
+        // Effective mean reaction time = mu + tau = 250ms
+        assertEquals("REACTION mu (Gaussian mean) should be 200ms",
+                200.0, DelayProfile.REACTION.getMean(), 0.001);
+        assertEquals("REACTION sigma should be 30ms",
+                30.0, DelayProfile.REACTION.getStdDev(), 0.001);
+        assertEquals("REACTION tau should be 50ms",
+                50.0, DelayProfile.REACTION.getTau(), 0.001);
     }
 
     @Test
@@ -32,6 +39,93 @@ public class DelayProfileTest {
                 Long.valueOf(150), DelayProfile.REACTION.getMin());
         assertEquals("REACTION max should be 600ms",
                 Long.valueOf(600), DelayProfile.REACTION.getMax());
+    }
+
+    // ========================================================================
+    // REACTION_EXPECTED Profile Tests (Contextual - anticipated events)
+    // ========================================================================
+
+    @Test
+    public void testReactionExpected_DistributionType() {
+        assertEquals("REACTION_EXPECTED should use Ex-Gaussian distribution",
+                DistributionType.EX_GAUSSIAN, DelayProfile.REACTION_EXPECTED.getDistributionType());
+    }
+
+    @Test
+    public void testReactionExpected_ExGaussianParameters() {
+        // Faster than general REACTION (anticipated)
+        assertEquals("REACTION_EXPECTED mu should be 150ms",
+                150.0, DelayProfile.REACTION_EXPECTED.getMean(), 0.001);
+        assertEquals("REACTION_EXPECTED sigma should be 25ms",
+                25.0, DelayProfile.REACTION_EXPECTED.getStdDev(), 0.001);
+        assertEquals("REACTION_EXPECTED tau should be 30ms",
+                30.0, DelayProfile.REACTION_EXPECTED.getTau(), 0.001);
+    }
+
+    @Test
+    public void testReactionExpected_Bounds() {
+        assertEquals("REACTION_EXPECTED min should be 100ms",
+                Long.valueOf(100), DelayProfile.REACTION_EXPECTED.getMin());
+        assertEquals("REACTION_EXPECTED max should be 400ms",
+                Long.valueOf(400), DelayProfile.REACTION_EXPECTED.getMax());
+    }
+
+    // ========================================================================
+    // REACTION_UNEXPECTED Profile Tests (Contextual - surprise events)
+    // ========================================================================
+
+    @Test
+    public void testReactionUnexpected_DistributionType() {
+        assertEquals("REACTION_UNEXPECTED should use Ex-Gaussian distribution",
+                DistributionType.EX_GAUSSIAN, DelayProfile.REACTION_UNEXPECTED.getDistributionType());
+    }
+
+    @Test
+    public void testReactionUnexpected_ExGaussianParameters() {
+        // Slower than general REACTION (surprised)
+        assertEquals("REACTION_UNEXPECTED mu should be 350ms",
+                350.0, DelayProfile.REACTION_UNEXPECTED.getMean(), 0.001);
+        assertEquals("REACTION_UNEXPECTED sigma should be 60ms",
+                60.0, DelayProfile.REACTION_UNEXPECTED.getStdDev(), 0.001);
+        assertEquals("REACTION_UNEXPECTED tau should be 100ms",
+                100.0, DelayProfile.REACTION_UNEXPECTED.getTau(), 0.001);
+    }
+
+    @Test
+    public void testReactionUnexpected_Bounds() {
+        assertEquals("REACTION_UNEXPECTED min should be 250ms",
+                Long.valueOf(250), DelayProfile.REACTION_UNEXPECTED.getMin());
+        assertEquals("REACTION_UNEXPECTED max should be 800ms",
+                Long.valueOf(800), DelayProfile.REACTION_UNEXPECTED.getMax());
+    }
+
+    // ========================================================================
+    // REACTION_COMPLEX Profile Tests (Contextual - decision required)
+    // ========================================================================
+
+    @Test
+    public void testReactionComplex_DistributionType() {
+        assertEquals("REACTION_COMPLEX should use Ex-Gaussian distribution",
+                DistributionType.EX_GAUSSIAN, DelayProfile.REACTION_COMPLEX.getDistributionType());
+    }
+
+    @Test
+    public void testReactionComplex_ExGaussianParameters() {
+        // Slowest reaction (cognitive processing needed)
+        assertEquals("REACTION_COMPLEX mu should be 500ms",
+                500.0, DelayProfile.REACTION_COMPLEX.getMean(), 0.001);
+        assertEquals("REACTION_COMPLEX sigma should be 100ms",
+                100.0, DelayProfile.REACTION_COMPLEX.getStdDev(), 0.001);
+        assertEquals("REACTION_COMPLEX tau should be 200ms",
+                200.0, DelayProfile.REACTION_COMPLEX.getTau(), 0.001);
+    }
+
+    @Test
+    public void testReactionComplex_Bounds() {
+        assertEquals("REACTION_COMPLEX min should be 300ms",
+                Long.valueOf(300), DelayProfile.REACTION_COMPLEX.getMin());
+        assertEquals("REACTION_COMPLEX max should be 1500ms",
+                Long.valueOf(1500), DelayProfile.REACTION_COMPLEX.getMax());
     }
 
     // ========================================================================
@@ -331,9 +425,9 @@ public class DelayProfileTest {
 
     @Test
     public void testProfileCount() {
-        // REQUIREMENTS.md specifies exactly 8 profiles
-        assertEquals("Should have exactly 8 delay profiles",
-                8, DelayProfile.values().length);
+        // 8 base profiles + 3 contextual reaction profiles = 11
+        assertEquals("Should have exactly 11 delay profiles",
+                11, DelayProfile.values().length);
     }
 }
 

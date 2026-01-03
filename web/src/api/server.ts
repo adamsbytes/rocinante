@@ -1138,28 +1138,7 @@ websocket: {
         
         let buffer = typeof message === 'string' ? Buffer.from(message) : Buffer.from(message);
         
-        // VNC View-only mode: Defense-in-depth filter (x11vnc -viewonly is the primary control)
-        // This filter provides early rejection and logging, but isn't foolproof against
-        // message smuggling attacks. The VNC server enforces view-only authoritatively.
-        // RFB message types (first byte after handshake):
-        //   0 = SetPixelFormat (ALLOW - display config)
-        //   2 = SetEncodings (ALLOW - compression config)
-        //   3 = FramebufferUpdateRequest (ALLOW - needed to receive frames!)
-        //   4 = KeyEvent (BLOCK - keyboard input)
-        //   5 = PointerEvent (BLOCK - mouse input)
-        //   6 = ClientCutText (BLOCK - clipboard)
-        // Handshake messages don't follow this format, so we allow short messages
-        if (buffer.length > 0) {
-          const messageType = buffer[0];
-          
-          // Block input events (4=KeyEvent, 5=PointerEvent, 6=ClientCutText)
-          if (messageType === 4 || messageType === 5 || messageType === 6) {
-            // Silently drop input events - view-only mode
-            return;
-          }
-        }
-        
-        // Forward allowed messages (handshake, SetPixelFormat, SetEncodings, FramebufferUpdateRequest)
+        // Forward all messages to VNC server (input enabled)
         tcpSocket.write(buffer);
         return;
       } else if (ws.data.type === 'status') {

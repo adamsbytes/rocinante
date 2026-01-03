@@ -67,6 +67,12 @@ public class PerformanceMonitor {
     private final AtomicLong tickCount = new AtomicLong(0);
     private final AtomicLong severeCount = new AtomicLong(0);
     private final AtomicLong warningCount = new AtomicLong(0);
+    
+    // Work time metrics (actual task processing, excludes jitter wait)
+    private final AtomicLong totalWorkTimeNs = new AtomicLong(0);
+    private final AtomicLong maxWorkTimeNs = new AtomicLong(0);
+    private final AtomicLong workCount = new AtomicLong(0);
+    private final AtomicLong workSevereCount = new AtomicLong(0);
 
     // Per-operation timing (set by other components)
     @Getter
@@ -95,6 +101,48 @@ public class PerformanceMonitor {
      */
     public void recordTickStart() {
         tickStartNs = System.nanoTime();
+    }
+
+    /**
+     * Record actual work time (task processing after jitter delay).
+     * This is the "real" processing time that should stay within budget,
+     * independent of the intentional jitter delay.
+     *
+     * @param durationNs work duration in nanoseconds
+     */
+    public void recordWorkTime(long durationNs) {
+        long count = workCount.incrementAndGet();
+        totalWorkTimeNs.addAndGet(durationNs);
+
+        // Update max
+        long currentMax;
+        do {
+            currentMax = maxWorkTimeNs.get();
+            if (durationNs <= currentMax) {
+                break;
+            }
+        } while (!maxWorkTimeNs.compareAndSet(currentMax, durationNs));
+
+        // Log if threshold exceeded (work time should be fast)
+        if (durationNs > SEVERE_THRESHOLD_NS) {
+            workSevereCount.incrementAndGet();
+            log.error("[PERF] Work execution {} exceeded severe threshold: {}ms. " +
+                      "Task processing taking too long!",
+                      count, durationNs / 1_000_000.0);
+        } else if (durationNs > WARNING_THRESHOLD_NS) {
+            log.warn("[PERF] Work execution {} exceeded warning threshold: {}ms",
+                     count, durationNs / 1_000_000.0);
+        }
+    }
+
+    /**
+     * Convenience method to time a work block.
+     * Usage: long start = System.nanoTime(); ... work ...; recordWorkTime(System.nanoTime() - start);
+     *
+     * @return current time in nanoseconds (for use with recordWorkTime)
+     */
+    public long startWorkTimer() {
+        return System.nanoTime();
     }
 
     /**
@@ -184,8 +232,19 @@ public class PerformanceMonitor {
         double obstacleHitRate = sceneObstacleCache.getHitRate() * 100;
 
         log.info("[PERF] === Performance Summary (last {} ticks) ===", count);
-        log.info("[PERF] Tick timing: avg={}ms, max={}ms", 
+        log.info("[PERF] Tick timing (includes jitter): avg={}ms, max={}ms", 
                  String.format("%.2f", avgTickMs), String.format("%.2f", maxTickMs));
+        
+        // Work time (actual processing, excludes jitter)
+        long wCount = workCount.get();
+        if (wCount > 0) {
+            double avgWorkMs = (totalWorkTimeNs.get() / wCount) / 1_000_000.0;
+            double maxWorkMs = maxWorkTimeNs.get() / 1_000_000.0;
+            log.info("[PERF] Work timing (excl. jitter): avg={}ms, max={}ms, severe={}",
+                     String.format("%.2f", avgWorkMs), String.format("%.2f", maxWorkMs),
+                     workSevereCount.get());
+        }
+        
         log.info("[PERF] Threshold violations: severe={}, warning={}", 
                  severeCount.get(), warningCount.get());
         log.info("[PERF] Cache: {}", sceneObstacleCache.getStats());
@@ -243,6 +302,46 @@ public class PerformanceMonitor {
     }
 
     /**
+     * Get the average work time in milliseconds (excludes jitter delay).
+     *
+     * @return average work time, or 0 if no work recorded
+     */
+    public double getAverageWorkTimeMs() {
+        long count = workCount.get();
+        if (count == 0) {
+            return 0;
+        }
+        return (totalWorkTimeNs.get() / count) / 1_000_000.0;
+    }
+
+    /**
+     * Get the maximum work time in milliseconds (excludes jitter delay).
+     *
+     * @return maximum work time
+     */
+    public double getMaxWorkTimeMs() {
+        return maxWorkTimeNs.get() / 1_000_000.0;
+    }
+
+    /**
+     * Get number of work executions.
+     *
+     * @return work count
+     */
+    public long getWorkCount() {
+        return workCount.get();
+    }
+
+    /**
+     * Get number of work time severe threshold violations.
+     *
+     * @return work severe count
+     */
+    public long getWorkSevereCount() {
+        return workSevereCount.get();
+    }
+
+    /**
      * Reset all performance metrics.
      */
     public void reset() {
@@ -251,6 +350,10 @@ public class PerformanceMonitor {
         tickCount.set(0);
         severeCount.set(0);
         warningCount.set(0);
+        totalWorkTimeNs.set(0);
+        maxWorkTimeNs.set(0);
+        workCount.set(0);
+        workSevereCount.set(0);
         lastPathCostEstimateNs = 0;
         lastEntityFindNs = 0;
         lastTaskExecutionNs = 0;

@@ -3,6 +3,7 @@ package com.rocinante.tasks.impl;
 import com.rocinante.tasks.AbstractTask;
 import com.rocinante.tasks.TaskContext;
 import com.rocinante.timing.DelayProfile;
+import com.rocinante.timing.HumanTimer.ReactionContext;
 import com.rocinante.util.Randomization;
 import lombok.Getter;
 import lombok.Setter;
@@ -578,8 +579,8 @@ public class EmoteTask extends AbstractTask {
 
         clickPending = true;
 
-        // Add small hover delay before click
-        long hoverDelay = ctx.getHumanTimer().getDelay(DelayProfile.REACTION);
+        // Add small hover delay before click (EXPECTED - know which emote)
+        long hoverDelay = ctx.getHumanTimer().getContextualReaction(ReactionContext.EXPECTED);
 
         ctx.getHumanTimer().sleep(hoverDelay)
                 .thenCompose(v -> ctx.getMouseController().moveToCanvas(clickPoint.x, clickPoint.y))

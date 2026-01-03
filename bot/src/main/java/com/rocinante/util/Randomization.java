@@ -196,6 +196,125 @@ public class Randomization {
         return -Math.log(1 - random.nextDouble()) / lambda;
     }
 
+    // ========================================================================
+    // Ex-Gaussian Distribution (Human Reaction Times)
+    // ========================================================================
+
+    /**
+     * Generate a random value from an ex-Gaussian distribution.
+     * 
+     * The ex-Gaussian (exponentially modified Gaussian) is the convolution of
+     * a normal distribution and an exponential distribution. It produces a
+     * right-skewed distribution that closely models human reaction times.
+     * 
+     * Real human reaction time data shows:
+     * - A roughly Gaussian core (fast reactions cluster around the mean)
+     * - A long right tail (occasional slow reactions due to distraction, fatigue)
+     * 
+     * This is more realistic than pure Gaussian which is symmetric.
+     *
+     * @param mu    the mean of the Gaussian component (central tendency)
+     * @param sigma the standard deviation of the Gaussian component (consistency)
+     * @param tau   the mean of the exponential component (tail heaviness)
+     * @return a random value from ex-Gaussian(μ, σ, τ)
+     */
+    public double exGaussianRandom(double mu, double sigma, double tau) {
+        // Gaussian component: the "core" of the distribution
+        double gaussian = random.nextGaussian() * sigma + mu;
+        
+        // Exponential component: adds the right tail
+        // Using 1 - nextDouble() to avoid log(0)
+        double exponential = -tau * Math.log(1 - random.nextDouble());
+        
+        return gaussian + exponential;
+    }
+
+    /**
+     * Generate a bounded random value from an ex-Gaussian distribution.
+     *
+     * @param mu    the mean of the Gaussian component
+     * @param sigma the standard deviation of the Gaussian component
+     * @param tau   the mean of the exponential component (tail heaviness)
+     * @param min   the minimum allowed value
+     * @param max   the maximum allowed value
+     * @return a random value from ex-Gaussian(μ, σ, τ) clamped to [min, max]
+     */
+    public double exGaussianRandom(double mu, double sigma, double tau, double min, double max) {
+        double value = exGaussianRandom(mu, sigma, tau);
+        return clamp(value, min, max);
+    }
+
+    /**
+     * Generate a bounded long from an ex-Gaussian distribution.
+     * Ideal for timing delays where human reaction patterns matter.
+     *
+     * @param mu    the mean of the Gaussian component in milliseconds
+     * @param sigma the standard deviation in milliseconds
+     * @param tau   the exponential tail parameter in milliseconds
+     * @param min   the minimum allowed value in milliseconds
+     * @param max   the maximum allowed value in milliseconds
+     * @return a random long from ex-Gaussian clamped to [min, max]
+     */
+    public long exGaussianRandomLong(double mu, double sigma, double tau, long min, long max) {
+        return Math.round(exGaussianRandom(mu, sigma, tau, min, max));
+    }
+
+    // ========================================================================
+    // Log-Normal Distribution (Attention/Session Timing)
+    // ========================================================================
+
+    /**
+     * Generate a random value from a log-normal distribution.
+     * 
+     * The log-normal distribution is right-skewed with a fat tail, making it ideal
+     * for modeling human attention spans, session lengths, and break intervals.
+     * Unlike uniform distribution, it produces:
+     * - Most values clustered around the median
+     * - Occasional much longer values (the "fat tail")
+     * - No values below zero
+     * 
+     * Parameters:
+     * - μ (mu): Controls the median: median = e^μ
+     * - σ (sigma): Controls the spread/tail heaviness
+     * 
+     * Example: μ=4.5, σ=0.6 gives median≈90s, mean≈107s, 95th percentile≈220s
+     *
+     * @param mu    the mean of the underlying normal distribution (log-scale)
+     * @param sigma the standard deviation of the underlying normal (controls tail)
+     * @return a random value from LogNormal(μ, σ)
+     */
+    public double logNormalRandom(double mu, double sigma) {
+        return Math.exp(mu + sigma * random.nextGaussian());
+    }
+
+    /**
+     * Generate a bounded random value from a log-normal distribution.
+     *
+     * @param mu    the mean of the underlying normal distribution
+     * @param sigma the standard deviation of the underlying normal
+     * @param min   the minimum allowed value
+     * @param max   the maximum allowed value
+     * @return a random value from LogNormal(μ, σ) clamped to [min, max]
+     */
+    public double logNormalRandom(double mu, double sigma, double min, double max) {
+        double value = logNormalRandom(mu, sigma);
+        return clamp(value, min, max);
+    }
+
+    /**
+     * Generate a bounded long from a log-normal distribution.
+     * Ideal for attention span and session timing.
+     *
+     * @param mu    the mean of the underlying normal distribution
+     * @param sigma the standard deviation of the underlying normal
+     * @param min   the minimum allowed value
+     * @param max   the maximum allowed value
+     * @return a random long from LogNormal clamped to [min, max]
+     */
+    public long logNormalRandomLong(double mu, double sigma, long min, long max) {
+        return Math.round(logNormalRandom(mu, sigma, min, max));
+    }
+
     /**
      * Generate a bounded random value from an exponential distribution.
      *

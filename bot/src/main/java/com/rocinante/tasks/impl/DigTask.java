@@ -4,6 +4,7 @@ import com.rocinante.tasks.AbstractTask;
 import com.rocinante.tasks.TaskContext;
 import com.rocinante.tasks.TaskState;
 import com.rocinante.timing.DelayProfile;
+import com.rocinante.timing.HumanTimer.ReactionContext;
 import com.rocinante.util.Randomization;
 import lombok.Getter;
 import lombok.Setter;
@@ -440,8 +441,8 @@ public class DigTask extends AbstractTask {
 
         actionPending = true;
 
-        // Hover briefly then click
-        long hoverDelay = ctx.getHumanTimer().getDelay(DelayProfile.REACTION);
+        // Hover briefly then click (EXPECTED - know where to click)
+        long hoverDelay = ctx.getHumanTimer().getContextualReaction(ReactionContext.EXPECTED);
 
         ctx.getHumanTimer().sleep(hoverDelay)
                 .thenCompose(v -> ctx.getMouseController().moveToCanvas(clickPoint.x, clickPoint.y))

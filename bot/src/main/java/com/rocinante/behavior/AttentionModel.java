@@ -281,9 +281,30 @@ public class AttentionModel {
         log.debug("Exited AFK -> {}", newState);
     }
 
+    /**
+     * Schedule the next attention state transition using log-normal distribution.
+     * 
+     * Log-normal is more realistic than uniform because human attention spans have:
+     * - A natural "typical" duration (the median, ~90 seconds)
+     * - Occasional much longer focus periods (the fat tail)
+     * - No very short periods (the left bound)
+     * 
+     * Parameters chosen to give:
+     * - Median: ~90 seconds
+     * - Mean: ~107 seconds  
+     * - 95th percentile: ~220 seconds
+     * - Rare outliers up to 10 minutes (capped)
+     */
     private void scheduleNextTransition() {
-        int intervalSeconds = randomization.uniformRandomInt(
-                MIN_TRANSITION_INTERVAL_SECONDS, MAX_TRANSITION_INTERVAL_SECONDS);
+        // Log-normal parameters: μ=4.5, σ=0.6
+        // This gives median≈90s, mean≈107s, with fat tail to 300s+
+        double logNormalMu = 4.5;
+        double logNormalSigma = 0.6;
+        
+        long intervalSeconds = randomization.logNormalRandomLong(
+                logNormalMu, logNormalSigma,
+                MIN_TRANSITION_INTERVAL_SECONDS, 600); // Cap at 10 minutes
+        
         nextTransitionTime = Instant.now().plusSeconds(intervalSeconds);
     }
 

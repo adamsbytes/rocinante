@@ -38,25 +38,10 @@ const CONTAINER_PREFIX = 'rocinante_';
 // Utility Functions
 // =============================================================================
 
-const HOSTNAME_PREFIXES = [
-  'desktop', 'pc', 'linux', 'home', 'workstation', 'main',
-  'hp', 'dell', 'lenovo', 'asus', 'acer',
-  'ubuntu', 'pop', 'fedora', 'arch',
-];
-
-function hashCode(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) - hash) + str.charCodeAt(i);
-    hash |= 0;
-  }
-  return hash;
-}
-
-function generateHostname(botId: string): string {
-  const suffix = botId.replace(/-/g, '').substring(0, 6).toLowerCase();
-  const prefix = HOSTNAME_PREFIXES[Math.abs(hashCode(botId)) % HOSTNAME_PREFIXES.length];
-  return `${prefix}-${suffix}`;
+// Steam Deck identity: all containers use the same hostname
+// This matches the default Steam Deck hostname
+function generateHostname(_botId: string): string {
+  return 'steamdeck';
 }
 
 function writeMachineIdFile(botId: string, machineId: string): string {
@@ -91,8 +76,8 @@ async function createConfigTar(bot: BotConfig): Promise<Buffer> {
   const pack = tar.pack();
   const configJson = JSON.stringify(bot, null, 2);
 
-  // Add config.json owned by runelite user (uid/gid 1000) so entrypoint can read it
-  pack.entry({ name: 'config.json', mode: 0o644, uid: 1000, gid: 1000 }, configJson);
+  // Add config.json owned by deck user (uid 1000, gid 998 wheel) so entrypoint can read it
+  pack.entry({ name: 'config.json', mode: 0o644, uid: 1000, gid: 998 }, configJson);
   pack.finalize();
 
   // Convert stream to buffer
@@ -336,7 +321,7 @@ async function startBotWithConfig(bot: BotConfig): Promise<void> {
   const boltDataDir = getBoltDataDir(bot.id);
   const machineIdPath = writeMachineIdFile(bot.id, bot.environment.machineId);
   const hostname = generateHostname(bot.id);
-  const boltLauncherPath = '/home/runelite/.local/share/bolt-launcher/.runelite';
+  const boltLauncherPath = '/home/deck/.local/share/bolt-launcher/.runelite';
   
   // Compute config hash for this bot's container spec
   const configHash = computeContainerSpecHash(bot);
@@ -398,9 +383,11 @@ async function startBotWithConfig(bot: BotConfig): Promise<void> {
       HostConfig: {
         Memory: parseMemory(bot.resources.memoryLimit),
         NanoCpus: parseCpu(bot.resources.cpuLimit),
+        // Steam Deck has 4 cores / 8 threads - limit to match availableProcessors()
+        CpusetCpus: '0-7',
         ShmSize: 256 * 1024 * 1024,
         Binds: [
-          `${boltDataDir}:/home/runelite/.local/share/bolt-launcher`,
+          `${boltDataDir}:/home/deck/.local/share/bolt-launcher`,
           `${statusDir}:${boltLauncherPath}/rocinante`,
           `${screenshotsDir}:${boltLauncherPath}/screenshots`,
           `${sharedCacheDir}:${boltLauncherPath}/rocinante/wiki-cache`,

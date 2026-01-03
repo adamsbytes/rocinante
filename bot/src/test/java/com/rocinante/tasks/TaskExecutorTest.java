@@ -1,8 +1,12 @@
 package com.rocinante.tasks;
 
+import com.rocinante.behavior.ActivityType;
+import com.rocinante.behavior.BotActivityTracker;
 import com.rocinante.behavior.BreakScheduler;
 import com.rocinante.behavior.BreakType;
 import com.rocinante.behavior.EmergencyHandler;
+import com.rocinante.behavior.TickJitterController;
+import com.rocinante.core.PerformanceMonitor;
 import com.rocinante.navigation.ShortestPathBridge;
 import org.junit.Before;
 import org.junit.Test;
@@ -33,6 +37,15 @@ public class TaskExecutorTest {
     @Mock
     private ShortestPathBridge shortestPathBridge;
     
+    @Mock
+    private TickJitterController tickJitterController;
+    
+    @Mock
+    private BotActivityTracker activityTracker;
+    
+    @Mock
+    private PerformanceMonitor performanceMonitor;
+    
     private TaskExecutor taskExecutor;
 
     @Before
@@ -51,7 +64,19 @@ public class TaskExecutorTest {
         // Setup shortestPathBridge defaults
         when(shortestPathBridge.isAvailable()).thenReturn(true);
         
-        taskExecutor = new TaskExecutor(taskContext, breakScheduler, emergencyHandler, shortestPathBridge);
+        // Setup tickJitterController defaults
+        when(tickJitterController.isJitterPending()).thenReturn(false);
+        when(tickJitterController.scheduleJitteredExecution(any(), any())).thenAnswer(invocation -> {
+            Runnable task = invocation.getArgument(0);
+            task.run(); // Execute immediately in tests
+            return true;
+        });
+        
+        // Setup activityTracker defaults
+        when(activityTracker.getCurrentActivity()).thenReturn(ActivityType.MEDIUM);
+        
+        taskExecutor = new TaskExecutor(taskContext, breakScheduler, emergencyHandler, shortestPathBridge,
+                tickJitterController, activityTracker, performanceMonitor);
     }
 
     // ========================================================================

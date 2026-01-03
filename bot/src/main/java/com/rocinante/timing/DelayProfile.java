@@ -19,19 +19,102 @@ public enum DelayProfile {
 
     /**
      * REACTION - Responding to game events.
-     * Distribution: Poisson (λ=250ms)
+     * Distribution: Ex-Gaussian (μ=200ms, σ=30ms, τ=50ms)
      * Bounds: min=150ms, max=600ms
+     *
+     * Ex-Gaussian closely models real human reaction time distributions:
+     * - Gaussian core: most reactions cluster around the mean (μ=200ms)
+     * - Exponential tail: occasional slower reactions (τ=50ms adds right skew)
+     * - Mean reaction time ≈ μ + τ = 250ms
+     * - Right-skewed: fast reactions are bounded, slow ones have fat tail
      *
      * Used when the bot needs to react to something that just happened in the game,
      * such as an NPC appearing, a dialogue opening, or combat starting.
      */
     REACTION(
-            DistributionType.POISSON,
-            250.0,  // lambda
-            0.0,    // stdDev (not used for Poisson)
+            DistributionType.EX_GAUSSIAN,
+            200.0,  // mu (Gaussian mean)
+            30.0,   // sigma (Gaussian std dev)
+            50.0,   // tau (exponential mean - creates right skew)
             150L,   // min
             600L,   // max
             "Responding to game events"
+    ),
+
+    /**
+     * REACTION_EXPECTED - Responding to an anticipated event.
+     * Distribution: Ex-Gaussian (μ=150ms, σ=25ms, τ=30ms)
+     * Bounds: min=100ms, max=400ms
+     *
+     * Used when the player is waiting for something to happen:
+     * - Dialogue continues to next line
+     * - Bank interface opens after clicking booth
+     * - Animation completes (you were watching it)
+     * 
+     * Faster than general REACTION because attention is focused.
+     * Mean reaction ≈ 180ms (μ + τ)
+     */
+    REACTION_EXPECTED(
+            DistributionType.EX_GAUSSIAN,
+            150.0,  // mu - faster base (expecting it)
+            25.0,   // sigma - more consistent
+            30.0,   // tau - shorter tail
+            100L,   // min
+            400L,   // max
+            "Responding to anticipated event"
+    ),
+
+    /**
+     * REACTION_UNEXPECTED - Responding to a surprise event.
+     * Distribution: Ex-Gaussian (μ=350ms, σ=60ms, τ=100ms)
+     * Bounds: min=250ms, max=800ms
+     *
+     * Used when something unexpected happens:
+     * - Random event appears
+     * - PKer logs in (when not expecting PvP)
+     * - NPC spawns or de-spawns unexpectedly
+     * - Error/failure message appears
+     * 
+     * Slower because the player needs to:
+     * 1. Notice something happened
+     * 2. Process what it is
+     * 3. Decide how to respond
+     * 
+     * Mean reaction ≈ 450ms (μ + τ), with fat tail for confusion
+     */
+    REACTION_UNEXPECTED(
+            DistributionType.EX_GAUSSIAN,
+            350.0,  // mu - slower base (surprised)
+            60.0,   // sigma - more variable
+            100.0,  // tau - longer tail (confusion)
+            250L,   // min
+            800L,   // max
+            "Responding to unexpected event"
+    ),
+
+    /**
+     * REACTION_COMPLEX - Responding when a decision is required.
+     * Distribution: Ex-Gaussian (μ=500ms, σ=100ms, τ=200ms)
+     * Bounds: min=300ms, max=1500ms
+     *
+     * Used when the player needs to think before acting:
+     * - Choosing which item to use
+     * - Selecting from multiple options in a menu
+     * - Deciding where to click on the map
+     * - GE price decisions
+     * - Quest dialogue choices
+     * 
+     * Slowest reaction type because cognitive processing is needed.
+     * Mean reaction ≈ 700ms (μ + τ), with very fat tail for deliberation
+     */
+    REACTION_COMPLEX(
+            DistributionType.EX_GAUSSIAN,
+            500.0,  // mu - thinking time
+            100.0,  // sigma - highly variable
+            200.0,  // tau - long tail (deliberation)
+            300L,   // min
+            1500L,  // max
+            "Responding with decision required"
     ),
 
     /**
@@ -160,15 +243,22 @@ public enum DelayProfile {
     private final DistributionType distributionType;
 
     /**
-     * The mean (μ) for Gaussian/Uniform, or lambda (λ) for Poisson/Exponential.
+     * The mean (μ) for Gaussian/Uniform/Ex-Gaussian, or lambda (λ) for Poisson/Exponential.
      */
     private final double mean;
 
     /**
-     * The standard deviation (σ) for Gaussian distribution.
+     * The standard deviation (σ) for Gaussian and Ex-Gaussian distributions.
      * Not used for Poisson, Uniform, or Exponential.
      */
     private final double stdDev;
+
+    /**
+     * The exponential tail parameter (τ) for Ex-Gaussian distribution.
+     * Higher values create heavier right tail (more occasional slow reactions).
+     * Only used for EX_GAUSSIAN distribution type.
+     */
+    private final double tau;
 
     /**
      * Optional minimum bound for the delay (inclusive).
@@ -193,11 +283,23 @@ public enum DelayProfile {
      */
     public static final double DIALOGUE_MS_PER_WORD = 50.0;
 
+    /**
+     * Constructor for profiles that don't use tau (most profiles).
+     */
     DelayProfile(DistributionType distributionType, double mean, double stdDev,
+                 Long min, Long max, String description) {
+        this(distributionType, mean, stdDev, 0.0, min, max, description);
+    }
+
+    /**
+     * Constructor for Ex-Gaussian profiles that need tau parameter.
+     */
+    DelayProfile(DistributionType distributionType, double mean, double stdDev, double tau,
                  Long min, Long max, String description) {
         this.distributionType = distributionType;
         this.mean = mean;
         this.stdDev = stdDev;
+        this.tau = tau;
         this.min = min;
         this.max = max;
         this.description = description;

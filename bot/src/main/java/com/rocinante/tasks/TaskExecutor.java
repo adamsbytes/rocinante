@@ -1,7 +1,11 @@
 package com.rocinante.tasks;
 
+import com.rocinante.behavior.ActivityType;
 import com.rocinante.behavior.BreakScheduler;
+import com.rocinante.behavior.BotActivityTracker;
 import com.rocinante.behavior.EmergencyHandler;
+import com.rocinante.behavior.TickJitterController;
+import com.rocinante.core.PerformanceMonitor;
 import com.rocinante.navigation.ShortestPathBridge;
 import lombok.Getter;
 import lombok.Setter;
@@ -154,6 +158,22 @@ public class TaskExecutor {
     private final ShortestPathBridge shortestPathBridge;
 
     /**
+     * Tick jitter controller for desynchronizing action timing.
+     * Prevents detection via tick-aligned action patterns.
+     */
+    private final TickJitterController tickJitterController;
+
+    /**
+     * Activity tracker for jitter scaling based on current activity type.
+     */
+    private final BotActivityTracker activityTracker;
+
+    /**
+     * Performance monitor for tracking work time separately from tick time.
+     */
+    private final PerformanceMonitor performanceMonitor;
+
+    /**
      * Stack of tasks paused for behavioral interruptions (to resume after).
      * Using a stack allows nested behavioral breaks to preserve all paused tasks.
      */
@@ -178,15 +198,20 @@ public class TaskExecutor {
 
     @Inject
     public TaskExecutor(TaskContext taskContext, BreakScheduler breakScheduler, 
-                        EmergencyHandler emergencyHandler, ShortestPathBridge shortestPathBridge) {
+                        EmergencyHandler emergencyHandler, ShortestPathBridge shortestPathBridge,
+                        TickJitterController tickJitterController, BotActivityTracker activityTracker,
+                        PerformanceMonitor performanceMonitor) {
         this.taskContext = taskContext;
         this.breakScheduler = breakScheduler;
         this.emergencyHandler = emergencyHandler;
         this.shortestPathBridge = shortestPathBridge;
+        this.tickJitterController = tickJitterController;
+        this.activityTracker = activityTracker;
+        this.performanceMonitor = performanceMonitor;
         this.taskQueue = new PriorityBlockingQueue<>(100, Comparator
                 .comparingInt((QueuedTask qt) -> qt.task.getPriority().getOrdinalValue())
                 .thenComparingLong(qt -> qt.sequence));
-        log.info("TaskExecutor initialized with break scheduler and emergency handler");
+        log.info("TaskExecutor initialized with tick jitter, break scheduler and emergency handler");
     }
 
     // ========================================================================
@@ -409,6 +434,13 @@ public class TaskExecutor {
     /**
      * Main execution tick - called once per game tick.
      * Processes the task queue and executes the current task.
+     * 
+     * Uses tick jitter to desync action timing from tick boundaries:
+     * - Abort handling: immediate (no jitter)
+     * - Task processing: jittered 20-100ms after tick (scaled by activity type)
+     * 
+     * High-stakes activities (CRITICAL/HIGH) get reduced jitter for responsiveness.
+     * Low-stakes activities (LOW/IDLE) get increased jitter for relaxed pacing.
      */
     @Subscribe
     public void onGameTick(GameTick event) {
@@ -416,59 +448,104 @@ public class TaskExecutor {
             return;
         }
 
+        // ======================================================================
+        // IMMEDIATE PROCESSING (no jitter - time-critical)
+        // ======================================================================
+        
         // Check for abort request from context
         if (taskContext.isAbortRequested()) {
             log.debug("Abort requested via TaskContext");
+            tickJitterController.cancelPending(); // Cancel any pending jittered execution
             abortCurrentTask();
             taskContext.clearAbort();
         }
 
-        // Check for emergencies first (highest priority)
-        checkForEmergencies();
+        // ======================================================================
+        // JITTERED PROCESSING (human-like perception delay)
+        // ======================================================================
+        
+        // Schedule jittered execution if not already pending
+        // The jitter amount is scaled based on current activity type
+        if (!tickJitterController.isJitterPending()) {
+            var activity = activityTracker.getCurrentActivity();
+            
+            // Check if we're in a combat emergency (being attacked in critical situation)
+            var combatState = taskContext.getCombatState();
+            boolean isEmergency = combatState != null && combatState.isBeingAttacked() 
+                    && activity == ActivityType.CRITICAL;
+            
+            if (isEmergency) {
+                // Use minimal jitter for emergency response
+                tickJitterController.scheduleEmergencyExecution(this::processTaskQueueAndExecute);
+            } else {
+                // Normal jitter scaled by activity type
+                tickJitterController.scheduleJitteredExecution(
+                    this::processTaskQueueAndExecute, 
+                    activity
+                );
+            }
+        }
+    }
 
-        // Handle urgent task interruption
-        if (urgentPending && currentTask != null && currentTask.isInterruptible()) {
-            QueuedTask urgent = peekUrgent();
-            if (urgent != null) {
-                log.info("Interrupting task '{}' for urgent task '{}'",
-                        currentTask.getDescription(), urgent.task.getDescription());
-                
-                // Special handling for behavioral task interruption
-                // Preserve the paused task stack by NOT completing the behavioral task normally
-                if (currentTask.getPriority() == TaskPriority.BEHAVIORAL) {
-                    log.debug("URGENT interrupted BEHAVIORAL task - preserving pause stack");
-                    // Just cancel the behavioral task - pause stack remains intact
-                    currentTask = null;
-                    // Continue to pick up the urgent task below (don't return)
-                } else {
-                    // Re-queue current task if it's still runnable
-                    if (currentTask.getState() == TaskState.RUNNING) {
-                        requeueCurrentTask();
+    /**
+     * Process the task queue and execute current task.
+     * Called after jitter delay to simulate human perception time.
+     * Performance measurement happens here (actual work time, not jitter wait).
+     */
+    private void processTaskQueueAndExecute() {
+        long workStart = performanceMonitor.startWorkTimer();
+        
+        try {
+            // Check for emergencies (will queue URGENT tasks if needed)
+            checkForEmergencies();
+            
+            // Handle urgent task interruption
+            if (urgentPending && currentTask != null && currentTask.isInterruptible()) {
+                QueuedTask urgent = peekUrgent();
+                if (urgent != null) {
+                    log.info("Interrupting task '{}' for urgent task '{}'",
+                            currentTask.getDescription(), urgent.task.getDescription());
+                    
+                    // Special handling for behavioral task interruption
+                    // Preserve the paused task stack by NOT completing the behavioral task normally
+                    if (currentTask.getPriority() == TaskPriority.BEHAVIORAL) {
+                        log.debug("URGENT interrupted BEHAVIORAL task - preserving pause stack");
+                        // Just cancel the behavioral task - pause stack remains intact
+                        currentTask = null;
+                        // Continue to pick up the urgent task below (don't return)
+                    } else {
+                        // Re-queue current task if it's still runnable
+                        if (currentTask.getState() == TaskState.RUNNING) {
+                            requeueCurrentTask();
+                        }
+                        currentTask = null;
                     }
-                    currentTask = null;
+                    urgentPending = checkForMoreUrgent();
                 }
-                urgentPending = checkForMoreUrgent();
             }
-        }
 
-        // Check for scheduled breaks (if current step is complete)
-        if (currentStepComplete) {
-            checkForScheduledBreaks();
-        }
+            // Check for scheduled breaks (if current step is complete)
+            if (currentStepComplete) {
+                checkForScheduledBreaks();
+            }
 
-        // Execute current task or get next one
-        if (currentTask == null || currentTask.getState().isTerminal()) {
+            // Execute current task or get next one
+            if (currentTask == null || currentTask.getState().isTerminal()) {
+                if (currentTask != null) {
+                    handleTaskCompletion(currentTask.getState() == TaskState.COMPLETED);
+                }
+                if (shouldDelayNextTaskForInefficiency()) {
+                    return;
+                }
+                currentTask = getNextTask();
+            }
+
             if (currentTask != null) {
-                handleTaskCompletion(currentTask.getState() == TaskState.COMPLETED);
+                executeCurrentTask();
             }
-            if (shouldDelayNextTaskForInefficiency()) {
-                return;
-            }
-            currentTask = getNextTask();
-        }
-
-        if (currentTask != null) {
-            executeCurrentTask();
+        } finally {
+            // Record actual work time (excludes jitter delay)
+            performanceMonitor.recordWorkTime(System.nanoTime() - workStart);
         }
     }
 

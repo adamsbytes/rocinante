@@ -62,6 +62,10 @@ public class LoginTaskTest {
                 .thenReturn(CompletableFuture.completedFuture(null));
         when(humanTimer.sleep(anyLong()))
                 .thenReturn(CompletableFuture.completedFuture(null));
+        when(humanTimer.sleepContextual(any()))
+                .thenReturn(CompletableFuture.completedFuture(null));
+        when(humanTimer.getContextualReaction(any()))
+                .thenReturn(100L);
 
         // Default mouse controller
         when(mouseController.click(any(Rectangle.class)))

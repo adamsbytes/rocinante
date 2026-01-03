@@ -37,6 +37,21 @@ public enum DistributionType {
      * Right-skewed with most values near minimum, occasional large values.
      * Use case: Break durations, time between rare events.
      */
-    EXPONENTIAL
+    EXPONENTIAL,
+
+    /**
+     * Ex-Gaussian (exponentially modified Gaussian) distribution.
+     * Convolution of Gaussian and exponential - produces right-skewed distribution
+     * that closely matches empirical human reaction time data.
+     * 
+     * Parameters:
+     * - μ (mu): Mean of Gaussian component (central tendency)
+     * - σ (sigma): Std dev of Gaussian component (consistency)
+     * - τ (tau): Mean of exponential component (tail heaviness)
+     * 
+     * Use case: Reaction times, click timing, any human-initiated response.
+     * Much more realistic than pure Gaussian (which is symmetric) or Poisson.
+     */
+    EX_GAUSSIAN
 }
 

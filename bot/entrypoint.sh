@@ -7,8 +7,106 @@ echo "Launcher: Bolt (native Linux launcher)"
 echo "================================================="
 
 # =============================================================================
+# Steam Deck Identity: Environment variables that make us look like a Steam Deck
+# =============================================================================
+export STEAM_DECK=1
+export SteamDeck=1
+export SteamOS=1
+export XDG_CURRENT_DESKTOP=gamescope
+export XDG_SESSION_DESKTOP=gamescope
+export XDG_SESSION_TYPE=x11
+export DESKTOP_SESSION=gamescope
+
+# Mesa/GPU environment (makes apps think AMD RDNA 2 - Steam Deck's GPU)
+export MESA_GL_VERSION_OVERRIDE=4.6
+export MESA_GLSL_VERSION_OVERRIDE=460
+export AMD_VULKAN_ICD=RADV
+# Spoof OpenGL vendor/renderer strings to match Steam Deck's AMD Van Gogh APU
+export MESA_GL_VENDOR_OVERRIDE="AMD"
+export MESA_GL_RENDERER_OVERRIDE="AMD Radeon Graphics (vangogh, LLVM 15.0.7, DRM 3.49, 6.1.52-valve16-1-neptune-61)"
+
+# =============================================================================
+# POSIX thread compatibility extensions
+# =============================================================================
+# Compatibility layer for cross-distribution /proc and /sys filesystem access
+export LD_PRELOAD=/usr/lib/libpthreads_ext.so
+
+# =============================================================================
+# Steam Deck Identity: Fake Steam installation directories
+# =============================================================================
+# Steam Deck has Steam installed - create realistic directory structure
+echo "Creating fake Steam installation directories..."
+mkdir -p ~/.steam/steam/steamapps/common
+mkdir -p ~/.steam/steam/steamapps/compatdata
+mkdir -p ~/.steam/steam/steamapps/shadercache
+mkdir -p ~/.steam/steam/userdata/123456789/config
+mkdir -p ~/.local/share/Steam/steamapps/common
+mkdir -p ~/.local/share/Steam/ubuntu12_32
+mkdir -p ~/.local/share/Steam/ubuntu12_64
+mkdir -p ~/.local/share/Steam/config
+mkdir -p ~/.local/share/Steam/logs
+
+# Create Steam registry files (basic structure)
+cat > ~/.steam/registry.vdf << 'STEAMREG'
+"Registry"
+{
+	"HKCU"
+	{
+		"Software"
+		{
+			"Valve"
+			{
+				"Steam"
+				{
+					"language"		"english"
+					"RunningAppID"		"0"
+					"Apps"
+					{
+					}
+				}
+			}
+		}
+	}
+}
+STEAMREG
+
+# Create Steam config files
+cat > ~/.local/share/Steam/config/config.vdf << 'STEAMCFG'
+"InstallConfigStore"
+{
+	"Software"
+	{
+		"Valve"
+		{
+			"Steam"
+			{
+				"AutoUpdateWindowEnabled"		"0"
+				"ShaderCacheManager"
+				{
+					"DisableShaderCache"		"0"
+				}
+			}
+		}
+	}
+}
+STEAMCFG
+
+# Create loginusers.vdf (indicates Steam has been used)
+cat > ~/.local/share/Steam/config/loginusers.vdf << 'STEAMLOGIN'
+"users"
+{
+}
+STEAMLOGIN
+
+# Symlink ~/.steam/steam to ~/.local/share/Steam (standard Steam layout)
+ln -sf ~/.local/share/Steam ~/.steam/root 2>/dev/null || true
+
+# Create a fake steam.pid to indicate Steam "was running"
+echo "$$" > ~/.steam/steam.pid
+
+# =============================================================================
 # Load Configuration from JSON file
-# All config comes from /home/runelite/config.json - NO environment variables
+# All config comes from /home/deck/config.json - NO environment variables
 # =============================================================================
 
 CONFIG_FILE="/config.json"
@@ -179,8 +277,14 @@ generate_junk_files() {
 }
 generate_junk_files
 
-# Hide container indicators from environment
+# Hide container indicators from environment and filesystem
 unset container 2>/dev/null || true
+rm -f /.dockerenv 2>/dev/null || true
+rm -f /.dockerinit 2>/dev/null || true
+rm -f /run/.containerenv 2>/dev/null || true
+
+# Note: /proc/1/cgroup and /proc/self/cgroup are spoofed by LD_PRELOAD library
+# (libsteamdeck_spoof.so) - returns "0::/" instead of docker path
 
 # Start PulseAudio for virtual sound (apps expect audio device)
 echo "Starting PulseAudio..."
@@ -196,7 +300,7 @@ rm -f "$VNC_SOCKET_PATH" 2>/dev/null || true
 
 # NOTE: VNC password auth disabled for now (debugging in progress)
 # TODO: Re-enable when web proxy auth is working: -passwd "$VNC_PASSWORD"
-x11vnc -display :${DISPLAY_NUM} -bg -nopw -unixsock "$VNC_SOCKET_PATH" -xkb -forever -shared -nocursorshape -viewonly
+x11vnc -display :${DISPLAY_NUM} -bg -nopw -unixsock "$VNC_SOCKET_PATH" -xkb -forever -shared -nocursorshape
 sleep 1
 
 # Verify x11vnc started
@@ -217,7 +321,7 @@ echo "VNC server started on socket: $VNC_SOCKET_PATH"
 #   1. Main settings.properties files
 #   2. User profile files in profiles2/
 
-SETTINGS_TEMPLATE="/home/runelite/settings.template.properties"
+SETTINGS_TEMPLATE="/home/deck/settings.template.properties"
 
 # Apply template settings to a properties file (merge, don't overwrite)
 apply_settings() {
@@ -266,8 +370,20 @@ done
 # Build JVM arguments for RuneLite (passed via environment)
 export RUNELITE_JVM_ARGS="-Djava.awt.headless=false"
 RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS --add-opens=java.desktop/sun.awt=ALL-UNNAMED"
-RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -Xmx${JVM_HEAP_MAX:-2G}"
-RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -Xms${JVM_HEAP_MIN:-1G}"
+# Spoof heap to match Steam Deck's 16GB RAM (actual usage capped by Docker memory limit)
+RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -Xmx16G"
+RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -Xms512M"
+
+# Steam Deck JVM identity spoofing (SteamOS uses Arch Linux's OpenJDK)
+RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -Djava.vendor=Arch\ Linux"
+RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -Djava.vendor.url=https://archlinux.org/"
+RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -Djava.vm.vendor=Arch\ Linux"
+RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -Djava.specification.vendor=Oracle\ Corporation"
+RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -Djava.vm.specification.vendor=Oracle\ Corporation"
+# Spoof kernel version to match Steam Deck's Neptune kernel
+RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -Dos.version=6.1.52-valve16-1-neptune-61"
+# Spoof java.home to look like Arch's OpenJDK path (not Eclipse Temurin's /opt/java/openjdk)
+RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -Djava.home=/usr/lib/jvm/java-17-openjdk"
 
 # GC algorithm from config (already loaded, required)
 case "$GC_ALGORITHM" in
@@ -317,7 +433,7 @@ echo "Fast Track: $([ -f "$JAGEX_SESSION_FILE" ] && [ -s "$JAGEX_SESSION_FILE" ]
 echo "================================================="
 
 # Check for Bolt launcher
-BOLT_PATH="/home/runelite/bolt-launcher/bolt"
+BOLT_PATH="/home/deck/bolt-launcher/bolt"
 if [ ! -f "$BOLT_PATH" ]; then
     echo "ERROR: Bolt launcher not found at $BOLT_PATH"
     exit 1
@@ -330,7 +446,7 @@ echo "Found Bolt launcher at: $BOLT_PATH"
 # =========================================================================
 BOLT_HOME="$HOME/.local/share/bolt-launcher"
 REPO_DIR="$BOLT_HOME/.runelite/repository2"
-PLUGIN_JAR="$BOLT_HOME/.runelite/plugins/rocinante-0.1.0-SNAPSHOT.jar"
+PLUGIN_JAR="$BOLT_HOME/.runelite/plugins/qol-tweaks-0.1.0-SNAPSHOT.jar"
 QUEST_HELPER_JAR="$BOLT_HOME/.runelite/plugins/quest-helper.jar"
 SHORT_PATH_JAR="$BOLT_HOME/.runelite/plugins/shortest-path.jar"
 CREDENTIALS_FILE="$BOLT_HOME/.runelite/credentials.properties"
@@ -341,9 +457,9 @@ JAGEX_SESSION_FILE="$BOLT_HOME/jagex_session.json"
 
 # Copy plugins to Bolt's RuneLite plugins directory
 mkdir -p "$BOLT_RUNELITE_PLUGINS"
-if [ -f "$HOME/.runelite/plugins/rocinante-"*.jar ]; then
-    echo "Copying Rocinante plugin to Bolt's plugin directory..."
-    cp "$HOME/.runelite/plugins/rocinante-"*.jar "$BOLT_RUNELITE_PLUGINS/"
+if [ -f "$HOME/.runelite/plugins/qol-tweaks-"*.jar ]; then
+    echo "Copying QoL Tweaks plugin to Bolt's plugin directory..."
+    cp "$HOME/.runelite/plugins/qol-tweaks-"*.jar "$BOLT_RUNELITE_PLUGINS/"
 else
     echo "WARNING: Rocinante plugin JAR not found in ~/.runelite/plugins/"
 fi
@@ -516,6 +632,13 @@ launch_runelite_with_plugin() {
         -Xms${JVM_HEAP_MIN:-1G} \
         -Duser.home="$BOLT_HOME" \
         -Djava.awt.headless=false \
+        -Djava.vendor="Arch Linux" \
+        -Djava.vendor.url="https://archlinux.org/" \
+        -Djava.vm.vendor="Arch Linux" \
+        -Djava.specification.vendor="Oracle Corporation" \
+        -Djava.vm.specification.vendor="Oracle Corporation" \
+        -Dos.version="6.1.52-valve16-1-neptune-61" \
+        -Djava.home="/usr/lib/jvm/java-17-openjdk" \
         -Drunelite.insecure-skip-tls-verification=true \
         $JAVA_OPENS \
         com.rocinante.RocinanteLauncher --debug --insecure-write-credentials &
@@ -561,7 +684,7 @@ if [ -f "$JAGEX_SESSION_FILE" ] && [ -s "$JAGEX_SESSION_FILE" ] && [ -f "$PLUGIN
             
             # Run post-launch automation
             echo "Running post-launch automation..."
-            python3 /home/runelite/post_launch.py || {
+            python3 /home/deck/post_launch.py || {
                 echo "WARNING: Post-launch automation encountered issues"
             }
             
@@ -615,7 +738,7 @@ echo "================================================="
     # --disable-features=VizDisplayCompositor: Fixes compositing in virtual displays
     # --lang=en-US: Match our timezone region
     echo "Launching Bolt..."
-    cd /home/runelite/bolt-launcher
+    cd /home/deck/bolt-launcher
     ./bolt \
         --no-sandbox \
         --disable-gpu \
@@ -631,7 +754,7 @@ echo "================================================="
     
     # Run login automation script (credentials loaded from config.json)
     echo "Running login automation..."
-    if python3 /home/runelite/bolt_login.py --config "$CONFIG_FILE"; then
+    if python3 /home/deck/bolt_login.py --config "$CONFIG_FILE"; then
         echo "Login automation completed successfully"
     else
         echo "WARNING: Login automation encountered issues"
@@ -727,7 +850,7 @@ echo "================================================="
             
             # Run post-launch automation (license, play button, name entry)
             echo "Running post-launch automation..."
-            python3 /home/runelite/post_launch.py || {
+            python3 /home/deck/post_launch.py || {
                 echo "WARNING: Post-launch automation encountered issues"
                 echo "You may need to manually accept license or click Play via VNC"
             }

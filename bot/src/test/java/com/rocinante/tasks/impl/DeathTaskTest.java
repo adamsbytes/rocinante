@@ -25,7 +25,7 @@ public class DeathTaskTest {
     private static final int DEATHS_OFFICE_REGION = 12106;
     private static final int DEATH_OFFICE_INTERFACE_ID = 669;
     private static final int DEATH_COFFER_INTERFACE_ID = 670;
-    private static final int GRAVESTONE_INTERFACE_ID = 602;
+    private static final int GRAVESTONE_INTERFACE_ID = 672;  // GRAVESTONE_WORLD_INTERFACE_ID
     private static final int DIALOGUE_NPC_HEAD_GROUP = 231;
     private static final int DIALOGUE_OPTIONS_GROUP = 219;
 

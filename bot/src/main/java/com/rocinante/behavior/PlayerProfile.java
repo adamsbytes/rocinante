@@ -216,6 +216,40 @@ public class PlayerProfile {
         profileData.overshootProbability = 0.08 + seededRandom.nextDouble() * 0.07;  // 8-15%
         profileData.microCorrectionProbability = 0.15 + seededRandom.nextDouble() * 0.10;  // 15-25%
         
+        // === Drag wobble characteristics ===
+        // Each player has unique hand tremor patterns
+        profileData.wobbleFrequencyBase = 2.5 + seededRandom.nextDouble() * 1.5;  // 2.5-4.0 Hz
+        profileData.wobbleFrequencyVariance = 0.3 + seededRandom.nextDouble() * 0.5;  // 0.3-0.8
+        profileData.wobbleAmplitudeModifier = 0.7 + seededRandom.nextDouble() * 0.6;  // 0.7-1.3
+        
+        // === Click timing (ex-Gaussian parameters) ===
+        // Each player has unique click "feel" - some snappy, some deliberate
+        profileData.clickDurationMu = 75.0 + seededRandom.nextDouble() * 20.0;  // 75-95ms mean
+        profileData.clickDurationSigma = 10.0 + seededRandom.nextDouble() * 10.0;  // 10-20ms std
+        profileData.clickDurationTau = 5.0 + seededRandom.nextDouble() * 10.0;  // 5-15ms tail
+        
+        // === Cognitive delay ===
+        // Each player has different "thinking speed"
+        profileData.cognitiveDelayBase = 80.0 + seededRandom.nextDouble() * 120.0;  // 80-200ms
+        profileData.cognitiveDelayVariance = 0.3 + seededRandom.nextDouble() * 0.4;  // 0.3-0.7
+        
+        // === Motor speed correlation ===
+        // How tightly coupled is mouse speed with click speed
+        // Higher = "fast players" are fast at both, "slow players" slow at both
+        profileData.motorSpeedCorrelation = 0.5 + seededRandom.nextDouble() * 0.4;  // 0.5-0.9
+        
+        // === Tick jitter (perception delay) ===
+        // Each player has unique perception/reaction timing characteristics
+        profileData.jitterMu = 35.0 + seededRandom.nextDouble() * 15.0;     // 35-50ms mean
+        profileData.jitterSigma = 10.0 + seededRandom.nextDouble() * 10.0;  // 10-20ms std dev
+        profileData.jitterTau = 15.0 + seededRandom.nextDouble() * 15.0;    // 15-30ms tail
+        
+        // === Mouse path complexity ===
+        // Each player has unique movement patterns
+        profileData.hesitationProbability = 0.10 + seededRandom.nextDouble() * 0.15;  // 10-25%
+        profileData.submovementProbability = 0.15 + seededRandom.nextDouble() * 0.15; // 15-30%
+        profileData.usesPathSegmentation = seededRandom.nextDouble() > 0.3;           // 70% use segmentation
+        
         // === Break behavior ===
         profileData.breakFatigueThreshold = MIN_BREAK_THRESHOLD +
                 seededRandom.nextDouble() * (MAX_BREAK_THRESHOLD - MIN_BREAK_THRESHOLD);
@@ -231,6 +265,11 @@ public class PlayerProfile {
         profileData.cameraHoldFrequency = 0.05 + seededRandom.nextDouble() * 0.25;  // 5-30%
         profileData.cameraHoldPreferredDirection = selectCameraHoldDirection(seededRandom);
         profileData.cameraHoldSpeedPreference = selectCameraHoldSpeed(seededRandom);
+        
+        // === Camera snap-back preferences (returning to "home" angle) ===
+        profileData.cameraSnapBackProbability = 0.3 + seededRandom.nextDouble() * 0.5;  // 30-80%
+        profileData.cameraSnapBackTolerance = 20.0 + seededRandom.nextDouble() * 40.0;  // 20-60 degrees
+        profileData.cameraSnapBackDelayMs = 2000 + (long)(seededRandom.nextDouble() * 6000);  // 2-8 seconds
         
         // === Session patterns ===
         profileData.sessionRituals = selectSessionRituals(seededRandom);
@@ -277,6 +316,16 @@ public class PlayerProfile {
         
         // Click speed bias: 0.0-1.0 (0=slow/hesitant, 1=fast/snappy)
         // Affects distribution of INSTANT vs DELAYED clicks when prediction succeeds
+        
+        // === Inventory slot preferences ===
+        // Players develop habits about which inventory regions they favor
+        profileData.inventorySlotPreference = selectInventoryPreference(seededRandom);
+        profileData.inventorySlotBiasStrength = 0.3 + seededRandom.nextDouble() * 0.5;  // 30-80%
+        
+        // Click position within slots - personal micro-habits
+        // Most people click slightly off-center in consistent ways
+        profileData.inventoryClickRowBias = 0.35 + seededRandom.nextDouble() * 0.30;  // 0.35-0.65
+        profileData.inventoryClickColBias = 0.35 + seededRandom.nextDouble() * 0.30;  // 0.35-0.65
         profileData.predictionClickSpeedBias = seededRandom.nextDouble();
         
         // === Metrics ===
@@ -315,6 +364,11 @@ public class PlayerProfile {
 
         // Timezone: Default, user sets per account to match proxy
         profileData.timezone = "America/New_York";
+        
+        // === Chronotype (circadian rhythm preferences) ===
+        profileData.chronotype = selectChronotype(seededRandom);
+        profileData.peakHourOffset = -2.0 + seededRandom.nextDouble() * 4.0;  // -2 to +2 hours
+        profileData.circadianStrength = 0.1 + seededRandom.nextDouble() * 0.4;  // 0.1-0.5
 
         log.info("Generated new profile: mouseSpeed={}, clickVar={}, breakThreshold={}, rituals={}",
                 String.format("%.2f", profileData.mouseSpeedMultiplier),
@@ -390,6 +444,60 @@ public class PlayerProfile {
                 profileData.predictionClickSpeedBias, 0.0, 1.0, 0.03);
         recordChange(changes, "basePredictionRate", beforePredictionRate, profileData.basePredictionRate);
         recordChange(changes, "predictionClickSpeedBias", beforePredictionBias, profileData.predictionClickSpeedBias);
+        
+        // Wobble characteristics drift (small - physical traits are stable)
+        double beforeWobbleFreq = profileData.wobbleFrequencyBase;
+        double beforeWobbleVar = profileData.wobbleFrequencyVariance;
+        double beforeWobbleAmp = profileData.wobbleAmplitudeModifier;
+        profileData.wobbleFrequencyBase = applyDrift(profileData.wobbleFrequencyBase, 2.5, 4.0, 0.02);
+        profileData.wobbleFrequencyVariance = applyDrift(profileData.wobbleFrequencyVariance, 0.3, 0.8, 0.02);
+        profileData.wobbleAmplitudeModifier = applyDrift(profileData.wobbleAmplitudeModifier, 0.7, 1.3, 0.02);
+        recordChange(changes, "wobbleFrequencyBase", beforeWobbleFreq, profileData.wobbleFrequencyBase);
+        recordChange(changes, "wobbleFrequencyVariance", beforeWobbleVar, profileData.wobbleFrequencyVariance);
+        recordChange(changes, "wobbleAmplitudeModifier", beforeWobbleAmp, profileData.wobbleAmplitudeModifier);
+        
+        // Click timing drift (small - motor patterns are stable)
+        double beforeClickMu = profileData.clickDurationMu;
+        double beforeClickSigma = profileData.clickDurationSigma;
+        double beforeClickTau = profileData.clickDurationTau;
+        profileData.clickDurationMu = applyDrift(profileData.clickDurationMu, 75.0, 95.0, 0.02);
+        profileData.clickDurationSigma = applyDrift(profileData.clickDurationSigma, 10.0, 20.0, 0.02);
+        profileData.clickDurationTau = applyDrift(profileData.clickDurationTau, 5.0, 15.0, 0.02);
+        recordChange(changes, "clickDurationMu", beforeClickMu, profileData.clickDurationMu);
+        recordChange(changes, "clickDurationSigma", beforeClickSigma, profileData.clickDurationSigma);
+        recordChange(changes, "clickDurationTau", beforeClickTau, profileData.clickDurationTau);
+        
+        // Cognitive delay drift (small - thinking speed is stable)
+        double beforeCogBase = profileData.cognitiveDelayBase;
+        double beforeCogVar = profileData.cognitiveDelayVariance;
+        profileData.cognitiveDelayBase = applyDrift(profileData.cognitiveDelayBase, 80.0, 200.0, 0.02);
+        profileData.cognitiveDelayVariance = applyDrift(profileData.cognitiveDelayVariance, 0.3, 0.7, 0.02);
+        recordChange(changes, "cognitiveDelayBase", beforeCogBase, profileData.cognitiveDelayBase);
+        recordChange(changes, "cognitiveDelayVariance", beforeCogVar, profileData.cognitiveDelayVariance);
+        
+        // Motor speed correlation drift (very small - motor patterns are highly stable)
+        double beforeMotorCorr = profileData.motorSpeedCorrelation;
+        profileData.motorSpeedCorrelation = applyDrift(profileData.motorSpeedCorrelation, 0.5, 0.9, 0.01);
+        recordChange(changes, "motorSpeedCorrelation", beforeMotorCorr, profileData.motorSpeedCorrelation);
+        
+        // Tick jitter drift (very small - perception is stable)
+        double beforeJitterMu = profileData.jitterMu;
+        double beforeJitterSigma = profileData.jitterSigma;
+        double beforeJitterTau = profileData.jitterTau;
+        profileData.jitterMu = applyDrift(profileData.jitterMu, 35.0, 50.0, 0.01);
+        profileData.jitterSigma = applyDrift(profileData.jitterSigma, 10.0, 20.0, 0.01);
+        profileData.jitterTau = applyDrift(profileData.jitterTau, 15.0, 30.0, 0.01);
+        recordChange(changes, "jitterMu", beforeJitterMu, profileData.jitterMu);
+        recordChange(changes, "jitterSigma", beforeJitterSigma, profileData.jitterSigma);
+        recordChange(changes, "jitterTau", beforeJitterTau, profileData.jitterTau);
+        
+        // Path complexity drift (very small - motor patterns are stable)
+        double beforeHesitation = profileData.hesitationProbability;
+        double beforeSubmovement = profileData.submovementProbability;
+        profileData.hesitationProbability = applyDrift(profileData.hesitationProbability, 0.10, 0.25, 0.005);
+        profileData.submovementProbability = applyDrift(profileData.submovementProbability, 0.15, 0.30, 0.005);
+        recordChange(changes, "hesitationProbability", beforeHesitation, profileData.hesitationProbability);
+        recordChange(changes, "submovementProbability", beforeSubmovement, profileData.submovementProbability);
 
         recordDrift(DriftType.SESSION, changes);
         log.debug("Applied session drift (session #{})", profileData.sessionCount);
@@ -911,6 +1019,27 @@ public class PlayerProfile {
         return "FAST";
     }
 
+    private String selectInventoryPreference(Random seededRandom) {
+        // Distribution based on natural hand positioning and screen layout
+        // Center and bottom-right are most common (right-handed mouse users)
+        double roll = seededRandom.nextDouble();
+        if (roll < 0.10) return "TOP_LEFT";
+        if (roll < 0.20) return "TOP_RIGHT";
+        if (roll < 0.50) return "CENTER";        // Most common - easy access
+        if (roll < 0.65) return "BOTTOM_LEFT";
+        if (roll < 0.90) return "BOTTOM_RIGHT";  // Second most common - near action bar
+        return "RANDOM";  // Some players have no strong preference
+    }
+
+    private String selectChronotype(Random seededRandom) {
+        // Distribution roughly matches real population chronotypes
+        // Most people are "neutral" with slight variations
+        double roll = seededRandom.nextDouble();
+        if (roll < 0.25) return "EARLY_BIRD";   // ~25% are morning people
+        if (roll < 0.55) return "NEUTRAL";      // ~30% are flexible
+        return "NIGHT_OWL";                      // ~45% are evening people (especially gamers!)
+    }
+
     private List<String> selectSessionRituals(Random seededRandom) {
         List<String> allRituals = Arrays.asList(
                 "BANK_CHECK", "SKILL_TAB_CHECK", "FRIENDS_LIST_CHECK",
@@ -1134,6 +1263,138 @@ public class PlayerProfile {
     public double getMicroCorrectionProbability() {
         return profileData.microCorrectionProbability;
     }
+    
+    // === Drag Wobble Getters ===
+    
+    /**
+     * Get base frequency for drag wobble oscillation.
+     * @return frequency in Hz (2.5-4.0)
+     */
+    public double getWobbleFrequencyBase() {
+        return profileData.wobbleFrequencyBase;
+    }
+    
+    /**
+     * Get variance in wobble frequency per drag.
+     * @return variance factor (0.3-0.8)
+     */
+    public double getWobbleFrequencyVariance() {
+        return profileData.wobbleFrequencyVariance;
+    }
+    
+    /**
+     * Get wobble amplitude modifier (hand steadiness).
+     * @return amplitude modifier (0.7-1.3)
+     */
+    public double getWobbleAmplitudeModifier() {
+        return profileData.wobbleAmplitudeModifier;
+    }
+    
+    // === Click Timing Getters (Ex-Gaussian Parameters) ===
+    
+    /**
+     * Get the mean (mu) of the click duration Gaussian component.
+     * @return mean click duration in ms (75-95)
+     */
+    public double getClickDurationMu() {
+        return profileData.clickDurationMu;
+    }
+    
+    /**
+     * Get the standard deviation (sigma) of click duration.
+     * @return std dev in ms (10-20)
+     */
+    public double getClickDurationSigma() {
+        return profileData.clickDurationSigma;
+    }
+    
+    /**
+     * Get the exponential tail parameter (tau) for click duration.
+     * Higher values mean more occasional slow clicks.
+     * @return tail parameter in ms (5-15)
+     */
+    public double getClickDurationTau() {
+        return profileData.clickDurationTau;
+    }
+    
+    // === Cognitive Delay Getters ===
+    
+    /**
+     * Get base cognitive delay between action transitions.
+     * @return base delay in ms (80-200)
+     */
+    public double getCognitiveDelayBase() {
+        return profileData.cognitiveDelayBase;
+    }
+    
+    /**
+     * Get variance factor for cognitive delay.
+     * @return variance factor (0.3-0.7)
+     */
+    public double getCognitiveDelayVariance() {
+        return profileData.cognitiveDelayVariance;
+    }
+    
+    /**
+     * Get the motor speed correlation factor.
+     * This determines how tightly mouse speed correlates with click speed.
+     * Higher values mean "fast players" are fast at both mouse movement and clicking.
+     * 
+     * @return motor speed correlation (0.5-0.9)
+     */
+    public double getMotorSpeedCorrelation() {
+        return profileData.motorSpeedCorrelation;
+    }
+    
+    /**
+     * Get the Ex-Gaussian μ (mean) for tick jitter.
+     * @return jitter mean in milliseconds (35-50)
+     */
+    public double getJitterMu() {
+        return profileData.jitterMu;
+    }
+    
+    /**
+     * Get the Ex-Gaussian σ (std dev) for tick jitter.
+     * @return jitter std dev in milliseconds (10-20)
+     */
+    public double getJitterSigma() {
+        return profileData.jitterSigma;
+    }
+    
+    /**
+     * Get the Ex-Gaussian τ (tail) for tick jitter.
+     * @return jitter tail in milliseconds (15-30)
+     */
+    public double getJitterTau() {
+        return profileData.jitterTau;
+    }
+    
+    // === Mouse Path Complexity Getters ===
+    
+    /**
+     * Get the probability of hesitation during mouse movement.
+     * @return hesitation probability (0.10-0.25)
+     */
+    public double getHesitationProbability() {
+        return profileData.hesitationProbability;
+    }
+    
+    /**
+     * Get the probability of sub-movements on long paths.
+     * @return sub-movement probability (0.15-0.30)
+     */
+    public double getSubmovementProbability() {
+        return profileData.submovementProbability;
+    }
+    
+    /**
+     * Check if this player uses segmented approach phases for long movements.
+     * @return true if segmentation is used
+     */
+    public boolean usesPathSegmentation() {
+        return profileData.usesPathSegmentation;
+    }
 
     public int getSessionCount() {
         return profileData.sessionCount;
@@ -1198,6 +1459,30 @@ public class PlayerProfile {
 
     public double getCameraChangeFrequency() {
         return profileData.cameraChangeFrequency;
+    }
+    
+    /**
+     * Get probability of snapping back to preferred camera angle.
+     * @return snap-back probability (0.3-0.8)
+     */
+    public double getCameraSnapBackProbability() {
+        return profileData.cameraSnapBackProbability;
+    }
+    
+    /**
+     * Get minimum angle deviation before snap-back triggers.
+     * @return tolerance in degrees (20-60)
+     */
+    public double getCameraSnapBackTolerance() {
+        return profileData.cameraSnapBackTolerance;
+    }
+    
+    /**
+     * Get delay after camera movement before snap-back can occur.
+     * @return delay in milliseconds (2000-8000)
+     */
+    public long getCameraSnapBackDelayMs() {
+        return profileData.cameraSnapBackDelayMs;
     }
 
     public List<String> getSessionRituals() {
@@ -1281,6 +1566,38 @@ public class PlayerProfile {
     public double getPredictionClickSpeedBias() {
         return profileData.predictionClickSpeedBias;
     }
+    
+    /**
+     * Get the preferred inventory slot region.
+     * @return preference: "TOP_LEFT", "TOP_RIGHT", "CENTER", "BOTTOM_LEFT", "BOTTOM_RIGHT", or "RANDOM"
+     */
+    public String getInventorySlotPreference() {
+        return profileData.inventorySlotPreference;
+    }
+    
+    /**
+     * Get the strength of inventory slot preference.
+     * @return bias strength (0.3-0.8)
+     */
+    public double getInventorySlotBiasStrength() {
+        return profileData.inventorySlotBiasStrength;
+    }
+    
+    /**
+     * Get the row bias for click position within inventory slots.
+     * @return row bias (0.35-0.65, where 0.5 is center)
+     */
+    public double getInventoryClickRowBias() {
+        return profileData.inventoryClickRowBias;
+    }
+    
+    /**
+     * Get the column bias for click position within inventory slots.
+     * @return column bias (0.35-0.65, where 0.5 is center)
+     */
+    public double getInventoryClickColBias() {
+        return profileData.inventoryClickColBias;
+    }
 
     // ========================================================================
     // Environment Fingerprint Accessors
@@ -1322,6 +1639,67 @@ public class PlayerProfile {
      */
     public String getTimezone() {
         return profileData.timezone;
+    }
+    
+    /**
+     * Get the player's chronotype.
+     * @return "EARLY_BIRD", "NIGHT_OWL", or "NEUTRAL"
+     */
+    public String getChronotype() {
+        return profileData.chronotype;
+    }
+    
+    /**
+     * Get the peak hour offset from chronotype default.
+     * @return offset in hours (-2 to +2)
+     */
+    public double getPeakHourOffset() {
+        return profileData.peakHourOffset;
+    }
+    
+    /**
+     * Get the strength of circadian rhythm effects.
+     * Higher values = more pronounced time-of-day performance variation.
+     * @return circadian strength (0.1-0.5)
+     */
+    public double getCircadianStrength() {
+        return profileData.circadianStrength;
+    }
+    
+    /**
+     * Calculate the circadian performance multiplier for the current time.
+     * Returns a value that can be used to adjust action speed, error rate, etc.
+     * 
+     * @param hourOfDay the current hour (0-23) in the player's timezone
+     * @return performance multiplier (lower when tired, higher when alert)
+     */
+    public double getCircadianPerformanceMultiplier(int hourOfDay) {
+        // Base peak hours by chronotype
+        int basePeakHour;
+        switch (profileData.chronotype) {
+            case "EARLY_BIRD":
+                basePeakHour = 9;   // Peak at 9am
+                break;
+            case "NIGHT_OWL":
+                basePeakHour = 21;  // Peak at 9pm
+                break;
+            default: // NEUTRAL
+                basePeakHour = 15;  // Peak at 3pm
+        }
+        
+        // Apply personal offset
+        double peakHour = basePeakHour + profileData.peakHourOffset;
+        
+        // Calculate distance from peak (0-12 hours)
+        double distance = Math.abs(hourOfDay - peakHour);
+        if (distance > 12) {
+            distance = 24 - distance;  // Wrap around midnight
+        }
+        
+        // Calculate performance: 1.0 at peak, decreasing with distance
+        // At 12 hours from peak (worst time), multiplier = 1.0 - circadianStrength
+        double performanceDip = (distance / 12.0) * profileData.circadianStrength;
+        return 1.0 - performanceDip;
     }
 
     // ========================================================================
@@ -1418,6 +1796,107 @@ public class PlayerProfile {
         volatile double baseTypoRate = 0.01;
         volatile double overshootProbability = 0.12;
         volatile double microCorrectionProbability = 0.20;
+        
+        // === Drag wobble characteristics (hand tremor during drag) ===
+        /**
+         * Base frequency of wobble oscillation during drags (2.5-4.0 Hz).
+         * Higher = faster tremor, lower = slower tremor.
+         */
+        volatile double wobbleFrequencyBase = 3.25;
+        
+        /**
+         * How much the wobble frequency varies per drag (0.3-0.8).
+         * Higher = more variable, lower = more consistent.
+         */
+        volatile double wobbleFrequencyVariance = 0.5;
+        
+        /**
+         * Modifier for wobble amplitude (0.7-1.3).
+         * Higher = shakier hands, lower = steadier hands.
+         */
+        volatile double wobbleAmplitudeModifier = 1.0;
+        
+        // === Click timing (ex-Gaussian distribution for human-like reaction times) ===
+        /**
+         * Mean of Gaussian component for click hold duration (75-95ms).
+         * This is the "typical" click speed for this player.
+         */
+        volatile double clickDurationMu = 85.0;
+        
+        /**
+         * Standard deviation of Gaussian component (10-20ms).
+         * Lower = more consistent clicks, higher = more variable.
+         */
+        volatile double clickDurationSigma = 15.0;
+        
+        /**
+         * Exponential tail parameter (5-15ms).
+         * Higher = more occasional slow clicks (distraction, fatigue).
+         * Creates the realistic right-skewed reaction time distribution.
+         */
+        volatile double clickDurationTau = 10.0;
+        
+        // === Cognitive delay (thinking time between different actions) ===
+        /**
+         * Base cognitive delay between action transitions (80-200ms).
+         * Represents personal "thinking speed" - time to switch mental context.
+         */
+        volatile double cognitiveDelayBase = 140.0;
+        
+        /**
+         * Variance in cognitive delay (0.3-0.7).
+         * How much the delay varies: delay * uniform(1-var, 1+var).
+         */
+        volatile double cognitiveDelayVariance = 0.5;
+        
+        // === Motor speed correlation (unified "tempo") ===
+        /**
+         * Correlation between mouse speed and click speed (0.5-0.9).
+         * Higher = faster movers are faster clickers (realistic).
+         * Lower = mouse/click speeds are more independent.
+         * 
+         * This creates coherent "fast players" vs "slow players" rather than
+         * having fast mouse but slow clicks (which would be detectably odd).
+         */
+        volatile double motorSpeedCorrelation = 0.7;
+        
+        // === Tick jitter (perception delay before actions) ===
+        /**
+         * Ex-Gaussian μ (Gaussian mean) for tick jitter (35-50ms).
+         * Base perception delay - how quickly this player notices game events.
+         */
+        volatile double jitterMu = 40.0;
+        
+        /**
+         * Ex-Gaussian σ (Gaussian std dev) for tick jitter (10-20ms).
+         * Consistency of perception - lower = more consistent, higher = more variable.
+         */
+        volatile double jitterSigma = 15.0;
+        
+        /**
+         * Ex-Gaussian τ (exponential tail) for tick jitter (15-30ms).
+         * Occasional longer delays - higher = more frequent "slow" reactions.
+         */
+        volatile double jitterTau = 20.0;
+
+        // === Mouse path complexity (humanized movement patterns) ===
+        /**
+         * Probability of hesitation during mouse movement (0.10-0.25).
+         * Hesitations are brief pauses (5-15ms) mid-movement.
+         */
+        volatile double hesitationProbability = 0.15;
+        
+        /**
+         * Probability of sub-movements on long paths (0.15-0.30).
+         * Sub-movements are direction corrections via intermediate waypoints.
+         */
+        volatile double submovementProbability = 0.20;
+        
+        /**
+         * Whether this player uses segmented approach phases for long movements.
+         * Segmented = ballistic -> approach -> fine-tune phases.
+         */
+        volatile boolean usesPathSegmentation = true;
 
         // === Break behavior ===
         volatile double breakFatigueThreshold = 0.80;
@@ -1444,6 +1923,25 @@ public class PlayerProfile {
          * Speed preference for camera hold: "SLOW", "MEDIUM", or "FAST".
          */
         volatile String cameraHoldSpeedPreference = "MEDIUM";
+        
+        // === Camera snap-back preferences (returning to "home" angle) ===
+        /**
+         * Probability of snapping back to preferred angle after deviation (0.3-0.8).
+         * Higher = player has strong angle preference, lower = more flexible.
+         */
+        volatile double cameraSnapBackProbability = 0.5;
+        
+        /**
+         * Minimum deviation from preferred angle before snap-back triggers (20-60 degrees).
+         * Player won't snap back if they're "close enough" to their preferred angle.
+         */
+        volatile double cameraSnapBackTolerance = 40.0;
+        
+        /**
+         * Delay after camera movement before snap-back can occur (2000-8000ms).
+         * Represents "settling time" before the player unconsciously returns to comfort.
+         */
+        volatile long cameraSnapBackDelayMs = 4000;
 
         // === Session patterns ===
         List<String> sessionRituals = new CopyOnWriteArrayList<>();
@@ -1528,6 +2026,35 @@ public class PlayerProfile {
          * - Low bias: More DELAYED, fewer INSTANT
          */
         volatile double predictionClickSpeedBias = 0.50;
+        
+        // === Inventory slot preferences ===
+        /**
+         * Preferred slot region for inventory operations.
+         * Players develop habits about which slots they gravitate toward.
+         * Options: "TOP_LEFT", "TOP_RIGHT", "CENTER", "BOTTOM_LEFT", "BOTTOM_RIGHT", "RANDOM"
+         */
+        volatile String inventorySlotPreference = "CENTER";
+        
+        /**
+         * How strongly the player prefers their preferred region (0.3-0.8).
+         * Higher = stronger preference (clicks cluster in preferred region).
+         * Lower = more random distribution across inventory.
+         */
+        volatile double inventorySlotBiasStrength = 0.5;
+        
+        /**
+         * Row offset for click point within inventory slots (normalized 0.0-1.0).
+         * Some players consistently click slightly higher or lower within each slot.
+         * 0.5 = center, 0.3 = upper third, 0.7 = lower third.
+         */
+        volatile double inventoryClickRowBias = 0.5;
+        
+        /**
+         * Column offset for click point within inventory slots (normalized 0.0-1.0).
+         * Some players consistently click slightly left or right within each slot.
+         * 0.5 = center, 0.3 = left third, 0.7 = right third.
+         */
+        volatile double inventoryClickColBias = 0.5;
 
         // === Metrics ===
         volatile int sessionCount = 0;
@@ -1563,6 +2090,31 @@ public class PlayerProfile {
          * Should be set per-account to match proxy geolocation.
          */
         String timezone = "America/New_York";
+        
+        // === Chronotype (circadian rhythm preferences) ===
+        /**
+         * The player's chronotype: "EARLY_BIRD", "NIGHT_OWL", or "NEUTRAL".
+         * Affects preferred play times and activity level variations by time of day.
+         * 
+         * EARLY_BIRD: Peak activity 6am-12pm, winds down after 8pm, avoids late night.
+         * NIGHT_OWL: Slow morning, peak activity 6pm-2am, often plays late.
+         * NEUTRAL: More flexible schedule, moderate variation across day.
+         */
+        volatile String chronotype = "NEUTRAL";
+        
+        /**
+         * Peak performance hour offset from chronotype default (in hours, -2 to +2).
+         * Allows individual variation within chronotype.
+         * E.g., EARLY_BIRD with peakHourOffset=1.5 peaks later than typical early bird.
+         */
+        volatile double peakHourOffset = 0.0;
+        
+        /**
+         * How strongly the player's performance varies with time of day (0.1-0.5).
+         * Higher values = more pronounced circadian effects (slower when tired).
+         * Lower values = more consistent performance regardless of time.
+         */
+        volatile double circadianStrength = 0.25;
 
         /**
          * Validate profile data is within expected bounds.

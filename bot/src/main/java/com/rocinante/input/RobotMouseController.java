@@ -17,6 +17,7 @@ import java.awt.*;
 import java.awt.event.InputEvent;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.*;
 
 /**
@@ -76,6 +77,26 @@ public class RobotMouseController {
     private static final int MAX_MICRO_CORRECTION_PIXELS = 3;
     private static final long MIN_MICRO_CORRECTION_DELAY_MS = 100;
     private static final long MAX_MICRO_CORRECTION_DELAY_MS = 200;
+
+    // Hesitation constants (brief pauses during movement)
+    private static final long MIN_HESITATION_MS = 5;
+    private static final long MAX_HESITATION_MS = 15;
+    private static final double HESITATION_RANGE_START = 0.2;  // Only hesitate between 20-80% of path
+    private static final double HESITATION_RANGE_END = 0.8;
+    private static final double HESITATION_TOLERANCE = 0.05;   // Check within 5% of hesitation point
+
+    // Sub-movement constants (direction corrections on long paths)
+    private static final int MIN_SUBMOVEMENT_DISTANCE = 300;    // Only for >300px movements
+    private static final double SUBMOVEMENT_DEVIATION = 0.15;   // 15% of distance as max deviation
+    private static final long MIN_WAYPOINT_PAUSE_MS = 10;
+    private static final long MAX_WAYPOINT_PAUSE_MS = 30;
+
+    // Path segmentation constants (approach phases for very long movements)
+    private static final int PHASE_THRESHOLD = 400;            // Use phases for >400px
+    private static final double BALLISTIC_PHASE_RATIO = 0.70;  // 70% fast
+    private static final double APPROACH_PHASE_RATIO = 0.25;   // 25% normal (of remaining)
+    private static final double BALLISTIC_SPEED_BOOST = 1.15;  // 15% faster
+    private static final double FINETUNE_SPEED_REDUCTION = 0.70; // 30% slower
 
     // Click timing constants (REQUIREMENTS 3.1.2)
     private static final double CLICK_DURATION_MEAN_MS = 85.0;
@@ -516,56 +537,17 @@ public class RobotMouseController {
             }
         }
 
-        // Generate Bezier curve control points
-        List<Point> controlPoints = generateControlPoints(start, target, distance);
-
-        // Calculate movement duration
-        long duration = calculateMovementDuration(distance);
-
-        // Apply profile speed multiplier
-        duration = Math.round(duration / playerProfile.getMouseSpeedMultiplier());
-        duration = Randomization.clamp(duration, MIN_DURATION_MS, MAX_DURATION_MS);
-
-        // Calculate noise amplitude for this movement
-        double noiseAmplitude = randomization.uniformRandom(MIN_NOISE_AMPLITUDE, MAX_NOISE_AMPLITUDE);
-
-        // Execute the movement
-        long startTime = System.currentTimeMillis();
-        long elapsed = 0;
-
-        while (elapsed < duration) {
-            double t = (double) elapsed / duration;
-
-            // Apply sigmoid velocity curve for slow-fast-slow motion
-            double adjustedT = sigmoidProgress(t);
-
-            // Calculate point on Bezier curve
-            Point bezierPoint = evaluateBezier(controlPoints, adjustedT);
-
-            // Add Perlin noise perpendicular to movement direction
-            double[] noiseOffset = perlinNoise.getPathOffset(t, noiseAmplitude, movementSeed);
-            int noisyX = bezierPoint.x + (int) Math.round(noiseOffset[0]);
-            int noisyY = bezierPoint.y + (int) Math.round(noiseOffset[1]);
-
-            // Clamp to viewport (noise could push us outside)
-            Point clamped = clampToViewport(noisyX, noisyY);
-
-            // Move mouse
-            robot.mouseMove(clamped.x, clamped.y);
-            currentPosition = clamped;
-
-            // Sleep for noise sample interval
-            Thread.sleep(NOISE_SAMPLE_INTERVAL_MS);
-            elapsed = System.currentTimeMillis() - startTime;
+        // Check if this movement should use sub-movements (direction corrections)
+        if (shouldUseSubMovements(distance)) {
+            executeMovementWithSubMovements(start, target, distance);
+        } else {
+            // Regular direct movement
+            executeDirectMovement(targetX, targetY);
         }
 
-        // Final position (ensure we hit target)
-        robot.mouseMove(targetX, targetY);
-        currentPosition = target;
-
-        // Handle overshoot simulation
+        // Handle overshoot simulation (pass start for direction calculation)
         if (shouldOvershoot()) {
-            executeOvershoot(target);
+            executeOvershoot(start, target);
         }
         // Handle micro-correction (only if no overshoot)
         else if (shouldMicroCorrect()) {
@@ -685,14 +667,31 @@ public class RobotMouseController {
 
     /**
      * Execute overshoot: move past target, then correct back.
+     * 
+     * Overshoot direction is biased toward the movement direction (±30° cone)
+     * because real humans' overshoot is caused by momentum carrying past the target,
+     * not random jitter. This creates much more natural-looking movements.
+     * 
+     * @param start the starting point of the movement
+     * @param target the target point (where we are now)
      */
-    private void executeOvershoot(Point target) throws InterruptedException {
+    private void executeOvershoot(Point start, Point target) throws InterruptedException {
         int overshootPixels = randomization.uniformRandomInt(MIN_OVERSHOOT_PIXELS, MAX_OVERSHOOT_PIXELS);
 
-        // Random direction
-        double angle = randomization.uniformRandom(0, 2 * Math.PI);
-        int overshootX = target.x + (int) (Math.cos(angle) * overshootPixels);
-        int overshootY = target.y + (int) (Math.sin(angle) * overshootPixels);
+        // Calculate movement direction (from start to target)
+        double dx = target.x - start.x;
+        double dy = target.y - start.y;
+        double movementAngle = Math.atan2(dy, dx);
+        
+        // Bias overshoot in movement direction ±30° (human momentum overshoot)
+        // The overshoot happens because the hand carries past the target,
+        // so it should follow the movement direction, not be random
+        double overshootConeRadians = Math.toRadians(30);
+        double angleOffset = randomization.uniformRandom(-overshootConeRadians, overshootConeRadians);
+        double overshootAngle = movementAngle + angleOffset;
+        
+        int overshootX = target.x + (int) (Math.cos(overshootAngle) * overshootPixels);
+        int overshootY = target.y + (int) (Math.sin(overshootAngle) * overshootPixels);
 
         // Clamp overshoot to viewport
         Point clampedOvershoot = clampToViewport(overshootX, overshootY);
@@ -707,7 +706,8 @@ public class RobotMouseController {
         robot.mouseMove(target.x, target.y);
         currentPosition = target;
 
-        log.debug("Overshoot: {} pixels, corrected after {}ms", overshootPixels, delay);
+        log.debug("Overshoot: {} pixels at {}° from movement direction, corrected after {}ms", 
+                overshootPixels, (int) Math.toDegrees(angleOffset), delay);
     }
 
     /**
@@ -738,6 +738,289 @@ public class RobotMouseController {
         currentPosition = clampedCorrection;
 
         log.debug("Micro-correction: {} pixels after {}ms", correctionPixels, delay);
+    }
+
+    // ========================================================================
+    // Hesitation Points (Human-like Pauses During Movement)
+    // ========================================================================
+
+    /**
+     * Plan hesitation points for a movement.
+     * Hesitations are brief pauses (5-15ms) that occur during path traversal,
+     * simulating human perception/decision micro-delays.
+     *
+     * @param distance the movement distance
+     * @return list of progress values (0.0-1.0) where hesitations should occur
+     */
+    private List<Double> planHesitations(double distance) {
+        List<Double> points = new java.util.ArrayList<>();
+        
+        // Only hesitate on movements with this player's probability
+        if (!randomization.chance(playerProfile.getHesitationProbability())) {
+            return points;
+        }
+        
+        // Longer movements are more likely to have multiple hesitations
+        int count = 1;
+        if (distance > 400) {
+            count = randomization.uniformRandomInt(1, 2);
+        }
+        
+        for (int i = 0; i < count; i++) {
+            // Add hesitation points between 20% and 80% of path
+            double hesitationPoint = randomization.uniformRandom(
+                    HESITATION_RANGE_START, HESITATION_RANGE_END);
+            points.add(hesitationPoint);
+        }
+        
+        // Sort so we process in order
+        points.sort(Double::compareTo);
+        
+        log.trace("Planned {} hesitation point(s) for {}px movement: {}", 
+                points.size(), distance, points);
+        return points;
+    }
+
+    /**
+     * Check if the current progress point should trigger a hesitation.
+     *
+     * @param currentProgress current progress (0.0-1.0)
+     * @param hesitationPoints list of planned hesitation points
+     * @return the hesitation point if triggered, null otherwise
+     */
+    private Double checkForHesitation(double currentProgress, List<Double> hesitationPoints) {
+        for (Double point : hesitationPoints) {
+            // Check if we're within tolerance of the hesitation point
+            if (Math.abs(currentProgress - point) <= HESITATION_TOLERANCE) {
+                return point;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Execute a hesitation pause.
+     *
+     * @return the duration of the hesitation in milliseconds
+     */
+    private long executeHesitation() throws InterruptedException {
+        long hesitationMs = randomization.uniformRandomLong(MIN_HESITATION_MS, MAX_HESITATION_MS);
+        Thread.sleep(hesitationMs);
+        return hesitationMs;
+    }
+
+    // ========================================================================
+    // Sub-Movements (Direction Corrections for Long Paths)
+    // ========================================================================
+
+    /**
+     * Check if this movement should use sub-movements (intermediate waypoints).
+     * Long movements (>300px) have a chance to include direction corrections.
+     *
+     * @param distance the movement distance in pixels
+     * @return true if sub-movements should be used
+     */
+    private boolean shouldUseSubMovements(double distance) {
+        if (distance < MIN_SUBMOVEMENT_DISTANCE) {
+            return false;
+        }
+        return randomization.chance(playerProfile.getSubmovementProbability());
+    }
+
+    /**
+     * Calculate an intermediate waypoint for sub-movement.
+     * The waypoint deviates perpendicular to the direct path, simulating
+     * a human who overshoots and corrects.
+     *
+     * @param start  the starting point
+     * @param target the target point
+     * @param distance the total movement distance
+     * @return the waypoint
+     */
+    private Point calculateWaypoint(Point start, Point target, double distance) {
+        // Waypoint at 40-60% of path
+        double t = randomization.uniformRandom(0.4, 0.6);
+        
+        // Calculate max deviation based on distance
+        double maxDeviation = distance * SUBMOVEMENT_DEVIATION;
+        double deviation = randomization.uniformRandom(-maxDeviation, maxDeviation);
+        
+        // Calculate perpendicular offset
+        double dx = target.x - start.x;
+        double dy = target.y - start.y;
+        double perpX = -dy / distance;
+        double perpY = dx / distance;
+        
+        int waypointX = (int) (start.x + dx * t + perpX * deviation);
+        int waypointY = (int) (start.y + dy * t + perpY * deviation);
+        
+        // Clamp to viewport
+        return clampToViewport(waypointX, waypointY);
+    }
+
+    /**
+     * Execute a movement with sub-movements (intermediate waypoints).
+     * For long movements, this creates more human-like paths with direction corrections.
+     *
+     * @param start  the starting point
+     * @param target the target point
+     * @param distance the total movement distance
+     */
+    private void executeMovementWithSubMovements(Point start, Point target, double distance) 
+            throws InterruptedException {
+        // Calculate waypoint
+        Point waypoint = calculateWaypoint(start, target, distance);
+        
+        log.trace("Sub-movement via waypoint ({}, {}) for {}px movement", 
+                waypoint.x, waypoint.y, distance);
+        
+        // Move to waypoint (direct movement, no sub-movements within)
+        executeDirectMovement(waypoint.x, waypoint.y);
+        
+        // Brief pause at waypoint (simulates direction reassessment)
+        Thread.sleep(randomization.uniformRandomLong(MIN_WAYPOINT_PAUSE_MS, MAX_WAYPOINT_PAUSE_MS));
+        
+        // Move from waypoint to target
+        executeDirectMovement(target.x, target.y);
+    }
+
+    /**
+     * Execute a direct movement without sub-movements.
+     * This is the core movement logic, called by both regular movements
+     * and as segments of sub-movement paths.
+     */
+    private void executeDirectMovement(int targetX, int targetY) throws InterruptedException {
+        Point start = currentPosition;
+        Point target = new Point(targetX, targetY);
+
+        double distance = start.distance(target);
+        if (distance < 1) {
+            return; // Already at target
+        }
+
+        // Check if this player uses path segmentation for long movements
+        if (distance >= PHASE_THRESHOLD && playerProfile.usesPathSegmentation()) {
+            executeSegmentedMovement(start, target, distance);
+            return;
+        }
+
+        // Standard direct movement
+        executeMovementSegment(start, target, distance, 1.0);
+
+        // Final position (ensure we hit target)
+        robot.mouseMove(targetX, targetY);
+        currentPosition = target;
+    }
+
+    /**
+     * Execute a segmented movement with approach phases.
+     * Long movements are broken into: ballistic -> approach -> fine-tune phases.
+     * This mimics how humans approach targets at different speeds.
+     */
+    private void executeSegmentedMovement(Point start, Point target, double distance) 
+            throws InterruptedException {
+        log.trace("Segmented movement: {}px in 3 phases", distance);
+        
+        // Phase 1: Ballistic (70% of distance, fast)
+        Point phase1End = interpolatePoint(start, target, BALLISTIC_PHASE_RATIO);
+        double phase1Dist = start.distance(phase1End);
+        executeMovementSegment(start, phase1End, phase1Dist, BALLISTIC_SPEED_BOOST);
+        
+        // Phase 2: Approach (25% of remaining, normal speed)
+        Point phase2End = interpolatePoint(phase1End, target, APPROACH_PHASE_RATIO);
+        double phase2Dist = phase1End.distance(phase2End);
+        executeMovementSegment(phase1End, phase2End, phase2Dist, 1.0);
+        
+        // Phase 3: Fine-tuning (final 5%, slow and precise)
+        double phase3Dist = phase2End.distance(target);
+        executeMovementSegment(phase2End, target, phase3Dist, FINETUNE_SPEED_REDUCTION);
+        
+        // Final position
+        robot.mouseMove(target.x, target.y);
+        currentPosition = target;
+    }
+
+    /**
+     * Interpolate a point between start and target at the given ratio.
+     */
+    private Point interpolatePoint(Point start, Point target, double ratio) {
+        int x = (int) (start.x + (target.x - start.x) * ratio);
+        int y = (int) (start.y + (target.y - start.y) * ratio);
+        return new Point(x, y);
+    }
+
+    /**
+     * Execute a single movement segment with specified speed multiplier.
+     * This is the innermost movement loop used by all movement types.
+     *
+     * @param start starting point
+     * @param target target point
+     * @param distance segment distance
+     * @param speedMultiplier additional speed modifier (>1.0 = faster, <1.0 = slower)
+     */
+    private void executeMovementSegment(Point start, Point target, double distance, 
+            double speedMultiplier) throws InterruptedException {
+        if (distance < 1) {
+            return;
+        }
+
+        // Generate Bezier curve control points
+        List<Point> controlPoints = generateControlPoints(start, target, distance);
+
+        // Calculate movement duration
+        long duration = calculateMovementDuration(distance);
+
+        // Apply profile speed multiplier and segment speed modifier
+        double combinedSpeed = playerProfile.getMouseSpeedMultiplier() * speedMultiplier;
+        duration = Math.round(duration / combinedSpeed);
+        duration = Randomization.clamp(duration, MIN_DURATION_MS, MAX_DURATION_MS);
+
+        // Calculate noise amplitude for this movement
+        double noiseAmplitude = randomization.uniformRandom(MIN_NOISE_AMPLITUDE, MAX_NOISE_AMPLITUDE);
+
+        // Plan hesitation points for this segment
+        List<Double> hesitationPoints = planHesitations(distance);
+        Set<Double> triggeredHesitations = new java.util.HashSet<>();
+
+        // Execute the movement
+        long startTime = System.currentTimeMillis();
+        long elapsed = 0;
+
+        while (elapsed < duration) {
+            double t = (double) elapsed / duration;
+
+            // Check for hesitation at this progress point
+            Double hesitationPoint = checkForHesitation(t, hesitationPoints);
+            if (hesitationPoint != null && !triggeredHesitations.contains(hesitationPoint)) {
+                triggeredHesitations.add(hesitationPoint);
+                executeHesitation();
+            }
+
+            // Apply sigmoid velocity curve for slow-fast-slow motion
+            double adjustedT = sigmoidProgress(t);
+
+            // Calculate point on Bezier curve
+            Point bezierPoint = evaluateBezier(controlPoints, adjustedT);
+
+            // Add Perlin noise perpendicular to movement direction
+            double[] noiseOffset = perlinNoise.getPathOffset(t, noiseAmplitude, movementSeed);
+            int noisyX = bezierPoint.x + (int) Math.round(noiseOffset[0]);
+            int noisyY = bezierPoint.y + (int) Math.round(noiseOffset[1]);
+
+            // Clamp to viewport
+            Point clamped = clampToViewport(noisyX, noisyY);
+
+            // Move mouse
+            robot.mouseMove(clamped.x, clamped.y);
+            currentPosition = clamped;
+
+            // Sleep for randomized noise sample interval (5-10ms per spec)
+            Thread.sleep(randomization.uniformRandomLong(5, 10));
+            elapsed = System.currentTimeMillis() - startTime;
+        }
+
+        // Update current position (final position set by caller)
+        currentPosition = target;
     }
 
     // ========================================================================
@@ -892,14 +1175,55 @@ public class RobotMouseController {
 
     /**
      * Calculate click hold duration based on profile and fatigue.
+     * 
+     * Uses ex-Gaussian distribution which closely models human reaction times:
+     * - Gaussian core: most clicks cluster around the mean (consistent motor pattern)
+     * - Exponential tail: occasional slower clicks (distraction, fatigue, etc.)
+     * 
+     * This produces a right-skewed distribution that's far more realistic than
+     * symmetric Gaussian, which has unrealistic fast outliers.
+     * 
+     * Parameters are per-profile, creating consistent "click feel" per player:
+     * - mu: mean click speed (snappy vs deliberate players)
+     * - sigma: consistency (steady vs variable players)
+     * - tau: tail heaviness (focused vs distractible players)
+     * 
+     * Motor speed correlation:
+     * Creates unified "player tempo" - fast mouse movers tend to be fast clickers.
+     * This prevents the detectable pattern of fast mouse + slow clicks (or vice versa).
      */
     private long calculateClickDuration() {
-        double baseDuration = randomization.gaussianRandom(
-                CLICK_DURATION_MEAN_MS, CLICK_DURATION_STDDEV_MS,
+        // Get player-specific click timing parameters
+        double mu = playerProfile.getClickDurationMu();       // 75-95ms
+        double sigma = playerProfile.getClickDurationSigma(); // 10-20ms
+        double tau = playerProfile.getClickDurationTau();     // 5-15ms
+        
+        // Apply motor speed correlation
+        // Fast movers (speed > 1.0) should have faster clicks (lower mu)
+        // Slow movers (speed < 1.0) should have slower clicks (higher mu)
+        double mouseSpeed = playerProfile.getMouseSpeedMultiplier();  // 0.8-1.3
+        double correlation = playerProfile.getMotorSpeedCorrelation(); // 0.5-0.9
+        
+        // Calculate speed deviation from baseline (1.0)
+        // speedDeviation: -0.2 to +0.3 (based on mouseSpeed 0.8-1.3)
+        double speedDeviation = mouseSpeed - 1.0;
+        
+        // Apply correlated adjustment to mu
+        // Fast mouse (positive deviation) → reduce mu (faster clicks)
+        // Example: mouseSpeed=1.2, correlation=0.8 → mu reduced by 16%
+        double correlatedAdjustment = 1.0 - (speedDeviation * correlation);
+        double adjustedMu = mu * correlatedAdjustment;
+        
+        // Generate ex-Gaussian distributed click duration
+        double baseDuration = randomization.exGaussianRandom(
+                adjustedMu, sigma, tau, 
                 MIN_CLICK_DURATION_MS, MAX_CLICK_DURATION_MS);
 
-        // Apply click variance modifier from profile
+        // Apply click variance modifier from profile (multiplicative adjustment)
         baseDuration *= playerProfile.getClickVarianceModifier();
+        
+        // Clamp after variance modifier
+        baseDuration = Randomization.clamp(baseDuration, MIN_CLICK_DURATION_MS, MAX_CLICK_DURATION_MS * 1.3);
 
         return Math.round(baseDuration);
     }
@@ -1247,7 +1571,16 @@ public class RobotMouseController {
     }
 
     /**
-     * Execute the movement portion of a drag (slower, with wobble).
+     * Execute the movement portion of a drag (slower, with humanized wobble).
+     * 
+     * Wobble simulates natural hand tremor during drag operations. Real humans
+     * have variable tremor patterns based on:
+     * - Individual physiology (base frequency)
+     * - Fatigue/caffeine/etc (amplitude variation)
+     * - Moment-to-moment variation (Perlin noise modulation)
+     * 
+     * Using pure sine waves is detectable because it's too regular.
+     * We use Perlin noise to modulate both frequency and amplitude per-drag.
      */
     private void executeDragMovement(Point target, double distance) throws InterruptedException {
         isMoving = true;
@@ -1268,7 +1601,22 @@ public class RobotMouseController {
         long duration = (long) (baseDuration * 1.5);
         duration = Math.min(duration, MAX_DURATION_MS * 2); // Allow longer for drags
 
-        // Execute movement with slight wobble
+        // Get profile-based wobble characteristics
+        double baseFreq = playerProfile.getWobbleFrequencyBase();    // 2.5-4.0 Hz
+        double freqVar = playerProfile.getWobbleFrequencyVariance(); // 0.3-0.8
+        double ampMod = playerProfile.getWobbleAmplitudeModifier();  // 0.7-1.3
+        
+        // Per-drag frequency variation using Perlin noise
+        // This makes each drag feel slightly different (like real tremor)
+        double freqNoise = perlinNoise.noise2D(movementSeed * 0.0001, 0) * freqVar;
+        double effectiveFreqX = baseFreq + freqNoise;
+        double effectiveFreqY = baseFreq * 0.75 + freqNoise * 0.8; // Y slightly different
+        
+        // Per-drag amplitude variation (also Perlin-modulated)
+        double ampNoise = 1.0 + perlinNoise.noise2D(0, movementSeed * 0.0001) * 0.3;
+        double effectiveAmp = DRAG_WOBBLE_AMPLITUDE * ampMod * ampNoise;
+
+        // Execute movement with humanized wobble
         long startTime = System.currentTimeMillis();
         long elapsed = 0;
 
@@ -1279,9 +1627,13 @@ public class RobotMouseController {
             // Calculate point on curve
             Point bezierPoint = evaluateBezier(controlPoints, adjustedT);
 
-            // Add slight wobble (less than normal noise, simulates hand tremor during drag)
-            double wobbleX = Math.sin(t * Math.PI * 4) * DRAG_WOBBLE_AMPLITUDE;
-            double wobbleY = Math.cos(t * Math.PI * 3) * DRAG_WOBBLE_AMPLITUDE * 0.7;
+            // Humanized wobble: base sine wave + Perlin noise modulation
+            // The Perlin noise makes the wobble irregular (not perfectly periodic)
+            double noiseModX = 1.0 + perlinNoise.noise2D(t * 3, movementSeed * 0.001) * 0.4;
+            double noiseModY = 1.0 + perlinNoise.noise2D(movementSeed * 0.001, t * 3) * 0.4;
+            
+            double wobbleX = Math.sin(t * Math.PI * 2 * effectiveFreqX) * effectiveAmp * noiseModX;
+            double wobbleY = Math.cos(t * Math.PI * 2 * effectiveFreqY) * effectiveAmp * 0.7 * noiseModY;
 
             int x = bezierPoint.x + (int) Math.round(wobbleX);
             int y = bezierPoint.y + (int) Math.round(wobbleY);
@@ -1292,7 +1644,8 @@ public class RobotMouseController {
             robot.mouseMove(clamped.x, clamped.y);
             currentPosition = clamped;
 
-            Thread.sleep(NOISE_SAMPLE_INTERVAL_MS);
+            // Randomized sleep interval (5-10ms per spec)
+            Thread.sleep(randomization.uniformRandomLong(5, 10));
             elapsed = System.currentTimeMillis() - startTime;
         }
 
@@ -1415,6 +1768,56 @@ public class RobotMouseController {
     // ========================================================================
     // Utility Methods
     // ========================================================================
+    
+    /**
+     * Apply cognitive delay for transitioning between different action types.
+     * 
+     * This simulates the mental "context switch" time when a human transitions
+     * from one type of action to another (e.g., combat → banking, walking → clicking).
+     * 
+     * The delay is profile-based:
+     * - cognitiveDelayBase: personal "thinking speed" (80-200ms)
+     * - cognitiveDelayVariance: how variable the delay is (0.3-0.7)
+     * 
+     * Use this between logically different actions to avoid inhuman speed.
+     * Do NOT use for repeated same-type actions (e.g., clicking multiple items).
+     * 
+     * @return CompletableFuture that completes after the cognitive delay
+     */
+    public CompletableFuture<Void> applyCognitiveDelay() {
+        double base = playerProfile.getCognitiveDelayBase();
+        double variance = playerProfile.getCognitiveDelayVariance();
+        
+        // Calculate delay with variance: base * uniform(1-var, 1+var)
+        double varianceFactor = randomization.uniformRandom(1.0 - variance, 1.0 + variance);
+        long delay = Math.round(base * varianceFactor);
+        
+        // Clamp to reasonable bounds (50-500ms)
+        delay = Randomization.clamp(delay, 50, 500);
+        
+        log.debug("Cognitive delay: {}ms", delay);
+        return sleep(delay);
+    }
+    
+    /**
+     * Apply cognitive delay synchronously (blocking).
+     * 
+     * Use when you need a blocking version of the cognitive delay.
+     * Prefer the async version when possible.
+     * 
+     * @throws InterruptedException if the thread is interrupted
+     */
+    public void applyCognitiveDelaySync() throws InterruptedException {
+        double base = playerProfile.getCognitiveDelayBase();
+        double variance = playerProfile.getCognitiveDelayVariance();
+        
+        double varianceFactor = randomization.uniformRandom(1.0 - variance, 1.0 + variance);
+        long delay = Math.round(base * varianceFactor);
+        delay = Randomization.clamp(delay, 50, 500);
+        
+        log.debug("Cognitive delay (sync): {}ms", delay);
+        Thread.sleep(delay);
+    }
 
     /**
      * Sleep asynchronously.

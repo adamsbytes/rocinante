@@ -99,14 +99,15 @@ public class UnderAttackEmergencyTest {
 
     @Test
     public void testIsTriggered_InCombatActivity_ReturnsFalse() {
-        // CRITICAL (boss fight) is a combat activity type
+        // CRITICAL (boss fight) is a combat activity type - intentional combat
         when(combatState.isBeingAttacked()).thenReturn(true);
         when(activityTracker.getCurrentActivity()).thenReturn(ActivityType.CRITICAL);
+        when(activityTracker.isInIntentionalCombat()).thenReturn(true);
         
         AggressorInfo attacker = createMugger();
         when(combatState.getAggressiveNpcs()).thenReturn(List.of(attacker));
 
-        // CRITICAL.isCombat() returns true
+        // In intentional combat, emergency is NOT triggered
         assertFalse(emergency.isTriggered(taskContext));
     }
 

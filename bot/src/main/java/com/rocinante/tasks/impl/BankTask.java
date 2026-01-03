@@ -10,6 +10,7 @@ import com.rocinante.tasks.AbstractTask;
 import com.rocinante.tasks.TaskContext;
 import com.rocinante.tasks.TaskState;
 import com.rocinante.timing.DelayProfile;
+import com.rocinante.timing.HumanTimer.ReactionContext;
 import com.rocinante.util.Randomization;
 import com.rocinante.util.WidgetInteractionHelpers;
 import lombok.Builder;
@@ -1664,9 +1665,9 @@ public class BankTask extends AbstractTask {
 
         operationPending = true;
         
-        // Type the quantity and press Enter
+        // Type the quantity and press Enter (EXPECTED - typing familiar value)
         ctx.getKeyboardController().type(quantityStr)
-                .thenCompose(v -> ctx.getHumanTimer().sleep(DelayProfile.REACTION))
+                .thenCompose(v -> ctx.getHumanTimer().sleepContextual(ReactionContext.EXPECTED))
                 .thenCompose(v -> ctx.getKeyboardController().pressEnter())
                 .thenRun(() -> {
                     operationPending = false;

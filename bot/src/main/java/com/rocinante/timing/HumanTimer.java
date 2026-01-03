@@ -123,6 +123,73 @@ public class HumanTimer {
     }
 
     // ========================================================================
+    // Contextual Reaction Times
+    // ========================================================================
+
+    /**
+     * Reaction context - determines which reaction profile to use.
+     * Different contexts produce different reaction time distributions.
+     */
+    public enum ReactionContext {
+        /**
+         * Expected event - you were waiting for this to happen.
+         * Examples: dialogue continues, bank opens after clicking, animation ends.
+         * Fastest reaction because attention is already focused.
+         */
+        EXPECTED,
+        
+        /**
+         * Unexpected event - this surprised you.
+         * Examples: random event, PKer appears, NPC despawns, error message.
+         * Slower because you need to notice and process what happened.
+         */
+        UNEXPECTED,
+        
+        /**
+         * Complex event - you need to think before acting.
+         * Examples: choosing an item, selecting from menu, making a decision.
+         * Slowest because cognitive processing is required.
+         */
+        COMPLEX
+    }
+
+    /**
+     * Get a contextual reaction delay based on what kind of event occurred.
+     * Uses the appropriate REACTION_* profile based on context.
+     *
+     * @param context the reaction context
+     * @return reaction delay in milliseconds, adjusted by fatigue
+     */
+    public long getContextualReaction(ReactionContext context) {
+        DelayProfile profile = switch (context) {
+            case EXPECTED -> DelayProfile.REACTION_EXPECTED;
+            case UNEXPECTED -> DelayProfile.REACTION_UNEXPECTED;
+            case COMPLEX -> DelayProfile.REACTION_COMPLEX;
+        };
+        return getDelay(profile);
+    }
+
+    /**
+     * Sleep for a contextual reaction time.
+     *
+     * @param context the reaction context
+     * @return CompletableFuture that completes after the reaction delay
+     */
+    public CompletableFuture<Void> sleepContextual(ReactionContext context) {
+        return sleep(getContextualReaction(context));
+    }
+
+    /**
+     * Sleep synchronously for a contextual reaction time.
+     *
+     * @param context the reaction context
+     * @throws InterruptedException if the sleep is interrupted
+     */
+    public void sleepContextualSync(ReactionContext context) throws InterruptedException {
+        sleepSync(getContextualReaction(context));
+    }
+
+    // ========================================================================
     // Custom Delays
     // ========================================================================
 
@@ -325,6 +392,7 @@ public class HumanTimer {
                 profile.getDistributionType(),
                 mean,
                 profile.getStdDev(),
+                profile.getTau(),
                 profile.getMin(),
                 profile.getMax()
         );
@@ -332,9 +400,17 @@ public class HumanTimer {
 
     /**
      * Calculate a delay value from the specified distribution.
+     * 
+     * @param type   the distribution type
+     * @param mean   the mean (μ for Gaussian/Ex-Gaussian, λ for Poisson/Exponential)
+     * @param stdDev the standard deviation (for Gaussian/Ex-Gaussian)
+     * @param tau    the exponential tail parameter (for Ex-Gaussian only)
+     * @param min    minimum bound
+     * @param max    maximum bound
+     * @return the calculated delay value
      */
     private long calculateFromDistribution(DistributionType type, double mean, double stdDev,
-                                           Long min, Long max) {
+                                           double tau, Long min, Long max) {
         double rawValue;
 
         switch (type) {
@@ -359,6 +435,13 @@ public class HumanTimer {
                 rawValue = randomization.exponentialRandom(lambda);
                 break;
 
+            case EX_GAUSSIAN:
+                // Ex-Gaussian: convolution of Gaussian(μ, σ) and Exponential(τ)
+                // Creates right-skewed distribution matching human reaction times
+                // Mean of distribution = μ + τ
+                rawValue = randomization.exGaussianRandom(mean, stdDev, tau);
+                break;
+
             default:
                 rawValue = mean;
         }
@@ -375,6 +458,16 @@ public class HumanTimer {
         }
 
         return Math.round(rawValue);
+    }
+
+    /**
+     * Calculate a delay value from the specified distribution (legacy overload without tau).
+     * For backward compatibility with getCustomDelay methods.
+     */
+    private long calculateFromDistribution(DistributionType type, double mean, double stdDev,
+                                           Long min, Long max) {
+        // Default tau to 0 (no effect for non-Ex-Gaussian distributions)
+        return calculateFromDistribution(type, mean, stdDev, 0.0, min, max);
     }
 
     /**

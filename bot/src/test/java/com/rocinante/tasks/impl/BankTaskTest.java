@@ -145,7 +145,9 @@ public class BankTaskTest {
         // HumanTimer defaults
         when(humanTimer.sleep(anyLong())).thenReturn(CompletableFuture.completedFuture(null));
         when(humanTimer.sleep(any())).thenReturn(CompletableFuture.completedFuture(null));
+        when(humanTimer.sleepContextual(any())).thenReturn(CompletableFuture.completedFuture(null));
         when(humanTimer.getDelay(any())).thenReturn(100L);
+        when(humanTimer.getContextualReaction(any())).thenReturn(100L);
 
         // Keyboard controller
         when(keyboardController.pressKey(anyInt())).thenReturn(CompletableFuture.completedFuture(null));

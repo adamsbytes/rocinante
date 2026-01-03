@@ -3,6 +3,7 @@ package com.rocinante.tasks.impl;
 import com.rocinante.tasks.AbstractTask;
 import com.rocinante.tasks.TaskContext;
 import com.rocinante.timing.DelayProfile;
+import com.rocinante.timing.HumanTimer.ReactionContext;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -262,7 +263,7 @@ public class LoginTask extends AbstractTask {
         actionPending = true;
         ticksWaiting = 0;
 
-        ctx.getHumanTimer().sleep(DelayProfile.REACTION)
+        ctx.getHumanTimer().sleepContextual(ReactionContext.EXPECTED)
             .thenCompose(v -> ctx.getMouseController().click(bounds))
             .thenRun(() -> {
                 actionPending = false;
@@ -283,7 +284,7 @@ public class LoginTask extends AbstractTask {
         actionPending = true;
         ticksWaiting = 0;
 
-        ctx.getHumanTimer().sleep(DelayProfile.REACTION)
+        ctx.getHumanTimer().sleepContextual(ReactionContext.EXPECTED)
             .thenCompose(v -> ctx.getMouseController().moveToCanvas(centerX, centerY))
             .thenCompose(v -> ctx.getMouseController().click())
             .thenRun(() -> {

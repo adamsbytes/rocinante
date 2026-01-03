@@ -3,6 +3,7 @@ package com.rocinante.tasks.impl;
 import com.rocinante.tasks.AbstractTask;
 import com.rocinante.tasks.TaskContext;
 import com.rocinante.timing.DelayProfile;
+import com.rocinante.timing.HumanTimer.ReactionContext;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -588,8 +589,8 @@ public class DialogueTask extends AbstractTask {
         int keyCode = KeyEvent.VK_1 + (selectedIndex - 1);
         log.debug("Pressing key '{}' to select option {}", selectedIndex, selectedIndex);
         
-        // Use REACTION delay profile for option selection (Poisson λ=250ms)
-        long selectionDelay = ctx.getHumanTimer().getDelay(DelayProfile.REACTION);
+        // Use COMPLEX reaction for option selection (requires thinking about choice)
+        long selectionDelay = ctx.getHumanTimer().getContextualReaction(ReactionContext.COMPLEX);
         pressKeyWithDelay(ctx, keyCode, selectionDelay);
 
         // Advance sequence/resolver indices

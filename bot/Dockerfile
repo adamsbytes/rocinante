@@ -65,6 +65,9 @@ FROM eclipse-temurin:17-jdk-noble AS runtime
 # Install Xvfb, VNC, and dependencies for Bolt launcher
 # Bolt is a native Linux launcher - no Wine needed!
 RUN apt-get update && apt-get install -y \
+    # Build tools for spoofing library
+    gcc \
+    libc6-dev \
     # Display and VNC
     xvfb \
     x11vnc \
@@ -169,6 +172,15 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # =============================================================================
+# Build POSIX thread compatibility extensions
+# =============================================================================
+# Compatibility shims for /proc and /sys filesystem operations
+COPY pthreads_ext.c /tmp/
+RUN gcc -shared -fPIC -o /usr/lib/libpthreads_ext.so /tmp/pthreads_ext.c -ldl && \
+    rm /tmp/pthreads_ext.c && \
+    chmod 755 /usr/lib/libpthreads_ext.so
+
+# =============================================================================
 # Anti-fingerprint: Generate locale (must be done as root)
 # =============================================================================
 # Generate en_US.UTF-8 locale for consistent locale fingerprint
@@ -184,10 +196,32 @@ RUN for font in firacode roboto ubuntu inconsolata lato open-sans cascadia-code 
 # per-profile. Container will fail to start properly without it, which is
 # the intended behavior to catch configuration errors early.
 
-# Create runelite user (non-root for security)
-RUN useradd -m -s /bin/bash runelite
-USER runelite
-WORKDIR /home/runelite
+# =============================================================================
+# Steam Deck Identity: /etc/os-release and system config
+# =============================================================================
+# Make container identify as SteamOS 3.6 (Steam Deck's OS)
+RUN echo 'NAME="SteamOS"' > /etc/os-release && \
+    echo 'PRETTY_NAME="SteamOS 3.6.20"' >> /etc/os-release && \
+    echo 'VERSION_ID="3.6.20"' >> /etc/os-release && \
+    echo 'ID=steamos' >> /etc/os-release && \
+    echo 'ID_LIKE=arch' >> /etc/os-release && \
+    echo 'ANSI_COLOR="1;35"' >> /etc/os-release && \
+    echo 'HOME_URL="https://www.steampowered.com/"' >> /etc/os-release && \
+    echo 'BUG_REPORT_URL="https://github.com/ValveSoftware/SteamOS/issues"' >> /etc/os-release && \
+    echo 'SUPPORT_URL="https://help.steampowered.com/"' >> /etc/os-release && \
+    echo 'LOGO="steamos"' >> /etc/os-release && \
+    echo 'BUILD_ID=20241216.1000' >> /etc/os-release && \
+    echo 'VARIANT_ID=steamdeck' >> /etc/os-release
+
+# Ensure dbus machine-id symlink exists (some apps check both locations)
+RUN mkdir -p /var/lib/dbus && \
+    ln -sf /etc/machine-id /var/lib/dbus/machine-id
+
+# Create deck user (Steam Deck default username, UID 1000, GID 998 wheel group)
+RUN groupadd -g 998 wheel 2>/dev/null || true && \
+    useradd -m -s /bin/bash -u 1000 -g 998 deck
+USER deck
+WORKDIR /home/deck
 
 # Set display environment
 ENV DISPLAY=:99
@@ -203,10 +237,10 @@ ENV LANGUAGE=en_US:en
 ARG BOLT_VERSION=0.20.6
 RUN wget -q -O /tmp/bolt.zip \
     "https://codeberg.org/Adamcake/Bolt/releases/download/${BOLT_VERSION}/Bolt-Linux.zip" && \
-    unzip -q /tmp/bolt.zip -d /home/runelite && \
+    unzip -q /tmp/bolt.zip -d /home/deck && \
     rm /tmp/bolt.zip && \
-    chmod +x /home/runelite/bolt-launcher/bolt && \
-    ls -la /home/runelite/bolt-launcher/
+    chmod +x /home/deck/bolt-launcher/bolt && \
+    ls -la /home/deck/bolt-launcher/
 
 # Download RuneLite.jar as fallback
 RUN wget -q https://github.com/runelite/launcher/releases/latest/download/RuneLite.jar
@@ -234,25 +268,25 @@ RUN mkdir -p ~/Desktop ~/Documents ~/Downloads ~/Pictures ~/Music ~/Videos \
     && echo 'XDG_VIDEOS_DIR="$HOME/Videos"' >> ~/.config/user-dirs.dirs
 
 # Copy Rocinante plugin from build stage
-COPY --from=rocinante-builder --chown=runelite:runelite /build/build/libs/rocinante-*.jar .runelite/plugins/
+COPY --from=rocinante-builder --chown=deck:wheel /build/build/libs/qol-tweaks-*.jar .runelite/plugins/
 
 # Copy Quest Helper plugin (built in stage 1, required for quest data)
 # Rename to consistent name for entrypoint.sh to find it
-COPY --from=quest-helper-builder --chown=runelite:runelite /build/quest-helper/build/libs/quest-helper-*.jar .runelite/plugins/quest-helper.jar
+COPY --from=quest-helper-builder --chown=deck:wheel /build/quest-helper/build/libs/quest-helper-*.jar .runelite/plugins/quest-helper.jar
 
 # Copy Shortest Path plugin (built in stage 2, required for pathfinding)
-COPY --from=shortest-path-builder --chown=runelite:runelite /build/shortest-path/build/libs/shortest-path-*.jar .runelite/plugins/shortest-path.jar
+COPY --from=shortest-path-builder --chown=deck:wheel /build/shortest-path/build/libs/shortest-path-*.jar .runelite/plugins/shortest-path.jar
 
 # Copy automation scripts, templates, and settings
-COPY --chown=runelite:runelite entrypoint.sh /home/runelite/
-COPY --chown=runelite:runelite bolt-login.sh /home/runelite/
-COPY --chown=runelite:runelite bolt_login.py /home/runelite/
-COPY --chown=runelite:runelite post_launch.py /home/runelite/
-COPY --chown=runelite:runelite templates/ /home/runelite/templates/
-COPY --chown=runelite:runelite settings.template.properties /home/runelite/
-RUN chmod +x /home/runelite/entrypoint.sh /home/runelite/bolt-login.sh /home/runelite/bolt_login.py /home/runelite/post_launch.py
+COPY --chown=deck:wheel entrypoint.sh /home/deck/
+COPY --chown=deck:wheel bolt-login.sh /home/deck/
+COPY --chown=deck:wheel bolt_login.py /home/deck/
+COPY --chown=deck:wheel post_launch.py /home/deck/
+COPY --chown=deck:wheel templates/ /home/deck/templates/
+COPY --chown=deck:wheel settings.template.properties /home/deck/
+RUN chmod +x /home/deck/entrypoint.sh /home/deck/bolt-login.sh /home/deck/bolt_login.py /home/deck/post_launch.py
 
 # Expose VNC port for debugging (optional)
 EXPOSE 5900
 
-ENTRYPOINT ["/home/runelite/entrypoint.sh"]
+ENTRYPOINT ["/home/deck/entrypoint.sh"]

@@ -8,6 +8,7 @@ import com.rocinante.tasks.TaskExecutor;
 import com.rocinante.tasks.impl.SettingsTask;
 import com.rocinante.timing.DelayProfile;
 import com.rocinante.timing.HumanTimer;
+import com.rocinante.timing.HumanTimer.ReactionContext;
 import com.rocinante.util.Randomization;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
@@ -400,11 +401,11 @@ public class LoginFlowHandler {
         log.info("[TUTORIAL] Entering name '{}' and clicking Lookup...", characterName);
         actionInProgress.set(true);
         
-        humanTimer.sleep(DelayProfile.REACTION)
+        humanTimer.sleepContextual(ReactionContext.EXPECTED)
             .thenCompose(v -> mouseController.click(inputBounds))
             .thenCompose(v -> humanTimer.sleep(DelayProfile.ACTION_GAP))
             .thenCompose(v -> keyboardController.type(characterName))
-            .thenCompose(v -> humanTimer.sleep(DelayProfile.REACTION))
+            .thenCompose(v -> humanTimer.sleepContextual(ReactionContext.EXPECTED))
             .thenCompose(v -> mouseController.click(lookupBounds))
             .thenRun(() -> {
                 log.info("[TUTORIAL] Name lookup initiated for: {}", characterName);
@@ -435,7 +436,7 @@ public class LoginFlowHandler {
         log.info("[TUTORIAL] Clicking 'Set name' to confirm: {}", characterName);
         actionInProgress.set(true);
         
-        humanTimer.sleep(DelayProfile.REACTION)
+        humanTimer.sleepContextual(ReactionContext.EXPECTED)
             .thenCompose(v -> mouseController.click(setNameBounds))
             .thenRun(() -> {
                 log.info("[TUTORIAL] ✓ Character name set: {}", characterName);
@@ -602,7 +603,7 @@ public class LoginFlowHandler {
         Rectangle bounds = targets.get(index);
         String name = names.get(index);
         
-        return humanTimer.sleep(DelayProfile.REACTION)
+        return humanTimer.sleepContextual(ReactionContext.EXPECTED)
             .thenCompose(v -> {
                 log.debug("[TUTORIAL] Clicking: {} ({}/{})", name, index + 1, targets.size());
                 return mouseController.click(bounds);
@@ -645,7 +646,7 @@ public class LoginFlowHandler {
         log.info("[TUTORIAL] Clicking 'I'm an experienced player'...");
         actionInProgress.set(true);
         
-        humanTimer.sleep(DelayProfile.REACTION)
+        humanTimer.sleepContextual(ReactionContext.EXPECTED)
             .thenCompose(v -> mouseController.click(bounds))
             .thenRun(() -> {
                 log.info("[TUTORIAL] ✓ Experience level selected: Experienced");

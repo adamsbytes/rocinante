@@ -31,7 +31,7 @@ public class MultipleEmergenciesTest {
     }
 
     @Test
-    public void testMultipleEmergencies_ReturnsCompositeTask() {
+    public void testMultipleEmergencies_ReturnsHighestSeverityTask() {
         // Register two emergency conditions that both trigger
         EmergencyCondition emergency1 = new TestEmergency("Emergency1", 50);
         EmergencyCondition emergency2 = new TestEmergency("Emergency2", 75);
@@ -43,8 +43,8 @@ public class MultipleEmergenciesTest {
         Optional<Task> result = emergencyHandler.checkEmergencies(taskContext);
         
         assertTrue("Should return emergency task", result.isPresent());
-        Task task = result.get();
-        assertTrue("Should be CompositeTask for multiple emergencies", task instanceof CompositeTask);
+        // Only the highest severity emergency should be executed (Emergency2 with severity 75)
+        assertEquals("Should set highest severity as active", "Emergency2", emergencyHandler.getActiveEmergencyId());
     }
 
     @Test
