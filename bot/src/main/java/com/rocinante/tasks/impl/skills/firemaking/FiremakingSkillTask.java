@@ -871,6 +871,11 @@ public class FiremakingSkillTask extends AbstractTask {
     }
 
     @Override
+    public String getTaskType() {
+        return "FIREMAKING";
+    }
+    
+    @Override
     public String getDescription() {
         if (description != null) {
             return description;

@@ -126,5 +126,27 @@ public interface Task {
     default int getMaxRetries() {
         return 3;
     }
+    
+    /**
+     * Get the task type identifier for motor learning.
+     * 
+     * <p>Used by the motor learning system to track experience and calculate
+     * proficiency improvements for different types of tasks. Tasks in the same
+     * category (e.g., WOODCUTTING, MINING) show skill transfer.
+     * 
+     * <p>Common task types:
+     * <ul>
+     *   <li>Gathering: WOODCUTTING, MINING, FISHING, HUNTER, FARMING</li>
+     *   <li>Combat: COMBAT, MELEE, RANGED, MAGIC, SLAYER</li>
+     *   <li>Processing: COOKING, SMITHING, CRAFTING, FLETCHING, HERBLORE, RUNECRAFT</li>
+     *   <li>Reaction: AGILITY, THIEVING</li>
+     *   <li>Utility: BANKING, GRAND_EXCHANGE, NAVIGATION, WALKING, TRAVEL</li>
+     * </ul>
+     * 
+     * @return the task type identifier, or null if not applicable to motor learning
+     */
+    default String getTaskType() {
+        return null; // Default: task doesn't participate in motor learning
+    }
 }
 

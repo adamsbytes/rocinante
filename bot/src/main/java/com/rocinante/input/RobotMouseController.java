@@ -1,6 +1,7 @@
 package com.rocinante.input;
 
 import com.rocinante.behavior.FatigueModel;
+import com.rocinante.behavior.PerformanceState;
 import com.rocinante.behavior.PlayerProfile;
 import com.rocinante.input.uinput.UInputMouseDevice;
 import com.rocinante.util.PerlinNoise;
@@ -134,6 +135,7 @@ public class RobotMouseController {
     private final Randomization randomization;
     private final PerlinNoise perlinNoise;
     private final PlayerProfile playerProfile;
+    private final PerformanceState performanceState;
     private final ScheduledExecutorService executor;
     private final ClientThread clientThread;
 
@@ -204,9 +206,9 @@ public class RobotMouseController {
 
     @Inject
     public RobotMouseController(Client client, Randomization randomization, PerlinNoise perlinNoise,
-                                PlayerProfile playerProfile, FatigueModel fatigueModel,
-                                ClientThread clientThread) {
-        this(client, randomization, perlinNoise, playerProfile, fatigueModel, clientThread,
+                                PlayerProfile playerProfile, PerformanceState performanceState,
+                                FatigueModel fatigueModel, ClientThread clientThread) {
+        this(client, randomization, perlinNoise, playerProfile, performanceState, fatigueModel, clientThread,
                 Executors.newSingleThreadScheduledExecutor(r -> {
                     Thread t = new Thread(r, "RobotMouseController");
                     t.setDaemon(true);
@@ -218,8 +220,9 @@ public class RobotMouseController {
      * Testing constructor (no ClientThread injection).
      */
     public RobotMouseController(Client client, Randomization randomization, PerlinNoise perlinNoise,
-                                PlayerProfile playerProfile, FatigueModel fatigueModel) {
-        this(client, randomization, perlinNoise, playerProfile, fatigueModel, null,
+                                PlayerProfile playerProfile, PerformanceState performanceState,
+                                FatigueModel fatigueModel) {
+        this(client, randomization, perlinNoise, playerProfile, performanceState, fatigueModel, null,
                 Executors.newSingleThreadScheduledExecutor(r -> {
                     Thread t = new Thread(r, "RobotMouseController");
                     t.setDaemon(true);
@@ -228,8 +231,9 @@ public class RobotMouseController {
     }
 
     private RobotMouseController(Client client, Randomization randomization, PerlinNoise perlinNoise,
-                                 PlayerProfile playerProfile, FatigueModel fatigueModel,
-                                 ClientThread clientThread, ScheduledExecutorService executor) {
+                                 PlayerProfile playerProfile, PerformanceState performanceState,
+                                 FatigueModel fatigueModel, ClientThread clientThread,
+                                 ScheduledExecutorService executor) {
         // Create UInput virtual mouse device using profile preset and polling rate
         // This injects input at the kernel level, bypassing java.awt.Robot's XTest flag
         // The machineId is used for deterministic physical path generation across restarts
@@ -242,6 +246,8 @@ public class RobotMouseController {
         this.randomization = randomization;
         this.perlinNoise = perlinNoise;
         this.playerProfile = playerProfile;
+        this.performanceState = java.util.Objects.requireNonNull(performanceState, 
+                "PerformanceState is required");
         this.fatigueModel = fatigueModel;
         this.clientThread = clientThread;
         this.executor = executor;
@@ -709,7 +715,7 @@ public class RobotMouseController {
      * @return velocity-warped progress (0.0 to 1.0)
      */
     private double calculateVelocityProgress(double t) {
-        double flow = playerProfile.getVelocityFlow(); // 0.2 (snappy) to 0.8 (lazy)
+        double flow = performanceState.getEffectiveVelocityFlow(); // 0.2 (snappy) to 0.8 (lazy), modulated by performance
         
         // Warp t using power function based on flow preference
         // flow < 0.5 → exponent < 1 → warps t upward (fast start)
@@ -751,10 +757,11 @@ public class RobotMouseController {
         // Index of Difficulty (Shannon formulation)
         double id = Math.log(1 + distance / width) / Math.log(2);
         
-        // Fitts' Law: a + b * ID (using per-profile parameters)
+        // Fitts' Law: a + b * ID (using per-profile parameters with performance modulation)
         // Each player has unique motor characteristics that determine their movement timing
-        double fittsA = playerProfile.getFittsA();
-        double fittsB = playerProfile.getFittsB();
+        // Performance modulation adds day-to-day and circadian variation
+        double fittsA = performanceState.getEffectiveFittsA();
+        double fittsB = performanceState.getEffectiveFittsB();
         double duration = fittsA + (fittsB * id);
         
         // Add random variation (human inconsistency)
@@ -788,7 +795,7 @@ public class RobotMouseController {
      * @return true if this movement should overshoot
      */
     private boolean shouldOvershoot(double distance, double targetWidth, long movementDuration) {
-        double baseProbability = playerProfile.getOvershootProbability();
+        double baseProbability = performanceState.getEffectiveOvershootProbability();
         
         // Factor 1: Target size effect
         // Small targets (< 20px) = up to 1.5x multiplier (harder to stop precisely)
@@ -1207,8 +1214,8 @@ public class RobotMouseController {
         // Calculate movement duration using Fitts' Law with provided target width
         long intendedDurationMs = calculateMovementDuration(distance, targetWidth);
 
-        // Apply profile speed multiplier and segment speed modifier
-        double combinedSpeed = playerProfile.getMouseSpeedMultiplier() * speedMultiplier;
+        // Apply profile speed multiplier (with performance modulation) and segment speed modifier
+        double combinedSpeed = performanceState.getEffectiveMouseSpeedMultiplier() * speedMultiplier;
         intendedDurationMs = Math.round(intendedDurationMs / combinedSpeed);
         intendedDurationMs = Randomization.clamp(intendedDurationMs, MIN_DURATION_MS, MAX_DURATION_MS);
 
@@ -1519,10 +1526,10 @@ public class RobotMouseController {
      * This prevents the detectable pattern of fast mouse + slow clicks (or vice versa).
      */
     private long calculateClickDuration() {
-        // Get player-specific click timing parameters
-        double mu = playerProfile.getClickDurationMu();       // 75-95ms
-        double sigma = playerProfile.getClickDurationSigma(); // 10-20ms
-        double tau = playerProfile.getClickDurationTau();     // 5-15ms
+        // Get player-specific click timing parameters (with performance modulation)
+        double mu = performanceState.getEffectiveClickDurationMu();       // 75-95ms base, modulated
+        double sigma = performanceState.getEffectiveClickDurationSigma(); // 10-20ms base, modulated
+        double tau = performanceState.getEffectiveClickDurationTau();     // 5-15ms base, modulated
         
         // Apply motor speed correlation
         // Fast movers (speed > 1.0) should have faster clicks (lower mu)
@@ -1927,10 +1934,10 @@ public class RobotMouseController {
         long duration = (long) (baseDuration * 1.5);
         duration = Math.min(duration, MAX_DURATION_MS * 2); // Allow longer for drags
 
-        // Get profile-based wobble characteristics
-        double baseFreq = playerProfile.getWobbleFrequencyBase();    // 2.5-4.0 Hz
-        double freqVar = playerProfile.getWobbleFrequencyVariance(); // 0.3-0.8
-        double ampMod = playerProfile.getWobbleAmplitudeModifier();  // 0.7-1.3
+        // Get profile-based wobble characteristics (with performance modulation for amplitude)
+        double baseFreq = playerProfile.getWobbleFrequencyBase();    // 2.5-4.0 Hz (fixed per player)
+        double freqVar = playerProfile.getWobbleFrequencyVariance(); // 0.3-0.8 (fixed per player)
+        double ampMod = performanceState.getEffectiveWobbleAmplitudeModifier();  // 0.7-1.3 base, modulated
         
         // Per-drag frequency variation using Perlin noise
         // This makes each drag feel slightly different (like real tremor)
@@ -2187,8 +2194,8 @@ public class RobotMouseController {
      * @return CompletableFuture that completes after the cognitive delay
      */
     public CompletableFuture<Void> applyCognitiveDelay() {
-        double base = playerProfile.getCognitiveDelayBase();
-        double variance = playerProfile.getCognitiveDelayVariance();
+        double base = performanceState.getEffectiveCognitiveDelayBase();
+        double variance = performanceState.getEffectiveCognitiveDelayVariance();
         
         // Calculate delay with variance: base * uniform(1-var, 1+var)
         double varianceFactor = randomization.uniformRandom(1.0 - variance, 1.0 + variance);
@@ -2210,8 +2217,8 @@ public class RobotMouseController {
      * @throws InterruptedException if the thread is interrupted
      */
     public void applyCognitiveDelaySync() throws InterruptedException {
-        double base = playerProfile.getCognitiveDelayBase();
-        double variance = playerProfile.getCognitiveDelayVariance();
+        double base = performanceState.getEffectiveCognitiveDelayBase();
+        double variance = performanceState.getEffectiveCognitiveDelayVariance();
         
         double varianceFactor = randomization.uniformRandom(1.0 - variance, 1.0 + variance);
         long delay = Math.round(base * varianceFactor);

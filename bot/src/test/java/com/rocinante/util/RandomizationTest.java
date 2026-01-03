@@ -514,5 +514,169 @@ public class RandomizationTest {
         }
         return Math.sqrt(sumSquaredDiff / samples.length);
     }
+    
+    // ========================================================================
+    // Multivariate Normal Distribution Tests
+    // ========================================================================
+    
+    @Test
+    public void testMultivariateNormal_BasicGeneration() {
+        // Test basic 2D multivariate normal with no correlation
+        double[] means = {100.0, 50.0};
+        double[] stdDevs = {10.0, 5.0};
+        double[][] correlation = {
+            {1.0, 0.0},
+            {0.0, 1.0}
+        };
+        
+        double[] sumX = {0, 0};
+        for (int i = 0; i < SAMPLE_SIZE; i++) {
+            double[] result = randomization.multivariateNormal(means, stdDevs, correlation);
+            assertEquals("Should return 2 values", 2, result.length);
+            sumX[0] += result[0];
+            sumX[1] += result[1];
+        }
+        
+        double meanX0 = sumX[0] / SAMPLE_SIZE;
+        double meanX1 = sumX[1] / SAMPLE_SIZE;
+        
+        assertEquals("First dimension mean should be ~100", 100.0, meanX0, 15.0);
+        assertEquals("Second dimension mean should be ~50", 50.0, meanX1, 7.5);
+    }
+    
+    @Test
+    public void testMultivariateNormal_PositiveCorrelation() {
+        // Test 2D multivariate normal with positive correlation (r=0.7)
+        double[] means = {0, 0};
+        double[] stdDevs = {1.0, 1.0};
+        double[][] correlation = {
+            {1.0, 0.7},
+            {0.7, 1.0}
+        };
+        
+        double[] x0 = new double[SAMPLE_SIZE];
+        double[] x1 = new double[SAMPLE_SIZE];
+        
+        for (int i = 0; i < SAMPLE_SIZE; i++) {
+            double[] result = randomization.multivariateNormal(means, stdDevs, correlation);
+            x0[i] = result[0];
+            x1[i] = result[1];
+        }
+        
+        double r = pearsonCorrelation(x0, x1);
+        
+        // Correlation should be close to 0.7 (within sampling error)
+        assertTrue("Correlation should be positive and ~0.7, but was " + r, r > 0.5 && r < 0.9);
+    }
+    
+    @Test
+    public void testMultivariateNormal_NegativeCorrelation() {
+        // Test 2D multivariate normal with negative correlation (r=-0.5)
+        double[] means = {0, 0};
+        double[] stdDevs = {1.0, 1.0};
+        double[][] correlation = {
+            {1.0, -0.5},
+            {-0.5, 1.0}
+        };
+        
+        double[] x0 = new double[SAMPLE_SIZE];
+        double[] x1 = new double[SAMPLE_SIZE];
+        
+        for (int i = 0; i < SAMPLE_SIZE; i++) {
+            double[] result = randomization.multivariateNormal(means, stdDevs, correlation);
+            x0[i] = result[0];
+            x1[i] = result[1];
+        }
+        
+        double r = pearsonCorrelation(x0, x1);
+        
+        // Correlation should be negative and ~-0.5
+        assertTrue("Correlation should be negative and ~-0.5, but was " + r, r < -0.3 && r > -0.7);
+    }
+    
+    @Test
+    public void testMultivariateNormalBounded_RespectsLimits() {
+        // Test that bounded version clamps to specified limits
+        double[] means = {100.0, 50.0};
+        double[] stdDevs = {30.0, 20.0}; // Large stdDev to ensure some would exceed bounds
+        double[][] correlation = {
+            {1.0, 0.0},
+            {0.0, 1.0}
+        };
+        double[] mins = {80.0, 30.0};
+        double[] maxs = {120.0, 70.0};
+        
+        for (int i = 0; i < SAMPLE_SIZE; i++) {
+            double[] result = randomization.multivariateNormalBounded(
+                means, stdDevs, correlation, mins, maxs);
+            
+            assertTrue("First dimension should be >= min", result[0] >= mins[0]);
+            assertTrue("First dimension should be <= max", result[0] <= maxs[0]);
+            assertTrue("Second dimension should be >= min", result[1] >= mins[1]);
+            assertTrue("Second dimension should be <= max", result[1] <= maxs[1]);
+        }
+    }
+    
+    @Test
+    public void testMultivariateNormal_HigherDimensions() {
+        // Test 4D multivariate normal with mixed correlations
+        double[] means = {0, 0, 0, 0};
+        double[] stdDevs = {1, 1, 1, 1};
+        // Correlation matrix: 0-1 positive, 0-2 negative, others uncorrelated
+        double[][] correlation = {
+            {1.0,  0.5, -0.4, 0.0},
+            {0.5,  1.0,  0.0, 0.0},
+            {-0.4, 0.0,  1.0, 0.0},
+            {0.0,  0.0,  0.0, 1.0}
+        };
+        
+        double[][] samples = new double[SAMPLE_SIZE][4];
+        
+        for (int i = 0; i < SAMPLE_SIZE; i++) {
+            double[] result = randomization.multivariateNormal(means, stdDevs, correlation);
+            assertEquals("Should return 4 values", 4, result.length);
+            samples[i] = result;
+        }
+        
+        // Extract columns
+        double[] col0 = new double[SAMPLE_SIZE];
+        double[] col1 = new double[SAMPLE_SIZE];
+        double[] col2 = new double[SAMPLE_SIZE];
+        for (int i = 0; i < SAMPLE_SIZE; i++) {
+            col0[i] = samples[i][0];
+            col1[i] = samples[i][1];
+            col2[i] = samples[i][2];
+        }
+        
+        // Verify correlations are approximately correct
+        double r01 = pearsonCorrelation(col0, col1);
+        double r02 = pearsonCorrelation(col0, col2);
+        
+        assertTrue("Correlation 0-1 should be positive (~0.5): " + r01, r01 > 0.3 && r01 < 0.7);
+        assertTrue("Correlation 0-2 should be negative (~-0.4): " + r02, r02 < -0.2 && r02 > -0.6);
+    }
+    
+    /**
+     * Calculate Pearson correlation coefficient between two arrays.
+     */
+    private double pearsonCorrelation(double[] x, double[] y) {
+        int n = x.length;
+        if (n != y.length || n == 0) return 0;
+        
+        double sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0;
+        for (int i = 0; i < n; i++) {
+            sumX += x[i];
+            sumY += y[i];
+            sumXY += x[i] * y[i];
+            sumX2 += x[i] * x[i];
+            sumY2 += y[i] * y[i];
+        }
+        
+        double numerator = n * sumXY - sumX * sumY;
+        double denominator = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
+        
+        if (denominator == 0) return 0;
+        return numerator / denominator;
+    }
 }
 

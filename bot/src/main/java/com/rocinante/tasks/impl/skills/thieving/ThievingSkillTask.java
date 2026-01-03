@@ -900,6 +900,11 @@ public class ThievingSkillTask extends AbstractTask {
     // ========================================================================
 
     @Override
+    public String getTaskType() {
+        return "THIEVING";
+    }
+    
+    @Override
     public String getDescription() {
         return String.format("Thieving[%s, thefts=%d, phase=%s]",
                 method, totalThefts, phase);

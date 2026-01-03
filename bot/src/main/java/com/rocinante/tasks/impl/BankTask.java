@@ -2142,6 +2142,11 @@ public class BankTask extends AbstractTask {
     }
 
     @Override
+    public String getTaskType() {
+        return "BANKING";
+    }
+    
+    @Override
     public String getDescription() {
         if (description != null) {
             return description;

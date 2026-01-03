@@ -29,9 +29,12 @@ public class BiologicalMotorNoiseTest {
         MockitoAnnotations.openMocks(this);
         
         // Mock profile parameters
-        when(playerProfile.getPhysTremorFreq()).thenReturn(10.0);   // 10 Hz cutoff
-        when(playerProfile.getPhysTremorAmp()).thenReturn(0.5);     // 0.5 px base amplitude
-        when(playerProfile.getDominantHandBias()).thenReturn(0.6);  // Slight right-hand bias
+        when(playerProfile.getPhysTremorFreq()).thenReturn(10.0);     // 10 Hz tremor frequency
+        when(playerProfile.getPhysTremorAmp()).thenReturn(0.5);       // 0.5 px base amplitude
+        when(playerProfile.getPhysTremorPhaseOffset()).thenReturn(Math.PI / 2.0); // 90° X-Y phase offset
+        when(playerProfile.getDominantHandBias()).thenReturn(0.6);    // Slight right-hand bias
+        when(playerProfile.getMotorSpeedCorrelation()).thenReturn(0.7); // Motor speed correlation
+        when(playerProfile.getFeedbackDelaySamples()).thenReturn(15); // 15 samples (~150ms) feedback delay
         
         // Mock fatigue (fresh player)
         when(fatigueModel.getFatigueLevel()).thenReturn(0.0);
@@ -82,14 +85,26 @@ public class BiologicalMotorNoiseTest {
 
     @Test
     public void testFatigue_IncreasesAmplitude() {
-        // Fresh player samples
+        // Test that fatigue affects the amplitude calculation itself (not just the random output)
+        // The random components have high variance, so we verify the deterministic part:
+        // calculateEffectiveAmplitude returns baseAmp * fatigueScale * phaseScale * speedScale * progressScale
+        // fatigueScale = 1.0 + fatigueLevel * 0.8 = 1.0 (fresh) vs 1.8 (tired)
+        
+        // Ensure profile mocks are set for new instances
+        when(playerProfile.getMotorSpeedCorrelation()).thenReturn(0.7);
+        when(playerProfile.getFeedbackDelaySamples()).thenReturn(15);
+        when(playerProfile.getPhysTremorPhaseOffset()).thenReturn(Math.PI / 2.0);
+        
+        // We test by collecting many samples and verifying the expected ratio holds approximately
         when(fatigueModel.getFatigueLevel()).thenReturn(0.0);
         BiologicalMotorNoise freshNoise = new BiologicalMotorNoise(playerProfile, fatigueModel);
         
+        // Use high sample count for statistical stability
         double freshSum = 0;
-        int samples = 1000;
+        int samples = 10000;
         for (int i = 0; i < samples; i++) {
-            freshNoise.setMovementContext(0.5, 0.5);
+            // Use precision phase (highest amplitude scale = 1.2) at low speed for clearest signal
+            freshNoise.setMovementContext(0.9, 0.1);
             double[] noise = freshNoise.next2D();
             freshSum += Math.abs(noise[0]) + Math.abs(noise[1]);
         }
@@ -101,14 +116,18 @@ public class BiologicalMotorNoiseTest {
         
         double tiredSum = 0;
         for (int i = 0; i < samples; i++) {
-            tiredNoise.setMovementContext(0.5, 0.5);
+            tiredNoise.setMovementContext(0.9, 0.1);
             double[] noise = tiredNoise.next2D();
             tiredSum += Math.abs(noise[0]) + Math.abs(noise[1]);
         }
         double tiredAvg = tiredSum / samples;
         
-        // Tired player should have higher amplitude (1.0 + 1.0 * 0.8 = 1.8x)
-        assertTrue("Fatigue should increase noise amplitude", tiredAvg > freshAvg);
+        // Expected ratio is 1.8x (fatigueScale 1.0 -> 1.8)
+        // Due to random components, allow significant variance but ratio should be >1.3
+        double ratio = tiredAvg / freshAvg;
+        assertTrue("Fatigue should increase noise amplitude by significant factor (ratio=" + ratio + 
+                ", freshAvg=" + freshAvg + ", tiredAvg=" + tiredAvg + ")", 
+                ratio > 1.3);
     }
 
     @Test
@@ -167,6 +186,11 @@ public class BiologicalMotorNoiseTest {
 
     @Test
     public void testDominantHandBias_AffectsCorrelation() {
+        // Ensure profile mocks are set for new instances
+        when(playerProfile.getMotorSpeedCorrelation()).thenReturn(0.7);
+        when(playerProfile.getFeedbackDelaySamples()).thenReturn(15);
+        when(playerProfile.getPhysTremorPhaseOffset()).thenReturn(Math.PI / 2.0);
+        
         // Strong right-handed bias
         when(playerProfile.getDominantHandBias()).thenReturn(0.75);
         BiologicalMotorNoise rightHandNoise = new BiologicalMotorNoise(playerProfile, fatigueModel);
@@ -206,6 +230,11 @@ public class BiologicalMotorNoiseTest {
 
     @Test
     public void testProfileParameters_AreUsed() {
+        // Ensure profile mocks are set for new instances
+        when(playerProfile.getMotorSpeedCorrelation()).thenReturn(0.7);
+        when(playerProfile.getFeedbackDelaySamples()).thenReturn(15);
+        when(playerProfile.getPhysTremorPhaseOffset()).thenReturn(Math.PI / 2.0);
+        
         // Custom profile values
         when(playerProfile.getPhysTremorFreq()).thenReturn(12.0);
         when(playerProfile.getPhysTremorAmp()).thenReturn(1.5);
@@ -224,5 +253,82 @@ public class BiologicalMotorNoiseTest {
         
         // Should be noticeably higher than default (0.5 amplitude)
         assertTrue("Custom amplitude should produce larger noise", avg > 0.1);
+    }
+    
+    @Test
+    public void testEllipticalPhaseOffset_CreatesEllipticalPattern() {
+        // Test that X and Y tremor create elliptical patterns, not linear or independent
+        // With 90° phase offset, X and Y should be approximately orthogonal (like cos/sin)
+        when(playerProfile.getMotorSpeedCorrelation()).thenReturn(0.7);
+        when(playerProfile.getFeedbackDelaySamples()).thenReturn(15);
+        when(playerProfile.getPhysTremorPhaseOffset()).thenReturn(Math.PI / 2.0); // 90° offset
+        
+        BiologicalMotorNoise noise90 = new BiologicalMotorNoise(playerProfile, fatigueModel);
+        
+        // With 0° offset, X and Y should be highly correlated (linear pattern)
+        when(playerProfile.getPhysTremorPhaseOffset()).thenReturn(0.0); // 0° offset
+        BiologicalMotorNoise noise0 = new BiologicalMotorNoise(playerProfile, fatigueModel);
+        
+        // Collect many samples and compute correlation
+        // 90° offset should have lower correlation than 0° offset
+        double correlation90 = 0;
+        double correlation0 = 0;
+        int samples = 2000;
+        
+        double sumX90 = 0, sumY90 = 0, sumX0 = 0, sumY0 = 0;
+        double sumXY90 = 0, sumXY0 = 0;
+        double sumX2_90 = 0, sumY2_90 = 0, sumX2_0 = 0, sumY2_0 = 0;
+        
+        for (int i = 0; i < samples; i++) {
+            noise90.setMovementContext(0.5, 0.0); // Low speed to maximize tremor visibility
+            double[] n90 = noise90.next2D();
+            sumX90 += n90[0];
+            sumY90 += n90[1];
+            sumXY90 += n90[0] * n90[1];
+            sumX2_90 += n90[0] * n90[0];
+            sumY2_90 += n90[1] * n90[1];
+            
+            noise0.setMovementContext(0.5, 0.0);
+            double[] n0 = noise0.next2D();
+            sumX0 += n0[0];
+            sumY0 += n0[1];
+            sumXY0 += n0[0] * n0[1];
+            sumX2_0 += n0[0] * n0[0];
+            sumY2_0 += n0[1] * n0[1];
+        }
+        
+        // Pearson correlation = (n*Σxy - Σx*Σy) / sqrt((n*Σx² - (Σx)²)(n*Σy² - (Σy)²))
+        double n = samples;
+        double numerator90 = n * sumXY90 - sumX90 * sumY90;
+        double denom90 = Math.sqrt((n * sumX2_90 - sumX90 * sumX90) * (n * sumY2_90 - sumY90 * sumY90));
+        correlation90 = numerator90 / denom90;
+        
+        double numerator0 = n * sumXY0 - sumX0 * sumY0;
+        double denom0 = Math.sqrt((n * sumX2_0 - sumX0 * sumX0) * (n * sumY2_0 - sumY0 * sumY0));
+        correlation0 = numerator0 / denom0;
+        
+        // 0° offset should have higher correlation than 90° offset
+        // (At 0°, X and Y are in-phase, so highly correlated)
+        // (At 90°, X and Y are out-of-phase, so lower/near-zero correlation)
+        assertTrue("0° offset should have higher correlation than 90° offset. " +
+                  "r(0°)=" + String.format("%.3f", correlation0) + ", r(90°)=" + String.format("%.3f", correlation90),
+                  correlation0 > correlation90);
+    }
+    
+    @Test
+    public void testPhysTremorPhaseOffset_InBounds() {
+        // Verify profile generates phase offset in expected range (60-120° = 1.05-2.09 rad)
+        for (int seed = 1; seed <= 50; seed++) {
+            com.rocinante.util.Randomization seededRandom = new com.rocinante.util.Randomization(seed * 55555L);
+            PlayerProfile profile = new PlayerProfile(seededRandom, 
+                    java.util.concurrent.Executors.newSingleThreadScheduledExecutor());
+            profile.initializeDefault();
+            
+            double offset = profile.getPhysTremorPhaseOffset();
+            double offsetDegrees = Math.toDegrees(offset);
+            
+            assertTrue("Phase offset should be >= 60°: " + offsetDegrees, offsetDegrees >= 59.9);
+            assertTrue("Phase offset should be <= 120°: " + offsetDegrees, offsetDegrees <= 120.1);
+        }
     }
 }

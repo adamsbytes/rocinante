@@ -482,6 +482,132 @@ public class Randomization {
     }
 
     // ========================================================================
+    // Multivariate Normal Distribution (for correlated trait generation)
+    // ========================================================================
+
+    /**
+     * Generate correlated random values from a multivariate normal distribution.
+     * 
+     * Uses Cholesky decomposition to transform independent standard normals into
+     * correlated normals with the specified correlation structure. This is essential
+     * for generating realistic human trait profiles where characteristics like
+     * mouse speed, click duration, and reaction time are correlated but not
+     * perfectly linearly dependent.
+     * 
+     * Real human populations show correlations of r=0.3-0.6 between motor traits,
+     * NOT the r≈0.9 implied by linear derivations. This method preserves that
+     * natural variance, allowing for archetypes like "Fast but Sloppy" (high speed,
+     * high overshoot) or "Slow but Snappy" (low speed, quick clicks).
+     *
+     * @param means the mean values for each dimension
+     * @param stdDevs the standard deviations for each dimension
+     * @param correlationMatrix the correlation matrix (must be symmetric, positive semi-definite)
+     * @return array of correlated random values, one per dimension
+     * @throws IllegalArgumentException if dimensions don't match or matrix is invalid
+     */
+    public double[] multivariateNormal(double[] means, double[] stdDevs, double[][] correlationMatrix) {
+        int n = means.length;
+        if (stdDevs.length != n || correlationMatrix.length != n) {
+            throw new IllegalArgumentException("All parameters must have same dimensionality");
+        }
+        
+        // Step 1: Generate n independent standard normal samples
+        double[] z = new double[n];
+        for (int i = 0; i < n; i++) {
+            z[i] = random.nextGaussian();
+        }
+        
+        // Step 2: Cholesky decomposition of correlation matrix (L where LL^T = R)
+        double[][] L = choleskyDecomposition(correlationMatrix);
+        
+        // Step 3: Transform: correlatedZ = L * z
+        double[] correlatedZ = new double[n];
+        for (int i = 0; i < n; i++) {
+            correlatedZ[i] = 0.0;
+            for (int j = 0; j <= i; j++) {  // L is lower triangular
+                correlatedZ[i] += L[i][j] * z[j];
+            }
+        }
+        
+        // Step 4: Scale and shift to actual distribution: X = mean + stdDev * correlatedZ
+        double[] result = new double[n];
+        for (int i = 0; i < n; i++) {
+            result[i] = means[i] + stdDevs[i] * correlatedZ[i];
+        }
+        
+        return result;
+    }
+
+    /**
+     * Cholesky decomposition of a positive semi-definite matrix.
+     * Returns lower triangular matrix L such that A = L * L^T.
+     * 
+     * Uses Cholesky-Banachiewicz algorithm with regularization for numerical stability.
+     *
+     * @param A the input matrix (must be symmetric, positive semi-definite)
+     * @return the lower triangular Cholesky factor L
+     * @throws IllegalArgumentException if matrix is not positive semi-definite
+     */
+    private double[][] choleskyDecomposition(double[][] A) {
+        int n = A.length;
+        double[][] L = new double[n][n];
+        
+        // Small regularization term for numerical stability
+        double epsilon = 1e-10;
+        
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j <= i; j++) {
+                double sum = 0.0;
+                
+                for (int k = 0; k < j; k++) {
+                    sum += L[i][k] * L[j][k];
+                }
+                
+                if (i == j) {
+                    // Diagonal element: L[i][i] = sqrt(A[i][i] - sum)
+                    double diag = A[i][i] - sum;
+                    if (diag < 0) {
+                        // Add regularization if near-singular
+                        diag = epsilon;
+                    }
+                    L[i][j] = Math.sqrt(diag);
+                } else {
+                    // Off-diagonal: L[i][j] = (A[i][j] - sum) / L[j][j]
+                    if (L[j][j] < epsilon) {
+                        L[i][j] = 0.0;
+                    } else {
+                        L[i][j] = (A[i][j] - sum) / L[j][j];
+                    }
+                }
+            }
+        }
+        
+        return L;
+    }
+
+    /**
+     * Generate correlated random values with clamping to specified bounds.
+     * 
+     * Values that fall outside bounds are clamped, not regenerated. This maintains
+     * the correlation structure while ensuring all values are within valid ranges.
+     *
+     * @param means the mean values for each dimension
+     * @param stdDevs the standard deviations for each dimension
+     * @param correlationMatrix the correlation matrix
+     * @param mins the minimum allowed values for each dimension
+     * @param maxs the maximum allowed values for each dimension
+     * @return array of correlated random values, clamped to [min, max] per dimension
+     */
+    public double[] multivariateNormalBounded(double[] means, double[] stdDevs, 
+            double[][] correlationMatrix, double[] mins, double[] maxs) {
+        double[] raw = multivariateNormal(means, stdDevs, correlationMatrix);
+        for (int i = 0; i < raw.length; i++) {
+            raw[i] = clamp(raw[i], mins[i], maxs[i]);
+        }
+        return raw;
+    }
+
+    // ========================================================================
     // 2D Gaussian Distribution (for click positions)
     // ========================================================================
 

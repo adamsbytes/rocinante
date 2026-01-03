@@ -23,6 +23,7 @@ public class TickJitterControllerTest {
     private Randomization randomization;
     private ScheduledExecutorService executor;
     private PlayerProfile mockProfile;
+    private PerformanceState mockPerformanceState;
     private FatigueModel mockFatigue;
     private BotActivityTracker mockActivityTracker;
 
@@ -31,14 +32,22 @@ public class TickJitterControllerTest {
         randomization = new Randomization();
         executor = Executors.newSingleThreadScheduledExecutor();
         
-        // Create mock profile with typical values
+        // Create mock profile with typical values (realistic human reaction times)
         mockProfile = mock(PlayerProfile.class);
-        when(mockProfile.getJitterMu()).thenReturn(40.0);
-        when(mockProfile.getJitterSigma()).thenReturn(15.0);
-        when(mockProfile.getJitterTau()).thenReturn(20.0);
+        when(mockProfile.getJitterMu()).thenReturn(250.0);    // 150-400ms range
+        when(mockProfile.getJitterSigma()).thenReturn(50.0);  // 20-100ms range
+        when(mockProfile.getJitterTau()).thenReturn(150.0);   // 50-300ms range
         when(mockProfile.getTickSkipBaseProbability()).thenReturn(0.05);
         when(mockProfile.getAttentionLapseProbability()).thenReturn(0.01);
         when(mockProfile.getAnticipationProbability()).thenReturn(0.15);
+        
+        // Create mock performance state with typical values (1.0 = no modulation)
+        mockPerformanceState = mock(PerformanceState.class);
+        when(mockPerformanceState.getEffectiveJitterMu()).thenReturn(250.0);    // 150-400ms range
+        when(mockPerformanceState.getEffectiveJitterSigma()).thenReturn(50.0);  // 20-100ms range
+        when(mockPerformanceState.getEffectiveJitterTau()).thenReturn(150.0);   // 50-300ms range
+        when(mockPerformanceState.getPerformanceModifier()).thenReturn(1.0);
+        when(mockPerformanceState.isInitialized()).thenReturn(true);
         
         // Create mock fatigue model (no fatigue for basic tests)
         mockFatigue = mock(FatigueModel.class);
@@ -51,7 +60,7 @@ public class TickJitterControllerTest {
         when(mockActivityTracker.getRepetitivenessMultiplier()).thenReturn(1.0);
         
         jitterController = new TickJitterController(
-                randomization, mockProfile, mockFatigue, mockActivityTracker, executor);
+                randomization, mockProfile, mockPerformanceState, mockFatigue, mockActivityTracker, executor);
     }
 
     // ========================================================================
@@ -215,12 +224,13 @@ public class TickJitterControllerTest {
 
     @Test
     public void testUsesProfileParameters() {
-        // Set custom profile values
-        when(mockProfile.getJitterMu()).thenReturn(50.0);
-        when(mockProfile.getJitterSigma()).thenReturn(10.0);
-        when(mockProfile.getJitterTau()).thenReturn(25.0);
+        // Set custom performance state values (realistic human reaction times)
+        // PerformanceState now provides these values, not PlayerProfile directly
+        when(mockPerformanceState.getEffectiveJitterMu()).thenReturn(300.0);    // 150-400ms range
+        when(mockPerformanceState.getEffectiveJitterSigma()).thenReturn(40.0);  // 20-100ms range
+        when(mockPerformanceState.getEffectiveJitterTau()).thenReturn(100.0);   // 50-300ms range
         
-        // Calculate jitter multiple times and check it's using profile values
+        // Calculate jitter multiple times and check it's using performance state values
         long sum = 0;
         int iterations = 100;
         for (int i = 0; i < iterations; i++) {
@@ -228,10 +238,10 @@ public class TickJitterControllerTest {
         }
         double avg = (double) sum / iterations;
         
-        // With mu=50, sigma=10, tau=25, expected mean is around 75ms (mu + tau)
+        // With mu=300, sigma=40, tau=100, expected mean is around 400ms (mu + tau)
         // Allow reasonable variance (tick skips can increase this)
-        assertTrue("Average should be in reasonable range for profile",
-                avg > 40 && avg < 500);
+        assertTrue("Average should be in reasonable range for profile (expected ~400ms)",
+                avg > 200 && avg < 1200);
     }
 
     // ========================================================================

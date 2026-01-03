@@ -56,11 +56,8 @@ public class WalkToTask extends AbstractTask {
     // Constants
     // ========================================================================
 
-    private static final int RUN_ENABLE_THRESHOLD = 40;
-    private static final int RUN_DISABLE_THRESHOLD = 15;
     private static final int ARRIVAL_DISTANCE = 2;
     private static final int MINIMAP_CLICK_DISTANCE = 15;
-    private static final int MIN_TICKS_BETWEEN_CLICKS = 4;
     private static final int STUCK_THRESHOLD_TICKS = 8;
     private static final int MAX_REPATH_ATTEMPTS = 3;
 
@@ -122,6 +119,9 @@ public class WalkToTask extends AbstractTask {
     private static final double MIN_PROGRESS_BEFORE_RECLICK = 0.75; // 75% progress required
     private static final int WAYPOINT_ARRIVAL_DISTANCE = 3; // Tiles to consider "at" a waypoint
     private int lastClickedPathIndex = 0; // Track committed path progress to prevent backward movement
+    
+    // Per-walk cached profile values (prevents mid-walk changes)
+    private int cachedMinWalkClickInterval = 4; // Default, updated from profile at walk start
 
     // Transport handling
     private List<com.rocinante.navigation.ShortestPathBridge.TransportSegment> transportSegments = new ArrayList<>();
@@ -192,6 +192,7 @@ public class WalkToTask extends AbstractTask {
         runTogglePending = false;
         clickStartPosition = null;
         clickTargetPosition = null;
+        cachedMinWalkClickInterval = 4; // Reset to default, will be set from profile at walk start
         transportSegments.clear();
         currentTransportIndex = 0;
         currentTravelTask = null;
@@ -250,8 +251,17 @@ public class WalkToTask extends AbstractTask {
     private void executeInit(TaskContext ctx) {
         PlayerState player = ctx.getPlayerState();
         lastPosition = player.getWorldPosition();
+        
+        // Cache walk click interval from profile at start of walk
+        // This ensures consistency throughout the walk (no mid-walk changes)
+        if (ctx.getPlayerProfile() != null) {
+            cachedMinWalkClickInterval = ctx.getPlayerProfile().getMinWalkClickInterval();
+        }
+        // else use default (4) from field initialization
+        
         handleRunEnergy(ctx, player);
-        log.info("WalkToTask starting: {} -> {}", lastPosition, getDestinationDescription());
+        log.info("WalkToTask starting: {} -> {} (walkInterval={})", 
+                lastPosition, getDestinationDescription(), cachedMinWalkClickInterval);
         phase = WalkPhase.RESOLVE_DESTINATION;
     }
 
@@ -586,7 +596,7 @@ public class WalkToTask extends AbstractTask {
 
         // If we haven't clicked yet or don't have tracking info, allow click
         if (clickStartPosition == null || clickTargetPosition == null) {
-            return ticksSinceLastClick >= MIN_TICKS_BETWEEN_CLICKS;
+            return ticksSinceLastClick >= cachedMinWalkClickInterval;
         }
 
         // Calculate progress toward the click target
@@ -605,7 +615,7 @@ public class WalkToTask extends AbstractTask {
         }
 
         // Also allow click after safety timeout (prevent getting stuck)
-        if (ticksSinceLastClick >= MIN_TICKS_BETWEEN_CLICKS * 3) {
+        if (ticksSinceLastClick >= cachedMinWalkClickInterval * 3) {
             log.debug("Safety timeout reached ({} ticks), allowing re-click", ticksSinceLastClick);
             return true;
         }
@@ -718,17 +728,26 @@ public class WalkToTask extends AbstractTask {
 
         // Scale click precision based on distance to final destination
         // Close = precise (stddev 1), far = looser (stddev 4)
-        int precisionStdDev;
+        // Then apply per-profile click variance modifier for bot identity
+        double basePrecisionStdDev;
         if (distanceToDestination <= 8) {
-            precisionStdDev = 1;  // Precise - we're almost there
+            basePrecisionStdDev = 1.0;  // Precise - we're almost there
         } else if (distanceToDestination <= 20) {
-            precisionStdDev = 2;  // Normal precision
+            basePrecisionStdDev = 2.0;  // Normal precision
         } else {
-            precisionStdDev = 4;  // Looser - long run, doesn't matter as much
+            basePrecisionStdDev = 4.0;  // Looser - long run, doesn't matter as much
         }
+        
+        // Apply profile's click variance modifier (0.7-1.4 range)
+        // Sloppy clickers stay sloppy even at close range, precise clickers stay tight
+        double clickVariance = 1.0;
+        if (ctx.getPlayerProfile() != null) {
+            clickVariance = ctx.getPlayerProfile().getClickVarianceModifier();
+        }
+        double adjustedStdDev = basePrecisionStdDev * clickVariance;
 
-        int minimapX = minimap.centerX + (int) scaledX + Randomization.gaussianInt(0, precisionStdDev);
-        int minimapY = minimap.centerY - (int) scaledY + Randomization.gaussianInt(0, precisionStdDev);
+        int minimapX = minimap.centerX + (int) scaledX + Randomization.gaussianInt(0, adjustedStdDev);
+        int minimapY = minimap.centerY - (int) scaledY + Randomization.gaussianInt(0, adjustedStdDev);
 
         return new Point(minimapX, minimapY);
     }
@@ -796,12 +815,20 @@ public class WalkToTask extends AbstractTask {
         WidgetClickHelper helper = ctx.getWidgetClickHelper();
         if (helper == null) return;
 
-        if (runEnergy >= RUN_ENABLE_THRESHOLD && !runEnabled) {
+        // Get per-profile thresholds for run energy management (with defaults)
+        int enableThreshold = 40;  // Default
+        int disableThreshold = 15; // Default
+        if (ctx.getPlayerProfile() != null) {
+            enableThreshold = ctx.getPlayerProfile().getRunEnableThreshold();
+            disableThreshold = ctx.getPlayerProfile().getRunDisableThreshold();
+        }
+
+        if (runEnergy >= enableThreshold && !runEnabled) {
             runTogglePending = true;
             helper.clickWidget(ORBS_GROUP_ID, RUN_ORB_CHILD, "Enable run")
                     .thenAccept(success -> runTogglePending = false)
                     .exceptionally(e -> { runTogglePending = false; return null; });
-        } else if (runEnergy < RUN_DISABLE_THRESHOLD && runEnabled) {
+        } else if (runEnergy < disableThreshold && runEnabled) {
             runTogglePending = true;
             helper.clickWidget(ORBS_GROUP_ID, RUN_ORB_CHILD, "Disable run")
                     .thenAccept(success -> runTogglePending = false)
@@ -895,6 +922,11 @@ public class WalkToTask extends AbstractTask {
         return "unknown";
     }
 
+    @Override
+    public String getTaskType() {
+        return "NAVIGATION";
+    }
+    
     @Override
     public String getDescription() {
         return description != null ? description : "Walk to " + getDestinationDescription();

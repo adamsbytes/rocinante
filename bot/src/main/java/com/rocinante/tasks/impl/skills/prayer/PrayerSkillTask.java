@@ -681,6 +681,11 @@ public class PrayerSkillTask extends AbstractTask {
     // ========================================================================
 
     @Override
+    public String getTaskType() {
+        return "PRAYER";
+    }
+    
+    @Override
     public String getDescription() {
         return String.format("Prayer[%s, bones=%d, phase=%s]",
                 method, totalBonesUsed, phase);

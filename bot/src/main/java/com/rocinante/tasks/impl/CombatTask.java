@@ -1574,6 +1574,11 @@ public class CombatTask extends AbstractTask {
     }
 
     @Override
+    public String getTaskType() {
+        return "COMBAT";
+    }
+    
+    @Override
     public String getDescription() {
         if (description != null) {
             return description;

@@ -751,6 +751,11 @@ public class CookingSkillTask extends AbstractTask {
     // ========================================================================
 
     @Override
+    public String getTaskType() {
+        return "COOKING";
+    }
+    
+    @Override
     public String getDescription() {
         TrainingMethod method = config.getMethod();
         if (method != null) {

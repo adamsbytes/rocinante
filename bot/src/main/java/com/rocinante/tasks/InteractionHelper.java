@@ -68,6 +68,12 @@ public class InteractionHelper {
      */
     public static final int MAX_CAMERA_RETRIES = 3;
 
+    /**
+     * Margin from edge when clamping out-of-bounds click points.
+     * Prevents clicking at the exact edge of clickboxes which may miss.
+     */
+    private static final int EDGE_CLAMP_MARGIN = 5;
+
     // ========================================================================
     // State
     // ========================================================================
@@ -452,12 +458,20 @@ public class InteractionHelper {
                 
                 Point point = generateBiasedClickPoint(bounds, stdDev, mousePos);
                 
-                // Sanity check: point MUST be within bounds
+                // Sanity check: point MUST be within bounds - clamp to edge if outside
                 if (!bounds.contains(point.x, point.y)) {
-                    log.error("BUG: Generated click point ({}, {}) is OUTSIDE bounds {}!", 
+                    log.warn("Generated click point ({}, {}) outside bounds {}, clamping to edge", 
                             point.x, point.y, bounds);
-                    // Fallback to exact center
-                    point = new Point((int) bounds.getCenterX(), (int) bounds.getCenterY());
+                    // Calculate effective margin - use smaller margin for tiny clickboxes
+                    int marginX = Math.min(EDGE_CLAMP_MARGIN, (bounds.width - 1) / 2);
+                    int marginY = Math.min(EDGE_CLAMP_MARGIN, (bounds.height - 1) / 2);
+                    // Clamp to bounds with margin instead of snapping to center
+                    point = new Point(
+                            Randomization.clamp(point.x, bounds.x + marginX, 
+                                    bounds.x + bounds.width - marginX - 1),
+                            Randomization.clamp(point.y, bounds.y + marginY, 
+                                    bounds.y + bounds.height - marginY - 1)
+                    );
                 }
                 
                 log.debug("Final click point for object {}: ({}, {})", objectId, point.x, point.y);
@@ -877,12 +891,20 @@ public class InteractionHelper {
                 
                 Point point = generateBiasedClickPoint(bounds, ClickPointCalculator.DEFAULT_STD_DEV, mousePos);
                 
-                // Sanity check: point MUST be within bounds
+                // Sanity check: point MUST be within bounds - clamp to edge if outside
                 if (!bounds.contains(point.x, point.y)) {
-                    log.error("BUG: Generated NPC click point ({}, {}) is OUTSIDE bounds {}!", 
+                    log.warn("Generated NPC click point ({}, {}) outside bounds {}, clamping to edge", 
                             point.x, point.y, bounds);
-                    // Fallback to exact center
-                    point = new Point((int) bounds.getCenterX(), (int) bounds.getCenterY());
+                    // Calculate effective margin - use smaller margin for tiny clickboxes
+                    int marginX = Math.min(EDGE_CLAMP_MARGIN, (bounds.width - 1) / 2);
+                    int marginY = Math.min(EDGE_CLAMP_MARGIN, (bounds.height - 1) / 2);
+                    // Clamp to bounds with margin instead of snapping to center
+                    point = new Point(
+                            Randomization.clamp(point.x, bounds.x + marginX, 
+                                    bounds.x + bounds.width - marginX - 1),
+                            Randomization.clamp(point.y, bounds.y + marginY, 
+                                    bounds.y + bounds.height - marginY - 1)
+                    );
                 }
                 
                 log.debug("Final click point for NPC {}: ({}, {})", npc.getName(), point.x, point.y);

@@ -1849,6 +1849,13 @@ public class SkillTask extends AbstractTask {
     }
 
     @Override
+    public String getTaskType() {
+        // Return the skill name for motor learning
+        // Maps to categories: WOODCUTTING->GATHERING, COOKING->PROCESSING, etc.
+        return config.getSkill().getName().toUpperCase();
+    }
+    
+    @Override
     public String getDescription() {
         if (description != null) {
             return description;

@@ -4,6 +4,8 @@ import com.rocinante.behavior.ActivityType;
 import com.rocinante.behavior.BreakScheduler;
 import com.rocinante.behavior.BotActivityTracker;
 import com.rocinante.behavior.EmergencyHandler;
+import com.rocinante.behavior.PerformanceState;
+import com.rocinante.behavior.PlayerProfile;
 import com.rocinante.behavior.TickJitterController;
 import com.rocinante.core.PerformanceMonitor;
 import com.rocinante.navigation.ShortestPathBridge;
@@ -191,6 +193,28 @@ public class TaskExecutor {
      * cancellation delays from the InefficiencyInjector (per REQUIREMENTS 3.4.4).
      */
     private Instant nextTaskNotBefore = Instant.EPOCH;
+    
+    // ========================================================================
+    // Motor Learning Integration
+    // ========================================================================
+    
+    /**
+     * Performance state for motor learning context.
+     * Injected to update current task type when tasks start/complete.
+     */
+    private PerformanceState performanceState;
+    
+    /**
+     * Timestamp when the current task started executing.
+     * Used to calculate experience time for motor learning.
+     */
+    private Instant currentTaskStartTime;
+    
+    /**
+     * Task type of the current task (for motor learning).
+     * Cached from task.getTaskType() when task starts.
+     */
+    private String currentTaskTypeForLearning;
 
     // ========================================================================
     // Constructor
@@ -425,6 +449,16 @@ public class TaskExecutor {
      */
     public void setIdleTaskSupplier(java.util.function.Supplier<Task> supplier) {
         this.idleTaskSupplier = supplier;
+    }
+    
+    /**
+     * Set the performance state for motor learning integration.
+     * Must be set before tasks can participate in motor learning.
+     * 
+     * @param performanceState the performance state to use
+     */
+    public void setPerformanceState(PerformanceState performanceState) {
+        this.performanceState = performanceState;
     }
 
     // ========================================================================
@@ -736,6 +770,7 @@ public class TaskExecutor {
 
     /**
      * Get the next task to execute.
+     * Also sets up motor learning context for the new task.
      */
     private Task getNextTask() {
         // Check retry backoff
@@ -756,6 +791,10 @@ public class TaskExecutor {
                 urgentPending = checkForMoreUrgent();
             }
             log.debug("Starting task: {}", next.task.getDescription());
+            
+            // Set up motor learning context for this task
+            initializeMotorLearningForTask(next.task);
+            
             return next.task;
         }
 
@@ -764,15 +803,36 @@ public class TaskExecutor {
             Task idleTask = idleTaskSupplier.get();
             if (idleTask != null) {
                 log.debug("Injecting idle task: {}", idleTask.getDescription());
+                
+                // Set up motor learning context for idle task too
+                initializeMotorLearningForTask(idleTask);
+                
                 return idleTask;
             }
         }
 
         return null;
     }
+    
+    /**
+     * Initialize motor learning context for a starting task.
+     * Sets current task type on PerformanceState and tracks start time.
+     */
+    private void initializeMotorLearningForTask(Task task) {
+        currentTaskStartTime = Instant.now();
+        currentTaskTypeForLearning = task.getTaskType();
+        
+        // Update PerformanceState with current task type for motor learning modulation
+        if (performanceState != null && currentTaskTypeForLearning != null) {
+            performanceState.setCurrentTaskType(currentTaskTypeForLearning);
+            log.trace("Motor learning: set task type to {} for {}", 
+                    currentTaskTypeForLearning, task.getDescription());
+        }
+    }
 
     /**
      * Handle task completion (success or failure after retries exhausted).
+     * Records motor learning experience based on task execution time.
      *
      * @param success true if task completed successfully
      */
@@ -781,6 +841,10 @@ public class TaskExecutor {
             log.debug("Task completed successfully: {}",
                     currentTask != null ? currentTask.getDescription() : "null");
         }
+        
+        // Record motor learning experience for completed tasks
+        // Only count time for tasks that participated in motor learning
+        recordMotorLearningExperience();
         
         // Check if we have a paused task to resume after behavioral/urgent task completes
         if (currentTask != null && 
@@ -801,6 +865,48 @@ public class TaskExecutor {
         
         // Reset step completion flag to allow breaks between tasks
         currentStepComplete = true;
+    }
+    
+    /**
+     * Record motor learning experience for the current task.
+     * Called when a task completes (successfully or after exhausting retries).
+     */
+    private void recordMotorLearningExperience() {
+        // Skip if no task type to track
+        if (currentTaskTypeForLearning == null || currentTaskStartTime == null) {
+            clearMotorLearningContext();
+            return;
+        }
+        
+        // Calculate time spent on this task
+        Duration taskDuration = Duration.between(currentTaskStartTime, Instant.now());
+        double minutesSpent = taskDuration.toMillis() / 60000.0;
+        
+        // Only record if task ran for at least 10 seconds (avoid noise from instant failures)
+        if (minutesSpent >= 0.167) { // ~10 seconds
+            PlayerProfile profile = taskContext.getPlayerProfile();
+            if (profile != null && profile.isLoaded()) {
+                profile.recordTaskExperience(currentTaskTypeForLearning, minutesSpent);
+                log.trace("Motor learning: recorded {} minutes for {}", 
+                        String.format("%.2f", minutesSpent), currentTaskTypeForLearning);
+            }
+        }
+        
+        clearMotorLearningContext();
+    }
+    
+    /**
+     * Clear motor learning context (task type and start time).
+     * Called when a task completes or is aborted.
+     */
+    private void clearMotorLearningContext() {
+        currentTaskTypeForLearning = null;
+        currentTaskStartTime = null;
+        
+        // Clear task type from PerformanceState
+        if (performanceState != null) {
+            performanceState.setCurrentTaskType(null);
+        }
     }
 
     /**

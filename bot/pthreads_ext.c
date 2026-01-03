@@ -44,6 +44,7 @@ static const char* get_dynamic_meminfo(void);
 static const char* get_dynamic_charge_full(void);
 static const char* get_dynamic_brightness(void);
 static const char* get_dynamic_dmi_serial(void);
+static void fill_spoofed_stat(struct stat* buf, const char* path);
 static const char* get_dynamic_loadavg(void);
 static const char* get_dynamic_proc_stat(void);
 static const char* get_dynamic_proc_status(void);
@@ -2265,21 +2266,73 @@ ssize_t readlinkat(int dirfd, const char* path, char* buf, size_t bufsiz) {
 
 // ============================================================================
 // Intercepted: fstatat() / fstatat64() - *at variant of stat()
-// Currently passes through but intercepts for future spoofing if needed
 // ============================================================================
 
 int fstatat(int dirfd, const char* path, struct stat* statbuf, int flags) {
     static int (*real_fstatat)(int, const char*, struct stat*, int) = NULL;
     if (!real_fstatat) real_fstatat = dlsym(RTLD_NEXT, "fstatat");
     
-    // For now, pass through - but we intercept to prevent bypass of future spoofing
-    // If we ever need to spoof file metadata, add logic here
+    if (!path || !statbuf) return real_fstatat(dirfd, path, statbuf, flags);
+    
+    // For absolute paths or AT_FDCWD, apply spoofing
+    if (path[0] == '/' || dirfd == AT_FDCWD) {
+        // Block container indicators
+        if (should_block_path(path)) {
+            errno = ENOENT;
+            return -1;
+        }
+        
+        const char* normalized = normalize_path(path);
+        if (normalized && is_spoofed_path(normalized)) {
+            // Try real stat first
+            if (real_fstatat(dirfd, path, statbuf, flags) == 0) {
+                // For /proc and /sys files, force size to 0 (virtual files)
+                if (str_starts(normalized, "/proc/") || str_starts(normalized, "/sys/")) {
+                    statbuf->st_size = 0;
+                    statbuf->st_blocks = 0;
+                }
+                return 0;
+            }
+            // File doesn't exist but we spoof it
+            fill_spoofed_stat(statbuf, normalized);
+            return 0;
+        }
+    }
+    
     return real_fstatat(dirfd, path, statbuf, flags);
 }
 
 int fstatat64(int dirfd, const char* path, struct stat64* statbuf, int flags) {
     static int (*real_fstatat64)(int, const char*, struct stat64*, int) = NULL;
     if (!real_fstatat64) real_fstatat64 = dlsym(RTLD_NEXT, "fstatat64");
+    
+    if (!path || !statbuf) return real_fstatat64(dirfd, path, statbuf, flags);
+    
+    // For absolute paths or AT_FDCWD, apply spoofing
+    if (path[0] == '/' || dirfd == AT_FDCWD) {
+        // Block container indicators
+        if (should_block_path(path)) {
+            errno = ENOENT;
+            return -1;
+        }
+        
+        const char* normalized = normalize_path(path);
+        if (normalized && is_spoofed_path(normalized)) {
+            // Try real stat first
+            if (real_fstatat64(dirfd, path, statbuf, flags) == 0) {
+                // For /proc and /sys files, force size to 0 (virtual files)
+                if (str_starts(normalized, "/proc/") || str_starts(normalized, "/sys/")) {
+                    statbuf->st_size = 0;
+                    statbuf->st_blocks = 0;
+                }
+                return 0;
+            }
+            // File doesn't exist but we spoof it
+            fill_spoofed_stat((struct stat*)statbuf, normalized);
+            return 0;
+        }
+    }
+    
     return real_fstatat64(dirfd, path, statbuf, flags);
 }
 

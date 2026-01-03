@@ -1274,6 +1274,11 @@ public class GrandExchangeTask extends AbstractTask {
     }
 
     @Override
+    public String getTaskType() {
+        return "GRAND_EXCHANGE";
+    }
+    
+    @Override
     public String getDescription() {
         if (description != null) {
             return description;

@@ -876,6 +876,11 @@ public class AgilityCourseTask extends AbstractTask {
     }
 
     @Override
+    public String getTaskType() {
+        return "AGILITY";
+    }
+    
+    @Override
     public String getDescription() {
         if (description != null) {
             return description;

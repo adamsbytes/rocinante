@@ -64,6 +64,9 @@ public class GameStateServiceTest {
     private PlayerProfile playerProfile;
     
     @Mock
+    private com.rocinante.behavior.PerformanceState performanceState;
+    
+    @Mock
     private FatigueModel fatigueModel;
     
     @Mock
@@ -104,7 +107,7 @@ public class GameStateServiceTest {
         gameStateService = new GameStateService(client, itemManager, bankStateManager, 
                 grandExchangeStateManager,
                 ironmanState,
-                playerProfile, fatigueModel, breakScheduler, attentionModel,
+                playerProfile, performanceState, fatigueModel, breakScheduler, attentionModel,
                 xpTracker,
                 weaponDataService, npcCombatDataLoader, projectileDataLoader,
                 pathCostCache);

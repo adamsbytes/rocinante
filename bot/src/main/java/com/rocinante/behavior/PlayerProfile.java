@@ -82,6 +82,80 @@ public class PlayerProfile {
     private static final double MAX_WEIGHT = 0.85;
     private static final double REINFORCEMENT_INCREMENT = 0.005;  // +0.5% per reinforcement
     
+    // ========================================================================
+    // Motor Trait Correlation Matrix (Multivariate Normal)
+    // ========================================================================
+    // 
+    // Real humans show WEAK correlations (r=0.3-0.5) between motor traits,
+    // NOT the near-perfect linear relationships (r≈0.9) that linear derivation produces.
+    // This correlation matrix enables archetypes like:
+    //   - "Fast but Sloppy": high speed, high overshoot, high wobble
+    //   - "Slow but Snappy": low speed, short clicks, quick reactions
+    //   - "FPS Precision": fast mouse, but deliberate slow clicks
+    //   - "RTS Clicker": slow mouse, but rapid fire clicks
+    //
+    // Traits (indices):
+    //   0: mouseSpeedMultiplier (0.8-1.3) - base movement speed
+    //   1: clickDurationMu (65-95ms) - mean click hold time  
+    //   2: cognitiveDelayBase (60-180ms) - reaction/processing time
+    //   3: overshootProbability (0.08-0.20) - tendency to overshoot targets
+    //   4: wobbleAmplitudeModifier (0.7-1.4) - hand tremor amplitude
+    //   5: velocityFlow (0.2-0.65) - movement asymmetry (snappy vs lazy)
+    //   6: fittsB (60-180ms/bit) - motor bandwidth for targeting
+    //   7: minWalkClickIntervalBase (2.0-6.0) - walk click pacing
+    //
+    // Correlation strengths explained:
+    //   ±0.35-0.45: Moderate correlation (expected in same-domain traits)
+    //   ±0.20-0.30: Weak correlation (cross-domain traits)
+    //   ±0.10-0.15: Very weak (nearly independent)
+    //
+    // Matrix is symmetric with 1.0 on diagonal.
+    // ========================================================================
+    private static final int MOTOR_TRAIT_COUNT = 8;
+    private static final int MT_MOUSE_SPEED = 0;
+    private static final int MT_CLICK_DURATION = 1;
+    private static final int MT_COGNITIVE_DELAY = 2;
+    private static final int MT_OVERSHOOT = 3;
+    private static final int MT_WOBBLE = 4;
+    private static final int MT_VELOCITY_FLOW = 5;
+    private static final int MT_FITTS_B = 6;
+    private static final int MT_WALK_INTERVAL = 7;
+    
+    /**
+     * Correlation matrix for motor traits.
+     * 
+     * Key design decisions:
+     * - mouseSpeed negatively correlates with click duration (-0.35): fast movers TEND to have
+     *   shorter clicks, but r=-0.35 means plenty of variance for "fast but deliberate" types
+     * - overshoot correlates with wobble (0.45): same "impulsive" archetype, but not deterministic
+     * - cognitive delay correlates with fittsB (0.40): slower processors have worse motor bandwidth
+     * - velocityFlow correlates with cognitive delay (0.35): lazy starters also react slowly
+     * - walk interval negatively correlates with speed (-0.30): fast movers click more often
+     */
+    private static final double[][] MOTOR_CORRELATION_MATRIX = {
+        //  speed   click   cog    over    wob    vel   fitts   walk
+        {   1.00,  -0.35, -0.30,   0.25,  0.30, -0.25, -0.35,  -0.30 }, // mouseSpeed
+        {  -0.35,   1.00,  0.40,  -0.15, -0.10,  0.25,  0.30,   0.25 }, // clickDuration  
+        {  -0.30,   0.40,  1.00,  -0.20, -0.15,  0.35,  0.40,   0.35 }, // cognitiveDelay
+        {   0.25,  -0.15, -0.20,   1.00,  0.45, -0.10, -0.15,  -0.15 }, // overshoot
+        {   0.30,  -0.10, -0.15,   0.45,  1.00, -0.10, -0.10,  -0.10 }, // wobble
+        {  -0.25,   0.25,  0.35,  -0.10, -0.10,  1.00,  0.30,   0.25 }, // velocityFlow
+        {  -0.35,   0.30,  0.40,  -0.15, -0.10,  0.30,  1.00,   0.35 }, // fittsB
+        {  -0.30,   0.25,  0.35,  -0.15, -0.10,  0.25,  0.35,   1.00 }, // walkInterval
+    };
+    
+    // Motor trait distribution parameters: { mean, stdDev, min, max }
+    private static final double[][] MOTOR_TRAIT_PARAMS = {
+        { 1.05,  0.15,   0.80,   1.30 },  // mouseSpeedMultiplier
+        { 80.0,  10.0,  65.0,  95.0 },    // clickDurationMu (ms)
+        { 120.0, 40.0,  60.0, 180.0 },    // cognitiveDelayBase (ms)
+        { 0.14,  0.04,  0.08,  0.20 },    // overshootProbability
+        { 1.05,  0.22,  0.70,  1.40 },    // wobbleAmplitudeModifier
+        { 0.425, 0.15,  0.20,  0.65 },    // velocityFlow
+        { 120.0, 35.0,  60.0, 180.0 },    // fittsB (ms/bit)
+        { 4.0,   1.2,   2.0,   6.0 },     // minWalkClickIntervalBase (ticks)
+    };
+    
     private final Randomization randomization;
     private final Gson gson;
     private final ScheduledExecutorService saveExecutor;
@@ -202,179 +276,207 @@ public class PlayerProfile {
         profileData.profileSeed = seed;  // Store seed for future regeneration consistency
         profileData.createdAt = Instant.now();
         
-        // === Input characteristics (from InputProfile) ===
-        profileData.mouseSpeedMultiplier = MIN_MOUSE_SPEED +
-                seededRandom.nextDouble() * (MAX_MOUSE_SPEED - MIN_MOUSE_SPEED);
+        // ====================================================================
+        // CORRELATED MOTOR TRAITS (Multivariate Normal)
+        // ====================================================================
+        // Instead of linearly deriving traits from mouseSpeedMultiplier (which
+        // creates a rank-1 manifold where all bots are "Athletic Gamers" of
+        // varying speeds), we use a multivariate normal with a covariance matrix.
+        // 
+        // This produces realistic human correlations (r=0.3-0.5 instead of ~0.9)
+        // and enables diverse archetypes:
+        //   - "Fast but Sloppy": high speed, high overshoot, high wobble
+        //   - "Slow but Snappy": low speed, short clicks, quick reactions  
+        //   - "FPS Precision": fast mouse, deliberate slow clicks
+        //   - "RTS Clicker": slow mouse, rapid fire clicks
+        // ====================================================================
         
+        // Extract means, stdDevs, mins, maxs from MOTOR_TRAIT_PARAMS
+        double[] means = new double[MOTOR_TRAIT_COUNT];
+        double[] stdDevs = new double[MOTOR_TRAIT_COUNT];
+        double[] mins = new double[MOTOR_TRAIT_COUNT];
+        double[] maxs = new double[MOTOR_TRAIT_COUNT];
+        for (int i = 0; i < MOTOR_TRAIT_COUNT; i++) {
+            means[i] = MOTOR_TRAIT_PARAMS[i][0];
+            stdDevs[i] = MOTOR_TRAIT_PARAMS[i][1];
+            mins[i] = MOTOR_TRAIT_PARAMS[i][2];
+            maxs[i] = MOTOR_TRAIT_PARAMS[i][3];
+        }
+        
+        // Generate 8 correlated motor traits together
+        double[] motorTraits = seededRandomization.multivariateNormalBounded(
+                means, stdDevs, MOTOR_CORRELATION_MATRIX, mins, maxs);
+        
+        // Assign correlated traits to profile
+        profileData.mouseSpeedMultiplier = motorTraits[MT_MOUSE_SPEED];
+        profileData.clickDurationMu = motorTraits[MT_CLICK_DURATION];
+        profileData.cognitiveDelayBase = motorTraits[MT_COGNITIVE_DELAY];
+        profileData.overshootProbability = motorTraits[MT_OVERSHOOT];
+        profileData.wobbleAmplitudeModifier = motorTraits[MT_WOBBLE];
+        profileData.velocityFlow = motorTraits[MT_VELOCITY_FLOW];
+        profileData.fittsB = motorTraits[MT_FITTS_B];
+        profileData.minWalkClickIntervalBase = motorTraits[MT_WALK_INTERVAL];
+        
+        log.debug("Motor traits generated (MVN): speed={}, clickMu={}ms, cognitive={}ms, " +
+                  "overshoot={}, wobble={}, velocity={}, fittsB={}, walkInt={}",
+                  String.format("%.2f", profileData.mouseSpeedMultiplier),
+                  String.format("%.1f", profileData.clickDurationMu),
+                  String.format("%.1f", profileData.cognitiveDelayBase),
+                  String.format("%.3f", profileData.overshootProbability),
+                  String.format("%.2f", profileData.wobbleAmplitudeModifier),
+                  String.format("%.2f", profileData.velocityFlow),
+                  String.format("%.1f", profileData.fittsB),
+                  String.format("%.2f", profileData.minWalkClickIntervalBase));
+        
+        // ====================================================================
+        // INDEPENDENT/WEAKLY-DERIVED TRAITS
+        // ====================================================================
+        // These traits are NOT in the main correlation matrix because:
+        // 1. They're in a different domain (e.g., typing vs mouse)
+        // 2. They're derived from another correlated trait (same physiology)
+        // 3. They're truly independent (physiological constants)
+        // ====================================================================
+        
+        // === Independent input characteristics ===
         profileData.clickVarianceModifier = MIN_CLICK_VARIANCE +
                 seededRandom.nextDouble() * (MAX_CLICK_VARIANCE - MIN_CLICK_VARIANCE);
         
         profileData.typingSpeedWPM = seededRandomization.uniformRandomInt(MIN_TYPING_WPM, MAX_TYPING_WPM);
         
-        // Most people are right-handed, bias toward 0.55-0.75
-        profileData.dominantHandBias = 0.55 + seededRandom.nextDouble() * 0.20;
+        // Real handedness is BIMODAL, not uniform in the middle:
+        // ~90% right-handed (bias 0.80-0.98), ~10% left-handed (bias 0.02-0.20)
+        // Very few humans are truly ambidextrous (0.3-0.7 range)
+        if (seededRandom.nextDouble() < 0.90) {
+            // Right-handed: bias toward right side of screen (0.80-0.98)
+            profileData.dominantHandBias = 0.80 + seededRandom.nextDouble() * 0.18;
+        } else {
+            // Left-handed: bias toward left side of screen (0.02-0.20)
+            profileData.dominantHandBias = 0.02 + seededRandom.nextDouble() * 0.18;
+        }
         
         // Preferred idle positions: 2-4 regions
         int numIdlePositions = seededRandomization.uniformRandomInt(2, 4);
         profileData.preferredIdlePositions = selectRandomIdlePositions(seededRandom, numIdlePositions);
         
-        // Error rates
+        // Error rates - independent, personal characteristics
         profileData.baseMisclickRate = 0.01 + seededRandom.nextDouble() * 0.02;  // 1-3%
         profileData.baseTypoRate = 0.005 + seededRandom.nextDouble() * 0.015;    // 0.5-2%
         
-        // === Overshoot probability correlates with mouse speed ===
-        // Fast players overshoot more - they sacrifice precision for speed
-        // Base: 8-15%, adjusted by speed multiplier
-        double overshootBase = 0.08 + seededRandom.nextDouble() * 0.07;
-        // Higher speed = more overshoot (up to +5% at max speed)
-        double speedOvershootBonus = (profileData.mouseSpeedMultiplier - MIN_MOUSE_SPEED) 
-                / (MAX_MOUSE_SPEED - MIN_MOUSE_SPEED) * 0.05;
-        profileData.overshootProbability = Math.min(0.20, overshootBase + speedOvershootBonus);
-        
-        // === Micro-correction correlates with overshoot ===
+        // === Micro-correction: derived from overshoot (same "sloppiness" domain) ===
         // Players who overshoot more also need more corrections
-        // Base: 15-25%, plus correlation with overshoot
+        // Weak derivation (adds noise, not deterministic)
         double correctionBase = 0.15 + seededRandom.nextDouble() * 0.08;
-        double overshootCorrectionBonus = (profileData.overshootProbability - 0.08) * 0.5;
-        profileData.microCorrectionProbability = Math.min(0.30, correctionBase + overshootCorrectionBonus);
+        double overshootCorrectionBonus = (profileData.overshootProbability - 0.14) * 0.4;
+        profileData.microCorrectionProbability = Randomization.clamp(
+                correctionBase + overshootCorrectionBonus, 0.10, 0.30);
         
-        // === Drag wobble characteristics ===
-        // Each player has unique hand tremor patterns
-        // Tremor frequency is mostly physiological (less controllable)
+        // === Drag wobble frequency: physiological constant (independent) ===
         profileData.wobbleFrequencyBase = 2.5 + seededRandom.nextDouble() * 1.5;  // 2.5-4.0 Hz
         profileData.wobbleFrequencyVariance = 0.3 + seededRandom.nextDouble() * 0.5;  // 0.3-0.8
         
-        // Wobble amplitude correlates with mouse speed (fast players have more tremor)
-        // Speed increases arm movement, which increases visible tremor
-        double wobbleBase = 0.7 + seededRandom.nextDouble() * 0.4;
-        double speedWobbleBonus = (profileData.mouseSpeedMultiplier - MIN_MOUSE_SPEED) 
-                / (MAX_MOUSE_SPEED - MIN_MOUSE_SPEED) * 0.25;
-        profileData.wobbleAmplitudeModifier = Math.min(1.4, wobbleBase + speedWobbleBonus);
+        // === Click timing variance: derived from clickDurationMu (same domain) ===
+        // These relate to the same physiological process as clickDurationMu
+        // Sigma: base + small correlation with mu (longer clicks = slightly more variance)
+        double clickSigmaBase = 10.0 + seededRandom.nextDouble() * 6.0;
+        double muCorrelation = (profileData.clickDurationMu - 80.0) / 15.0 * 2.0; // ±2ms based on mu
+        profileData.clickDurationSigma = Randomization.clamp(
+                clickSigmaBase + muCorrelation, 8.0, 18.0);
         
-        // === Click timing correlates with mouse speed ===
-        // Fast players have snappier (shorter) clicks
-        // Base: 75-95ms, adjusted by speed
-        double clickMuBase = 75.0 + seededRandom.nextDouble() * 15.0;
-        // Faster movers have shorter clicks (up to -10ms at max speed)
-        double speedClickReduction = (profileData.mouseSpeedMultiplier - MIN_MOUSE_SPEED) 
-                / (MAX_MOUSE_SPEED - MIN_MOUSE_SPEED) * 10.0;
-        profileData.clickDurationMu = Math.max(65.0, clickMuBase - speedClickReduction);
+        // Tau (exponential tail): independent - models occasional attention lapses
+        profileData.clickDurationTau = 3.0 + seededRandom.nextDouble() * 10.0;  // 3-13ms
         
-        // Variance correlates inversely with speed (fast players are more consistent)
-        double clickSigmaBase = 10.0 + seededRandom.nextDouble() * 8.0;
-        double speedSigmaReduction = (profileData.mouseSpeedMultiplier - MIN_MOUSE_SPEED) 
-                / (MAX_MOUSE_SPEED - MIN_MOUSE_SPEED) * 4.0;
-        profileData.clickDurationSigma = Math.max(8.0, clickSigmaBase - speedSigmaReduction);
-        
-        // Tail heaviness (tau) - slower players have more occasional "long clicks"
-        double clickTauBase = 5.0 + seededRandom.nextDouble() * 8.0;
-        double speedTauReduction = (profileData.mouseSpeedMultiplier - MIN_MOUSE_SPEED) 
-                / (MAX_MOUSE_SPEED - MIN_MOUSE_SPEED) * 4.0;
-        profileData.clickDurationTau = Math.max(3.0, clickTauBase - speedTauReduction);
-        
-        // === Cognitive delay correlates with mouse speed ===
-        // Fast players tend to think faster (react quicker)
-        // Base: 80-200ms, adjusted by speed multiplier
-        double cognitiveBase = 80.0 + seededRandom.nextDouble() * 100.0;
-        // Faster movers have lower cognitive delay (up to -40ms at max speed)
-        double speedCognitiveReduction = (profileData.mouseSpeedMultiplier - MIN_MOUSE_SPEED) 
-                / (MAX_MOUSE_SPEED - MIN_MOUSE_SPEED) * 40.0;
-        profileData.cognitiveDelayBase = Math.max(60.0, cognitiveBase - speedCognitiveReduction);
+        // === Cognitive delay variance: independent ratio ===
         profileData.cognitiveDelayVariance = 0.3 + seededRandom.nextDouble() * 0.4;  // 0.3-0.7
         
-        // === Motor speed correlation ===
-        // How tightly coupled is mouse speed with click speed
-        // Higher = "fast players" are fast at both, "slow players" slow at both
-        // Correlate with mouse speed (fast players are more consistently fast)
-        double motorCorrelationBase = 0.5 + seededRandom.nextDouble() * 0.3;
-        double speedCorrelationBonus = (profileData.mouseSpeedMultiplier - MIN_MOUSE_SPEED) 
-                / (MAX_MOUSE_SPEED - MIN_MOUSE_SPEED) * 0.15;
-        profileData.motorSpeedCorrelation = Math.min(0.95, motorCorrelationBase + speedCorrelationBonus);
+        // === Motor speed correlation: now INDEPENDENT (not derived from speed) ===
+        // This represents how consistently a person maintains their motor traits
+        // across different contexts - varies by individual, not by speed
+        profileData.motorSpeedCorrelation = 0.50 + seededRandom.nextDouble() * 0.40;  // 0.5-0.9
         
-        // === Tick jitter (perception delay) ===
-        // Each player has unique perception/reaction timing characteristics
-        profileData.jitterMu = 35.0 + seededRandom.nextDouble() * 15.0;     // 35-50ms mean
-        profileData.jitterSigma = 10.0 + seededRandom.nextDouble() * 10.0;  // 10-20ms std dev
-        profileData.jitterTau = 15.0 + seededRandom.nextDouble() * 15.0;    // 15-30ms tail
+        // === Tick jitter: reaction time characteristics (independent domain) ===
+        // Real human choice reaction times follow Ex-Gaussian distribution
+        // μ: 150-400ms (central tendency), σ: 20-100ms (consistency), τ: 50-300ms (tail)
+        profileData.jitterMu = 150.0 + seededRandom.nextDouble() * 250.0;
+        profileData.jitterSigma = 20.0 + seededRandom.nextDouble() * 80.0;
+        profileData.jitterTau = 50.0 + seededRandom.nextDouble() * 250.0;
         
-        // === Tick skip and attention modeling ===
-        // Occasional skipped ticks and attention lapses create human-like variance
+        // === Attention modeling: independent characteristics ===
         profileData.tickSkipBaseProbability = 0.03 + seededRandom.nextDouble() * 0.05;  // 3-8%
         profileData.attentionLapseProbability = 0.005 + seededRandom.nextDouble() * 0.015;  // 0.5-2%
         
-        // === Anticipation and Hesitation are inversely correlated ===
-        // Players who anticipate well don't hesitate as much (confident/decisive)
-        // Players who hesitate a lot don't anticipate as well (cautious/uncertain)
-        // Use a shared "decisiveness" factor to create inverse correlation
+        // === Anticipation and Hesitation: inversely correlated (personality domain) ===
         double decisiveness = seededRandom.nextDouble();  // 0=cautious, 1=decisive
+        profileData.anticipationProbability = 0.10 + decisiveness * 0.12;  // 10-22%
+        profileData.hesitationProbability = 0.10 + (1.0 - decisiveness) * 0.18;  // 10-28%
+        // Add noise to break perfect inverse correlation
+        profileData.anticipationProbability += (seededRandom.nextDouble() - 0.5) * 0.04;
+        profileData.hesitationProbability += (seededRandom.nextDouble() - 0.5) * 0.04;
+        profileData.anticipationProbability = Randomization.clamp(profileData.anticipationProbability, 0.08, 0.25);
+        profileData.hesitationProbability = Randomization.clamp(profileData.hesitationProbability, 0.08, 0.30);
         
-        // High decisiveness = high anticipation, low hesitation
-        // Low decisiveness = low anticipation, high hesitation
-        profileData.anticipationProbability = 0.10 + decisiveness * 0.12;  // 10-22% (decisive players anticipate more)
-        profileData.hesitationProbability = 0.10 + (1.0 - decisiveness) * 0.18;  // 10-28% (cautious players hesitate more)
-        
-        // Add small noise to break perfect inverse correlation (real humans aren't perfectly predictable)
-        profileData.anticipationProbability += (seededRandom.nextDouble() - 0.5) * 0.04;  // ±2%
-        profileData.hesitationProbability += (seededRandom.nextDouble() - 0.5) * 0.04;    // ±2%
-        profileData.anticipationProbability = Math.max(0.08, Math.min(0.25, profileData.anticipationProbability));
-        profileData.hesitationProbability = Math.max(0.08, Math.min(0.30, profileData.hesitationProbability));
-        
-        // === Mouse path complexity ===
-        // Each player has unique movement patterns
-        // Submovement correlates slightly with hesitation (hesitant players have more submovements)
+        // === Mouse path complexity: weakly derived from hesitation (personality) ===
         double submovementBase = 0.15 + seededRandom.nextDouble() * 0.10;
         double hesitationSubmovementBonus = (profileData.hesitationProbability - 0.10) * 0.3;
-        profileData.submovementProbability = Math.min(0.35, submovementBase + hesitationSubmovementBonus);
-        profileData.usesPathSegmentation = seededRandom.nextDouble() > 0.3;           // 70% use segmentation
+        profileData.submovementProbability = Randomization.clamp(
+                submovementBase + hesitationSubmovementBonus, 0.10, 0.35);
+        profileData.usesPathSegmentation = seededRandom.nextDouble() > 0.3;  // 70% use segmentation
         
-        // === Physiological Physics Engine Parameters ===
-        // Velocity skew (Asymmetry): 0.2-0.8 (0.3=snappy/fast start, 0.6=lazy/slow start)
-        // Fast players tend to have snappier (lower) velocity flow
-        double velocityFlowBase = 0.25 + seededRandom.nextDouble() * 0.4;
-        double speedVelocityReduction = (profileData.mouseSpeedMultiplier - MIN_MOUSE_SPEED) 
-                / (MAX_MOUSE_SPEED - MIN_MOUSE_SPEED) * 0.15;
-        profileData.velocityFlow = Math.max(0.2, velocityFlowBase - speedVelocityReduction);
+        // === Physiological constants: tremor frequency (independent) ===
+        profileData.physTremorFreq = 8.0 + seededRandom.nextDouble() * 4.0;  // 8-12Hz
         
-        // Physiological tremor: 8-12Hz (mostly fixed per individual)
-        profileData.physTremorFreq = 8.0 + seededRandom.nextDouble() * 4.0;
-        
-        // Tremor Amplitude correlates with wobble amplitude (same underlying physiology)
-        // Plus slight correlation with mouse speed (fast movements = more visible tremor)
+        // === Tremor amplitude: derived from wobble (same physiology) ===
         double tremorBase = 0.2 + seededRandom.nextDouble() * 0.8;
-        // Correlate with wobble (~30% of wobble modifier transferred to tremor)
-        double wobbleCorrelation = (profileData.wobbleAmplitudeModifier - 0.7) * 0.4;
-        profileData.physTremorAmp = Math.max(0.2, Math.min(1.5, tremorBase + wobbleCorrelation));
+        double wobbleCorrelation = (profileData.wobbleAmplitudeModifier - 1.05) * 0.5;
+        profileData.physTremorAmp = Randomization.clamp(tremorBase + wobbleCorrelation, 0.2, 1.5);
         
-        // Motor unit quantization (Jerk): correlates inversely with precision
-        // Fast players with high overshoot have more motor quantization (less smooth)
-        double motorUnitBase = seededRandom.nextDouble() * 1.0;
-        double overshootMotorBonus = (profileData.overshootProbability - 0.08) * 3.0;
-        profileData.motorUnitThreshold = Math.min(1.5, motorUnitBase + overshootMotorBonus);
-
-        // === Fitts' Law Parameters ===
-        // Each person has unique motor characteristics that determine their
-        // movement time = a + b * log2(1 + Distance/Width)
-        //
-        // 'a' (base time): 30-200ms - initiation delay before movement starts
-        // Studies show wide individual variation in neuromuscular response time
-        // Using Gaussian distribution around mean=80ms, σ=35ms, clamped to [30, 200]
+        // === Tremor phase offset: determines elliptical tremor orbit shape ===
+        // Real human tremor has elliptical phase relationships between X and Y because
+        // they share muscle groups. The offset varies by person (60-120° typical) based
+        // on individual anatomy (muscle attachment points, neural pathway timing).
+        // This creates the characteristic "elliptical orbits" seen in tremor spectrograms.
+        profileData.physTremorPhaseOffset = Math.toRadians(60.0 + seededRandom.nextDouble() * 60.0);
+        
+        // === Motor unit quantization: derived from overshoot (same "jerky" domain) ===
+        double motorUnitBase = seededRandom.nextDouble() * 0.8;
+        double overshootMotorBonus = (profileData.overshootProbability - 0.14) * 2.5;
+        profileData.motorUnitThreshold = Randomization.clamp(
+                motorUnitBase + overshootMotorBonus, 0.0, 1.5);
+        
+        // === Feedback delay: visual-motor loop latency (10-25 samples at 100Hz = 100-250ms) ===
+        // Weakly correlated with cognitive delay - faster thinkers also have faster visual processing
+        double feedbackBase = 17.5; // Center of range
+        double cognitiveCorrelation = (profileData.cognitiveDelayBase - 120.0) / 60.0 * 3.0; // ±3 samples
+        double feedbackNoise = seededRandom.nextGaussian() * 3.0; // ±3 samples noise
+        profileData.feedbackDelaySamples = (int) Randomization.clamp(
+                feedbackBase + cognitiveCorrelation + feedbackNoise, 10, 25);
+        
+        // === Fitts' Law 'a' parameter: independent (neuromuscular initiation delay) ===
+        // Not correlated with speed - some fast movers have slow starts, some don't
         double fittsACandidate = 80.0 + seededRandom.nextGaussian() * 35.0;
-        profileData.fittsA = Math.max(30.0, Math.min(200.0, fittsACandidate));
-        
-        // 'b' (motor bandwidth): 60-180 ms/bit - how fast they can process difficulty
-        // Correlate slightly with mouseSpeedMultiplier (fast movers = lower b)
-        // Base: mean=110ms, σ=30ms, adjusted by speed correlation
-        double fittsBBase = 110.0 + seededRandom.nextGaussian() * 30.0;
-        // Faster movers (higher speedMultiplier) get lower 'b' (faster targeting)
-        double speedAdjustment = (profileData.mouseSpeedMultiplier - 1.0) * -40.0;
-        double fittsBCandidate = fittsBBase + speedAdjustment;
-        profileData.fittsB = Math.max(60.0, Math.min(180.0, fittsBCandidate));
+        profileData.fittsA = Randomization.clamp(fittsACandidate, 30.0, 200.0);
 
         // === Break behavior ===
         profileData.breakFatigueThreshold = MIN_BREAK_THRESHOLD +
                 seededRandom.nextDouble() * (MAX_BREAK_THRESHOLD - MIN_BREAK_THRESHOLD);
         
         profileData.breakActivityWeights = generateBreakActivityWeights(seededRandom);
+        
+        // === Run energy thresholds ===
+        // Generate with Gaussian distribution for natural per-player variation
+        // Enable threshold: mean=40, stddev=12, clamped to [25, 65]
+        double runEnableCandidate = 40.0 + seededRandom.nextGaussian() * 12.0;
+        profileData.runEnableThreshold = (int) Math.max(25, Math.min(65, Math.round(runEnableCandidate)));
+        
+        // Disable threshold: mean=15, stddev=5, clamped to [5, 25]
+        double runDisableCandidate = 15.0 + seededRandom.nextGaussian() * 5.0;
+        profileData.runDisableThreshold = (int) Math.max(5, Math.min(25, Math.round(runDisableCandidate)));
+        
+        // Ensure hysteresis gap of at least 15 to prevent rapid toggling
+        if (profileData.runEnableThreshold - profileData.runDisableThreshold < 15) {
+            profileData.runDisableThreshold = profileData.runEnableThreshold - 15;
+            // Re-clamp disable threshold after adjustment
+            profileData.runDisableThreshold = Math.max(5, profileData.runDisableThreshold);
+        }
         
         // === Camera preferences ===
         profileData.preferredCompassAngle = seededRandom.nextDouble() * 360.0;
@@ -489,6 +591,12 @@ public class PlayerProfile {
         profileData.chronotype = selectChronotype(seededRandom);
         profileData.peakHourOffset = -2.0 + seededRandom.nextDouble() * 4.0;  // -2 to +2 hours
         profileData.circadianStrength = 0.1 + seededRandom.nextDouble() * 0.4;  // 0.1-0.5
+        
+        // === Motor Learning (individual learning characteristics) ===
+        // Some people learn motor skills faster/more than others
+        profileData.motorLearningCapacity = 0.12 + seededRandom.nextDouble() * 0.13;  // 12-25% max improvement
+        profileData.motorLearningTau = 200.0 + seededRandom.nextDouble() * 400.0;  // 200-600 minutes to ~63%
+        // taskExperience starts empty - will be populated during gameplay
 
         // === UInput Device Presets ===
         // All bots use Steam Deck devices - common hardware, blends in well, 
@@ -546,6 +654,30 @@ public class PlayerProfile {
                 profileData.breakFatigueThreshold, MIN_BREAK_THRESHOLD, MAX_BREAK_THRESHOLD);
         recordChange(changes, "breakFatigueThreshold", beforeBreak, profileData.breakFatigueThreshold);
         
+        // Run energy thresholds drift (small - behavioral habits are fairly stable)
+        int beforeRunEnable = profileData.runEnableThreshold;
+        int beforeRunDisable = profileData.runDisableThreshold;
+        int runEnableDrift = (int) Math.round(profileData.runEnableThreshold * 
+                randomization.uniformRandom(-SESSION_DRIFT_PERCENT, SESSION_DRIFT_PERCENT));
+        int runDisableDrift = (int) Math.round(profileData.runDisableThreshold * 
+                randomization.uniformRandom(-SESSION_DRIFT_PERCENT, SESSION_DRIFT_PERCENT));
+        profileData.runEnableThreshold = Randomization.clamp(
+                profileData.runEnableThreshold + runEnableDrift, 25, 65);
+        profileData.runDisableThreshold = Randomization.clamp(
+                profileData.runDisableThreshold + runDisableDrift, 5, 25);
+        // Maintain hysteresis gap
+        if (profileData.runEnableThreshold - profileData.runDisableThreshold < 15) {
+            profileData.runDisableThreshold = Math.max(5, profileData.runEnableThreshold - 15);
+        }
+        recordChange(changes, "runEnableThreshold", beforeRunEnable, profileData.runEnableThreshold);
+        recordChange(changes, "runDisableThreshold", beforeRunDisable, profileData.runDisableThreshold);
+        
+        // Walk pacing drift (small - movement habits are stable)
+        double beforeWalkInterval = profileData.minWalkClickIntervalBase;
+        profileData.minWalkClickIntervalBase = applyDrift(
+                profileData.minWalkClickIntervalBase, 2.0, 6.0, SESSION_DRIFT_PERCENT);
+        recordChange(changes, "minWalkClickIntervalBase", beforeWalkInterval, profileData.minWalkClickIntervalBase);
+        
         // Camera angle drift (larger, ±10°)
         double beforeAngle = profileData.preferredCompassAngle;
         double angleDrift = randomization.uniformRandom(-10, 10);
@@ -576,26 +708,29 @@ public class PlayerProfile {
         double beforeWobbleAmp = profileData.wobbleAmplitudeModifier;
         profileData.wobbleFrequencyBase = applyDrift(profileData.wobbleFrequencyBase, 2.5, 4.0, 0.02);
         profileData.wobbleFrequencyVariance = applyDrift(profileData.wobbleFrequencyVariance, 0.3, 0.8, 0.02);
-        profileData.wobbleAmplitudeModifier = applyDrift(profileData.wobbleAmplitudeModifier, 0.7, 1.3, 0.02);
+        // Bounds match MOTOR_TRAIT_PARAMS[MT_WOBBLE] = {1.05, 0.22, 0.70, 1.40}
+        profileData.wobbleAmplitudeModifier = applyDrift(profileData.wobbleAmplitudeModifier, 0.70, 1.40, 0.02);
         recordChange(changes, "wobbleFrequencyBase", beforeWobbleFreq, profileData.wobbleFrequencyBase);
         recordChange(changes, "wobbleFrequencyVariance", beforeWobbleVar, profileData.wobbleFrequencyVariance);
         recordChange(changes, "wobbleAmplitudeModifier", beforeWobbleAmp, profileData.wobbleAmplitudeModifier);
         
         // Click timing drift (small - motor patterns are stable)
+        // Bounds match MOTOR_TRAIT_PARAMS[MT_CLICK_DURATION] = {80.0, 10.0, 65.0, 95.0}
         double beforeClickMu = profileData.clickDurationMu;
         double beforeClickSigma = profileData.clickDurationSigma;
         double beforeClickTau = profileData.clickDurationTau;
-        profileData.clickDurationMu = applyDrift(profileData.clickDurationMu, 75.0, 95.0, 0.02);
-        profileData.clickDurationSigma = applyDrift(profileData.clickDurationSigma, 10.0, 20.0, 0.02);
-        profileData.clickDurationTau = applyDrift(profileData.clickDurationTau, 5.0, 15.0, 0.02);
+        profileData.clickDurationMu = applyDrift(profileData.clickDurationMu, 65.0, 95.0, 0.02);
+        profileData.clickDurationSigma = applyDrift(profileData.clickDurationSigma, 8.0, 18.0, 0.02);
+        profileData.clickDurationTau = applyDrift(profileData.clickDurationTau, 3.0, 13.0, 0.02);
         recordChange(changes, "clickDurationMu", beforeClickMu, profileData.clickDurationMu);
         recordChange(changes, "clickDurationSigma", beforeClickSigma, profileData.clickDurationSigma);
         recordChange(changes, "clickDurationTau", beforeClickTau, profileData.clickDurationTau);
         
         // Cognitive delay drift (small - thinking speed is stable)
+        // Bounds match MOTOR_TRAIT_PARAMS[MT_COGNITIVE_DELAY] = {120.0, 40.0, 60.0, 180.0}
         double beforeCogBase = profileData.cognitiveDelayBase;
         double beforeCogVar = profileData.cognitiveDelayVariance;
-        profileData.cognitiveDelayBase = applyDrift(profileData.cognitiveDelayBase, 80.0, 200.0, 0.02);
+        profileData.cognitiveDelayBase = applyDrift(profileData.cognitiveDelayBase, 60.0, 180.0, 0.02);
         profileData.cognitiveDelayVariance = applyDrift(profileData.cognitiveDelayVariance, 0.3, 0.7, 0.02);
         recordChange(changes, "cognitiveDelayBase", beforeCogBase, profileData.cognitiveDelayBase);
         recordChange(changes, "cognitiveDelayVariance", beforeCogVar, profileData.cognitiveDelayVariance);
@@ -609,9 +744,9 @@ public class PlayerProfile {
         double beforeJitterMu = profileData.jitterMu;
         double beforeJitterSigma = profileData.jitterSigma;
         double beforeJitterTau = profileData.jitterTau;
-        profileData.jitterMu = applyDrift(profileData.jitterMu, 35.0, 50.0, 0.01);
-        profileData.jitterSigma = applyDrift(profileData.jitterSigma, 10.0, 20.0, 0.01);
-        profileData.jitterTau = applyDrift(profileData.jitterTau, 15.0, 30.0, 0.01);
+        profileData.jitterMu = applyDrift(profileData.jitterMu, 150.0, 400.0, 0.01);
+        profileData.jitterSigma = applyDrift(profileData.jitterSigma, 20.0, 100.0, 0.01);
+        profileData.jitterTau = applyDrift(profileData.jitterTau, 50.0, 300.0, 0.01);
         recordChange(changes, "jitterMu", beforeJitterMu, profileData.jitterMu);
         recordChange(changes, "jitterSigma", beforeJitterSigma, profileData.jitterSigma);
         recordChange(changes, "jitterTau", beforeJitterTau, profileData.jitterTau);
@@ -635,20 +770,54 @@ public class PlayerProfile {
         recordChange(changes, "hesitationProbability", beforeHesitation, profileData.hesitationProbability);
         recordChange(changes, "submovementProbability", beforeSubmovement, profileData.submovementProbability);
 
-        // === Physiological Drift ===
+        // === Correlated Motor Traits Drift (from MVN generation) ===
+        // These traits were generated with correlation, but drift independently
+        // Bounds match MOTOR_TRAIT_PARAMS entries
+        
+        // Overshoot probability drift (small - movement habits are stable)
+        double beforeOvershoot = profileData.overshootProbability;
+        profileData.overshootProbability = applyDrift(profileData.overshootProbability, 0.08, 0.20, 0.02);
+        recordChange(changes, "overshootProbability", beforeOvershoot, profileData.overshootProbability);
+        
         // Velocity skew drift (mood/energy affects this)
+        // Bounds match MOTOR_TRAIT_PARAMS[MT_VELOCITY_FLOW] = {0.425, 0.15, 0.20, 0.65}
         double beforeSkew = profileData.velocityFlow;
-        profileData.velocityFlow = applyDrift(profileData.velocityFlow, 0.2, 0.8, 0.05); // Moderate drift
+        profileData.velocityFlow = applyDrift(profileData.velocityFlow, 0.20, 0.65, 0.05);
         recordChange(changes, "velocityFlow", beforeSkew, profileData.velocityFlow);
+        
+        // Fitts' B drift (motor bandwidth - fairly stable)
+        // Bounds match MOTOR_TRAIT_PARAMS[MT_FITTS_B] = {120.0, 35.0, 60.0, 180.0}
+        double beforeFittsB = profileData.fittsB;
+        profileData.fittsB = applyDrift(profileData.fittsB, 60.0, 180.0, 0.02);
+        recordChange(changes, "fittsB", beforeFittsB, profileData.fittsB);
 
+        // === Other Physiological Drift ===
         // Tremor amplitude drift (caffeine, fatigue, stress - highly variable)
         double beforeTremorAmp = profileData.physTremorAmp;
-        profileData.physTremorAmp = applyDrift(profileData.physTremorAmp, 0.2, 2.0, 0.10); // High drift
+        profileData.physTremorAmp = applyDrift(profileData.physTremorAmp, 0.2, 1.5, 0.10);
         recordChange(changes, "physTremorAmp", beforeTremorAmp, profileData.physTremorAmp);
+        
+        // Feedback delay drift (very stable - visual processing speed doesn't change much)
+        int beforeFeedbackDelay = profileData.feedbackDelaySamples;
+        int feedbackDrift = (int) Math.round(profileData.feedbackDelaySamples * 
+                randomization.uniformRandom(-0.01, 0.01));
+        profileData.feedbackDelaySamples = Randomization.clamp(
+                profileData.feedbackDelaySamples + feedbackDrift, 10, 25);
+        recordChange(changes, "feedbackDelaySamples", beforeFeedbackDelay, profileData.feedbackDelaySamples);
+        
+        // Motor learning parameters drift (very small - learning rate is stable)
+        double beforeLearningCapacity = profileData.motorLearningCapacity;
+        double beforeLearningTau = profileData.motorLearningTau;
+        profileData.motorLearningCapacity = applyDrift(
+                profileData.motorLearningCapacity, 0.10, 0.30, 0.01);
+        profileData.motorLearningTau = applyDrift(
+                profileData.motorLearningTau, 150.0, 700.0, 0.01);
+        recordChange(changes, "motorLearningCapacity", beforeLearningCapacity, profileData.motorLearningCapacity);
+        recordChange(changes, "motorLearningTau", beforeLearningTau, profileData.motorLearningTau);
 
         // Tremor frequency drift (very stable biological constant)
         double beforeTremorFreq = profileData.physTremorFreq;
-        profileData.physTremorFreq = applyDrift(profileData.physTremorFreq, 8.0, 12.0, 0.01); // Tiny drift
+        profileData.physTremorFreq = applyDrift(profileData.physTremorFreq, 8.0, 12.0, 0.01);
         recordChange(changes, "physTremorFreq", beforeTremorFreq, profileData.physTremorFreq);
 
         recordDrift(DriftType.SESSION, changes);
@@ -1532,7 +1701,7 @@ public class PlayerProfile {
     
     /**
      * Get the Ex-Gaussian μ (mean) for tick jitter.
-     * @return jitter mean in milliseconds (35-50)
+     * @return jitter mean in milliseconds (150-400)
      */
     public double getJitterMu() {
         return profileData.jitterMu;
@@ -1540,7 +1709,7 @@ public class PlayerProfile {
     
     /**
      * Get the Ex-Gaussian σ (std dev) for tick jitter.
-     * @return jitter std dev in milliseconds (10-20)
+     * @return jitter std dev in milliseconds (20-100)
      */
     public double getJitterSigma() {
         return profileData.jitterSigma;
@@ -1548,7 +1717,7 @@ public class PlayerProfile {
     
     /**
      * Get the Ex-Gaussian τ (tail) for tick jitter.
-     * @return jitter tail in milliseconds (15-30)
+     * @return jitter tail in milliseconds (50-300)
      */
     public double getJitterTau() {
         return profileData.jitterTau;
@@ -1609,6 +1778,16 @@ public class PlayerProfile {
 
     public int getSessionCount() {
         return profileData.sessionCount;
+    }
+
+    /**
+     * Get the timestamp of the last session start.
+     * Used by PerformanceState to determine if daily performance should regenerate.
+     * 
+     * @return last session start timestamp, or null if never played
+     */
+    public java.time.Instant getLastSessionStart() {
+        return profileData.lastSessionStart;
     }
 
     public double getTotalPlaytimeHours() {
@@ -1685,12 +1864,42 @@ public class PlayerProfile {
     }
 
     /**
+     * Get physiological tremor phase offset between X and Y axes.
+     * 
+     * Real human tremor exhibits elliptical phase relationships - X and Y aren't
+     * fully independent because they share muscle groups and neural pathways.
+     * This offset creates characteristic "elliptical tremor orbits" visible in
+     * spectrograms. The offset is typically 60-120° per person.
+     * 
+     * @return phase offset in radians (1.05-2.09, i.e., 60-120 degrees)
+     */
+    public double getPhysTremorPhaseOffset() {
+        return profileData.physTremorPhaseOffset;
+    }
+
+    /**
      * Get motor unit recruitment threshold.
      * Simulates "steppiness" of movement due to muscle quantization.
      * @return threshold in pixels (0.0-1.5)
      */
     public double getMotorUnitThreshold() {
         return profileData.motorUnitThreshold;
+    }
+    
+    /**
+     * Feedback delay for the visual-motor feedback loop in BiologicalMotorNoise.
+     * 
+     * Represents the visual processing latency - how long it takes for the brain
+     * to detect a positioning error and begin correcting it. Real humans have
+     * latencies of 100-250ms (10-25 samples at 100Hz).
+     * 
+     * Lower values = more coordinated player (faster error detection)
+     * Higher values = more sluggish corrections
+     * 
+     * @return feedback delay in samples (10-25)
+     */
+    public int getFeedbackDelaySamples() {
+        return profileData.feedbackDelaySamples;
     }
 
     /**
@@ -1728,6 +1937,58 @@ public class PlayerProfile {
 
     public double getBreakFatigueThreshold() {
         return profileData.breakFatigueThreshold;
+    }
+
+    // === Run Energy Thresholds ===
+    
+    /**
+     * Get the energy level at which to enable running.
+     * Per-profile value with Gaussian distribution, range 25-65.
+     * 
+     * @return run enable threshold (energy percentage)
+     */
+    public int getRunEnableThreshold() {
+        return profileData.runEnableThreshold;
+    }
+    
+    /**
+     * Get the energy level at which to disable running.
+     * Per-profile value with Gaussian distribution, range 5-25.
+     * Always at least 15 below runEnableThreshold for hysteresis.
+     * 
+     * @return run disable threshold (energy percentage)
+     */
+    public int getRunDisableThreshold() {
+        return profileData.runDisableThreshold;
+    }
+    
+    // === Walk Pacing ===
+    
+    /**
+     * Get the minimum ticks between walk clicks with per-call jitter.
+     * Base value is generated per-profile (correlated with mouse speed),
+     * then small Gaussian jitter is added each call for natural variation.
+     * 
+     * Fast movers (high mouseSpeedMultiplier) tend to have lower intervals
+     * (more frequent clicking), while slow movers have higher intervals.
+     * 
+     * @return minimum ticks between walk clicks (2-6)
+     */
+    public int getMinWalkClickInterval() {
+        // Add small per-call jitter around the base for natural variation
+        double jitter = randomization.gaussianRandom(0, 0.3);
+        double interval = profileData.minWalkClickIntervalBase + jitter;
+        return (int) Math.round(Randomization.clamp(interval, 2.0, 6.0));
+    }
+    
+    /**
+     * Get the raw base walk click interval without jitter.
+     * Useful for debugging/testing.
+     * 
+     * @return base walk click interval
+     */
+    public double getMinWalkClickIntervalBase() {
+        return profileData.minWalkClickIntervalBase;
     }
 
     public double getPreferredCompassAngle() {
@@ -2022,6 +2283,296 @@ public class PlayerProfile {
     }
 
     // ========================================================================
+    // Motor Learning with Skill Transfer
+    // ========================================================================
+    // 
+    // Real humans show partial transfer between related tasks. If you master
+    // woodcutting, you're slightly better at mining on day 1 (similar click
+    // timing patterns). This prevents the suspicious scenario where a bot with
+    // 500 hours total playtime is "expert" at woodcutting but "novice" at mining.
+    //
+    // Transfer model:
+    // - Within-category transfer: 50% proficiency transfers (e.g., mining <-> woodcutting)
+    // - Cross-category transfer: 15% of total playtime as "general gaming skill"
+    // ========================================================================
+    
+    /**
+     * Skill categories for motor learning transfer.
+     * Tasks within the same category share similar motor patterns and transfer proficiency.
+     */
+    public enum SkillCategory {
+        /** Resource gathering: clicking on game objects (trees, rocks, fishing spots) */
+        GATHERING,
+        /** Combat: target acquisition, prayer switching, gear management */
+        COMBAT,
+        /** Processing: interface interactions (cooking, smithing, crafting, fletching) */
+        PROCESSING,
+        /** Agility/Thieving: timing-based, quick reactions */
+        REACTION,
+        /** Banking: inventory management, deposit/withdraw patterns */
+        BANKING,
+        /** Navigation: minimap clicking, camera control */
+        NAVIGATION,
+        /** General: doesn't fit other categories, no special transfer */
+        GENERAL
+    }
+    
+    /**
+     * Within-category skill transfer coefficient.
+     * 50% of proficiency from related tasks transfers.
+     */
+    private static final double WITHIN_CATEGORY_TRANSFER = 0.50;
+    
+    /**
+     * Cross-category (general gaming skill) transfer coefficient.
+     * 15% of total playtime proficiency transfers to all tasks.
+     */
+    private static final double GENERAL_SKILL_TRANSFER = 0.15;
+    
+    /**
+     * Map task types to their skill categories.
+     * Used for calculating skill transfer between related tasks.
+     */
+    private static final Map<String, SkillCategory> TASK_CATEGORIES = Map.ofEntries(
+        // Gathering skills (clicking on game objects)
+        Map.entry("WOODCUTTING", SkillCategory.GATHERING),
+        Map.entry("MINING", SkillCategory.GATHERING),
+        Map.entry("FISHING", SkillCategory.GATHERING),
+        Map.entry("HUNTER", SkillCategory.GATHERING),
+        Map.entry("FARMING", SkillCategory.GATHERING),
+        
+        // Combat skills (target acquisition, switching)
+        Map.entry("COMBAT", SkillCategory.COMBAT),
+        Map.entry("MELEE", SkillCategory.COMBAT),
+        Map.entry("RANGED", SkillCategory.COMBAT),
+        Map.entry("MAGIC", SkillCategory.COMBAT),
+        Map.entry("SLAYER", SkillCategory.COMBAT),
+        
+        // Processing skills (interface interactions)
+        Map.entry("COOKING", SkillCategory.PROCESSING),
+        Map.entry("SMITHING", SkillCategory.PROCESSING),
+        Map.entry("CRAFTING", SkillCategory.PROCESSING),
+        Map.entry("FLETCHING", SkillCategory.PROCESSING),
+        Map.entry("HERBLORE", SkillCategory.PROCESSING),
+        Map.entry("RUNECRAFT", SkillCategory.PROCESSING),
+        Map.entry("CONSTRUCTION", SkillCategory.PROCESSING),
+        
+        // Reaction skills (timing-based)
+        Map.entry("AGILITY", SkillCategory.REACTION),
+        Map.entry("THIEVING", SkillCategory.REACTION),
+        
+        // Banking (universal skill)
+        Map.entry("BANKING", SkillCategory.BANKING),
+        Map.entry("GRAND_EXCHANGE", SkillCategory.BANKING),
+        
+        // Navigation
+        Map.entry("NAVIGATION", SkillCategory.NAVIGATION),
+        Map.entry("WALKING", SkillCategory.NAVIGATION),
+        Map.entry("TRAVEL", SkillCategory.NAVIGATION),
+        
+        // General
+        Map.entry("FIREMAKING", SkillCategory.GENERAL),
+        Map.entry("PRAYER", SkillCategory.GENERAL)
+    );
+    
+    /**
+     * Record task experience for motor learning.
+     * 
+     * Call this periodically (e.g., every minute) while performing a task
+     * to accumulate experience and improve proficiency.
+     * 
+     * @param taskType the task type identifier (e.g., "WOODCUTTING", "COMBAT", "BANKING")
+     * @param minutesSpent time spent on this task in this session (can be fractional)
+     */
+    public void recordTaskExperience(String taskType, double minutesSpent) {
+        if (taskType == null || taskType.isEmpty() || minutesSpent <= 0) {
+            return;
+        }
+        
+        String key = taskType.toUpperCase();
+        profileData.taskExperience.merge(key, minutesSpent, Double::sum);
+        
+        log.trace("Motor learning: {} experience += {} min (total: {} min)", 
+                key, String.format("%.1f", minutesSpent),
+                String.format("%.1f", profileData.taskExperience.get(key)));
+    }
+    
+    /**
+     * Get the motor learning proficiency multiplier for a task, including skill transfer.
+     * 
+     * <p>Returns a value < 1.0 indicating improved performance (faster) for familiar tasks.
+     * Uses exponential learning curve with skill transfer from related tasks.
+     * 
+     * <h3>Skill Transfer Model</h3>
+     * Real humans show partial transfer between related tasks:
+     * <ul>
+     *   <li><b>Direct experience:</b> Full proficiency from this specific task</li>
+     *   <li><b>Within-category transfer:</b> 50% proficiency from related tasks
+     *       (e.g., mining skill partially transfers to woodcutting)</li>
+     *   <li><b>General skill transfer:</b> 15% proficiency from total playtime
+     *       ("gaming intuition" applies to all tasks)</li>
+     * </ul>
+     * 
+     * <p>This prevents the suspicious case where a 500-hour player is "expert"
+     * at woodcutting but "novice" at mining.
+     * 
+     * <h3>Examples</h3>
+     * With default capacity=0.18, tau=400:
+     * <ul>
+     *   <li>0 min direct, 0 min total: 1.00 (no improvement)</li>
+     *   <li>400 min direct, 400 min total: 0.88 (~12% faster)</li>
+     *   <li>0 min direct, 400 min in same category: 0.94 (~6% faster from transfer)</li>
+     *   <li>0 min direct, 2000 min total across all skills: 0.97 (~3% faster from general)</li>
+     * </ul>
+     * 
+     * @param taskType the task type identifier
+     * @return performance multiplier (0.75-1.0, lower = faster/better)
+     */
+    public double getTaskProficiencyMultiplier(String taskType) {
+        if (taskType == null || taskType.isEmpty()) {
+            return 1.0;
+        }
+        
+        String key = taskType.toUpperCase();
+        
+        // 1. Direct experience for this specific task
+        double directExperience = profileData.taskExperience.getOrDefault(key, 0.0);
+        
+        // 2. Calculate within-category transfer (50% from related tasks)
+        double categoryTransferExperience = calculateCategoryTransfer(key);
+        
+        // 3. Calculate general skill transfer (15% from total playtime)
+        double generalTransferExperience = calculateGeneralTransfer(key);
+        
+        // Combine: direct + max(categoryTransfer, generalTransfer)
+        // Using max prevents double-counting - you get the better of category or general transfer
+        double effectiveExperience = directExperience + 
+                Math.max(categoryTransferExperience, generalTransferExperience);
+        
+        if (effectiveExperience <= 0) {
+            return 1.0; // No experience, no improvement
+        }
+        
+        // Exponential learning: improvement = capacity * (1 - e^(-experience/tau))
+        double learningFraction = 1.0 - Math.exp(-effectiveExperience / profileData.motorLearningTau);
+        double improvement = profileData.motorLearningCapacity * learningFraction;
+        
+        // Return multiplier (lower = better/faster)
+        return 1.0 - improvement;
+    }
+    
+    /**
+     * Calculate within-category skill transfer for a task.
+     * 
+     * @param taskType the target task type
+     * @return effective experience from category transfer (in minutes)
+     */
+    private double calculateCategoryTransfer(String taskType) {
+        SkillCategory targetCategory = TASK_CATEGORIES.getOrDefault(taskType, SkillCategory.GENERAL);
+        
+        // Sum experience from all tasks in the same category (excluding the target task itself)
+        double categoryExperience = 0.0;
+        for (Map.Entry<String, Double> entry : profileData.taskExperience.entrySet()) {
+            String otherTask = entry.getKey();
+            if (otherTask.equals(taskType)) {
+                continue; // Don't count direct experience
+            }
+            
+            SkillCategory otherCategory = TASK_CATEGORIES.getOrDefault(otherTask, SkillCategory.GENERAL);
+            if (otherCategory == targetCategory && targetCategory != SkillCategory.GENERAL) {
+                // Same category - 50% transfer
+                categoryExperience += entry.getValue() * WITHIN_CATEGORY_TRANSFER;
+            }
+        }
+        
+        return categoryExperience;
+    }
+    
+    /**
+     * Calculate general skill transfer from total playtime.
+     * 
+     * @param taskType the target task type (for exclusion from calculation)
+     * @return effective experience from general transfer (in minutes)
+     */
+    private double calculateGeneralTransfer(String taskType) {
+        // Sum all experience across all tasks (excluding the target task)
+        double totalExperience = 0.0;
+        for (Map.Entry<String, Double> entry : profileData.taskExperience.entrySet()) {
+            if (!entry.getKey().equals(taskType)) {
+                totalExperience += entry.getValue();
+            }
+        }
+        
+        // 15% of total playtime transfers as "general gaming skill"
+        return totalExperience * GENERAL_SKILL_TRANSFER;
+    }
+    
+    /**
+     * Get the skill category for a task type.
+     * 
+     * @param taskType the task type identifier
+     * @return the skill category (GENERAL if not found)
+     */
+    public SkillCategory getTaskCategory(String taskType) {
+        if (taskType == null || taskType.isEmpty()) {
+            return SkillCategory.GENERAL;
+        }
+        return TASK_CATEGORIES.getOrDefault(taskType.toUpperCase(), SkillCategory.GENERAL);
+    }
+    
+    /**
+     * Get total experience across all tasks.
+     * Useful for determining overall playtime and general skill level.
+     * 
+     * @return total experience in minutes
+     */
+    public double getTotalTaskExperience() {
+        return profileData.taskExperience.values().stream()
+                .mapToDouble(Double::doubleValue)
+                .sum();
+    }
+    
+    /**
+     * Get the total experience accumulated for a task.
+     * 
+     * @param taskType the task type identifier
+     * @return accumulated experience in minutes
+     */
+    public double getTaskExperience(String taskType) {
+        if (taskType == null || taskType.isEmpty()) {
+            return 0.0;
+        }
+        return profileData.taskExperience.getOrDefault(taskType.toUpperCase(), 0.0);
+    }
+    
+    /**
+     * Get all task experiences.
+     * 
+     * @return unmodifiable view of task experience map
+     */
+    public Map<String, Double> getAllTaskExperience() {
+        return Collections.unmodifiableMap(profileData.taskExperience);
+    }
+    
+    /**
+     * Get the player's motor learning capacity (max improvement fraction).
+     * 
+     * @return max improvement (0.12-0.25, meaning 12-25% faster at mastered tasks)
+     */
+    public double getMotorLearningCapacity() {
+        return profileData.motorLearningCapacity;
+    }
+    
+    /**
+     * Get the player's learning rate time constant.
+     * 
+     * @return tau in minutes (time to reach ~63% of max improvement)
+     */
+    public double getMotorLearningTau() {
+        return profileData.motorLearningTau;
+    }
+
+    // ========================================================================
     // Lifecycle
     // ========================================================================
 
@@ -2189,22 +2740,25 @@ public class PlayerProfile {
         
         // === Tick jitter (perception delay before actions) ===
         /**
-         * Ex-Gaussian μ (Gaussian mean) for tick jitter (35-50ms).
+         * Ex-Gaussian μ (Gaussian mean) for tick jitter (150-400ms).
          * Base perception delay - how quickly this player notices game events.
+         * Real human choice reaction times center around 200-350ms.
          */
-        volatile double jitterMu = 40.0;
+        volatile double jitterMu = 250.0;
         
         /**
-         * Ex-Gaussian σ (Gaussian std dev) for tick jitter (10-20ms).
+         * Ex-Gaussian σ (Gaussian std dev) for tick jitter (20-100ms).
          * Consistency of perception - lower = more consistent, higher = more variable.
+         * Real humans show σ of 20-100ms depending on attention and task complexity.
          */
-        volatile double jitterSigma = 15.0;
+        volatile double jitterSigma = 50.0;
         
         /**
-         * Ex-Gaussian τ (exponential tail) for tick jitter (15-30ms).
+         * Ex-Gaussian τ (exponential tail) for tick jitter (50-300ms).
          * Occasional longer delays - higher = more frequent "slow" reactions.
+         * Real humans have τ of 50-300ms capturing distraction/fatigue effects.
          */
-        volatile double jitterTau = 20.0;
+        volatile double jitterTau = 150.0;
         
         /**
          * Base probability of skipping a game tick (3-8%).
@@ -2270,11 +2824,33 @@ public class PlayerProfile {
         volatile double physTremorAmp = 0.5;
 
         /**
+         * Physiological tremor phase offset between X and Y axes (radians).
+         * 
+         * Real human tremor exhibits elliptical phase relationships because X and Y
+         * hand movements aren't fully independent - they share the same muscle groups
+         * and neural pathways. This creates characteristic "elliptical tremor orbits"
+         * visible in spectrograms. The phase offset varies by person (muscle attachment
+         * geometry, neural timing) but is typically 60-120° (not random).
+         * 
+         * Range: 1.05 - 2.09 radians (60-120 degrees)
+         */
+        volatile double physTremorPhaseOffset = 1.57; // ~90° default
+
+        /**
          * Motor unit quantization threshold (pixels).
          * Simulates "jerk" or stepping in movement.
          * Range: 0.0 - 1.5
          */
         volatile double motorUnitThreshold = 0.5;
+
+        /**
+         * Feedback delay in samples for visual-motor loop in BiologicalMotorNoise.
+         * Represents visual processing latency (~100-250ms in real humans at 100Hz = 10-25 samples).
+         * Lower = faster visual-motor feedback (more coordinated player).
+         * Higher = slower feedback (more delayed/sluggish corrections).
+         * Range: 10 - 25 samples
+         */
+        volatile int feedbackDelaySamples = 15;
 
         // === Fitts' Law Parameters (Movement Time = a + b * log2(1 + D/W)) ===
         /**
@@ -2297,6 +2873,29 @@ public class PlayerProfile {
         // === Break behavior ===
         volatile double breakFatigueThreshold = 0.80;
         Map<String, Double> breakActivityWeights = new ConcurrentHashMap<>();
+
+        // === Run energy thresholds (hysteresis to prevent toggling) ===
+        /**
+         * Energy level at which to enable running (25-65%).
+         * Generated per-profile with Gaussian distribution.
+         */
+        volatile int runEnableThreshold = 40;
+        
+        /**
+         * Energy level at which to disable running (5-25%).
+         * Generated per-profile with Gaussian distribution.
+         * Always at least 15 below runEnableThreshold for hysteresis.
+         */
+        volatile int runDisableThreshold = 15;
+        
+        // === Walk pacing ===
+        /**
+         * Base ticks between walk clicks during pathfinding (2.0-6.0).
+         * Lower = more frequent clicking (aggressive/impatient player).
+         * Higher = less frequent clicking (patient/relaxed player).
+         * Correlated with mouseSpeedMultiplier: fast movers click more often.
+         */
+        volatile double minWalkClickIntervalBase = 4.0;
 
         // === Camera preferences ===
         volatile double preferredCompassAngle = 0.0;
@@ -2517,6 +3116,35 @@ public class PlayerProfile {
          * Lower values = more consistent performance regardless of time.
          */
         volatile double circadianStrength = 0.25;
+        
+        // === Motor Learning (task-specific skill improvement) ===
+        /**
+         * Per-task proficiency map tracking motor learning over time.
+         * 
+         * Key: Task type identifier (e.g., "WOODCUTTING", "FISHING", "COMBAT", "BANKING")
+         * Value: Accumulated experience (in minutes of practice)
+         * 
+         * Proficiency modifier is calculated from experience using:
+         *   modifier = 1.0 - (capacity * (1 - exp(-experience / tau)))
+         * 
+         * This creates logarithmic learning: fast improvement initially,
+         * plateauing at max improvement (~15-20% faster at familiar tasks).
+         */
+        Map<String, Double> taskExperience = new ConcurrentHashMap<>();
+        
+        /**
+         * Maximum motor learning improvement as a fraction (0.15-0.25).
+         * Generated per-profile to create individual learning capacity.
+         * Some players learn faster/more than others.
+         */
+        volatile double motorLearningCapacity = 0.18;
+        
+        /**
+         * Learning rate time constant (in minutes of practice).
+         * Lower = faster initial learning, higher = slower to plateau.
+         * Typical range: 200-600 minutes (3-10 hours to reach ~63% of max improvement).
+         */
+        volatile double motorLearningTau = 400.0;
 
         /**
          * Validate profile data is within expected bounds.
@@ -2526,7 +3154,14 @@ public class PlayerProfile {
                     && clickVarianceModifier >= 0.5 && clickVarianceModifier <= 2.0
                     && typingSpeedWPM >= 20 && typingSpeedWPM <= 120
                     && dominantHandBias >= 0.0 && dominantHandBias <= 1.0
-                    && breakFatigueThreshold >= 0.3 && breakFatigueThreshold <= 1.0;
+                    && breakFatigueThreshold >= 0.3 && breakFatigueThreshold <= 1.0
+                    && runEnableThreshold >= 25 && runEnableThreshold <= 65
+                    && runDisableThreshold >= 5 && runDisableThreshold <= 25
+                    && runEnableThreshold - runDisableThreshold >= 15
+                    && minWalkClickIntervalBase >= 2.0 && minWalkClickIntervalBase <= 6.0
+                    && feedbackDelaySamples >= 10 && feedbackDelaySamples <= 25
+                    && motorLearningCapacity >= 0.10 && motorLearningCapacity <= 0.30
+                    && motorLearningTau >= 150.0 && motorLearningTau <= 700.0;
         }
     }
 }

@@ -315,25 +315,11 @@ rm -f /run/.containerenv 2>/dev/null || true
 # (libsteamdeck_spoof.so) - returns "0::/" instead of docker path
 
 # Start PulseAudio for virtual sound (apps expect audio device)
+# Note: We intentionally DON'T create custom "Steam Deck" sinks because
+# module-null-sink betrays itself as fake. Better to use PulseAudio's
+# auto-configured defaults than a badly-spoofed device.
 echo "Starting PulseAudio..."
 pulseaudio --start --exit-idle-time=-1 2>/dev/null || true
-sleep 0.5
-
-# Create Steam Deck-like audio sink (AMD acp5x audio on Steam Deck)
-echo "Configuring Steam Deck audio sink..."
-STEAM_DECK_SINK="alsa_output.pci-0000_04_00.5-platform-acp5x_mach.0.analog-stereo"
-pactl load-module module-null-sink \
-    sink_name="$STEAM_DECK_SINK" \
-    sink_properties="device.description='Steam Deck Speakers' device.icon_name='audio-card-analog' device.product.name='Steam Deck' device.vendor.name='Valve'" \
-    2>/dev/null || true
-pactl set-default-sink "$STEAM_DECK_SINK" 2>/dev/null || true
-
-# Also create a matching source (microphone) for completeness
-STEAM_DECK_SOURCE="alsa_input.pci-0000_04_00.5-platform-acp5x_mach.0.analog-stereo"
-pactl load-module module-null-sink \
-    sink_name="${STEAM_DECK_SOURCE}_sink" \
-    sink_properties="device.description='Steam Deck Microphone' device.icon_name='audio-input-microphone' device.product.name='Steam Deck' device.vendor.name='Valve'" \
-    2>/dev/null || true
 
 # Start VNC server on Unix socket (not TCP - reduces fingerprint)
 # Socket path is in the bind-mounted status directory for web server access

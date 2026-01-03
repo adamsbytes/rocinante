@@ -150,6 +150,7 @@ public class TickJitterController {
     private final Randomization randomization;
     private final ScheduledExecutorService executor;
     private final PlayerProfile playerProfile;
+    private final PerformanceState performanceState;
     private final FatigueModel fatigueModel;
     private final BotActivityTracker activityTracker;
     
@@ -193,10 +194,13 @@ public class TickJitterController {
     @Inject
     public TickJitterController(Randomization randomization,
                                 PlayerProfile playerProfile,
+                                PerformanceState performanceState,
                                 FatigueModel fatigueModel,
                                 BotActivityTracker activityTracker) {
         this.randomization = randomization;
         this.playerProfile = playerProfile;
+        this.performanceState = java.util.Objects.requireNonNull(performanceState, 
+                "PerformanceState is required");
         this.fatigueModel = fatigueModel;
         this.activityTracker = activityTracker;
         this.executor = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -212,11 +216,14 @@ public class TickJitterController {
      */
     public TickJitterController(Randomization randomization,
                                 PlayerProfile playerProfile,
+                                PerformanceState performanceState,
                                 FatigueModel fatigueModel,
                                 BotActivityTracker activityTracker,
                                 ScheduledExecutorService executor) {
         this.randomization = randomization;
         this.playerProfile = playerProfile;
+        this.performanceState = java.util.Objects.requireNonNull(performanceState,
+                "PerformanceState is required");
         this.fatigueModel = fatigueModel;
         this.activityTracker = activityTracker;
         this.executor = executor;
@@ -469,24 +476,24 @@ public class TickJitterController {
     }
 
     /**
-     * Get jitter μ (mean) from profile.
+     * Get jitter μ (mean) from performance state (includes daily and circadian modulation).
      */
     private double getJitterMu() {
-        return playerProfile.getJitterMu();
+        return performanceState.getEffectiveJitterMu();
     }
 
     /**
-     * Get jitter σ (std dev) from profile.
+     * Get jitter σ (std dev) from performance state (includes daily and circadian modulation).
      */
     private double getJitterSigma() {
-        return playerProfile.getJitterSigma();
+        return performanceState.getEffectiveJitterSigma();
     }
 
     /**
-     * Get jitter τ (tail) from profile.
+     * Get jitter τ (tail) from performance state (includes daily and circadian modulation).
      */
     private double getJitterTau() {
-        return playerProfile.getJitterTau();
+        return performanceState.getEffectiveJitterTau();
     }
 
     // ========================================================================

@@ -3,6 +3,7 @@ package com.rocinante.core;
 import com.rocinante.behavior.AttentionModel;
 import com.rocinante.behavior.BreakScheduler;
 import com.rocinante.behavior.FatigueModel;
+import com.rocinante.behavior.PerformanceState;
 import com.rocinante.behavior.PlayerProfile;
 import com.rocinante.combat.WeaponDataService;
 import com.rocinante.quest.impl.TutorialIsland;
@@ -119,6 +120,8 @@ public class GameStateService {
     // ========================================================================
 
     private final PlayerProfile playerProfile;
+    
+    private final PerformanceState performanceState;
     
     private final FatigueModel fatigueModel;
     
@@ -407,6 +410,7 @@ public class GameStateService {
                            GrandExchangeStateManager grandExchangeStateManager,
                            com.rocinante.state.IronmanState ironmanState,
                            PlayerProfile playerProfile,
+                           PerformanceState performanceState,
                            FatigueModel fatigueModel,
                            BreakScheduler breakScheduler,
                            AttentionModel attentionModel,
@@ -421,6 +425,7 @@ public class GameStateService {
         this.grandExchangeStateManager = grandExchangeStateManager;
         this.ironmanState = ironmanState;
         this.playerProfile = playerProfile;
+        this.performanceState = performanceState;
         this.fatigueModel = fatigueModel;
         this.breakScheduler = breakScheduler;
         this.attentionModel = attentionModel;
@@ -599,6 +604,10 @@ public class GameStateService {
         
         // Initialize PlayerProfile (loads or creates profile)
         playerProfile.initializeForAccount(accountName, accountType);
+        
+        // Initialize PerformanceState (must be after PlayerProfile is loaded)
+        // This sets up daily variance and circadian modulation for this session
+        performanceState.initializeSession();
         
         // Start fatigue tracking
         fatigueModel.onSessionStart();
@@ -1015,6 +1024,15 @@ public class GameStateService {
     @Nullable
     public com.rocinante.state.IronmanState getIronmanState() {
         return ironmanState;
+    }
+    
+    /**
+     * Get the performance state for motor learning and session modulation.
+     * 
+     * @return performance state, never null after injection
+     */
+    public PerformanceState getPerformanceState() {
+        return performanceState;
     }
 
     /**

@@ -326,6 +326,9 @@ public class RocinantePlugin extends Plugin
         // Wire TaskExecutor to GameStateService (setter injection to break circular dependency)
         gameStateServiceProvider.get().setTaskExecutorProvider(() -> taskExecutor);
         
+        // Wire PerformanceState to TaskExecutor for motor learning integration
+        taskExecutor.setPerformanceState(gameStateServiceProvider.get().getPerformanceState());
+        
         // Wire SlayerPluginService to GameStateService (optional - may be null if Slayer plugin not loaded)
         gameStateServiceProvider.get().setSlayerPluginService(slayerPluginService);
         
