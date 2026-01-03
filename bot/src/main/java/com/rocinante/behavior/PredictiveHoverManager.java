@@ -136,6 +136,61 @@ public class PredictiveHoverManager {
     private static final int MAX_DRIFT_DISTANCE = 5;
 
     // ========================================================================
+    // Imperfect Hover Constants (Human Realism)
+    // ========================================================================
+    // Real humans don't always hover perfectly on target. They:
+    // - Sometimes miss slightly (need micro-correction on action)
+    // - Occasionally hover over the wrong thing
+    // - Sometimes hover over empty space near target
+    // - Have cursor drift while waiting
+
+    /**
+     * Probability of an imprecise hover (lands near but not on target).
+     * Requires micro-correction when action starts.
+     */
+    private static final double IMPRECISE_HOVER_PROBABILITY = 0.15;
+
+    /**
+     * Maximum offset (pixels) for imprecise hover.
+     * The mouse lands this far from the intended point.
+     */
+    private static final int IMPRECISE_HOVER_MAX_OFFSET_PX = 40;
+
+    /**
+     * Minimum offset (pixels) for imprecise hover.
+     * Must be far enough to actually miss the target.
+     */
+    private static final int IMPRECISE_HOVER_MIN_OFFSET_PX = 15;
+
+    /**
+     * Probability of hovering over empty space near target.
+     * More likely when distracted or fatigued.
+     */
+    private static final double EMPTY_SPACE_HOVER_PROBABILITY = 0.08;
+
+    /**
+     * Maximum distance (pixels) from target center for empty space hover.
+     */
+    private static final int EMPTY_SPACE_HOVER_RADIUS_PX = 80;
+
+    /**
+     * Probability of hovering over a different nearby object (wrong target).
+     * More likely when there are multiple similar objects nearby.
+     */
+    private static final double WRONG_TARGET_HOVER_PROBABILITY = 0.05;
+
+    /**
+     * Probability per tick of cursor drifting while hovering.
+     * Simulates natural hand movement during wait.
+     */
+    private static final double HOVER_DRIFT_PROBABILITY_PER_TICK = 0.03;
+
+    /**
+     * Maximum drift per tick in pixels.
+     */
+    private static final int HOVER_DRIFT_MAX_PX = 3;
+
+    // ========================================================================
     // Click Behavior Distribution Constants
     // ========================================================================
 
@@ -478,8 +533,11 @@ public class PredictiveHoverManager {
         
         // Determine click behavior
         PredictiveHoverState.ClickBehavior behavior = determineClickBehavior();
+        
+        // Determine hover precision (humans don't always aim perfectly)
+        HoverPrecisionResult precisionResult = determineHoverPrecision(ctx, target, targetIds, isNpc);
 
-        // Create hover state
+        // Create hover state with precision info
         PredictiveHoverState hoverState = PredictiveHoverState.builder()
                 .targetPosition(target.position)
                 .targetId(target.id)
@@ -493,21 +551,164 @@ public class PredictiveHoverManager {
                 .reacquisitionCount(0)
                 .originalHoverPosition(target.position)
                 .playerPositionAtHoverStart(playerPos)
+                .hoverPrecision(precisionResult.precision)
+                .impreciseOffsetX(precisionResult.offsetX)
+                .impreciseOffsetY(precisionResult.offsetY)
                 .build();
 
-        // Move mouse to target
-        return moveToTarget(ctx, target)
+        // Move mouse to target (with imprecision if applicable)
+        return moveToTargetWithPrecision(ctx, target, precisionResult)
                 .thenApply(success -> {
                     if (success) {
                         currentHover.set(hoverState);
                         hoverSuccessCount.incrementAndGet();
-                        log.debug("Started predictive hover: {} (behavior={})", 
-                                hoverState.getSummary(), behavior);
+                        log.debug("Started predictive hover: {} (behavior={}, precision={})", 
+                                hoverState.getSummary(), behavior, precisionResult.precision);
                     } else {
                         log.debug("Failed to move mouse to predicted target");
                     }
                     return success;
                 });
+    }
+    
+    /**
+     * Result of hover precision determination.
+     */
+    private static class HoverPrecisionResult {
+        final PredictiveHoverState.HoverPrecision precision;
+        final int offsetX;
+        final int offsetY;
+        final HoverTarget alternateTarget; // For WRONG_TARGET
+        
+        HoverPrecisionResult(PredictiveHoverState.HoverPrecision precision, int offsetX, int offsetY, HoverTarget alternate) {
+            this.precision = precision;
+            this.offsetX = offsetX;
+            this.offsetY = offsetY;
+            this.alternateTarget = alternate;
+        }
+        
+        static HoverPrecisionResult precise() {
+            return new HoverPrecisionResult(PredictiveHoverState.HoverPrecision.PRECISE, 0, 0, null);
+        }
+        
+        static HoverPrecisionResult imprecise(int offsetX, int offsetY) {
+            return new HoverPrecisionResult(PredictiveHoverState.HoverPrecision.IMPRECISE, offsetX, offsetY, null);
+        }
+        
+        static HoverPrecisionResult emptySpace(int offsetX, int offsetY) {
+            return new HoverPrecisionResult(PredictiveHoverState.HoverPrecision.MISSED_EMPTY_SPACE, offsetX, offsetY, null);
+        }
+        
+        static HoverPrecisionResult wrongTarget(HoverTarget alternate) {
+            return new HoverPrecisionResult(PredictiveHoverState.HoverPrecision.WRONG_TARGET, 0, 0, alternate);
+        }
+    }
+    
+    /**
+     * Determine the precision of this hover attempt.
+     * 
+     * Real humans don't always hover perfectly:
+     * - Sometimes they miss slightly (imprecise)
+     * - Sometimes they hover over empty space
+     * - Sometimes they hover over the wrong nearby object
+     * 
+     * Probabilities are affected by fatigue and attention state.
+     */
+    private HoverPrecisionResult determineHoverPrecision(TaskContext ctx, HoverTarget target, 
+            Set<Integer> targetIds, boolean isNpc) {
+        
+        // Calculate modifiers based on fatigue and attention
+        double fatigueLevel = fatigueModel.getFatigueLevel();
+        AttentionState attentionState = attentionModel.getCurrentState();
+        
+        // Base probabilities are increased by fatigue and distraction
+        double fatigueMultiplier = 1.0 + fatigueLevel * 0.8;  // Up to 1.8x at max fatigue
+        double attentionMultiplier = attentionState == AttentionState.DISTRACTED ? 1.5 : 
+                                     attentionState == AttentionState.AFK ? 2.0 : 1.0;
+        
+        double impreciseProb = IMPRECISE_HOVER_PROBABILITY * fatigueMultiplier * attentionMultiplier;
+        double emptySpaceProb = EMPTY_SPACE_HOVER_PROBABILITY * fatigueMultiplier * attentionMultiplier;
+        double wrongTargetProb = WRONG_TARGET_HOVER_PROBABILITY * fatigueMultiplier * attentionMultiplier;
+        
+        // Roll for precision type
+        double roll = randomization.uniformRandom(0, 1);
+        
+        if (roll < wrongTargetProb) {
+            // Try to find an alternate nearby target to hover over instead
+            Optional<HoverTarget> alternateTarget = findAlternateTarget(ctx, target, targetIds, isNpc);
+            if (alternateTarget.isPresent()) {
+                log.debug("Hover precision: WRONG_TARGET (fatigue={}, attention={})", 
+                        fatigueLevel, attentionState);
+                return HoverPrecisionResult.wrongTarget(alternateTarget.get());
+            }
+            // No alternate found, fall through to empty space
+            roll = wrongTargetProb + randomization.uniformRandom(0, 1) * (1 - wrongTargetProb);
+        }
+        
+        if (roll < wrongTargetProb + emptySpaceProb) {
+            // Hover to empty space near target
+            int offsetX = randomization.uniformRandomInt(-EMPTY_SPACE_HOVER_RADIUS_PX, EMPTY_SPACE_HOVER_RADIUS_PX);
+            int offsetY = randomization.uniformRandomInt(-EMPTY_SPACE_HOVER_RADIUS_PX, EMPTY_SPACE_HOVER_RADIUS_PX);
+            // Ensure offset is far enough to actually miss
+            if (Math.abs(offsetX) < IMPRECISE_HOVER_MIN_OFFSET_PX && Math.abs(offsetY) < IMPRECISE_HOVER_MIN_OFFSET_PX) {
+                offsetX = offsetX >= 0 ? EMPTY_SPACE_HOVER_RADIUS_PX / 2 : -EMPTY_SPACE_HOVER_RADIUS_PX / 2;
+            }
+            log.debug("Hover precision: MISSED_EMPTY_SPACE offset=({}, {}) (fatigue={}, attention={})", 
+                    offsetX, offsetY, fatigueLevel, attentionState);
+            return HoverPrecisionResult.emptySpace(offsetX, offsetY);
+        }
+        
+        if (roll < wrongTargetProb + emptySpaceProb + impreciseProb) {
+            // Imprecise hover - close but not quite on target
+            // Use Gaussian offset to cluster most imprecise hovers close to target
+            double gaussianX = randomization.gaussianRandom(0, IMPRECISE_HOVER_MAX_OFFSET_PX / 3.0);
+            double gaussianY = randomization.gaussianRandom(0, IMPRECISE_HOVER_MAX_OFFSET_PX / 3.0);
+            
+            int offsetX = (int) Math.max(IMPRECISE_HOVER_MIN_OFFSET_PX, 
+                    Math.min(IMPRECISE_HOVER_MAX_OFFSET_PX, Math.abs(gaussianX))) * (gaussianX >= 0 ? 1 : -1);
+            int offsetY = (int) Math.max(IMPRECISE_HOVER_MIN_OFFSET_PX, 
+                    Math.min(IMPRECISE_HOVER_MAX_OFFSET_PX, Math.abs(gaussianY))) * (gaussianY >= 0 ? 1 : -1);
+            
+            log.debug("Hover precision: IMPRECISE offset=({}, {}) (fatigue={}, attention={})", 
+                    offsetX, offsetY, fatigueLevel, attentionState);
+            return HoverPrecisionResult.imprecise(offsetX, offsetY);
+        }
+        
+        // Precise hover (most common)
+        return HoverPrecisionResult.precise();
+    }
+    
+    /**
+     * Find an alternate nearby target for "wrong target" hover behavior.
+     * Looks for a different object/NPC of the same type that's close to the intended target.
+     */
+    private Optional<HoverTarget> findAlternateTarget(TaskContext ctx, HoverTarget intendedTarget,
+            Set<Integer> targetIds, boolean isNpc) {
+        
+        WorldPoint playerPos = ctx.getPlayerState().getWorldPosition();
+        if (playerPos == null) {
+            return Optional.empty();
+        }
+        
+        // Find all valid targets
+        List<HoverTarget> allTargets = isNpc
+                ? findAllNpcTargets(ctx, targetIds, playerPos)
+                : findAllObjectTargets(ctx, targetIds, playerPos);
+        
+        // Filter to targets that are:
+        // 1. Not the intended target
+        // 2. Within reasonable distance of intended target (nearby)
+        List<HoverTarget> alternates = allTargets.stream()
+                .filter(t -> !t.position.equals(intendedTarget.position))
+                .filter(t -> t.position.distanceTo(intendedTarget.position) <= 5) // Within 5 tiles
+                .collect(Collectors.toList());
+        
+        if (alternates.isEmpty()) {
+            return Optional.empty();
+        }
+        
+        // Pick a random alternate (humans don't always pick the closest wrong thing)
+        return Optional.of(alternates.get(randomization.uniformRandomInt(0, alternates.size() - 1)));
     }
 
     /**
@@ -575,6 +776,13 @@ public class PredictiveHoverManager {
                 abandonedHoverCount.incrementAndGet();
                 return;
             }
+        }
+
+        // === Cursor Drift During Hover ===
+        // Real humans don't hold the mouse perfectly still while waiting.
+        // Small drift simulates natural hand movement.
+        if (randomization.chance(HOVER_DRIFT_PROBABILITY_PER_TICK)) {
+            applyCursorDrift(ctx);
         }
 
         // For objects: validate screen position hasn't drifted from camera rotation
@@ -1084,6 +1292,36 @@ public class PredictiveHoverManager {
     }
 
     /**
+     * Apply small cursor drift to simulate natural hand movement during hover wait.
+     * Real humans don't hold the mouse perfectly still - there's always slight movement.
+     */
+    private void applyCursorDrift(TaskContext ctx) {
+        RobotMouseController mouseController = ctx.getMouseController();
+        if (mouseController == null) {
+            return;
+        }
+        
+        // Small random drift (Gaussian centered on 0)
+        int driftX = (int) randomization.gaussianRandom(0, HOVER_DRIFT_MAX_PX / 2.0, 
+                -HOVER_DRIFT_MAX_PX, HOVER_DRIFT_MAX_PX);
+        int driftY = (int) randomization.gaussianRandom(0, HOVER_DRIFT_MAX_PX / 2.0, 
+                -HOVER_DRIFT_MAX_PX, HOVER_DRIFT_MAX_PX);
+        
+        if (driftX == 0 && driftY == 0) {
+            return;
+        }
+        
+        // Apply drift as relative mouse movement
+        // Use sync method but don't block - this is called from game tick
+        try {
+            mouseController.moveRelativeSync(driftX, driftY);
+            log.trace("Applied hover drift: ({}, {})", driftX, driftY);
+        } catch (Exception e) {
+            log.trace("Cursor drift failed: {}", e.getMessage());
+        }
+    }
+
+    /**
      * Re-hover the target at its current screen position.
      * Called when camera drift is detected.
      */
@@ -1193,6 +1431,200 @@ public class PredictiveHoverManager {
             // Object target (may need visibility/camera help)
             return moveToObject(ctx, target);
         }
+    }
+    
+    /**
+     * Move mouse to target with optional precision offset.
+     * This is the main entry point for hover movement with human-like imprecision.
+     */
+    private CompletableFuture<Boolean> moveToTargetWithPrecision(TaskContext ctx, HoverTarget target, 
+            HoverPrecisionResult precisionResult) {
+        
+        switch (precisionResult.precision) {
+            case PRECISE:
+                // Normal precise hover
+                return moveToTarget(ctx, target);
+                
+            case IMPRECISE:
+                // Move to target then apply offset (simulates slightly missing)
+                return moveToTargetWithOffset(ctx, target, precisionResult.offsetX, precisionResult.offsetY);
+                
+            case MISSED_EMPTY_SPACE:
+                // Move to empty space near target
+                return moveToEmptySpaceNear(ctx, target, precisionResult.offsetX, precisionResult.offsetY);
+                
+            case WRONG_TARGET:
+                // Move to the alternate target instead
+                if (precisionResult.alternateTarget != null) {
+                    return moveToTarget(ctx, precisionResult.alternateTarget);
+                }
+                // Fallback to normal if no alternate
+                return moveToTarget(ctx, target);
+                
+            default:
+                return moveToTarget(ctx, target);
+        }
+    }
+    
+    /**
+     * Move to target with a pixel offset (for imprecise hovers).
+     * The offset is applied after calculating the target's screen position.
+     */
+    private CompletableFuture<Boolean> moveToTargetWithOffset(TaskContext ctx, HoverTarget target, 
+            int offsetX, int offsetY) {
+        
+        if (target.npcIndex >= 0) {
+            // NPC target
+            Client client = ctx.getClient();
+            if (client == null) {
+                return CompletableFuture.completedFuture(false);
+            }
+            
+            NPC foundNpc = null;
+            for (NPC npc : client.getNpcs()) {
+                if (npc != null && npc.getIndex() == target.npcIndex) {
+                    foundNpc = npc;
+                    break;
+                }
+            }
+            
+            if (foundNpc == null) {
+                return CompletableFuture.completedFuture(false);
+            }
+            
+            Shape convexHull = foundNpc.getConvexHull();
+            if (convexHull == null) {
+                return CompletableFuture.completedFuture(false);
+            }
+            
+            Rectangle bounds = convexHull.getBounds();
+            if (bounds == null || bounds.width <= 0 || bounds.height <= 0) {
+                return CompletableFuture.completedFuture(false);
+            }
+            
+            // Calculate target point then apply offset
+            Point clickPoint = ClickPointCalculator.getGaussianClickPoint(bounds);
+            if (clickPoint == null) {
+                clickPoint = new Point(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+            }
+            
+            int finalX = clickPoint.x + offsetX;
+            int finalY = clickPoint.y + offsetY;
+            
+            return ctx.getMouseController().moveToCanvas(finalX, finalY)
+                    .thenApply(v -> true)
+                    .exceptionally(e -> false);
+        } else {
+            // Object target - need to find screen position
+            return moveToObjectWithOffset(ctx, target, offsetX, offsetY);
+        }
+    }
+    
+    /**
+     * Move to object with pixel offset.
+     */
+    private CompletableFuture<Boolean> moveToObjectWithOffset(TaskContext ctx, HoverTarget target, 
+            int offsetX, int offsetY) {
+        
+        Client client = ctx.getClient();
+        if (client == null) {
+            return CompletableFuture.completedFuture(false);
+        }
+        
+        // Find the object's screen position via its TileObject or scene lookup
+        LocalPoint localPoint = LocalPoint.fromWorld(client, target.position);
+        if (localPoint == null) {
+            return CompletableFuture.completedFuture(false);
+        }
+        
+        // Get screen position of tile center
+        net.runelite.api.Point tileScreen = net.runelite.api.Perspective.localToCanvas(
+                client, localPoint, 0);
+        
+        if (tileScreen == null) {
+            return CompletableFuture.completedFuture(false);
+        }
+        
+        // Apply offset from tile center
+        int finalX = tileScreen.getX() + offsetX;
+        int finalY = tileScreen.getY() + offsetY;
+        
+        return ctx.getMouseController().moveToCanvas(finalX, finalY)
+                .thenApply(v -> true)
+                .exceptionally(e -> false);
+    }
+    
+    /**
+     * Move to empty space near a target (for completely missed hovers).
+     */
+    private CompletableFuture<Boolean> moveToEmptySpaceNear(TaskContext ctx, HoverTarget target, 
+            int offsetX, int offsetY) {
+        
+        Client client = ctx.getClient();
+        if (client == null) {
+            return CompletableFuture.completedFuture(false);
+        }
+        
+        // Get the target's approximate screen center
+        LocalPoint localPoint = LocalPoint.fromWorld(client, target.position);
+        if (localPoint == null) {
+            return CompletableFuture.completedFuture(false);
+        }
+        
+        // Calculate approximate screen position of target
+        int tileHeight = 0; // Ground level
+        net.runelite.api.Point targetScreen = net.runelite.api.Perspective.localToCanvas(
+                client, localPoint, tileHeight);
+        
+        if (targetScreen == null) {
+            return CompletableFuture.completedFuture(false);
+        }
+        
+        // Apply offset to move to empty space
+        int finalX = targetScreen.getX() + offsetX;
+        int finalY = targetScreen.getY() + offsetY;
+        
+        return ctx.getMouseController().moveToCanvas(finalX, finalY)
+                .thenApply(v -> true)
+                .exceptionally(e -> false);
+    }
+    
+    /**
+     * Find all NPC targets matching the given IDs (not just the nearest).
+     * Used for finding alternate targets for "wrong target" hover behavior.
+     */
+    private List<HoverTarget> findAllNpcTargets(TaskContext ctx, Set<Integer> targetIds, WorldPoint playerPos) {
+        WorldState worldState = ctx.getWorldState();
+        if (worldState == null) {
+            return List.of();
+        }
+        
+        return worldState.getNearbyNpcs().stream()
+                .filter(Objects::nonNull)
+                .filter(npc -> targetIds.contains(npc.getId()))
+                .filter(npc -> npc.getWorldPosition() != null)
+                .filter(npc -> npc.getWorldPosition().distanceTo(playerPos) <= MAX_TARGET_DISTANCE)
+                .map(npc -> new HoverTarget(npc.getWorldPosition(), npc.getId(), npc.getIndex(), null))
+                .collect(Collectors.toList());
+    }
+    
+    /**
+     * Find all object targets matching the given IDs (not just the nearest).
+     * Used for finding alternate targets for "wrong target" hover behavior.
+     */
+    private List<HoverTarget> findAllObjectTargets(TaskContext ctx, Set<Integer> targetIds, WorldPoint playerPos) {
+        WorldState worldState = ctx.getWorldState();
+        if (worldState == null) {
+            return List.of();
+        }
+        
+        return worldState.getNearbyObjects().stream()
+                .filter(Objects::nonNull)
+                .filter(obj -> targetIds.contains(obj.getId()))
+                .filter(obj -> obj.getWorldPosition() != null)
+                .filter(obj -> obj.getWorldPosition().distanceTo(playerPos) <= MAX_TARGET_DISTANCE)
+                .map(obj -> new HoverTarget(obj.getWorldPosition(), obj.getId(), -1, null))
+                .collect(Collectors.toList());
     }
 
     /**

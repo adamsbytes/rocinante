@@ -94,6 +94,19 @@ public class BehaviorModule extends AbstractModule {
     // ========================================================================
 
     /**
+     * Provides PerlinNoise with a profile-specific permutation table.
+     * 
+     * <p>Without this, all bots would use Ken Perlin's default permutation table,
+     * creating identical noise patterns that could be fingerprinted. By seeding
+     * with the profile's unique seed, each profile has distinct noise characteristics.
+     */
+    @Provides
+    @Singleton
+    public PerlinNoise providePerlinNoise(PlayerProfile playerProfile) {
+        return new PerlinNoise(playerProfile.getProfileSeed());
+    }
+
+    /**
      * Provides the CameraController for humanized camera manipulation.
      */
     @Provides
@@ -101,8 +114,11 @@ public class BehaviorModule extends AbstractModule {
     public CameraController provideCameraController(Client client, Randomization randomization, 
                                                      PerlinNoise perlinNoise,
                                                      RobotMouseController mouseController,
-                                                     RobotKeyboardController keyboardController) {
-        return new CameraController(client, randomization, perlinNoise, mouseController, keyboardController);
+                                                     RobotKeyboardController keyboardController,
+                                                     PlayerProfile playerProfile,
+                                                     FatigueModel fatigueModel) {
+        return new CameraController(client, randomization, perlinNoise, mouseController, keyboardController,
+                playerProfile, fatigueModel);
     }
 
     /**

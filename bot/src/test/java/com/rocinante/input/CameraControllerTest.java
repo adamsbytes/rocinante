@@ -1,5 +1,6 @@
 package com.rocinante.input;
 
+import com.rocinante.behavior.FatigueModel;
 import com.rocinante.behavior.PlayerProfile;
 import com.rocinante.util.PerlinNoise;
 import com.rocinante.util.Randomization;
@@ -33,6 +34,12 @@ public class CameraControllerTest {
     @Mock
     private Canvas canvas;
     
+    @Mock
+    private PlayerProfile playerProfile;
+    
+    @Mock
+    private FatigueModel fatigueModel;
+    
     private Randomization randomization;
     private PerlinNoise perlinNoise;
     private ScheduledExecutorService executor;
@@ -54,8 +61,23 @@ public class CameraControllerTest {
         when(canvas.getHeight()).thenReturn(600);
         when(canvas.getLocationOnScreen()).thenReturn(new Point(100, 100));
         
+        // Mock player profile for biological motor noise
+        when(playerProfile.getPhysTremorFreq()).thenReturn(10.0);
+        when(playerProfile.getPhysTremorAmp()).thenReturn(0.5);
+        when(playerProfile.getDominantHandBias()).thenReturn(0.6);
+        
+        // Mock profile data for camera hold frequency
+        PlayerProfile.ProfileData profileData = mock(PlayerProfile.ProfileData.class);
+        when(playerProfile.getProfileData()).thenReturn(profileData);
+        when(profileData.getCameraHoldFrequency()).thenReturn(0.15); // Default 15%
+        when(profileData.getCameraHoldPreferredDirection()).thenReturn("RANDOM");
+        when(profileData.getCameraHoldSpeedPreference()).thenReturn("MEDIUM");
+        
+        // Mock fatigue model
+        when(fatigueModel.getFatigueLevel()).thenReturn(0.0);
+        
         cameraController = new CameraController(mouseController, keyboardController, 
-                client, randomization, perlinNoise, executor);
+                client, randomization, perlinNoise, executor, playerProfile, fatigueModel);
     }
 
     @Test
@@ -98,8 +120,8 @@ public class CameraControllerTest {
     }
 
     @Test
-    public void testShouldPerformCameraHold_WithoutProfile_DefaultChance() {
-        // Without profile, uses 15% default
+    public void testShouldPerformCameraHold_UsesProfileFrequency() {
+        // Profile is injected via constructor with 15% default
         int holdCount = 0;
         for (int i = 0; i < 1000; i++) {
             if (cameraController.shouldPerformCameraHold()) {
@@ -113,17 +135,25 @@ public class CameraControllerTest {
     }
 
     @Test
-    public void testShouldPerformCameraHold_WithProfile_UsesProfileFrequency() {
-        PlayerProfile profile = mock(PlayerProfile.class);
-        PlayerProfile.ProfileData profileData = mock(PlayerProfile.ProfileData.class);
-        when(profile.getProfileData()).thenReturn(profileData);
-        when(profileData.getCameraHoldFrequency()).thenReturn(0.50); // 50%
+    public void testShouldPerformCameraHold_HighFrequency() {
+        // Mock profile data with high frequency
+        PlayerProfile highFreqProfile = mock(PlayerProfile.class);
+        PlayerProfile.ProfileData highFreqProfileData = mock(PlayerProfile.ProfileData.class);
+        when(highFreqProfile.getPhysTremorFreq()).thenReturn(10.0);
+        when(highFreqProfile.getPhysTremorAmp()).thenReturn(0.5);
+        when(highFreqProfile.getDominantHandBias()).thenReturn(0.6);
+        when(highFreqProfile.getProfileData()).thenReturn(highFreqProfileData);
+        when(highFreqProfileData.getCameraHoldFrequency()).thenReturn(0.50); // 50%
+        when(highFreqProfileData.getCameraHoldPreferredDirection()).thenReturn("RANDOM");
+        when(highFreqProfileData.getCameraHoldSpeedPreference()).thenReturn("MEDIUM");
         
-        cameraController.setPlayerProfile(profile);
+        // Re-create controller with high frequency profile
+        CameraController highFreqController = new CameraController(mouseController, keyboardController, 
+                client, randomization, perlinNoise, executor, highFreqProfile, fatigueModel);
         
         int holdCount = 0;
         for (int i = 0; i < 1000; i++) {
-            if (cameraController.shouldPerformCameraHold()) {
+            if (highFreqController.shouldPerformCameraHold()) {
                 holdCount++;
             }
         }

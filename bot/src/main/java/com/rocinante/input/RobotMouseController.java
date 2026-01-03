@@ -143,13 +143,14 @@ public class RobotMouseController {
     private final FatigueModel fatigueModel;
 
     /**
-     * Pink noise generators for motor quantization (X and Y axes).
-     * Real human motor noise follows a 1/f (pink) spectrum where lower frequencies
-     * dominate - this creates realistic drift patterns rather than the white noise
-     * produced by Math.round().
+     * Biologically-constrained motor noise generator.
+     * Provides realistic motor noise with:
+     * - Low-pass filtering at muscle bandwidth (~10Hz)
+     * - Fatigue-scaled amplitude
+     * - Movement phase adaptation (ballistic/correction/precision)
+     * - Hand-dominance correlated X/Y axes
      */
-    private final PinkNoiseGenerator motorNoiseX;
-    private final PinkNoiseGenerator motorNoiseY;
+    private final BiologicalMotorNoise motorNoise;
 
     /**
      * Flag indicating a click operation is currently in progress.
@@ -245,10 +246,9 @@ public class RobotMouseController {
         this.clientThread = clientThread;
         this.executor = executor;
 
-        // Initialize pink noise generators for motor quantization
-        // Separate generators for X and Y to maintain independent 1/f characteristics per axis
-        this.motorNoiseX = new PinkNoiseGenerator();
-        this.motorNoiseY = new PinkNoiseGenerator();
+        // Initialize biological motor noise generator
+        // Uses profile's physTremorFreq, physTremorAmp, dominantHandBias for unique motor signature
+        this.motorNoise = new BiologicalMotorNoise(playerProfile, fatigueModel);
 
         // Sync with actual cursor position
         mouseDevice.syncPosition();
@@ -1098,7 +1098,8 @@ public class RobotMouseController {
         executeDirectMovement(waypoint.x, waypoint.y, 50.0);
         
         // Brief pause at waypoint (simulates direction reassessment)
-        Thread.sleep(randomization.uniformRandomLong(MIN_WAYPOINT_PAUSE_MS, MAX_WAYPOINT_PAUSE_MS));
+        // Use log-normal distribution - real human timing is NOT uniform
+        Thread.sleep(randomization.humanizedDelayMs(20, MIN_WAYPOINT_PAUSE_MS, MAX_WAYPOINT_PAUSE_MS));
         
         // Move from waypoint to target (using actual target width for precision)
         executeDirectMovement(target.x, target.y, targetWidth);
@@ -1181,6 +1182,12 @@ public class RobotMouseController {
      * - Physiological tremor (8-12Hz alpha rhythm injection)
      * - Motor unit quantization (discrete muscle recruitment steps = "jerk")
      * - Perlin noise path variation
+     * - Wall-clock-normalized timing (decouples from CPU load)
+     *
+     * TIMING MODEL:
+     * Uses wall-clock-normalized movement to ensure duration matches Fitts' Law
+     * predictions regardless of CPU load. This prevents timing dilation that
+     * would correlate with server tick burden (a machine signature).
      *
      * @param start starting point
      * @param target target point
@@ -1198,12 +1205,12 @@ public class RobotMouseController {
         List<Point> controlPoints = generateControlPoints(start, target, distance);
 
         // Calculate movement duration using Fitts' Law with provided target width
-        long duration = calculateMovementDuration(distance, targetWidth);
+        long intendedDurationMs = calculateMovementDuration(distance, targetWidth);
 
         // Apply profile speed multiplier and segment speed modifier
         double combinedSpeed = playerProfile.getMouseSpeedMultiplier() * speedMultiplier;
-        duration = Math.round(duration / combinedSpeed);
-        duration = Randomization.clamp(duration, MIN_DURATION_MS, MAX_DURATION_MS);
+        intendedDurationMs = Math.round(intendedDurationMs / combinedSpeed);
+        intendedDurationMs = Randomization.clamp(intendedDurationMs, MIN_DURATION_MS, MAX_DURATION_MS);
 
         // Calculate noise amplitude for this movement
         double noiseAmplitude = randomization.uniformRandom(MIN_NOISE_AMPLITUDE, MAX_NOISE_AMPLITUDE);
@@ -1216,24 +1223,46 @@ public class RobotMouseController {
         // Plan hesitation points for this segment
         List<Double> hesitationPoints = planHesitations(distance);
         Set<Double> triggeredHesitations = new java.util.HashSet<>();
+        
+        // Reset motor noise for new movement (clears feedback loop state)
+        motorNoise.reset();
 
-        // Execute the movement
-        long startTime = System.currentTimeMillis();
-        long elapsed = 0;
+        // === Wall-Clock-Normalized Movement ===
+        // Instead of sleep-based iteration counting, we calculate cursor position
+        // based on ACTUAL elapsed wall-clock time. This ensures movement duration
+        // matches Fitts' Law predictions regardless of CPU load or Thread.sleep()
+        // imprecision. Under heavy load, the cursor will skip positions to maintain
+        // timing, rather than slowing down (which would be a machine signature).
+        
+        final long startTimeNanos = System.nanoTime();
+        final long durationNanos = intendedDurationMs * 1_000_000L;
         
         // Motor unit accumulator for quantization (jerk simulation)
         double pendingDx = 0;
         double pendingDy = 0;
         Point lastActualPos = start;
 
-        while (elapsed < duration) {
-            double t = (double) elapsed / duration;
+        while (true) {
+            long nowNanos = System.nanoTime();
+            long elapsedNanos = nowNanos - startTimeNanos;
+            
+            // Check if we've reached the intended duration
+            if (elapsedNanos >= durationNanos) {
+                break;
+            }
+            
+            // Calculate normalized progress (0.0 to 1.0) from WALL CLOCK
+            // This is the key difference: t is derived from actual time, not iteration count
+            double t = (double) elapsedNanos / durationNanos;
+            t = Math.min(1.0, t); // Clamp to prevent floating point overshoot
 
             // Check for hesitation at this progress point
             Double hesitationPoint = checkForHesitation(t, hesitationPoints);
             if (hesitationPoint != null && !triggeredHesitations.contains(hesitationPoint)) {
                 triggeredHesitations.add(hesitationPoint);
                 executeHesitation();
+                // Continue after hesitation - next iteration will recalculate t
+                continue;
             }
 
             // Apply asymmetric velocity curve (replaces sigmoid)
@@ -1246,19 +1275,17 @@ public class RobotMouseController {
             double[] noiseOffset = perlinNoise.getPathOffset(t, noiseAmplitude, movementSeed);
             
             // === Physiological Tremor Injection ===
-            // Scale tremor down as we approach target, but keep a small floor (20%)
-            // to simulate physiological noise/intention tremor (prevents "dead still" cursor)
+            // Use wall-clock seconds for tremor phase (not loop iteration count)
+            double elapsedSeconds = elapsedNanos / 1_000_000_000.0;
             double tremorScale = 1.0 - (Math.pow(t, 4) * 0.8); 
-            double tremorX = Math.sin(elapsed / 1000.0 * tremorFreq * Math.PI * 2) * tremorAmp * tremorScale;
-            double tremorY = Math.cos(elapsed / 1000.0 * tremorFreq * Math.PI * 2) * tremorAmp * tremorScale;
+            double tremorX = Math.sin(elapsedSeconds * tremorFreq * Math.PI * 2) * tremorAmp * tremorScale;
+            double tremorY = Math.cos(elapsedSeconds * tremorFreq * Math.PI * 2) * tremorAmp * tremorScale;
             
             // Combine all offsets
             double idealX = bezierPoint.x + noiseOffset[0] + tremorX;
             double idealY = bezierPoint.y + noiseOffset[1] + tremorY;
             
             // === Motor Unit Quantization (Jerk) ===
-            // Accumulate sub-pixel movement; only move when threshold is met
-            // This simulates discrete muscle fiber recruitment in real motor control
             pendingDx += (idealX - lastActualPos.x);
             pendingDy += (idealY - lastActualPos.y);
             
@@ -1266,19 +1293,18 @@ public class RobotMouseController {
             
             // Move only when accumulated movement exceeds motor threshold (or at end)
             if (pendingMagnitude >= motorThreshold || t >= 0.95) {
-                // === Pink Noise Dithered Rounding ===
-                // Math.round() creates white noise (flat frequency spectrum) in quantization error.
-                // Real human motor noise follows 1/f (pink) spectrum where lower frequencies
-                // dominate - creating realistic drift patterns rather than jittery artifacts.
-                //
-                // Technique: Add sub-pixel pink noise before truncating. This shapes the
-                // quantization error to have 1/f characteristics instead of white noise.
-                // The noise amplitude is kept small (±0.5) to just affect rounding decisions.
-                double pinkDitherX = motorNoiseX.next() * 0.5;
-                double pinkDitherY = motorNoiseY.next() * 0.5;
+                // Set movement context for biological motor noise with feedback correction
+                double speedPxPerMs = distance / (double) intendedDurationMs;
+                motorNoise.setMovementContext(t, speedPxPerMs);
                 
-                int moveX = lastActualPos.x + (int) Math.floor(pendingDx + pinkDitherX + 0.5);
-                int moveY = lastActualPos.y + (int) Math.floor(pendingDy + pinkDitherY + 0.5);
+                // Get biologically-constrained noise with feedback correction loop
+                // (not pure pink noise - includes visual-motor feedback modeling)
+                double[] bioNoise = motorNoise.next2D();
+                double ditherX = bioNoise[0] * 0.5;
+                double ditherY = bioNoise[1] * 0.5;
+                
+                int moveX = lastActualPos.x + (int) Math.floor(pendingDx + ditherX + 0.5);
+                int moveY = lastActualPos.y + (int) Math.floor(pendingDy + ditherY + 0.5);
                 
                 // Clamp to viewport
                 Point clamped = clampToViewport(moveX, moveY);
@@ -1299,14 +1325,24 @@ public class RobotMouseController {
                 pendingDy -= actualDy;
             }
 
-            // Sleep with time-domain jitter (simulates nerve firing variability)
-            long baseSleep = NOISE_SAMPLE_INTERVAL_MS;
-            long sleepJitter = randomization.uniformRandomLong(-2, 3);
-            Thread.sleep(Math.max(1, baseSleep + sleepJitter));
-            elapsed = System.currentTimeMillis() - startTime;
+            // === Adaptive Sleep with Timing Compensation ===
+            // The sleep is just to yield CPU and maintain ~100Hz sample rate.
+            // Actual cursor position is ALWAYS calculated from wall clock, so
+            // if this sleep takes longer than expected, the next iteration will
+            // "catch up" by calculating t from actual elapsed time.
+            //
+            // Use LockSupport.parkNanos for more precise sleep than Thread.sleep()
+            long targetSleepNanos = NOISE_SAMPLE_INTERVAL_MS * 1_000_000L;
+            long jitterNanos = randomization.uniformRandomLong(-1_000_000, 2_000_000);
+            long sleepNanos = Math.max(1_000_000L, targetSleepNanos + jitterNanos);
+            
+            java.util.concurrent.locks.LockSupport.parkNanos(sleepNanos);
         }
 
-        // Update current position (final position set by caller)
+        // Final position cleanup: ensure we end exactly at target
+        if (!lastActualPos.equals(target)) {
+            mouseDevice.moveTo(target.x, target.y);
+        }
         currentPosition = target;
     }
 
@@ -1925,11 +1961,13 @@ public class RobotMouseController {
             double wobbleX = Math.sin(t * Math.PI * 2 * effectiveFreqX) * effectiveAmp * noiseModX;
             double wobbleY = Math.cos(t * Math.PI * 2 * effectiveFreqY) * effectiveAmp * 0.7 * noiseModY;
 
-            // Pink noise dithered rounding for realistic motor noise characteristics
-            double pinkDitherX = motorNoiseX.next() * 0.5;
-            double pinkDitherY = motorNoiseY.next() * 0.5;
-            int x = bezierPoint.x + (int) Math.floor(wobbleX + pinkDitherX + 0.5);
-            int y = bezierPoint.y + (int) Math.floor(wobbleY + pinkDitherY + 0.5);
+            // Biological motor noise dithered rounding
+            // Drag movements are slow, so use low speed context
+            double speedPxPerMs = distance / (double) duration;
+            motorNoise.setMovementContext(t, speedPxPerMs);
+            double[] bioNoise = motorNoise.next2D();
+            int x = bezierPoint.x + (int) Math.floor(wobbleX + bioNoise[0] * 0.5 + 0.5);
+            int y = bezierPoint.y + (int) Math.floor(wobbleY + bioNoise[1] * 0.5 + 0.5);
 
             // Clamp to viewport
             Point clamped = clampToViewport(x, y);
@@ -1937,8 +1975,9 @@ public class RobotMouseController {
             mouseDevice.moveTo(clamped.x, clamped.y);
             currentPosition = clamped;
 
-            // Randomized sleep interval (5-10ms per spec)
-            Thread.sleep(randomization.uniformRandomLong(5, 10));
+            // Human-like sleep interval with log-normal distribution
+            // Uniform distribution fails K-S tests against real human data
+            Thread.sleep(randomization.humanizedDelayMs(7, 0.3, 5, 12));
             elapsed = System.currentTimeMillis() - startTime;
         }
 
@@ -2078,6 +2117,8 @@ public class RobotMouseController {
                 long duration = randomization.uniformRandomLong(MIN_DRIFT_DURATION_MS, MAX_DRIFT_DURATION_MS);
                 long startTime = System.currentTimeMillis();
                 Point start = currentPosition;
+                double distance = Math.hypot(clampedTarget.x - start.x, clampedTarget.y - start.y);
+                double speedPxPerMs = distance / (double) duration;
 
                 while (System.currentTimeMillis() - startTime < duration) {
                     double t = (double) (System.currentTimeMillis() - startTime) / duration;
@@ -2086,11 +2127,12 @@ public class RobotMouseController {
                     double idealX = start.x + (clampedTarget.x - start.x) * t;
                     double idealY = start.y + (clampedTarget.y - start.y) * t;
                     
-                    // Pink noise dithered rounding for realistic motor noise
-                    double pinkDitherX = motorNoiseX.next() * 0.5;
-                    double pinkDitherY = motorNoiseY.next() * 0.5;
-                    int x = (int) Math.floor(idealX + pinkDitherX + 0.5);
-                    int y = (int) Math.floor(idealY + pinkDitherY + 0.5);
+                    // Biological motor noise dithered rounding
+                    // Slow drift = low speed, precision-like context
+                    motorNoise.setMovementContext(t, speedPxPerMs);
+                    double[] bioNoise = motorNoise.next2D();
+                    int x = (int) Math.floor(idealX + bioNoise[0] * 0.5 + 0.5);
+                    int y = (int) Math.floor(idealY + bioNoise[1] * 0.5 + 0.5);
 
                     // Clamp interpolated point too (paranoid safety)
                     Point clamped = clampToViewport(x, y);

@@ -316,6 +316,53 @@ public class Randomization {
     }
 
     /**
+     * Generate a human-like timing interval using log-normal distribution.
+     * 
+     * Real human inter-event timings follow a log-normal or gamma distribution,
+     * NOT uniform. This method provides a convenient API for generating realistic
+     * timing intervals that will pass Kolmogorov-Smirnov tests against human data.
+     * 
+     * The log-normal distribution is characterized by:
+     * - Positive skew (long tail to the right)
+     * - Mode < Median < Mean
+     * - Most values cluster near the lower end with occasional longer delays
+     * 
+     * This matches real human motor timing where:
+     * - Most actions are near-optimal (quick)
+     * - Occasional "hiccups" cause longer delays
+     * - Very fast reactions are physiologically impossible (clamped by min)
+     * 
+     * @param median the median timing (50th percentile) - most common value
+     * @param spread controls tail heaviness (0.2 = tight, 0.5 = moderate, 0.8 = heavy)
+     * @param min    physiological minimum (fastest possible)
+     * @param max    maximum allowed delay
+     * @return a human-like timing value in the same units as inputs
+     */
+    public long humanizedDelayMs(long median, double spread, long min, long max) {
+        // Convert median to log-normal μ parameter
+        // For log-normal: median = exp(μ), so μ = ln(median)
+        double mu = Math.log(median);
+        
+        // σ controls spread/skew - higher = more right-skew
+        double sigma = spread;
+        
+        return logNormalRandomLong(mu, sigma, min, max);
+    }
+
+    /**
+     * Generate a human-like timing interval with default moderate spread.
+     * Convenience overload for common timing scenarios.
+     * 
+     * @param median the median timing (50th percentile)
+     * @param min    physiological minimum
+     * @param max    maximum allowed delay
+     * @return a human-like timing value
+     */
+    public long humanizedDelayMs(long median, long min, long max) {
+        return humanizedDelayMs(median, 0.4, min, max);  // Default moderate spread
+    }
+
+    /**
      * Generate a bounded random value from an exponential distribution.
      *
      * @param lambda the rate parameter (λ = 1/mean)

@@ -1,14 +1,13 @@
 package com.rocinante.input;
 
+import com.rocinante.behavior.FatigueModel;
 import com.rocinante.behavior.PlayerProfile;
 import com.rocinante.util.PerlinNoise;
 import com.rocinante.util.Randomization;
 import lombok.Getter;
-import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 
-import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.awt.*;
@@ -192,19 +191,16 @@ public class CameraController {
     private final ScheduledExecutorService executor;
     
     /**
-     * Pink noise generators for motor quantization during drag movements.
-     * Real human motor noise follows a 1/f (pink) spectrum - this creates
-     * realistic drift patterns rather than white noise from simple rounding.
+     * Biologically-constrained motor noise generator for drag movements.
+     * Provides realistic motor noise with muscle bandwidth filtering,
+     * fatigue scaling, and hand-dominance correlated axes.
      */
-    private final PinkNoiseGenerator dragNoiseX;
-    private final PinkNoiseGenerator dragNoiseY;
+    private final BiologicalMotorNoise dragNoise;
     
     /**
-     * PlayerProfile for camera preferences.
+     * PlayerProfile for camera preferences (required).
      */
-    @Setter
-    @Nullable
-    private PlayerProfile playerProfile;
+    private final PlayerProfile playerProfile;
     
     // === State ===
     
@@ -226,21 +222,22 @@ public class CameraController {
 
     @Inject
     public CameraController(Client client, Randomization randomization, PerlinNoise perlinNoise,
-                           RobotMouseController mouseController, RobotKeyboardController keyboardController) {
+                           RobotMouseController mouseController, RobotKeyboardController keyboardController,
+                           PlayerProfile playerProfile, FatigueModel fatigueModel) {
         this.mouseController = mouseController;
         this.keyboardController = keyboardController;
         this.client = client;
         this.randomization = randomization;
         this.perlinNoise = perlinNoise;
+        this.playerProfile = playerProfile;
         this.executor = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "Thread-7");
             t.setDaemon(true);
             return t;
         });
         
-        // Initialize pink noise generators for motor quantization
-        this.dragNoiseX = new PinkNoiseGenerator();
-        this.dragNoiseY = new PinkNoiseGenerator();
+        // Initialize biological motor noise generator
+        this.dragNoise = new BiologicalMotorNoise(playerProfile, fatigueModel);
         
         log.info("CameraController initialized (delegating to Mouse/Keyboard controllers)");
     }
@@ -250,17 +247,18 @@ public class CameraController {
      */
     public CameraController(RobotMouseController mouseController, RobotKeyboardController keyboardController,
                            Client client, Randomization randomization, 
-                           PerlinNoise perlinNoise, ScheduledExecutorService executor) {
+                           PerlinNoise perlinNoise, ScheduledExecutorService executor,
+                           PlayerProfile playerProfile, FatigueModel fatigueModel) {
         this.mouseController = mouseController;
         this.keyboardController = keyboardController;
         this.client = client;
         this.randomization = randomization;
         this.perlinNoise = perlinNoise;
+        this.playerProfile = playerProfile;
         this.executor = executor;
         
-        // Initialize pink noise generators for motor quantization
-        this.dragNoiseX = new PinkNoiseGenerator();
-        this.dragNoiseY = new PinkNoiseGenerator();
+        // Initialize biological motor noise generator
+        this.dragNoise = new BiologicalMotorNoise(playerProfile, fatigueModel);
     }
 
     // ========================================================================
@@ -354,11 +352,11 @@ public class CameraController {
         // Sync position and move to start position
         mouseController.syncMousePosition();
         mouseController.moveToSync(startX, startY);
-        Thread.sleep(randomization.uniformRandomLong(30, 80));
+        Thread.sleep(randomization.humanizedDelayMs(50, 30, 100));
         
         // Press middle mouse button
         mouseController.pressButtonSync(BTN_MIDDLE);
-        Thread.sleep(randomization.uniformRandomLong(20, 50));
+        Thread.sleep(randomization.humanizedDelayMs(30, 20, 60));
         
         // Execute drag with Bezier curve and Perlin noise
         // Track previous position for relative movement
@@ -383,12 +381,13 @@ public class CameraController {
             idealX += noiseOffset[0];
             idealY += noiseOffset[1];
             
-            // Pink noise dithered rounding for realistic motor noise
-            // Real human motor noise follows 1/f spectrum, not white noise
-            double pinkDitherX = dragNoiseX.next() * 0.5;
-            double pinkDitherY = dragNoiseY.next() * 0.5;
-            int currentX = (int) Math.floor(idealX + pinkDitherX + 0.5);
-            int currentY = (int) Math.floor(idealY + pinkDitherY + 0.5);
+            // Biological motor noise dithered rounding
+            // Uses profile-specific tremor characteristics and fatigue scaling
+            double speedPxPerMs = distance / (double) duration;
+            dragNoise.setMovementContext(t, speedPxPerMs);
+            double[] bioNoise = dragNoise.next2D();
+            int currentX = (int) Math.floor(idealX + bioNoise[0] * 0.5 + 0.5);
+            int currentY = (int) Math.floor(idealY + bioNoise[1] * 0.5 + 0.5);
             
             // Move by delta (relative movement during drag)
             int deltaX = currentX - prevX;
@@ -411,7 +410,7 @@ public class CameraController {
         if (finalDeltaX != 0 || finalDeltaY != 0) {
             mouseController.moveRelativeSync(finalDeltaX, finalDeltaY);
         }
-        Thread.sleep(randomization.uniformRandomLong(20, 50));
+        Thread.sleep(randomization.humanizedDelayMs(30, 20, 60));
         
         // Release middle mouse button
         mouseController.releaseButtonSync(BTN_MIDDLE);
@@ -510,7 +509,7 @@ public class CameraController {
                     // Occasionally vary the hold (brief release and re-press for naturalness)
                     if (randomization.chance(0.02)) { // 2% chance per check
                         keyboardController.releaseKeySync(direction.getKeyCode());
-                        Thread.sleep(randomization.uniformRandomLong(50, 150));
+                        Thread.sleep(randomization.humanizedDelayMs(80, 50, 180));
                         keyboardController.pressKeySync(direction.getKeyCode());
                     }
                 }
@@ -776,7 +775,7 @@ public class CameraController {
                     // Occasionally pause briefly during the sweep (natural behavior)
                     if (randomization.chance(0.01)) {
                         keyboardController.releaseKeySync(direction.getKeyCode());
-                        Thread.sleep(randomization.uniformRandomLong(100, 300));
+                        Thread.sleep(randomization.humanizedDelayMs(180, 100, 400));
                         keyboardController.pressKeySync(direction.getKeyCode());
                     }
                 }

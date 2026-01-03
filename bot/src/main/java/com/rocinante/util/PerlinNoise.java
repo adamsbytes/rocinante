@@ -249,13 +249,35 @@ public class PerlinNoise {
      */
     public double[] getPathOffset(double pathProgress, double amplitude, long seed) {
         // Use different frequencies for X and Y to avoid diagonal bias
-        double frequencyX = 3.0 + (seed % 5) * 0.5;
-        double frequencyY = 3.5 + ((seed >> 8) % 5) * 0.5;
+        // Hash the seed to get continuous pseudo-random values instead of discrete uniform
+        // (seed % 5) was detectable via statistical tests - produces only 5 values
+        double hashX = hashToUnitInterval(seed);
+        double hashY = hashToUnitInterval(seed ^ 0xDEADBEEFL);
+        
+        double frequencyX = 3.0 + hashX * 2.5;  // Range: 3.0 - 5.5
+        double frequencyY = 3.5 + hashY * 2.5;  // Range: 3.5 - 6.0
 
         double offsetX = noise1D(pathProgress * 10 + seed * 0.001, frequencyX, amplitude);
         double offsetY = noise1D(pathProgress * 10 + seed * 0.002 + 100, frequencyY, amplitude);
 
         return new double[]{offsetX, offsetY};
+    }
+    
+    /**
+     * Hash a long seed to a value in [0, 1).
+     * Uses a simple but effective hash function to convert discrete seeds
+     * to continuous values, avoiding detectable discrete uniform patterns.
+     */
+    private double hashToUnitInterval(long seed) {
+        // MurmurHash3-like mixing
+        seed ^= seed >>> 33;
+        seed *= 0xff51afd7ed558ccdL;
+        seed ^= seed >>> 33;
+        seed *= 0xc4ceb9fe1a85ec53L;
+        seed ^= seed >>> 33;
+        
+        // Convert to [0, 1)
+        return (seed & 0x7FFFFFFFFFFFFFFFL) / (double) Long.MAX_VALUE;
     }
 
     /**

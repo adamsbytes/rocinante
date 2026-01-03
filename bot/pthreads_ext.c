@@ -21,6 +21,9 @@
 #include <sys/ioctl.h>
 #include <net/if.h>
 #include <linux/sockios.h>
+#include <stdint.h>
+#include <sys/syscall.h>
+#include <sys/utsname.h>
 
 // Original function pointers
 static FILE* (*real_fopen)(const char*, const char*) = NULL;
@@ -391,6 +394,29 @@ static int should_hide_env(const char* name) {
     return 0;
 }
 
+// Check if path should be blocked (return ENOENT) - container indicators or
+// files that don't exist on Steam Deck
+static int should_block_path(const char* path) {
+    if (!path) return 0;
+    
+    // Docker/container indicators
+    if (str_eq(path, "/.dockerenv")) return 1;
+    if (str_eq(path, "/.dockerinit")) return 1;
+    if (str_contains(path, "/docker")) return 1;
+    if (str_contains(path, "/overlay")) return 1;
+    
+    // ACPI tables that don't exist on Steam Deck
+    // MSDM = Microsoft Software Licensing Tables (Windows license key storage)
+    // Steam Deck is Linux-only, no MSDM table
+    if (str_contains(path, "/sys/firmware/acpi/tables/MSDM")) return 1;
+    
+    // Other Windows-specific ACPI tables
+    if (str_contains(path, "/sys/firmware/acpi/tables/WPBT")) return 1;  // Windows Platform Binary Table
+    if (str_contains(path, "/sys/firmware/acpi/tables/WSMT")) return 1;  // Windows SMM Security Mitigations Table
+    
+    return 0;
+}
+
 // Check if path needs line-by-line filtering (maps, mounts, mountinfo)
 static int needs_line_filtering(const char* path) {
     if (!path) return 0;
@@ -592,6 +618,10 @@ static const char* get_mapped_content(const char* path) {
     return NULL;
 }
 
+// Forward declarations for is_spoofed_path (defined later)
+static int is_environ_path(const char* path);
+static int is_cmdline_path(const char* path);
+
 // Check if path is /proc/self/environ or /proc/<pid>/environ
 static int is_environ_path(const char* path) {
     if (!path) return 0;
@@ -620,6 +650,30 @@ static int is_cmdline_path(const char* path) {
         }
         return str_eq(p, "/cmdline");
     }
+    return 0;
+}
+
+// Check if a path would be spoofed (for access/stat consistency)
+// Returns 1 if path is spoofed, 0 otherwise
+static int is_spoofed_path(const char* path) {
+    if (!path) return 0;
+    
+    // Normalize path first
+    path = normalize_path(path);
+    if (!path) return 0;
+    
+    // Check if get_mapped_content would return something
+    if (get_mapped_content(path)) return 1;
+    
+    // Check dynamic paths that need special handling
+    if (is_environ_path(path)) return 1;
+    if (is_cmdline_path(path)) return 1;
+    if (is_status_path(path)) return 1;
+    if (is_stat_path(path)) return 1;
+    
+    // Check filtered paths (maps, mounts, mountinfo)
+    if (needs_line_filtering(path)) return 1;
+    
     return 0;
 }
 
@@ -1658,6 +1712,59 @@ char* secure_getenv(const char* name) {
 }
 
 // ============================================================================
+// Tracking for fmemopen file descriptors (for fstat spoofing)
+// ============================================================================
+#define MAX_FMEM_FDS 32
+static struct {
+    int fd;
+    int is_proc;  // Whether this is a /proc file (size should be 0)
+} fmem_fds[MAX_FMEM_FDS];
+static int fmem_count = 0;
+static pthread_mutex_t fmem_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static void track_fmemopen_fd(FILE* fp, int is_proc) {
+    if (!fp) return;
+    int fd = fileno(fp);
+    if (fd < 0) return;
+    
+    pthread_mutex_lock(&fmem_mutex);
+    if (fmem_count < MAX_FMEM_FDS) {
+        fmem_fds[fmem_count].fd = fd;
+        fmem_fds[fmem_count].is_proc = is_proc;
+        fmem_count++;
+    }
+    pthread_mutex_unlock(&fmem_mutex);
+}
+
+static int is_fmemopen_fd(int fd, int* is_proc) {
+    pthread_mutex_lock(&fmem_mutex);
+    for (int i = 0; i < fmem_count; i++) {
+        if (fmem_fds[i].fd == fd) {
+            if (is_proc) *is_proc = fmem_fds[i].is_proc;
+            pthread_mutex_unlock(&fmem_mutex);
+            return 1;
+        }
+    }
+    pthread_mutex_unlock(&fmem_mutex);
+    return 0;
+}
+
+static void untrack_fmemopen_fd(int fd) {
+    pthread_mutex_lock(&fmem_mutex);
+    for (int i = 0; i < fmem_count; i++) {
+        if (fmem_fds[i].fd == fd) {
+            // Shift remaining entries
+            for (int j = i; j < fmem_count - 1; j++) {
+                fmem_fds[j] = fmem_fds[j + 1];
+            }
+            fmem_count--;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&fmem_mutex);
+}
+
+// ============================================================================
 // Intercepted: fopen() / fopen64()
 // ============================================================================
 FILE* fopen(const char* path, const char* mode) {
@@ -1698,6 +1805,7 @@ FILE* fopen(const char* path, const char* mode) {
         }
         
         FILE* mem_file = fmemopen(filtered, filtered_len, "r");
+        track_fmemopen_fd(mem_file, 1);  // Track as /proc file
         // Note: filtered memory will leak, but this is rare operation
         return mem_file;
     }
@@ -1705,19 +1813,25 @@ FILE* fopen(const char* path, const char* mode) {
     // Handle /proc/self/cmdline - return Java launch cmdline
     if (is_cmdline_path(path)) {
         // cmdline has embedded nulls, can't use strlen - use fixed length
-        return fmemopen((void*)PROC_CMDLINE, PROC_CMDLINE_LEN, "r");
+        FILE* mem_file = fmemopen((void*)PROC_CMDLINE, PROC_CMDLINE_LEN, "r");
+        track_fmemopen_fd(mem_file, 1);
+        return mem_file;
     }
     
     // Handle /proc/self/status - filter namespace-revealing fields
     if (is_status_path(path)) {
         const char* status = get_dynamic_proc_status();
-        return fmemopen((void*)status, strlen(status), "r");
+        FILE* mem_file = fmemopen((void*)status, strlen(status), "r");
+        track_fmemopen_fd(mem_file, 1);
+        return mem_file;
     }
     
     // Handle /proc/self/stat - spoof PPID to 1 (looks like orphaned/daemon process)
     if (is_stat_path(path)) {
         const char* stat = get_spoofed_proc_stat();
-        return fmemopen((void*)stat, strlen(stat), "r");
+        FILE* mem_file = fmemopen((void*)stat, strlen(stat), "r");
+        track_fmemopen_fd(mem_file, 1);
+        return mem_file;
     }
     
     // Handle maps/mounts filtering
@@ -1748,14 +1862,18 @@ FILE* fopen(const char* path, const char* mode) {
         if (!filtered) return NULL;
         
         FILE* mem_file = fmemopen(filtered, strlen(filtered), "r");
+        track_fmemopen_fd(mem_file, 1);  // Track as /proc file
         // Note: filtered memory will leak, but this is rare operation
         return mem_file;
     }
     
-    // Check for mapped content
+    // Check for mapped content (could be /proc, /sys, or /etc)
     const char* mapped = get_mapped_content(path);
     if (mapped) {
-        return fmemopen((void*)mapped, strlen(mapped), "r");
+        int is_proc = str_starts(path, "/proc/") || str_starts(path, "/sys/");
+        FILE* mem_file = fmemopen((void*)mapped, strlen(mapped), "r");
+        track_fmemopen_fd(mem_file, is_proc);
+        return mem_file;
     }
     
     return real_fopen(path, mode);
@@ -2002,6 +2120,10 @@ int close(int fd) {
     static int (*real_close)(int) = NULL;
     if (!real_close) real_close = dlsym(RTLD_NEXT, "close");
     
+    // Clean up fmemopen tracking
+    untrack_fmemopen_fd(fd);
+    
+    // Clean up open() tracking
     pthread_mutex_lock(&tracked_mutex);
     int idx = find_tracked_unlocked(fd);
     if (idx >= 0) {
@@ -2015,6 +2137,20 @@ int close(int fd) {
     pthread_mutex_unlock(&tracked_mutex);
     
     return real_close(fd);
+}
+
+int fclose(FILE* fp) {
+    static int (*real_fclose)(FILE*) = NULL;
+    if (!real_fclose) real_fclose = dlsym(RTLD_NEXT, "fclose");
+    
+    if (fp) {
+        int fd = fileno(fp);
+        if (fd >= 0) {
+            untrack_fmemopen_fd(fd);
+        }
+    }
+    
+    return real_fclose(fp);
 }
 
 // ============================================================================
@@ -2207,4 +2343,580 @@ int ioctl(int fd, unsigned long request, ...) {
     }
     
     return result;
+}
+
+// ============================================================================
+// Intercepted: access() / faccessat() - file existence checks
+// ============================================================================
+
+int access(const char* path, int mode) {
+    static int (*real_access)(const char*, int) = NULL;
+    if (!real_access) real_access = dlsym(RTLD_NEXT, "access");
+    
+    if (!path) return real_access(path, mode);
+    
+    // Normalize and check if spoofed
+    const char* normalized = normalize_path(path);
+    if (normalized && is_spoofed_path(normalized)) {
+        // Spoofed paths always "exist" and are readable
+        // We don't spoof write/execute permissions
+        if (mode == F_OK || mode == R_OK || (mode & R_OK)) {
+            return 0; // Success
+        }
+    }
+    
+    // Hide blocked paths - pretend they don't exist
+    if (should_block_path(path)) {
+        errno = ENOENT;
+        return -1;
+    }
+    
+    return real_access(path, mode);
+}
+
+int faccessat(int dirfd, const char* path, int mode, int flags) {
+    static int (*real_faccessat)(int, const char*, int, int) = NULL;
+    if (!real_faccessat) real_faccessat = dlsym(RTLD_NEXT, "faccessat");
+    
+    if (!path) return real_faccessat(dirfd, path, mode, flags);
+    
+    // For absolute paths or AT_FDCWD, we can check spoofing
+    if (path[0] == '/' || dirfd == AT_FDCWD) {
+        const char* normalized = normalize_path(path);
+        if (normalized && is_spoofed_path(normalized)) {
+            if (mode == F_OK || mode == R_OK || (mode & R_OK)) {
+                return 0;
+            }
+        }
+        
+        // Hide blocked paths
+        if (should_block_path(path)) {
+            errno = ENOENT;
+            return -1;
+        }
+    }
+    
+    return real_faccessat(dirfd, path, mode, flags);
+}
+
+// ============================================================================
+// Intercepted: stat() / lstat() / __xstat() / __lxstat64()
+// ============================================================================
+
+// Helper to fill stat buffer with plausible values for spoofed files
+static void fill_spoofed_stat(struct stat* buf, const char* path) {
+    memset(buf, 0, sizeof(*buf));
+    
+    buf->st_dev = 0x802;  // Typical device ID
+    buf->st_ino = 1000 + (get_machine_id_hash() % 100000);  // Pseudo-random inode
+    buf->st_nlink = 1;
+    buf->st_uid = 1000;  // deck user
+    buf->st_gid = 998;   // wheel group
+    buf->st_rdev = 0;
+    buf->st_blksize = 4096;
+    
+    // Different modes for different paths
+    if (str_starts(path, "/proc/") || str_starts(path, "/sys/")) {
+        buf->st_mode = S_IFREG | 0444;  // Regular file, read-only
+        buf->st_size = 4096;  // Pseudo-files report various sizes
+    } else if (str_starts(path, "/etc/")) {
+        buf->st_mode = S_IFREG | 0644;  // Regular file
+        buf->st_size = 32;
+    } else {
+        buf->st_mode = S_IFREG | 0644;
+        buf->st_size = 256;
+    }
+    
+    buf->st_blocks = (buf->st_size + 511) / 512;
+    
+    // Set times to something reasonable (system boot time + offset)
+    time_t now = time(NULL);
+    time_t boot = now - (get_machine_id_hash() % 86400) - 3600;
+    buf->st_atime = now;
+    buf->st_mtime = boot;
+    buf->st_ctime = boot;
+}
+
+int stat(const char* path, struct stat* buf) {
+    static int (*real_stat)(const char*, struct stat*) = NULL;
+    if (!real_stat) real_stat = dlsym(RTLD_NEXT, "stat");
+    
+    if (!path || !buf) return real_stat(path, buf);
+    
+    const char* normalized = normalize_path(path);
+    
+    // Hide container indicators
+    if (should_block_path(path)) {
+        errno = ENOENT;
+        return -1;
+    }
+    
+    // For spoofed paths, return fake stat
+    if (normalized && is_spoofed_path(normalized)) {
+        // Try real stat first (for timing/mode accuracy)
+        if (real_stat(path, buf) == 0) {
+            return 0;  // Real file exists, use real stat
+        }
+        // File doesn't exist but we spoof it - create fake stat
+        fill_spoofed_stat(buf, normalized);
+        return 0;
+    }
+    
+    return real_stat(path, buf);
+}
+
+int lstat(const char* path, struct stat* buf) {
+    static int (*real_lstat)(const char*, struct stat*) = NULL;
+    if (!real_lstat) real_lstat = dlsym(RTLD_NEXT, "lstat");
+    
+    if (!path || !buf) return real_lstat(path, buf);
+    
+    const char* normalized = normalize_path(path);
+    
+    // Hide container indicators
+    if (should_block_path(path)) {
+        errno = ENOENT;
+        return -1;
+    }
+    
+    // For spoofed paths, return fake stat
+    if (normalized && is_spoofed_path(normalized)) {
+        if (real_lstat(path, buf) == 0) {
+            return 0;
+        }
+        fill_spoofed_stat(buf, normalized);
+        return 0;
+    }
+    
+    return real_lstat(path, buf);
+}
+
+// glibc uses __xstat/__lxstat with version parameter
+int __xstat(int ver, const char* path, struct stat* buf) {
+    static int (*real_xstat)(int, const char*, struct stat*) = NULL;
+    if (!real_xstat) real_xstat = dlsym(RTLD_NEXT, "__xstat");
+    
+    if (!path || !buf) return real_xstat(ver, path, buf);
+    
+    const char* normalized = normalize_path(path);
+    
+    if (should_block_path(path)) {
+        errno = ENOENT;
+        return -1;
+    }
+    
+    if (normalized && is_spoofed_path(normalized)) {
+        if (real_xstat(ver, path, buf) == 0) {
+            return 0;
+        }
+        fill_spoofed_stat(buf, normalized);
+        return 0;
+    }
+    
+    return real_xstat(ver, path, buf);
+}
+
+int __lxstat(int ver, const char* path, struct stat* buf) {
+    static int (*real_lxstat)(int, const char*, struct stat*) = NULL;
+    if (!real_lxstat) real_lxstat = dlsym(RTLD_NEXT, "__lxstat");
+    
+    if (!path || !buf) return real_lxstat(ver, path, buf);
+    
+    const char* normalized = normalize_path(path);
+    
+    if (should_block_path(path)) {
+        errno = ENOENT;
+        return -1;
+    }
+    
+    if (normalized && is_spoofed_path(normalized)) {
+        if (real_lxstat(ver, path, buf) == 0) {
+            return 0;
+        }
+        fill_spoofed_stat(buf, normalized);
+        return 0;
+    }
+    
+    return real_lxstat(ver, path, buf);
+}
+
+// 64-bit variants
+int __xstat64(int ver, const char* path, struct stat64* buf) {
+    static int (*real_xstat64)(int, const char*, struct stat64*) = NULL;
+    if (!real_xstat64) real_xstat64 = dlsym(RTLD_NEXT, "__xstat64");
+    
+    if (!path || !buf) return real_xstat64(ver, path, buf);
+    
+    const char* normalized = normalize_path(path);
+    
+    if (should_block_path(path)) {
+        errno = ENOENT;
+        return -1;
+    }
+    
+    if (normalized && is_spoofed_path(normalized)) {
+        if (real_xstat64(ver, path, buf) == 0) {
+            return 0;
+        }
+        // Fill with spoofed data (cast to regular stat, sizes match for our usage)
+        fill_spoofed_stat((struct stat*)buf, normalized);
+        return 0;
+    }
+    
+    return real_xstat64(ver, path, buf);
+}
+
+int __lxstat64(int ver, const char* path, struct stat64* buf) {
+    static int (*real_lxstat64)(int, const char*, struct stat64*) = NULL;
+    if (!real_lxstat64) real_lxstat64 = dlsym(RTLD_NEXT, "__lxstat64");
+    
+    if (!path || !buf) return real_lxstat64(ver, path, buf);
+    
+    const char* normalized = normalize_path(path);
+    
+    if (should_block_path(path)) {
+        errno = ENOENT;
+        return -1;
+    }
+    
+    if (normalized && is_spoofed_path(normalized)) {
+        if (real_lxstat64(ver, path, buf) == 0) {
+            return 0;
+        }
+        fill_spoofed_stat((struct stat*)buf, normalized);
+        return 0;
+    }
+    
+    return real_lxstat64(ver, path, buf);
+}
+
+// ============================================================================
+// Intercepted: fstat() / __fxstat() - for fmemopen fd spoofing
+// ============================================================================
+
+// Helper to fill stat buffer with /proc-like values for fmemopen fds
+static void fill_proc_fstat(struct stat* buf) {
+    memset(buf, 0, sizeof(*buf));
+    
+    // /proc filesystem characteristics
+    buf->st_dev = 0x4;          // proc filesystem device ID (typically 4)
+    buf->st_ino = 1000 + (get_machine_id_hash() % 50000);  // Pseudo-random inode
+    buf->st_mode = S_IFREG | 0444;  // Regular file, read-only
+    buf->st_nlink = 1;
+    buf->st_uid = 0;            // root owns /proc files
+    buf->st_gid = 0;
+    buf->st_rdev = 0;
+    buf->st_size = 0;           // CRITICAL: /proc files report size 0
+    buf->st_blksize = 1024;     // /proc uses 1024 block size
+    buf->st_blocks = 0;         // No blocks for virtual files
+    
+    time_t now = time(NULL);
+    buf->st_atime = now;
+    buf->st_mtime = now;
+    buf->st_ctime = now;
+}
+
+int fstat(int fd, struct stat* buf) {
+    static int (*real_fstat)(int, struct stat*) = NULL;
+    if (!real_fstat) real_fstat = dlsym(RTLD_NEXT, "fstat");
+    
+    if (!buf) return real_fstat(fd, buf);
+    
+    // Check if this is one of our fmemopen fds
+    int is_proc = 0;
+    if (is_fmemopen_fd(fd, &is_proc)) {
+        if (is_proc) {
+            fill_proc_fstat(buf);
+            return 0;
+        }
+        // For non-proc spoofed files (e.g., /etc), use real fstat
+        // but it's still fmemopen so won't look weird
+    }
+    
+    // Check if this is one of our tracked open() fds
+    pthread_mutex_lock(&tracked_mutex);
+    int idx = find_tracked_unlocked(fd);
+    if (idx >= 0) {
+        pthread_mutex_unlock(&tracked_mutex);
+        fill_proc_fstat(buf);
+        return 0;
+    }
+    pthread_mutex_unlock(&tracked_mutex);
+    
+    return real_fstat(fd, buf);
+}
+
+// glibc version
+int __fxstat(int ver, int fd, struct stat* buf) {
+    static int (*real_fxstat)(int, int, struct stat*) = NULL;
+    if (!real_fxstat) real_fxstat = dlsym(RTLD_NEXT, "__fxstat");
+    
+    if (!buf) return real_fxstat(ver, fd, buf);
+    
+    int is_proc = 0;
+    if (is_fmemopen_fd(fd, &is_proc)) {
+        if (is_proc) {
+            fill_proc_fstat(buf);
+            return 0;
+        }
+    }
+    
+    pthread_mutex_lock(&tracked_mutex);
+    int idx = find_tracked_unlocked(fd);
+    if (idx >= 0) {
+        pthread_mutex_unlock(&tracked_mutex);
+        fill_proc_fstat(buf);
+        return 0;
+    }
+    pthread_mutex_unlock(&tracked_mutex);
+    
+    return real_fxstat(ver, fd, buf);
+}
+
+int __fxstat64(int ver, int fd, struct stat64* buf) {
+    static int (*real_fxstat64)(int, int, struct stat64*) = NULL;
+    if (!real_fxstat64) real_fxstat64 = dlsym(RTLD_NEXT, "__fxstat64");
+    
+    if (!buf) return real_fxstat64(ver, fd, buf);
+    
+    int is_proc = 0;
+    if (is_fmemopen_fd(fd, &is_proc)) {
+        if (is_proc) {
+            fill_proc_fstat((struct stat*)buf);
+            return 0;
+        }
+    }
+    
+    pthread_mutex_lock(&tracked_mutex);
+    int idx = find_tracked_unlocked(fd);
+    if (idx >= 0) {
+        pthread_mutex_unlock(&tracked_mutex);
+        fill_proc_fstat((struct stat*)buf);
+        return 0;
+    }
+    pthread_mutex_unlock(&tracked_mutex);
+    
+    return real_fxstat64(ver, fd, buf);
+}
+
+// ============================================================================
+// Intercepted: getdents() / getdents64() - directory listing filtering
+// ============================================================================
+
+// Linux directory entry structure
+struct linux_dirent {
+    unsigned long  d_ino;
+    unsigned long  d_off;
+    unsigned short d_reclen;
+    char           d_name[];
+};
+
+struct linux_dirent64 {
+    uint64_t       d_ino;
+    int64_t        d_off;
+    unsigned short d_reclen;
+    unsigned char  d_type;
+    char           d_name[];
+};
+
+// Check if a directory entry should be hidden
+static int should_hide_dirent(const char* name) {
+    if (!name) return 0;
+    
+    // Hide Docker/container indicators
+    if (str_eq(name, ".dockerenv")) return 1;
+    if (str_eq(name, ".dockerinit")) return 1;
+    if (str_starts(name, "docker")) return 1;
+    
+    // Hide our LD_PRELOAD library if somehow visible
+    if (str_contains(name, "pthreads_ext")) return 1;
+    if (str_contains(name, "libpthreads_ext")) return 1;
+    
+    return 0;
+}
+
+// Process names to hide from /proc listings
+static const char* HIDDEN_PROCESSES[] = {
+    "Xvfb",
+    "x11vnc",
+    "Xephyr",
+    "fluxbox",
+    "openbox",
+    "picom",
+    "xcompmgr",
+    "pulseaudio",
+    "pipewire",
+    "dbus-daemon",
+    "upowerd",
+    "at-spi-bus-launcher",
+    "at-spi2-registryd",
+    NULL
+};
+
+// Check if a PID should be hidden based on its process name
+static int should_hide_pid(const char* pid_str) {
+    if (!pid_str) return 0;
+    
+    // Only check numeric entries (PIDs)
+    for (const char* p = pid_str; *p; p++) {
+        if (*p < '0' || *p > '9') return 0;
+    }
+    
+    // Read the process comm (name)
+    char comm_path[64];
+    snprintf(comm_path, sizeof(comm_path), "/proc/%s/comm", pid_str);
+    
+    // Use direct syscall to avoid recursion through our hooks
+    int fd = syscall(SYS_open, comm_path, O_RDONLY);
+    if (fd < 0) return 0;
+    
+    char comm[256];
+    ssize_t len = syscall(SYS_read, fd, comm, sizeof(comm) - 1);
+    syscall(SYS_close, fd);
+    
+    if (len <= 0) return 0;
+    comm[len] = '\0';
+    
+    // Remove trailing newline
+    if (len > 0 && comm[len - 1] == '\n') {
+        comm[len - 1] = '\0';
+    }
+    
+    // Check against hidden process list
+    for (int i = 0; HIDDEN_PROCESSES[i]; i++) {
+        if (str_eq(comm, HIDDEN_PROCESSES[i])) {
+            return 1;
+        }
+    }
+    
+    return 0;
+}
+
+// Get the path a directory fd refers to (for /proc detection)
+static int is_proc_dir_fd(int fd) {
+    char fd_path[64];
+    char resolved[256];
+    
+    snprintf(fd_path, sizeof(fd_path), "/proc/self/fd/%d", fd);
+    
+    // Use syscall to avoid recursion
+    ssize_t len = syscall(SYS_readlink, fd_path, resolved, sizeof(resolved) - 1);
+    if (len <= 0) return 0;
+    resolved[len] = '\0';
+    
+    // Check if this fd points to /proc (but not /proc/self or /proc/<our_pid>)
+    if (str_eq(resolved, "/proc")) return 1;
+    
+    return 0;
+}
+
+// ============================================================================
+// Intercepted: uname() - kernel version spoofing
+// ============================================================================
+
+int uname(struct utsname* buf) {
+    static int (*real_uname)(struct utsname*) = NULL;
+    if (!real_uname) real_uname = dlsym(RTLD_NEXT, "uname");
+    
+    int ret = real_uname(buf);
+    if (ret != 0 || !buf) return ret;
+    
+    // Spoof to Steam Deck values
+    strncpy(buf->sysname, "Linux", sizeof(buf->sysname) - 1);
+    buf->sysname[sizeof(buf->sysname) - 1] = '\0';
+    
+    // Use machine-id derived kernel version for per-bot variation
+    // KERNEL_VERSIONS[i][0] = release string, [1] = gcc version, [2] = build date
+    unsigned int hash = get_machine_id_hash();
+    int version_idx = hash % NUM_KERNEL_VERSIONS;
+    
+    strncpy(buf->release, KERNEL_VERSIONS[version_idx][0], sizeof(buf->release) - 1);
+    buf->release[sizeof(buf->release) - 1] = '\0';
+    
+    // Build version string matching kernel format
+    snprintf(buf->version, sizeof(buf->version),
+             "#1 SMP PREEMPT_DYNAMIC %s", KERNEL_VERSIONS[version_idx][2]);
+    
+    strncpy(buf->machine, "x86_64", sizeof(buf->machine) - 1);
+    buf->machine[sizeof(buf->machine) - 1] = '\0';
+    
+    // nodename is hostname - should already be "steamdeck" from container
+    strncpy(buf->nodename, "steamdeck", sizeof(buf->nodename) - 1);
+    buf->nodename[sizeof(buf->nodename) - 1] = '\0';
+    
+    return ret;
+}
+
+ssize_t getdents(int fd, void* dirp, size_t count) {
+    ssize_t nread = syscall(SYS_getdents, fd, dirp, count);
+    if (nread <= 0) return nread;
+    
+    // Check if we're listing /proc (for PID filtering)
+    int listing_proc = is_proc_dir_fd(fd);
+    
+    // Filter entries
+    char* buf = (char*)dirp;
+    char* filtered = buf;
+    ssize_t filtered_len = 0;
+    ssize_t pos = 0;
+    
+    while (pos < nread) {
+        struct linux_dirent* d = (struct linux_dirent*)(buf + pos);
+        
+        int hide = should_hide_dirent(d->d_name);
+        
+        // If listing /proc, also check if this PID should be hidden
+        if (!hide && listing_proc) {
+            hide = should_hide_pid(d->d_name);
+        }
+        
+        if (!hide) {
+            if (filtered != buf + pos) {
+                memmove(filtered, d, d->d_reclen);
+            }
+            filtered += d->d_reclen;
+            filtered_len += d->d_reclen;
+        }
+        
+        pos += d->d_reclen;
+    }
+    
+    return filtered_len;
+}
+
+ssize_t getdents64(int fd, void* dirp, size_t count) {
+    ssize_t nread = syscall(SYS_getdents64, fd, dirp, count);
+    if (nread <= 0) return nread;
+    
+    // Check if we're listing /proc (for PID filtering)
+    int listing_proc = is_proc_dir_fd(fd);
+    
+    // Filter entries
+    char* buf = (char*)dirp;
+    char* filtered = buf;
+    ssize_t filtered_len = 0;
+    ssize_t pos = 0;
+    
+    while (pos < nread) {
+        struct linux_dirent64* d = (struct linux_dirent64*)(buf + pos);
+        
+        int hide = should_hide_dirent(d->d_name);
+        
+        // If listing /proc, also check if this PID should be hidden
+        if (!hide && listing_proc) {
+            hide = should_hide_pid(d->d_name);
+        }
+        
+        if (!hide) {
+            if (filtered != buf + pos) {
+                memmove(filtered, d, d->d_reclen);
+            }
+            filtered += d->d_reclen;
+            filtered_len += d->d_reclen;
+        }
+        
+        pos += d->d_reclen;
+    }
+    
+    return filtered_len;
 }

@@ -188,6 +188,15 @@ echo "Starting Openbox window manager..."
 openbox &
 sleep 1
 
+# Spoof WM name to KWin (Steam Deck uses KDE Plasma in desktop mode)
+# This sets the _NET_WM_NAME property that applications read to identify the WM
+echo "Spoofing WM name to KWin..."
+xprop -root -f _NET_SUPPORTING_WM_CHECK 32c -set _NET_SUPPORTING_WM_CHECK "$(xprop -root _NET_SUPPORTING_WM_CHECK | awk '{print $NF}')" 2>/dev/null || true
+WM_WINDOW=$(xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null | awk '{print $NF}')
+if [ -n "$WM_WINDOW" ] && [ "$WM_WINDOW" != "found." ]; then
+    xprop -id "$WM_WINDOW" -f _NET_WM_NAME 8u -set _NET_WM_NAME "KWin" 2>/dev/null || true
+fi
+
 # Start compositor for proper rendering and less detectable display
 echo "Starting picom compositor..."
 picom --backend xrender --no-fading-openclose --no-vsync -b 2>/dev/null || true
@@ -308,6 +317,23 @@ rm -f /run/.containerenv 2>/dev/null || true
 # Start PulseAudio for virtual sound (apps expect audio device)
 echo "Starting PulseAudio..."
 pulseaudio --start --exit-idle-time=-1 2>/dev/null || true
+sleep 0.5
+
+# Create Steam Deck-like audio sink (AMD acp5x audio on Steam Deck)
+echo "Configuring Steam Deck audio sink..."
+STEAM_DECK_SINK="alsa_output.pci-0000_04_00.5-platform-acp5x_mach.0.analog-stereo"
+pactl load-module module-null-sink \
+    sink_name="$STEAM_DECK_SINK" \
+    sink_properties="device.description='Steam Deck Speakers' device.icon_name='audio-card-analog' device.product.name='Steam Deck' device.vendor.name='Valve'" \
+    2>/dev/null || true
+pactl set-default-sink "$STEAM_DECK_SINK" 2>/dev/null || true
+
+# Also create a matching source (microphone) for completeness
+STEAM_DECK_SOURCE="alsa_input.pci-0000_04_00.5-platform-acp5x_mach.0.analog-stereo"
+pactl load-module module-null-sink \
+    sink_name="${STEAM_DECK_SOURCE}_sink" \
+    sink_properties="device.description='Steam Deck Microphone' device.icon_name='audio-input-microphone' device.product.name='Steam Deck' device.vendor.name='Valve'" \
+    2>/dev/null || true
 
 # Start VNC server on Unix socket (not TCP - reduces fingerprint)
 # Socket path is in the bind-mounted status directory for web server access

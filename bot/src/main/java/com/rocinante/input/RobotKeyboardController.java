@@ -278,7 +278,7 @@ public class RobotKeyboardController {
      * Type a single character using UInput.
      */
     private void typeCharacter(char c) throws InterruptedException {
-        long holdDuration = randomization.uniformRandomLong(MIN_KEY_HOLD_MS, MAX_KEY_HOLD_MS);
+        long holdDuration = randomization.humanizedDelayMs(60, MIN_KEY_HOLD_MS, MAX_KEY_HOLD_MS);
         keyboardDevice.typeChar(c, holdDuration);
     }
 
@@ -368,8 +368,8 @@ public class RobotKeyboardController {
         // Backspace to delete typo (don't record as separate action - part of typing)
         pressKeyInternalNoRecord(KeyEvent.VK_BACK_SPACE);
 
-        // Small pause before typing correct character
-        Thread.sleep(randomization.uniformRandomLong(30, 80));
+        // Small pause before typing correct character (log-normal for realism)
+        Thread.sleep(randomization.humanizedDelayMs(50, 30, 100));
 
         // Type the correct character
         typeCharacter(correctChar);
@@ -403,7 +403,7 @@ public class RobotKeyboardController {
      * @return CompletableFuture that completes when key press is done
      */
     public CompletableFuture<Void> pressKey(int keyCode) {
-        return pressKey(keyCode, randomization.uniformRandomLong(MIN_KEY_HOLD_MS, MAX_KEY_HOLD_MS));
+        return pressKey(keyCode, randomization.humanizedDelayMs(60, MIN_KEY_HOLD_MS, MAX_KEY_HOLD_MS));
     }
 
     /**
@@ -449,7 +449,7 @@ public class RobotKeyboardController {
      * Used for typo correction backspace (part of typing action, not separate).
      */
     private void pressKeyInternalNoRecord(int keyCode) throws InterruptedException {
-        long holdDuration = randomization.uniformRandomLong(MIN_KEY_HOLD_MS, MAX_KEY_HOLD_MS);
+        long holdDuration = randomization.humanizedDelayMs(60, MIN_KEY_HOLD_MS, MAX_KEY_HOLD_MS);
         pressKeyInternal(keyCode, holdDuration, false);
     }
 
@@ -519,19 +519,19 @@ public class RobotKeyboardController {
                         MIN_HOTKEY_REACTION_MS, MAX_HOTKEY_REACTION_MS);
                 Thread.sleep(reactionDelay);
 
-                // Press all keys via UInput
+                // Press all keys via UInput (log-normal timing for human realism)
                 for (int keyCode : keyCodes) {
                     keyboardDevice.pressKeyAwt(keyCode);
-                    Thread.sleep(randomization.uniformRandomLong(10, 30));
+                    Thread.sleep(randomization.humanizedDelayMs(18, 10, 40));
                 }
 
-                // Hold duration
-                Thread.sleep(randomization.uniformRandomLong(MIN_KEY_HOLD_MS, MAX_KEY_HOLD_MS));
+                // Hold duration (log-normal)
+                Thread.sleep(randomization.humanizedDelayMs(60, MIN_KEY_HOLD_MS, MAX_KEY_HOLD_MS));
 
                 // Release all keys in reverse order
                 for (int i = keyCodes.length - 1; i >= 0; i--) {
                     keyboardDevice.releaseKeyAwt(keyCodes[i]);
-                    Thread.sleep(randomization.uniformRandomLong(10, 30));
+                    Thread.sleep(randomization.humanizedDelayMs(18, 10, 40));
                 }
 
                 future.complete(null);
@@ -581,8 +581,8 @@ public class RobotKeyboardController {
 
                 Thread.sleep(baseReaction);
 
-                // Press the F-key via UInput
-                long holdDuration = randomization.uniformRandomLong(MIN_KEY_HOLD_MS, MAX_KEY_HOLD_MS);
+                // Press the F-key via UInput (log-normal hold for human realism)
+                long holdDuration = randomization.humanizedDelayMs(60, MIN_KEY_HOLD_MS, MAX_KEY_HOLD_MS);
                 keyboardDevice.tapKeyAwt(keyCode, holdDuration);
 
                 // Update learning tracking

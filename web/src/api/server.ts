@@ -401,8 +401,9 @@ function generateEnvironmentFingerprint(fingerprintSeed: string): EnvironmentCon
     machineId += Math.floor(random() * 16).toString(16);
   }
 
-  // Display number: 0-9 (X11 display)
-  const displayNumber = Math.floor(random() * 10);
+  // Display number: Always :0 for Steam Deck compatibility
+  // TODO: Make configurable if we need to support multi-display setups
+  const displayNumber = 0;
 
   // Screen resolution: sample from common sizes to avoid fingerprinting
   // TODO: Add weighted random selection of resolutions.

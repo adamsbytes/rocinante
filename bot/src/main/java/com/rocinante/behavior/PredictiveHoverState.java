@@ -113,6 +113,55 @@ public class PredictiveHoverState {
     WorldPoint playerPositionAtHoverStart;
 
     /**
+     * The precision of this hover - whether it landed exactly on target or missed.
+     * Imprecise hovers require micro-correction when action starts.
+     */
+    @Builder.Default
+    HoverPrecision hoverPrecision = HoverPrecision.PRECISE;
+
+    /**
+     * Offset from target center for imprecise hovers (in pixels).
+     * Zero for precise hovers.
+     */
+    @Builder.Default
+    int impreciseOffsetX = 0;
+
+    /**
+     * Offset from target center for imprecise hovers (in pixels).
+     * Zero for precise hovers.
+     */
+    @Builder.Default
+    int impreciseOffsetY = 0;
+
+    /**
+     * Defines how precisely the hover landed on the target.
+     */
+    public enum HoverPrecision {
+        /**
+         * Hover landed exactly on target. No correction needed.
+         */
+        PRECISE,
+
+        /**
+         * Hover landed near target but slightly off. Requires micro-correction.
+         * This is realistic - humans don't always aim perfectly.
+         */
+        IMPRECISE,
+
+        /**
+         * Hover landed on empty space near target. Requires full re-targeting.
+         * Represents distracted or sloppy hovering.
+         */
+        MISSED_EMPTY_SPACE,
+
+        /**
+         * Hover landed on a different nearby object. Requires correction.
+         * Represents attention lapse or confusion with similar objects.
+         */
+        WRONG_TARGET
+    }
+
+    /**
      * Defines the click behavior when the current action completes.
      */
     public enum ClickBehavior {
@@ -201,6 +250,37 @@ public class PredictiveHoverState {
      */
     public boolean shouldDelayedClick() {
         return plannedBehavior == ClickBehavior.DELAYED && (!isNpc || validatedThisTick);
+    }
+
+    /**
+     * Check if this hover requires micro-correction before clicking.
+     * Imprecise hovers need the mouse to move slightly to hit the target.
+     *
+     * @return true if micro-correction is needed
+     */
+    public boolean needsMicroCorrection() {
+        return hoverPrecision == HoverPrecision.IMPRECISE;
+    }
+
+    /**
+     * Check if this hover completely missed the target.
+     * Missed hovers need full re-targeting.
+     *
+     * @return true if hover missed entirely
+     */
+    public boolean missedTarget() {
+        return hoverPrecision == HoverPrecision.MISSED_EMPTY_SPACE 
+            || hoverPrecision == HoverPrecision.WRONG_TARGET;
+    }
+
+    /**
+     * Check if this hover landed on target (precise or imprecise but on target).
+     *
+     * @return true if hover is usable with at most micro-correction
+     */
+    public boolean isUsableHover() {
+        return hoverPrecision == HoverPrecision.PRECISE 
+            || hoverPrecision == HoverPrecision.IMPRECISE;
     }
 
     /**

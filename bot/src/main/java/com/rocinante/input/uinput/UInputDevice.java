@@ -120,11 +120,96 @@ public abstract class UInputDevice implements Closeable {
      */
     private final SecureRandom jitterRandom;
 
+    // ========================================================================
+    // USB Timing Jitter Model Constants
+    // ========================================================================
+    // Real USB mice have jitter from multiple independent sources:
+    // - USB host controller timing variance
+    // - Mouse MCU processing variance  
+    // - Kernel interrupt scheduling variance
+    // - USB frame quantization effects
+    // These sum (via CLT) to approximately Gaussian with occasional outliers.
+
     /**
-     * Maximum jitter in microseconds for USB polling variance.
-     * Real 1000Hz mice: ±15-50μs jitter from USB timing.
+     * USB host controller jitter standard deviation (μs).
+     * Very stable, typically ±2-5μs for modern controllers.
      */
-    private static final int USB_JITTER_MICROS = 50;
+    private static final double HOST_CONTROLLER_JITTER_SIGMA = 3.0;
+
+    /**
+     * Mouse MCU/sensor processing jitter standard deviation (μs).
+     * Varies with sensor type, typically ±10-30μs.
+     */
+    private static final double MCU_PROCESSING_JITTER_SIGMA = 15.0;
+
+    /**
+     * Kernel interrupt latency jitter standard deviation (μs).
+     * Varies with system load, typically ±20-50μs.
+     */
+    private static final double KERNEL_IRQ_JITTER_SIGMA = 25.0;
+
+    /**
+     * Probability of a kernel scheduling outlier per event.
+     * ~1% of events see longer delays from preemption/scheduling.
+     */
+    private static final double KERNEL_OUTLIER_PROBABILITY = 0.01;
+
+    /**
+     * USB frame quantization noise as fraction of frame period.
+     * Events tend to cluster around frame boundaries (±1-2% of frame).
+     */
+    private static final double FRAME_QUANTIZATION_FRACTION = 0.015;
+
+    // ========================================================================
+    // Interrupt Coalescing & Burst Mode Constants
+    // ========================================================================
+    // Real USB drivers use interrupt coalescing: multiple events bundled together
+    // followed by quiet periods. This creates "bursty" event patterns.
+
+    /**
+     * Probability of entering burst mode per event.
+     * When in burst, events have much tighter timing.
+     */
+    private static final double BURST_MODE_PROBABILITY = 0.15;
+
+    /**
+     * Average number of events in a burst (Poisson lambda).
+     * Real USB coalescing typically bundles 2-6 events.
+     */
+    private static final double BURST_LENGTH_LAMBDA = 3.5;
+
+    /**
+     * Jitter reduction factor during burst mode.
+     * Coalesced events have more uniform timing.
+     */
+    private static final double BURST_JITTER_REDUCTION = 0.3;
+
+    /**
+     * Probability of a missed poll (scheduler preemption causing dropped event).
+     * Real systems: ~0.01% of polls may be skipped under load.
+     */
+    private static final double MISSED_POLL_PROBABILITY = 0.0001;
+
+    /**
+     * Inter-burst gap jitter sigma (μs).
+     * Gaps between bursts have higher variance than intra-burst timing.
+     */
+    private static final double INTER_BURST_GAP_SIGMA = 80.0;
+
+    // ========================================================================
+    // Burst Mode State
+    // ========================================================================
+
+    /**
+     * Current burst mode state: events remaining in current burst.
+     * 0 = not in burst, >0 = events remaining in burst.
+     */
+    private int burstEventsRemaining = 0;
+
+    /**
+     * Counter for events since last burst to detect burst entry.
+     */
+    private int eventsSinceLastBurst = 0;
 
     /**
      * A pending input event waiting to be emitted.
@@ -437,18 +522,88 @@ public abstract class UInputDevice implements Closeable {
             throw new IllegalStateException("Device not created");
         }
 
+        // === Missed Poll Simulation ===
+        // Real systems occasionally miss polls due to scheduler preemption.
+        // ~0.01% of events may be silently dropped under load.
+        // Only apply to movement events, not button presses or SYN_REPORT.
+        if (type == EV_REL && jitterRandom.nextDouble() < MISSED_POLL_PROBABILITY) {
+            log.trace("Simulating missed poll for event type={} code={}", type, code);
+            return; // Silently drop this event
+        }
+
         // Get current time with nanosecond precision using CLOCK_REALTIME
         // (kernel expects wall-clock time in input_event, not monotonic time)
         Timespec now = new Timespec();
         LibCExt.INSTANCE.clock_gettime(0, now);  // CLOCK_REALTIME = 0
         
-        // Add realistic hardware jitter (uniform ±50μs)
-        // Real USB mice have timing variance from:
-        // - USB polling timing variance (±50μs for 1000Hz mice)
-        // - Kernel interrupt latency (±10-100μs)
-        // - HPET/TSC drift (±1-5μs)
-        // Using uniform distribution (not Gaussian) to match hardware characteristics
-        int jitterMicros = jitterRandom.nextInt(USB_JITTER_MICROS * 2 + 1) - USB_JITTER_MICROS;
+        // === Burst Mode State Machine ===
+        // Real USB drivers use interrupt coalescing: events are bundled into bursts
+        // with tight intra-burst timing, followed by larger inter-burst gaps.
+        boolean inBurst = burstEventsRemaining > 0;
+        
+        if (!inBurst) {
+            eventsSinceLastBurst++;
+            // Probabilistically enter burst mode
+            // Probability increases slightly with events since last burst
+            double burstProb = BURST_MODE_PROBABILITY * (1.0 + eventsSinceLastBurst * 0.02);
+            if (jitterRandom.nextDouble() < Math.min(burstProb, 0.25)) {
+                // Enter burst mode - Poisson-distributed burst length
+                burstEventsRemaining = samplePoisson(BURST_LENGTH_LAMBDA);
+                burstEventsRemaining = Math.max(2, Math.min(8, burstEventsRemaining));
+                eventsSinceLastBurst = 0;
+                inBurst = true;
+                log.trace("Entering burst mode: {} events", burstEventsRemaining);
+            }
+        }
+        
+        if (inBurst) {
+            burstEventsRemaining--;
+        }
+        
+        // === Multi-Source USB Jitter Model ===
+        // Real USB timing has multiple independent jitter sources that sum
+        // approximately to Gaussian (Central Limit Theorem) with occasional outliers.
+        // This passes statistical tests that uniform jitter would fail.
+        
+        // Jitter reduction factor when in burst mode (coalesced events are more uniform)
+        double burstFactor = inBurst ? BURST_JITTER_REDUCTION : 1.0;
+        
+        // 1. USB host controller jitter (very stable, small variance)
+        double hostControllerJitter = jitterRandom.nextGaussian() * HOST_CONTROLLER_JITTER_SIGMA * burstFactor;
+        
+        // 2. Mouse MCU/sensor processing jitter
+        double mcuProcessingJitter = jitterRandom.nextGaussian() * MCU_PROCESSING_JITTER_SIGMA * burstFactor;
+        
+        // 3. Kernel interrupt scheduling jitter (base variance)
+        // Inter-burst gaps have higher variance
+        double kernelSigma = inBurst ? KERNEL_IRQ_JITTER_SIGMA * burstFactor : INTER_BURST_GAP_SIGMA;
+        double kernelIrqJitter = jitterRandom.nextGaussian() * kernelSigma;
+        
+        // 4. Occasional kernel scheduling outlier (preemption, context switch)
+        // NOT deterministic (like eventCounter % N) - uses probability
+        // Less likely during bursts (coalesced interrupts)
+        double outlierJitter = 0.0;
+        double outlierProb = inBurst ? KERNEL_OUTLIER_PROBABILITY * 0.2 : KERNEL_OUTLIER_PROBABILITY;
+        if (jitterRandom.nextDouble() < outlierProb) {
+            // Log-normal distribution for occasional long delays
+            // median ~100μs, can spike to 200-600μs during system load
+            outlierJitter = Math.exp(jitterRandom.nextGaussian() * 0.7 + 4.6);
+        }
+        
+        // 5. USB frame quantization effect (events cluster around frame boundaries)
+        // More pronounced for lower polling rates (larger frame periods)
+        // Reduced during bursts (events already clustered)
+        int usbFrameMicros = 1_000_000 / pollingRate;
+        double frameQuantizationNoise = (jitterRandom.nextDouble() - 0.5) 
+                * usbFrameMicros * FRAME_QUANTIZATION_FRACTION * 2.0 * burstFactor;
+        
+        // Sum all jitter sources
+        int jitterMicros = (int)(hostControllerJitter + mcuProcessingJitter 
+                + kernelIrqJitter + outlierJitter + frameQuantizationNoise);
+        
+        // Clamp to reasonable range (prevent extreme outliers from corrupting timestamps)
+        jitterMicros = Math.max(-500, Math.min(1000, jitterMicros));
+        
         long jitterNanos = jitterMicros * 1000L;
         
         // Apply jitter to timestamp
@@ -583,6 +738,30 @@ public abstract class UInputDevice implements Closeable {
                 "UI_SET_MSCBIT(" + mscCode + ") failed: errno=" + errno + 
                 " (" + LibCExt.INSTANCE.strerror(errno) + ")");
         }
+    }
+
+    // ========================================================================
+    // Private Helpers
+    // ========================================================================
+
+    /**
+     * Sample from a Poisson distribution using inverse transform sampling.
+     * Used for burst length generation.
+     * 
+     * @param lambda the expected value (mean) of the distribution
+     * @return a random sample from Poisson(lambda)
+     */
+    private int samplePoisson(double lambda) {
+        double L = Math.exp(-lambda);
+        int k = 0;
+        double p = 1.0;
+        
+        do {
+            k++;
+            p *= jitterRandom.nextDouble();
+        } while (p > L);
+        
+        return k - 1;
     }
 
     /**

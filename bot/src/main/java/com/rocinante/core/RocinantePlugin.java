@@ -400,8 +400,7 @@ public class RocinantePlugin extends Plugin
         
         // === Wire behavioral components to input controllers ===
         
-        // Wire camera controller with player profile
-        cameraController.setPlayerProfile(playerProfile);
+        // CameraController's PlayerProfile and FatigueModel are now injected via constructor
         
         // Wire mouse camera coupler with player profile and attention model
         mouseCameraCoupler.setPlayerProfile(playerProfile);

@@ -75,6 +75,7 @@ RUN apt-get update && apt-get install -y \
     openbox \
     feh \
     x11-xserver-utils \
+    x11-utils \
     # GUI automation tools
     xdotool \
     # TOTP code generation for 2FA
@@ -229,7 +230,7 @@ USER deck
 WORKDIR /home/deck
 
 # Set display environment
-ENV DISPLAY=:99
+ENV DISPLAY=:0
 ENV JAVA_HOME=/opt/java/openjdk
 
 # Anti-fingerprint: Consistent locale settings (matches generated locale)

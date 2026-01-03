@@ -395,6 +395,91 @@ public class RandomizationTest {
     }
 
     // ========================================================================
+    // Humanized Timing Tests
+    // ========================================================================
+
+    @Test
+    public void testHumanizedDelayMs_IsWithinBounds() {
+        long min = 5;
+        long max = 20;
+        long median = 10;
+        
+        for (int i = 0; i < SAMPLE_SIZE; i++) {
+            long delay = randomization.humanizedDelayMs(median, min, max);
+            assertTrue("Delay should be >= min", delay >= min);
+            assertTrue("Delay should be <= max", delay <= max);
+        }
+    }
+
+    @Test
+    public void testHumanizedDelayMs_MedianApproximatelyCorrect() {
+        long min = 10;
+        long max = 200;
+        long median = 50;
+        
+        long[] samples = new long[SAMPLE_SIZE * 10]; // More samples for better median estimate
+        for (int i = 0; i < samples.length; i++) {
+            samples[i] = randomization.humanizedDelayMs(median, 0.4, min, max);
+        }
+        
+        Arrays.sort(samples);
+        long sampleMedian = samples[samples.length / 2];
+        
+        // Median should be within 30% of specified (log-normal has asymmetric tails)
+        assertTrue("Sample median should be close to specified median",
+                Math.abs(sampleMedian - median) < median * 0.3);
+    }
+
+    @Test
+    public void testHumanizedDelayMs_HasPositiveSkew() {
+        // Log-normal distribution has positive skew (mean > median)
+        long min = 5;
+        long max = 100;
+        long median = 20;
+        
+        long[] samples = new long[SAMPLE_SIZE * 10];
+        for (int i = 0; i < samples.length; i++) {
+            samples[i] = randomization.humanizedDelayMs(median, 0.5, min, max);
+        }
+        
+        double mean = calculateMean(samples);
+        Arrays.sort(samples);
+        double sampleMedian = samples[samples.length / 2];
+        
+        // Mean should be greater than median for positive skew
+        assertTrue("Mean should be >= median (positive skew)", mean >= sampleMedian * 0.95);
+    }
+
+    @Test
+    public void testHumanizedDelayMs_NotUniform() {
+        // Verify the distribution is NOT uniform (would fail K-S test)
+        // For uniform, values should be evenly distributed in quartiles
+        // For log-normal, more values cluster below the median
+        long min = 10;
+        long max = 100;
+        long median = 30;
+        
+        int belowMedian = 0;
+        int aboveMedian = 0;
+        int samples = SAMPLE_SIZE * 10;
+        
+        for (int i = 0; i < samples; i++) {
+            long delay = randomization.humanizedDelayMs(median, 0.4, min, max);
+            if (delay < median) {
+                belowMedian++;
+            } else {
+                aboveMedian++;
+            }
+        }
+        
+        // For log-normal centered on median, roughly 50% should be below
+        // The key is it's NOT 50% for min to median vs median to max in terms of range
+        double belowRatio = (double) belowMedian / samples;
+        assertTrue("Roughly half should be below median", 
+                belowRatio > 0.35 && belowRatio < 0.65);
+    }
+
+    // ========================================================================
     // Helper Methods
     // ========================================================================
 

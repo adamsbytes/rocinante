@@ -179,20 +179,27 @@ public class PlayerProfile {
     // ========================================================================
 
     /**
-     * Generate a new profile from account name as seed.
-     * Creates a deterministic but unique behavioral fingerprint.
+     * Generate a new profile with a cryptographically random seed.
      * 
-     * @param accountName the account name to generate profile for
+     * CRITICAL: Uses SecureRandom for the seed, NOT derived from account name.
+     * This prevents prediction of profile characteristics from known usernames.
+     * The random seed is stored in the profile and used for any future
+     * regeneration to maintain consistency.
+     * 
+     * @param accountName the account name (used only for identification, not seeding)
      * @param accountType optional account type for type-specific defaults (null = unknown/normal)
      */
     private void generateNewProfile(String accountName, com.rocinante.behavior.AccountType accountType) {
-        long seed = generateSeed(accountName);
+        // CRITICAL: Use cryptographically random seed, NOT derived from account name
+        // This prevents attackers from predicting profile characteristics
+        long seed = generateCryptographicSeed();
         Random seededRandom = new Random(seed);
         Randomization seededRandomization = new Randomization(seed);
 
         profileData = new ProfileData();
         profileData.schemaVersion = CURRENT_SCHEMA_VERSION;
         profileData.accountHash = accountHash;
+        profileData.profileSeed = seed;  // Store seed for future regeneration consistency
         profileData.createdAt = Instant.now();
         
         // === Input characteristics (from InputProfile) ===
@@ -214,30 +221,75 @@ public class PlayerProfile {
         // Error rates
         profileData.baseMisclickRate = 0.01 + seededRandom.nextDouble() * 0.02;  // 1-3%
         profileData.baseTypoRate = 0.005 + seededRandom.nextDouble() * 0.015;    // 0.5-2%
-        profileData.overshootProbability = 0.08 + seededRandom.nextDouble() * 0.07;  // 8-15%
-        profileData.microCorrectionProbability = 0.15 + seededRandom.nextDouble() * 0.10;  // 15-25%
+        
+        // === Overshoot probability correlates with mouse speed ===
+        // Fast players overshoot more - they sacrifice precision for speed
+        // Base: 8-15%, adjusted by speed multiplier
+        double overshootBase = 0.08 + seededRandom.nextDouble() * 0.07;
+        // Higher speed = more overshoot (up to +5% at max speed)
+        double speedOvershootBonus = (profileData.mouseSpeedMultiplier - MIN_MOUSE_SPEED) 
+                / (MAX_MOUSE_SPEED - MIN_MOUSE_SPEED) * 0.05;
+        profileData.overshootProbability = Math.min(0.20, overshootBase + speedOvershootBonus);
+        
+        // === Micro-correction correlates with overshoot ===
+        // Players who overshoot more also need more corrections
+        // Base: 15-25%, plus correlation with overshoot
+        double correctionBase = 0.15 + seededRandom.nextDouble() * 0.08;
+        double overshootCorrectionBonus = (profileData.overshootProbability - 0.08) * 0.5;
+        profileData.microCorrectionProbability = Math.min(0.30, correctionBase + overshootCorrectionBonus);
         
         // === Drag wobble characteristics ===
         // Each player has unique hand tremor patterns
+        // Tremor frequency is mostly physiological (less controllable)
         profileData.wobbleFrequencyBase = 2.5 + seededRandom.nextDouble() * 1.5;  // 2.5-4.0 Hz
         profileData.wobbleFrequencyVariance = 0.3 + seededRandom.nextDouble() * 0.5;  // 0.3-0.8
-        profileData.wobbleAmplitudeModifier = 0.7 + seededRandom.nextDouble() * 0.6;  // 0.7-1.3
         
-        // === Click timing (ex-Gaussian parameters) ===
-        // Each player has unique click "feel" - some snappy, some deliberate
-        profileData.clickDurationMu = 75.0 + seededRandom.nextDouble() * 20.0;  // 75-95ms mean
-        profileData.clickDurationSigma = 10.0 + seededRandom.nextDouble() * 10.0;  // 10-20ms std
-        profileData.clickDurationTau = 5.0 + seededRandom.nextDouble() * 10.0;  // 5-15ms tail
+        // Wobble amplitude correlates with mouse speed (fast players have more tremor)
+        // Speed increases arm movement, which increases visible tremor
+        double wobbleBase = 0.7 + seededRandom.nextDouble() * 0.4;
+        double speedWobbleBonus = (profileData.mouseSpeedMultiplier - MIN_MOUSE_SPEED) 
+                / (MAX_MOUSE_SPEED - MIN_MOUSE_SPEED) * 0.25;
+        profileData.wobbleAmplitudeModifier = Math.min(1.4, wobbleBase + speedWobbleBonus);
         
-        // === Cognitive delay ===
-        // Each player has different "thinking speed"
-        profileData.cognitiveDelayBase = 80.0 + seededRandom.nextDouble() * 120.0;  // 80-200ms
+        // === Click timing correlates with mouse speed ===
+        // Fast players have snappier (shorter) clicks
+        // Base: 75-95ms, adjusted by speed
+        double clickMuBase = 75.0 + seededRandom.nextDouble() * 15.0;
+        // Faster movers have shorter clicks (up to -10ms at max speed)
+        double speedClickReduction = (profileData.mouseSpeedMultiplier - MIN_MOUSE_SPEED) 
+                / (MAX_MOUSE_SPEED - MIN_MOUSE_SPEED) * 10.0;
+        profileData.clickDurationMu = Math.max(65.0, clickMuBase - speedClickReduction);
+        
+        // Variance correlates inversely with speed (fast players are more consistent)
+        double clickSigmaBase = 10.0 + seededRandom.nextDouble() * 8.0;
+        double speedSigmaReduction = (profileData.mouseSpeedMultiplier - MIN_MOUSE_SPEED) 
+                / (MAX_MOUSE_SPEED - MIN_MOUSE_SPEED) * 4.0;
+        profileData.clickDurationSigma = Math.max(8.0, clickSigmaBase - speedSigmaReduction);
+        
+        // Tail heaviness (tau) - slower players have more occasional "long clicks"
+        double clickTauBase = 5.0 + seededRandom.nextDouble() * 8.0;
+        double speedTauReduction = (profileData.mouseSpeedMultiplier - MIN_MOUSE_SPEED) 
+                / (MAX_MOUSE_SPEED - MIN_MOUSE_SPEED) * 4.0;
+        profileData.clickDurationTau = Math.max(3.0, clickTauBase - speedTauReduction);
+        
+        // === Cognitive delay correlates with mouse speed ===
+        // Fast players tend to think faster (react quicker)
+        // Base: 80-200ms, adjusted by speed multiplier
+        double cognitiveBase = 80.0 + seededRandom.nextDouble() * 100.0;
+        // Faster movers have lower cognitive delay (up to -40ms at max speed)
+        double speedCognitiveReduction = (profileData.mouseSpeedMultiplier - MIN_MOUSE_SPEED) 
+                / (MAX_MOUSE_SPEED - MIN_MOUSE_SPEED) * 40.0;
+        profileData.cognitiveDelayBase = Math.max(60.0, cognitiveBase - speedCognitiveReduction);
         profileData.cognitiveDelayVariance = 0.3 + seededRandom.nextDouble() * 0.4;  // 0.3-0.7
         
         // === Motor speed correlation ===
         // How tightly coupled is mouse speed with click speed
         // Higher = "fast players" are fast at both, "slow players" slow at both
-        profileData.motorSpeedCorrelation = 0.5 + seededRandom.nextDouble() * 0.4;  // 0.5-0.9
+        // Correlate with mouse speed (fast players are more consistently fast)
+        double motorCorrelationBase = 0.5 + seededRandom.nextDouble() * 0.3;
+        double speedCorrelationBonus = (profileData.mouseSpeedMultiplier - MIN_MOUSE_SPEED) 
+                / (MAX_MOUSE_SPEED - MIN_MOUSE_SPEED) * 0.15;
+        profileData.motorSpeedCorrelation = Math.min(0.95, motorCorrelationBase + speedCorrelationBonus);
         
         // === Tick jitter (perception delay) ===
         // Each player has unique perception/reaction timing characteristics
@@ -249,26 +301,55 @@ public class PlayerProfile {
         // Occasional skipped ticks and attention lapses create human-like variance
         profileData.tickSkipBaseProbability = 0.03 + seededRandom.nextDouble() * 0.05;  // 3-8%
         profileData.attentionLapseProbability = 0.005 + seededRandom.nextDouble() * 0.015;  // 0.5-2%
-        profileData.anticipationProbability = 0.10 + seededRandom.nextDouble() * 0.10;  // 10-20%
+        
+        // === Anticipation and Hesitation are inversely correlated ===
+        // Players who anticipate well don't hesitate as much (confident/decisive)
+        // Players who hesitate a lot don't anticipate as well (cautious/uncertain)
+        // Use a shared "decisiveness" factor to create inverse correlation
+        double decisiveness = seededRandom.nextDouble();  // 0=cautious, 1=decisive
+        
+        // High decisiveness = high anticipation, low hesitation
+        // Low decisiveness = low anticipation, high hesitation
+        profileData.anticipationProbability = 0.10 + decisiveness * 0.12;  // 10-22% (decisive players anticipate more)
+        profileData.hesitationProbability = 0.10 + (1.0 - decisiveness) * 0.18;  // 10-28% (cautious players hesitate more)
+        
+        // Add small noise to break perfect inverse correlation (real humans aren't perfectly predictable)
+        profileData.anticipationProbability += (seededRandom.nextDouble() - 0.5) * 0.04;  // ±2%
+        profileData.hesitationProbability += (seededRandom.nextDouble() - 0.5) * 0.04;    // ±2%
+        profileData.anticipationProbability = Math.max(0.08, Math.min(0.25, profileData.anticipationProbability));
+        profileData.hesitationProbability = Math.max(0.08, Math.min(0.30, profileData.hesitationProbability));
         
         // === Mouse path complexity ===
         // Each player has unique movement patterns
-        profileData.hesitationProbability = 0.10 + seededRandom.nextDouble() * 0.15;  // 10-25%
-        profileData.submovementProbability = 0.15 + seededRandom.nextDouble() * 0.15; // 15-30%
+        // Submovement correlates slightly with hesitation (hesitant players have more submovements)
+        double submovementBase = 0.15 + seededRandom.nextDouble() * 0.10;
+        double hesitationSubmovementBonus = (profileData.hesitationProbability - 0.10) * 0.3;
+        profileData.submovementProbability = Math.min(0.35, submovementBase + hesitationSubmovementBonus);
         profileData.usesPathSegmentation = seededRandom.nextDouble() > 0.3;           // 70% use segmentation
         
         // === Physiological Physics Engine Parameters ===
         // Velocity skew (Asymmetry): 0.2-0.8 (0.3=snappy/fast start, 0.6=lazy/slow start)
-        profileData.velocityFlow = 0.25 + seededRandom.nextDouble() * 0.5;
+        // Fast players tend to have snappier (lower) velocity flow
+        double velocityFlowBase = 0.25 + seededRandom.nextDouble() * 0.4;
+        double speedVelocityReduction = (profileData.mouseSpeedMultiplier - MIN_MOUSE_SPEED) 
+                / (MAX_MOUSE_SPEED - MIN_MOUSE_SPEED) * 0.15;
+        profileData.velocityFlow = Math.max(0.2, velocityFlowBase - speedVelocityReduction);
         
-        // Physiological tremor: 8-12Hz
+        // Physiological tremor: 8-12Hz (mostly fixed per individual)
         profileData.physTremorFreq = 8.0 + seededRandom.nextDouble() * 4.0;
         
-        // Tremor Amplitude: 0.2-1.5 pixels (base noise)
-        profileData.physTremorAmp = 0.2 + seededRandom.nextDouble() * 1.3;
+        // Tremor Amplitude correlates with wobble amplitude (same underlying physiology)
+        // Plus slight correlation with mouse speed (fast movements = more visible tremor)
+        double tremorBase = 0.2 + seededRandom.nextDouble() * 0.8;
+        // Correlate with wobble (~30% of wobble modifier transferred to tremor)
+        double wobbleCorrelation = (profileData.wobbleAmplitudeModifier - 0.7) * 0.4;
+        profileData.physTremorAmp = Math.max(0.2, Math.min(1.5, tremorBase + wobbleCorrelation));
         
-        // Motor unit quantization (Jerk): 0.0-1.5 pixels
-        profileData.motorUnitThreshold = seededRandom.nextDouble() * 1.5;
+        // Motor unit quantization (Jerk): correlates inversely with precision
+        // Fast players with high overshoot have more motor quantization (less smooth)
+        double motorUnitBase = seededRandom.nextDouble() * 1.0;
+        double overshootMotorBonus = (profileData.overshootProbability - 0.08) * 3.0;
+        profileData.motorUnitThreshold = Math.min(1.5, motorUnitBase + overshootMotorBonus);
 
         // === Fitts' Law Parameters ===
         // Each person has unique motor characteristics that determine their
@@ -1022,7 +1103,26 @@ public class PlayerProfile {
     // Seed/Hash Generation
     // ========================================================================
 
-    private long generateSeed(String accountName) {
+    /**
+     * Generate a cryptographically random seed for profile generation.
+     * 
+     * CRITICAL: This must be truly random to prevent prediction attacks.
+     * An attacker who knows the username should NOT be able to predict
+     * any profile characteristics.
+     * 
+     * @return 64-bit cryptographically random seed
+     */
+    private long generateCryptographicSeed() {
+        java.security.SecureRandom secureRandom = new java.security.SecureRandom();
+        return secureRandom.nextLong();
+    }
+
+    /**
+     * @deprecated Use {@link #generateCryptographicSeed()} instead.
+     * Kept for backward compatibility with profile migration.
+     */
+    @Deprecated
+    private long generateSeedFromAccountName(String accountName) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             String salted = accountName + "_rocinante_behavioral_v1";
@@ -1282,6 +1382,19 @@ public class PlayerProfile {
                 entry.setValue(Math.max(MIN_WEIGHT, entry.getValue() - reduction));
             }
         }
+    }
+
+    // ========================================================================
+    // Profile Metadata Accessors
+    // ========================================================================
+
+    /**
+     * Get the cryptographically random seed used to generate this profile.
+     * Used for deterministic but unique-per-profile behaviors like Perlin noise patterns.
+     * @return the profile seed
+     */
+    public long getProfileSeed() {
+        return profileData.profileSeed;
     }
 
     // ========================================================================
@@ -1986,6 +2099,14 @@ public class PlayerProfile {
         // Schema versioning
         int schemaVersion = CURRENT_SCHEMA_VERSION;
         String accountHash;
+        
+        /**
+         * Cryptographically random seed used to generate this profile.
+         * CRITICAL: This must be truly random, NOT derived from account name.
+         * Stored so that future regeneration (e.g., adding new fields) maintains consistency.
+         */
+        long profileSeed;
+        
         volatile Instant createdAt;
         volatile Instant lastSessionStart;
         volatile Instant lastLogout;
