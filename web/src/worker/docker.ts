@@ -386,6 +386,13 @@ async function startBotWithConfig(bot: BotConfig): Promise<void> {
         // Steam Deck has 4 cores / 8 threads - limit to match availableProcessors()
         CpusetCpus: '0-7',
         ShmSize: 256 * 1024 * 1024,
+        Devices: [
+          {
+            PathOnHost: '/dev/uinput',
+            PathInContainer: '/dev/uinput',
+            CgroupPermissions: 'rwm',
+          },
+        ],
         Binds: [
           `${boltDataDir}:/home/deck/.local/share/bolt-launcher`,
           `${statusDir}:${boltLauncherPath}/rocinante`,

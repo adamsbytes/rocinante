@@ -6,6 +6,8 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.rocinante.input.ScreenRegion;
+import com.rocinante.input.uinput.DevicePreset;
+import com.rocinante.input.uinput.DeviceType;
 import com.rocinante.util.Randomization;
 import lombok.Getter;
 import lombok.Setter;
@@ -250,6 +252,19 @@ public class PlayerProfile {
         profileData.submovementProbability = 0.15 + seededRandom.nextDouble() * 0.15; // 15-30%
         profileData.usesPathSegmentation = seededRandom.nextDouble() > 0.3;           // 70% use segmentation
         
+        // === Physiological Physics Engine Parameters ===
+        // Velocity skew (Asymmetry): 0.2-0.8 (0.3=snappy/fast start, 0.6=lazy/slow start)
+        profileData.velocityFlow = 0.25 + seededRandom.nextDouble() * 0.5;
+        
+        // Physiological tremor: 8-12Hz
+        profileData.physTremorFreq = 8.0 + seededRandom.nextDouble() * 4.0;
+        
+        // Tremor Amplitude: 0.2-1.5 pixels (base noise)
+        profileData.physTremorAmp = 0.2 + seededRandom.nextDouble() * 1.3;
+        
+        // Motor unit quantization (Jerk): 0.0-1.5 pixels
+        profileData.motorUnitThreshold = seededRandom.nextDouble() * 1.5;
+
         // === Break behavior ===
         profileData.breakFatigueThreshold = MIN_BREAK_THRESHOLD +
                 seededRandom.nextDouble() * (MAX_BREAK_THRESHOLD - MIN_BREAK_THRESHOLD);
@@ -370,11 +385,23 @@ public class PlayerProfile {
         profileData.peakHourOffset = -2.0 + seededRandom.nextDouble() * 4.0;  // -2 to +2 hours
         profileData.circadianStrength = 0.1 + seededRandom.nextDouble() * 0.4;  // 0.1-0.5
 
-        log.info("Generated new profile: mouseSpeed={}, clickVar={}, breakThreshold={}, rituals={}",
+        // === UInput Device Presets (hardware identity spoofing) ===
+        // Select matching mouse + keyboard pair (70% same brand, 30% mixed)
+        DevicePreset[] devicePair = DevicePreset.randomMatchingPair(seededRandom);
+        profileData.mouseDevicePreset = devicePair[0].name();
+        profileData.keyboardDevicePreset = devicePair[1].name();
+        
+        // Select polling rates (usually 1000Hz for gaming mice, but we vary it)
+        profileData.mousePollingRate = devicePair[0].selectPollingRate(seededRandom);
+        profileData.keyboardPollingRate = devicePair[1].selectPollingRate(seededRandom);
+
+        log.info("Generated new profile: mouseSpeed={}, clickVar={}, breakThreshold={}, rituals={}, devices=[{}, {}]",
                 String.format("%.2f", profileData.mouseSpeedMultiplier),
                 String.format("%.2f", profileData.clickVarianceModifier),
                 String.format("%.2f", profileData.breakFatigueThreshold),
-                profileData.sessionRituals);
+                profileData.sessionRituals,
+                profileData.mouseDevicePreset,
+                profileData.keyboardDevicePreset);
     }
 
     // ========================================================================
@@ -498,6 +525,22 @@ public class PlayerProfile {
         profileData.submovementProbability = applyDrift(profileData.submovementProbability, 0.15, 0.30, 0.005);
         recordChange(changes, "hesitationProbability", beforeHesitation, profileData.hesitationProbability);
         recordChange(changes, "submovementProbability", beforeSubmovement, profileData.submovementProbability);
+
+        // === Physiological Drift ===
+        // Velocity skew drift (mood/energy affects this)
+        double beforeSkew = profileData.velocityFlow;
+        profileData.velocityFlow = applyDrift(profileData.velocityFlow, 0.2, 0.8, 0.05); // Moderate drift
+        recordChange(changes, "velocityFlow", beforeSkew, profileData.velocityFlow);
+
+        // Tremor amplitude drift (caffeine, fatigue, stress - highly variable)
+        double beforeTremorAmp = profileData.physTremorAmp;
+        profileData.physTremorAmp = applyDrift(profileData.physTremorAmp, 0.2, 2.0, 0.10); // High drift
+        recordChange(changes, "physTremorAmp", beforeTremorAmp, profileData.physTremorAmp);
+
+        // Tremor frequency drift (very stable biological constant)
+        double beforeTremorFreq = profileData.physTremorFreq;
+        profileData.physTremorFreq = applyDrift(profileData.physTremorFreq, 8.0, 12.0, 0.01); // Tiny drift
+        recordChange(changes, "physTremorFreq", beforeTremorFreq, profileData.physTremorFreq);
 
         recordDrift(DriftType.SESSION, changes);
         log.debug("Applied session drift (session #{})", profileData.sessionCount);
@@ -1442,6 +1485,47 @@ public class PlayerProfile {
     }
 
     // ========================================================================
+    // Physiological Physics Engine Accessors
+    // ========================================================================
+
+    /**
+     * Get the velocity flow (skew) parameter.
+     * Determines asymmetry of movement acceleration.
+     * 0.2 = fast start (snappy), 0.8 = slow start (lazy).
+     * @return flow parameter (0.2-0.8)
+     */
+    public double getVelocityFlow() {
+        return profileData.velocityFlow;
+    }
+
+    /**
+     * Get physiological tremor frequency.
+     * Base alpha rhythm of the nervous system.
+     * @return frequency in Hz (8.0-12.0)
+     */
+    public double getPhysTremorFreq() {
+        return profileData.physTremorFreq;
+    }
+
+    /**
+     * Get physiological tremor amplitude.
+     * Base noise scale for hand stability.
+     * @return amplitude in pixels (0.2-1.5)
+     */
+    public double getPhysTremorAmp() {
+        return profileData.physTremorAmp;
+    }
+
+    /**
+     * Get motor unit recruitment threshold.
+     * Simulates "steppiness" of movement due to muscle quantization.
+     * @return threshold in pixels (0.0-1.5)
+     */
+    public double getMotorUnitThreshold() {
+        return profileData.motorUnitThreshold;
+    }
+
+    // ========================================================================
     // Behavioral Accessors
     // ========================================================================
 
@@ -1639,6 +1723,64 @@ public class PlayerProfile {
      */
     public String getTimezone() {
         return profileData.timezone;
+    }
+
+    // ========================================================================
+    // UInput Device Preset Accessors
+    // ========================================================================
+
+    /**
+     * Get the mouse device preset for uinput hardware spoofing.
+     * @return DevicePreset for the virtual mouse device
+     * @throws IllegalStateException if the preset name is invalid (no fallbacks allowed)
+     */
+    public DevicePreset getMouseDevicePreset() {
+        String presetName = profileData.mouseDevicePreset;
+        DevicePreset preset = DevicePreset.byName(presetName);
+        if (preset == null) {
+            throw new IllegalStateException("Invalid mouse device preset: '" + presetName + 
+                "'. Profile may be corrupted. Available presets: " + 
+                java.util.Arrays.toString(DevicePreset.values()));
+        }
+        if (preset.getDeviceType() != DeviceType.MOUSE) {
+            throw new IllegalStateException("Preset '" + presetName + "' is not a mouse device");
+        }
+        return preset;
+    }
+
+    /**
+     * Get the keyboard device preset for uinput hardware spoofing.
+     * @return DevicePreset for the virtual keyboard device
+     * @throws IllegalStateException if the preset name is invalid (no fallbacks allowed)
+     */
+    public DevicePreset getKeyboardDevicePreset() {
+        String presetName = profileData.keyboardDevicePreset;
+        DevicePreset preset = DevicePreset.byName(presetName);
+        if (preset == null) {
+            throw new IllegalStateException("Invalid keyboard device preset: '" + presetName + 
+                "'. Profile may be corrupted. Available presets: " + 
+                java.util.Arrays.toString(DevicePreset.values()));
+        }
+        if (preset.getDeviceType() != DeviceType.KEYBOARD) {
+            throw new IllegalStateException("Preset '" + presetName + "' is not a keyboard device");
+        }
+        return preset;
+    }
+    
+    /**
+     * Get the mouse polling rate in Hz.
+     * Selected during profile generation from the device's supported rates.
+     */
+    public int getMousePollingRate() {
+        return profileData.mousePollingRate;
+    }
+    
+    /**
+     * Get the keyboard polling rate in Hz.
+     * Selected during profile generation from the device's supported rates.
+     */
+    public int getKeyboardPollingRate() {
+        return profileData.keyboardPollingRate;
     }
     
     /**
@@ -1897,6 +2039,36 @@ public class PlayerProfile {
          * Segmented = ballistic -> approach -> fine-tune phases.
          */
         volatile boolean usesPathSegmentation = true;
+        
+        // === Physiological Physics Engine Parameters ===
+        /**
+         * Velocity flow/skew (Asymmetry).
+         * Determines peak acceleration point.
+         * 0.3 = fast start (snappy), 0.6 = slow start (lazy).
+         * Range: 0.2 - 0.8
+         */
+        volatile double velocityFlow = 0.4;
+
+        /**
+         * Physiological tremor frequency (Hz).
+         * Base alpha rhythm of the nervous system.
+         * Range: 8.0 - 12.0
+         */
+        volatile double physTremorFreq = 10.0;
+
+        /**
+         * Physiological tremor amplitude (pixels).
+         * Base noise scale.
+         * Range: 0.2 - 1.5
+         */
+        volatile double physTremorAmp = 0.5;
+
+        /**
+         * Motor unit quantization threshold (pixels).
+         * Simulates "jerk" or stepping in movement.
+         * Range: 0.0 - 1.5
+         */
+        volatile double motorUnitThreshold = 0.5;
 
         // === Break behavior ===
         volatile double breakFatigueThreshold = 0.80;
@@ -2091,6 +2263,33 @@ public class PlayerProfile {
          */
         String timezone = "America/New_York";
         
+        // === UInput Device Presets (hardware identity spoofing) ===
+        /**
+         * Mouse device preset name for uinput virtual device.
+         * Selected randomly during profile generation for realistic hardware fingerprint.
+         */
+        String mouseDevicePreset = "STEAMDECK_MOUSE";
+        
+        /**
+         * Keyboard device preset name for uinput virtual device.
+         * Selected randomly during profile generation, often matching mouse brand.
+         */
+        String keyboardDevicePreset = "STEAMDECK_KEYBOARD";
+        
+        /**
+         * Mouse polling rate in Hz.
+         * Selected from the device's supported rates during profile generation.
+         * Common gaming values: 125, 250, 500, 1000.
+         */
+        int mousePollingRate = 1000;
+        
+        /**
+         * Keyboard polling rate in Hz.
+         * Selected from the device's supported rates during profile generation.
+         * Most keyboards use 1000Hz, some older/budget ones use 125Hz.
+         */
+        int keyboardPollingRate = 1000;
+        
         // === Chronotype (circadian rhythm preferences) ===
         /**
          * The player's chronotype: "EARLY_BIRD", "NIGHT_OWL", or "NEUTRAL".
@@ -2128,4 +2327,3 @@ public class PlayerProfile {
         }
     }
 }
-

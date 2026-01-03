@@ -188,6 +188,19 @@ echo "Starting Openbox window manager..."
 openbox &
 sleep 1
 
+# Start compositor for proper rendering and less detectable display
+echo "Starting picom compositor..."
+picom --backend xrender --no-fading-openclose --no-vsync -b 2>/dev/null || true
+
+# Start D-Bus session bus (required for upower and other services)
+echo "Starting D-Bus session..."
+eval $(dbus-launch --sh-syntax) 2>/dev/null || true
+
+# Start upower daemon (queries our spoofed /sys/class/power_supply files)
+echo "Starting upower daemon..."
+/usr/libexec/upowerd &
+sleep 0.5
+
 # Set a nice desktop background (dark gradient)
 xsetroot -solid "#1a1a2e"
 
@@ -229,7 +242,8 @@ fc-cache -f 2>/dev/null || true
 # Anti-fingerprint: Generate deterministic junk files
 # =============================================================================
 generate_junk_files() {
-    local seed_str="${HOSTNAME:-unknown}"
+    # Use machine-id for per-bot determinism (hostname is always "steamdeck")
+    local seed_str=$(cat /etc/machine-id)
     local seed=0
     
     for (( i=0; i<${#seed_str}; i++ )); do

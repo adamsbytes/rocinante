@@ -6,6 +6,8 @@ import com.google.inject.Singleton;
 import com.rocinante.behavior.tasks.*;
 import com.rocinante.input.CameraController;
 import com.rocinante.input.MouseCameraCoupler;
+import com.rocinante.input.RobotMouseController;
+import com.rocinante.input.RobotKeyboardController;
 import com.rocinante.state.IronmanState;
 import com.rocinante.tasks.Task;
 import com.rocinante.timing.HumanTimer;
@@ -15,7 +17,6 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.client.callback.ClientThread;
 
-import java.awt.AWTException;
 import java.util.function.Function;
 
 /**
@@ -98,13 +99,10 @@ public class BehaviorModule extends AbstractModule {
     @Provides
     @Singleton
     public CameraController provideCameraController(Client client, Randomization randomization, 
-                                                     PerlinNoise perlinNoise) {
-        try {
-            return new CameraController(client, randomization, perlinNoise);
-        } catch (AWTException e) {
-            log.error("Failed to create CameraController", e);
-            throw new RuntimeException("Failed to create CameraController", e);
-        }
+                                                     PerlinNoise perlinNoise,
+                                                     RobotMouseController mouseController,
+                                                     RobotKeyboardController keyboardController) {
+        return new CameraController(client, randomization, perlinNoise, mouseController, keyboardController);
     }
 
     /**

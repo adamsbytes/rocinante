@@ -2,6 +2,7 @@ package com.rocinante.input;
 
 import com.rocinante.behavior.FatigueModel;
 import com.rocinante.behavior.PlayerProfile;
+import com.rocinante.input.uinput.UInputMouseDevice;
 import com.rocinante.util.PerlinNoise;
 import com.rocinante.util.Randomization;
 import lombok.Getter;
@@ -19,6 +20,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.*;
+
+import static com.rocinante.input.uinput.LinuxInputConstants.*;
 
 /**
  * Humanized mouse controller using java.awt.Robot.
@@ -51,12 +54,13 @@ public class RobotMouseController {
     private static final double MIN_CONTROL_OFFSET_PERCENT = 0.05;
     private static final double MAX_CONTROL_OFFSET_PERCENT = 0.15;
 
-    // Duration calculation constants
-    private static final double DURATION_DISTANCE_FACTOR = 10.0;
-    private static final double DURATION_RANDOM_MEAN = 100.0;
-    private static final double DURATION_RANDOM_STDDEV = 25.0;
+    // Fitts' Law constants for duration calculation
+    // Movement time = a + b * log2(1 + Distance / Width)
+    private static final double FITTS_A = 50.0;  // Base reaction time (ms)
+    private static final double FITTS_B = 100.0; // Index of difficulty scaler (ms/bit)
+    private static final double DEFAULT_TARGET_WIDTH = 20.0; // Fallback for blind movements
     private static final long MIN_DURATION_MS = 80;
-    private static final long MAX_DURATION_MS = 1500;
+    private static final long MAX_DURATION_MS = 2500; // Increased for very difficult targets
 
     // Noise injection constants
     private static final double MIN_NOISE_AMPLITUDE = 1.0;
@@ -126,7 +130,7 @@ public class RobotMouseController {
     private static final long MIN_DRIFT_DURATION_MS = 500;
     private static final long MAX_DRIFT_DURATION_MS = 2000;
 
-    private final Robot robot;
+    private final UInputMouseDevice mouseDevice;
     private final Client client;
     private final Randomization randomization;
     private final PerlinNoise perlinNoise;
@@ -192,7 +196,7 @@ public class RobotMouseController {
     @Inject
     public RobotMouseController(Client client, Randomization randomization, PerlinNoise perlinNoise,
                                 PlayerProfile playerProfile, FatigueModel fatigueModel,
-                                ClientThread clientThread) throws AWTException {
+                                ClientThread clientThread) {
         this(client, randomization, perlinNoise, playerProfile, fatigueModel, clientThread,
                 Executors.newSingleThreadScheduledExecutor(r -> {
                     Thread t = new Thread(r, "RobotMouseController");
@@ -205,7 +209,7 @@ public class RobotMouseController {
      * Testing constructor (no ClientThread injection).
      */
     public RobotMouseController(Client client, Randomization randomization, PerlinNoise perlinNoise,
-                                PlayerProfile playerProfile, FatigueModel fatigueModel) throws AWTException {
+                                PlayerProfile playerProfile, FatigueModel fatigueModel) {
         this(client, randomization, perlinNoise, playerProfile, fatigueModel, null,
                 Executors.newSingleThreadScheduledExecutor(r -> {
                     Thread t = new Thread(r, "RobotMouseController");
@@ -216,9 +220,15 @@ public class RobotMouseController {
 
     private RobotMouseController(Client client, Randomization randomization, PerlinNoise perlinNoise,
                                  PlayerProfile playerProfile, FatigueModel fatigueModel,
-                                 ClientThread clientThread, ScheduledExecutorService executor) throws AWTException {
-        this.robot = new Robot();
-        this.robot.setAutoDelay(0); // We handle delays ourselves
+                                 ClientThread clientThread, ScheduledExecutorService executor) {
+        // Create UInput virtual mouse device using profile preset and polling rate
+        // This injects input at the kernel level, bypassing java.awt.Robot's XTest flag
+        // The machineId is used for deterministic physical path generation across restarts
+        this.mouseDevice = new UInputMouseDevice(
+            playerProfile.getMouseDevicePreset(),
+            playerProfile.getMousePollingRate(),
+            playerProfile.getMachineId()
+        );
         this.client = client;
         this.randomization = randomization;
         this.perlinNoise = perlinNoise;
@@ -227,14 +237,12 @@ public class RobotMouseController {
         this.clientThread = clientThread;
         this.executor = executor;
 
-        // Initialize current position
-        try {
-            this.currentPosition = MouseInfo.getPointerInfo().getLocation();
-        } catch (Exception e) {
-            this.currentPosition = new Point(400, 300); // Fallback
-        }
+        // Sync with actual cursor position
+        mouseDevice.syncPosition();
+        this.currentPosition = mouseDevice.getPosition();
 
-        log.info("RobotMouseController initialized");
+        log.info("RobotMouseController initialized with UInput device: {}", 
+                playerProfile.getMouseDevicePreset().getName());
     }
     
     // ========================================================================
@@ -358,33 +366,24 @@ public class RobotMouseController {
     /**
      * Move mouse to screen coordinates using humanized Bezier curve movement.
      * 
-     * <p>Use this only when you have actual screen coordinates (e.g., from MouseInfo).
-     * For game element coordinates, use {@link #moveToCanvas(int, int)}.
-     *
-     * <p><b>THE HARD GUARD:</b> This is the ONLY place that blocks clicks outside the
-     * game window. All mouse operations flow through here. Planning/visibility checks
-     * belong at higher layers (InteractionHelper) which should handle camera rotation
-     * before reaching this point.
-     *
      * @param screenX target X in screen coordinates
      * @param screenY target Y in screen coordinates
+     * @param targetWidth estimated width of the target (for Fitts' Law), or -1 for default
      * @return CompletableFuture that completes when movement is done
-     * @throws IllegalArgumentException via failed future if point is outside canvas
      */
-    public CompletableFuture<Void> moveToScreen(int screenX, int screenY) {
+    public CompletableFuture<Void> moveToScreen(int screenX, int screenY, double targetWidth) {
         // THE HARD GUARD: Nothing leaves the game window. Period.
         if (!isPointInViewport(screenX, screenY)) {
-            log.error("HARD GUARD: Screen point ({}, {}) is outside canvas - this should have been caught earlier!", 
-                    screenX, screenY);
+            log.error("HARD GUARD: Screen point ({}, {}) is outside canvas", screenX, screenY);
             return CompletableFuture.failedFuture(
-                    new IllegalArgumentException("Screen point (" + screenX + ", " + screenY + ") is outside canvas - planning layer should have rotated camera"));
+                    new IllegalArgumentException("Screen point outside canvas"));
         }
         
         CompletableFuture<Void> future = new CompletableFuture<>();
 
         executor.execute(() -> {
             try {
-                executeMovement(screenX, screenY);
+                executeMovement(screenX, screenY, targetWidth <= 0 ? DEFAULT_TARGET_WIDTH : targetWidth);
                 future.complete(null);
             } catch (Exception e) {
                 log.error("Mouse movement failed", e);
@@ -393,6 +392,14 @@ public class RobotMouseController {
         });
 
         return future;
+    }
+
+    /**
+     * Move mouse to screen coordinates using humanized Bezier curve movement.
+     * Uses default target width.
+     */
+    public CompletableFuture<Void> moveToScreen(int screenX, int screenY) {
+        return moveToScreen(screenX, screenY, DEFAULT_TARGET_WIDTH);
     }
 
     /**
@@ -412,7 +419,11 @@ public class RobotMouseController {
                 hitbox.x, hitbox.y, hitbox.width, hitbox.height,
                 screenHitbox.x, screenHitbox.y, screenHitbox.width, screenHitbox.height);
         int[] clickPos = generateClickPosition(screenHitbox);
-        return moveToScreen(clickPos[0], clickPos[1]);
+        
+        // Pass the smaller dimension as the target width for Fitts' Law
+        // This ensures moving to small items is slower/more precise than big ones
+        double targetSize = Math.min(screenHitbox.width, screenHitbox.height);
+        return moveToScreen(clickPos[0], clickPos[1], targetSize);
     }
 
     /**
@@ -513,11 +524,15 @@ public class RobotMouseController {
     /**
      * Execute the actual mouse movement with all humanization features.
      */
-    private void executeMovement(int targetX, int targetY) throws InterruptedException {
+    private void executeMovement(int targetX, int targetY, double targetWidth) throws InterruptedException {
         isMoving = true;
         movementSeed = System.nanoTime();
 
-        Point start = currentPosition;
+        // Sync with actual X11 cursor position before starting movement
+        // This handles any drift from external cursor movements
+        mouseDevice.syncPosition();
+        Point start = mouseDevice.getPosition();
+        currentPosition = start;
         Point target = new Point(targetX, targetY);
 
         double distance = start.distance(target);
@@ -539,10 +554,10 @@ public class RobotMouseController {
 
         // Check if this movement should use sub-movements (direction corrections)
         if (shouldUseSubMovements(distance)) {
-            executeMovementWithSubMovements(start, target, distance);
+            executeMovementWithSubMovements(start, target, distance, targetWidth);
         } else {
             // Regular direct movement
-            executeDirectMovement(targetX, targetY);
+            executeDirectMovement(targetX, targetY, targetWidth);
         }
 
         // Handle overshoot simulation (pass start for direction calculation)
@@ -630,31 +645,80 @@ public class RobotMouseController {
     }
 
     /**
-     * Sigmoid function for velocity curve: slow start (0-15%), fast middle (15-85%), slow end (85-100%).
-     * Uses a modified sigmoid to achieve the desired profile.
+     * Asymmetric velocity progress calculation.
+     * 
+     * Replaces standard sigmoid with profile-based skew to create human-like
+     * velocity profiles that vary per player:
+     * 
+     * - velocityFlow < 0.5: Fast start, gradual slowdown (snappy players)
+     * - velocityFlow > 0.5: Slow start, fast finish (lazy/deliberate players)
+     * - velocityFlow = 0.5: Symmetric (like original sigmoid)
+     * 
+     * This prevents the detectable "perfect sigmoid" pattern that bots exhibit.
+     * Real humans have asymmetric acceleration based on motor habits.
+     * 
+     * @param t linear time progress (0.0 to 1.0)
+     * @return velocity-warped progress (0.0 to 1.0)
      */
-    private double sigmoidProgress(double t) {
-        // Map t to sigmoid input range for desired slow-fast-slow profile
-        // Use a steeper sigmoid centered at 0.5
-        double x = (t - 0.5) * 10; // Scale factor for steepness
+    private double calculateVelocityProgress(double t) {
+        double flow = playerProfile.getVelocityFlow(); // 0.2 (snappy) to 0.8 (lazy)
+        
+        // Warp t using power function based on flow preference
+        // flow < 0.5 → exponent < 1 → warps t upward (fast start)
+        // flow > 0.5 → exponent > 1 → warps t downward (slow start)
+        // Scaling factor of 2.5 makes the effect noticeable but not extreme
+        double exponent = flow * 2.5;
+        double warpedT = Math.pow(t, exponent);
+        
+        // Feed warped T through sigmoid for smooth acceleration at endpoints
+        // This preserves the slow-fast-slow envelope while adding asymmetry
+        double x = (warpedT - 0.5) * 10;
         double sigmoid = 1.0 / (1.0 + Math.exp(-x));
-
+        
         // Normalize to [0, 1] range
         double minSigmoid = 1.0 / (1.0 + Math.exp(5));
         double maxSigmoid = 1.0 / (1.0 + Math.exp(-5));
-
+        
         return (sigmoid - minSigmoid) / (maxSigmoid - minSigmoid);
     }
 
     /**
-     * Calculate movement duration based on distance.
-     * Formula: sqrt(distance) * 10 + gaussianRandom(50, 150)
-     * Per REQUIREMENTS.md 3.1.1: bounded to 50-150ms for the random component.
+     * Calculate movement duration using Fitts' Law.
+     * 
+     * Fitts' Law: MT = a + b * ID
+     * Where ID (Index of Difficulty) = log2(1 + Distance / Width)
+     * 
+     * This creates human-realistic duration scaling where:
+     * - Large targets are faster to hit than small targets at same distance
+     * - Duration scales logarithmically with distance/width ratio
+     * 
+     * @param distance movement distance in pixels
+     * @param targetWidth target size (smaller dimension of hitbox)
+     * @return duration in milliseconds
+     */
+    private long calculateMovementDuration(double distance, double targetWidth) {
+        // Safety clamp width to avoid division issues
+        double width = Math.max(1.0, targetWidth);
+        
+        // Index of Difficulty (Shannon formulation)
+        double id = Math.log(1 + distance / width) / Math.log(2);
+        
+        // Fitts' Law: a + b * ID
+        double duration = FITTS_A + (FITTS_B * id);
+        
+        // Add random variation (human inconsistency)
+        double randomAddition = randomization.gaussianRandom(0, 20.0, -50.0, 50.0);
+        duration += randomAddition;
+        
+        return Math.round(Randomization.clamp(duration, MIN_DURATION_MS, MAX_DURATION_MS));
+    }
+    
+    /**
+     * Calculate movement duration with default target width.
+     * Use when target size is unknown (e.g., moving to arbitrary point).
      */
     private long calculateMovementDuration(double distance) {
-        double baseDuration = Math.sqrt(distance) * DURATION_DISTANCE_FACTOR;
-        double randomAddition = randomization.gaussianRandom(DURATION_RANDOM_MEAN, DURATION_RANDOM_STDDEV, 50.0, 150.0);
-        return Math.round(baseDuration + randomAddition);
+        return calculateMovementDuration(distance, DEFAULT_TARGET_WIDTH);
     }
 
     /**
@@ -668,9 +732,13 @@ public class RobotMouseController {
     /**
      * Execute overshoot: move past target, then correct back.
      * 
-     * Overshoot direction is biased toward the movement direction (±30° cone)
-     * because real humans' overshoot is caused by momentum carrying past the target,
-     * not random jitter. This creates much more natural-looking movements.
+     * Overshoot direction is biased by hand dominance because real humans'
+     * wrist mechanics cause predictable directional bias:
+     * - Right-handed users: wrist pivots from left, causing clockwise overshoot bias
+     * - Left-handed users: wrist pivots from right, causing counter-clockwise bias
+     * 
+     * Uses Gaussian distribution for natural spread around the biased mean,
+     * rather than uniform distribution which looks robotic.
      * 
      * @param start the starting point of the movement
      * @param target the target point (where we are now)
@@ -683,11 +751,28 @@ public class RobotMouseController {
         double dy = target.y - start.y;
         double movementAngle = Math.atan2(dy, dx);
         
-        // Bias overshoot in movement direction ±30° (human momentum overshoot)
-        // The overshoot happens because the hand carries past the target,
-        // so it should follow the movement direction, not be random
-        double overshootConeRadians = Math.toRadians(30);
-        double angleOffset = randomization.uniformRandom(-overshootConeRadians, overshootConeRadians);
+        // Hand dominance affects overshoot direction due to wrist pivot mechanics
+        // dominantHandBias: 0.0 = left-handed, 0.5 = ambidextrous, 1.0 = right-handed
+        // In screen coords (+Y down): clockwise = positive angle, counter-clockwise = negative
+        double handBias = playerProfile.getDominantHandBias();
+        
+        // Convert hand bias to angular bias:
+        // - Right-handed (0.7): +0.4 normalized -> +14° clockwise bias
+        // - Left-handed (0.3): -0.4 normalized -> -14° counter-clockwise bias
+        // - Ambidextrous (0.5): 0 normalized -> no bias
+        double maxBiasAngle = Math.toRadians(18); // Max bias magnitude
+        double normalizedBias = (handBias - 0.5) * 2.0; // -1.0 to +1.0
+        double biasAngle = normalizedBias * maxBiasAngle;
+        
+        // Use Gaussian distribution centered on bias angle
+        // stdDev of 12° gives natural spread: 68% within ±12° of bias, 95% within ±24°
+        double spreadStdDev = Math.toRadians(12);
+        double angleOffset = randomization.gaussianRandom(biasAngle, spreadStdDev);
+        
+        // Clamp to prevent unrealistic overshoot angles (max ±45° from movement direction)
+        double maxOffset = Math.toRadians(45);
+        angleOffset = Math.max(-maxOffset, Math.min(maxOffset, angleOffset));
+        
         double overshootAngle = movementAngle + angleOffset;
         
         int overshootX = target.x + (int) (Math.cos(overshootAngle) * overshootPixels);
@@ -695,7 +780,7 @@ public class RobotMouseController {
 
         // Clamp overshoot to viewport
         Point clampedOvershoot = clampToViewport(overshootX, overshootY);
-        robot.mouseMove(clampedOvershoot.x, clampedOvershoot.y);
+        mouseDevice.moveTo(clampedOvershoot.x, clampedOvershoot.y);
         currentPosition = clampedOvershoot;
 
         // Delay before correction
@@ -703,11 +788,14 @@ public class RobotMouseController {
         Thread.sleep(delay);
 
         // Correct back to target with a quick movement
-        robot.mouseMove(target.x, target.y);
+        mouseDevice.moveTo(target.x, target.y);
         currentPosition = target;
 
-        log.debug("Overshoot: {} pixels at {}° from movement direction, corrected after {}ms", 
-                overshootPixels, (int) Math.toDegrees(angleOffset), delay);
+        log.debug("Overshoot: {} pixels at {}° (hand bias {}°), corrected after {}ms", 
+                overshootPixels, 
+                (int) Math.toDegrees(angleOffset),
+                (int) Math.toDegrees(biasAngle),
+                delay);
     }
 
     /**
@@ -734,7 +822,7 @@ public class RobotMouseController {
 
         // Clamp micro-correction to viewport
         Point clampedCorrection = clampToViewport(correctedX, correctedY);
-        robot.mouseMove(clampedCorrection.x, clampedCorrection.y);
+        mouseDevice.moveTo(clampedCorrection.x, clampedCorrection.y);
         currentPosition = clampedCorrection;
 
         log.debug("Micro-correction: {} pixels after {}ms", correctionPixels, delay);
@@ -865,8 +953,9 @@ public class RobotMouseController {
      * @param start  the starting point
      * @param target the target point
      * @param distance the total movement distance
+     * @param targetWidth target size for Fitts' Law
      */
-    private void executeMovementWithSubMovements(Point start, Point target, double distance) 
+    private void executeMovementWithSubMovements(Point start, Point target, double distance, double targetWidth) 
             throws InterruptedException {
         // Calculate waypoint
         Point waypoint = calculateWaypoint(start, target, distance);
@@ -875,13 +964,15 @@ public class RobotMouseController {
                 waypoint.x, waypoint.y, distance);
         
         // Move to waypoint (direct movement, no sub-movements within)
-        executeDirectMovement(waypoint.x, waypoint.y);
+        // Waypoints are "intermediate targets", treating them as larger targets (e.g. 50px)
+        // makes the movement to them faster/rougher, which is realistic for mid-air correction
+        executeDirectMovement(waypoint.x, waypoint.y, 50.0);
         
         // Brief pause at waypoint (simulates direction reassessment)
         Thread.sleep(randomization.uniformRandomLong(MIN_WAYPOINT_PAUSE_MS, MAX_WAYPOINT_PAUSE_MS));
         
-        // Move from waypoint to target
-        executeDirectMovement(target.x, target.y);
+        // Move from waypoint to target (using actual target width for precision)
+        executeDirectMovement(target.x, target.y, targetWidth);
     }
 
     /**
@@ -889,7 +980,7 @@ public class RobotMouseController {
      * This is the core movement logic, called by both regular movements
      * and as segments of sub-movement paths.
      */
-    private void executeDirectMovement(int targetX, int targetY) throws InterruptedException {
+    private void executeDirectMovement(int targetX, int targetY, double targetWidth) throws InterruptedException {
         Point start = currentPosition;
         Point target = new Point(targetX, targetY);
 
@@ -900,15 +991,15 @@ public class RobotMouseController {
 
         // Check if this player uses path segmentation for long movements
         if (distance >= PHASE_THRESHOLD && playerProfile.usesPathSegmentation()) {
-            executeSegmentedMovement(start, target, distance);
+            executeSegmentedMovement(start, target, distance, targetWidth);
             return;
         }
 
         // Standard direct movement
-        executeMovementSegment(start, target, distance, 1.0);
+        executeMovementSegment(start, target, distance, 1.0, targetWidth);
 
         // Final position (ensure we hit target)
-        robot.mouseMove(targetX, targetY);
+        mouseDevice.moveTo(targetX, targetY);
         currentPosition = target;
     }
 
@@ -917,26 +1008,29 @@ public class RobotMouseController {
      * Long movements are broken into: ballistic -> approach -> fine-tune phases.
      * This mimics how humans approach targets at different speeds.
      */
-    private void executeSegmentedMovement(Point start, Point target, double distance) 
+    private void executeSegmentedMovement(Point start, Point target, double distance, double targetWidth) 
             throws InterruptedException {
         log.trace("Segmented movement: {}px in 3 phases", distance);
         
         // Phase 1: Ballistic (70% of distance, fast)
+        // Target width is large (virtual target in space)
         Point phase1End = interpolatePoint(start, target, BALLISTIC_PHASE_RATIO);
         double phase1Dist = start.distance(phase1End);
-        executeMovementSegment(start, phase1End, phase1Dist, BALLISTIC_SPEED_BOOST);
+        executeMovementSegment(start, phase1End, phase1Dist, BALLISTIC_SPEED_BOOST, 100.0);
         
         // Phase 2: Approach (25% of remaining, normal speed)
+        // Target width gets closer to real size
         Point phase2End = interpolatePoint(phase1End, target, APPROACH_PHASE_RATIO);
         double phase2Dist = phase1End.distance(phase2End);
-        executeMovementSegment(phase1End, phase2End, phase2Dist, 1.0);
+        executeMovementSegment(phase1End, phase2End, phase2Dist, 1.0, targetWidth * 2.0);
         
         // Phase 3: Fine-tuning (final 5%, slow and precise)
+        // Use actual target width for Fitts' Law precision
         double phase3Dist = phase2End.distance(target);
-        executeMovementSegment(phase2End, target, phase3Dist, FINETUNE_SPEED_REDUCTION);
+        executeMovementSegment(phase2End, target, phase3Dist, FINETUNE_SPEED_REDUCTION, targetWidth);
         
         // Final position
-        robot.mouseMove(target.x, target.y);
+        mouseDevice.moveTo(target.x, target.y);
         currentPosition = target;
     }
 
@@ -952,14 +1046,21 @@ public class RobotMouseController {
     /**
      * Execute a single movement segment with specified speed multiplier.
      * This is the innermost movement loop used by all movement types.
+     * 
+     * Implements "Physiological Physics Engine" features:
+     * - Asymmetric velocity profile (per-player acceleration skew)
+     * - Physiological tremor (8-12Hz alpha rhythm injection)
+     * - Motor unit quantization (discrete muscle recruitment steps = "jerk")
+     * - Perlin noise path variation
      *
      * @param start starting point
      * @param target target point
      * @param distance segment distance
      * @param speedMultiplier additional speed modifier (>1.0 = faster, <1.0 = slower)
+     * @param targetWidth target width for Fitts' Law calculation
      */
     private void executeMovementSegment(Point start, Point target, double distance, 
-            double speedMultiplier) throws InterruptedException {
+            double speedMultiplier, double targetWidth) throws InterruptedException {
         if (distance < 1) {
             return;
         }
@@ -967,8 +1068,8 @@ public class RobotMouseController {
         // Generate Bezier curve control points
         List<Point> controlPoints = generateControlPoints(start, target, distance);
 
-        // Calculate movement duration
-        long duration = calculateMovementDuration(distance);
+        // Calculate movement duration using Fitts' Law with provided target width
+        long duration = calculateMovementDuration(distance, targetWidth);
 
         // Apply profile speed multiplier and segment speed modifier
         double combinedSpeed = playerProfile.getMouseSpeedMultiplier() * speedMultiplier;
@@ -977,6 +1078,11 @@ public class RobotMouseController {
 
         // Calculate noise amplitude for this movement
         double noiseAmplitude = randomization.uniformRandom(MIN_NOISE_AMPLITUDE, MAX_NOISE_AMPLITUDE);
+        
+        // Get physiological parameters from profile
+        double tremorFreq = playerProfile.getPhysTremorFreq();   // 8-12 Hz
+        double tremorAmp = playerProfile.getPhysTremorAmp();     // 0.2-1.5 px
+        double motorThreshold = playerProfile.getMotorUnitThreshold(); // 0.0-1.5 px
 
         // Plan hesitation points for this segment
         List<Double> hesitationPoints = planHesitations(distance);
@@ -985,6 +1091,11 @@ public class RobotMouseController {
         // Execute the movement
         long startTime = System.currentTimeMillis();
         long elapsed = 0;
+        
+        // Motor unit accumulator for quantization (jerk simulation)
+        double pendingDx = 0;
+        double pendingDy = 0;
+        Point lastActualPos = start;
 
         while (elapsed < duration) {
             double t = (double) elapsed / duration;
@@ -996,26 +1107,62 @@ public class RobotMouseController {
                 executeHesitation();
             }
 
-            // Apply sigmoid velocity curve for slow-fast-slow motion
-            double adjustedT = sigmoidProgress(t);
+            // Apply asymmetric velocity curve (replaces sigmoid)
+            double adjustedT = calculateVelocityProgress(t);
 
             // Calculate point on Bezier curve
             Point bezierPoint = evaluateBezier(controlPoints, adjustedT);
 
             // Add Perlin noise perpendicular to movement direction
             double[] noiseOffset = perlinNoise.getPathOffset(t, noiseAmplitude, movementSeed);
-            int noisyX = bezierPoint.x + (int) Math.round(noiseOffset[0]);
-            int noisyY = bezierPoint.y + (int) Math.round(noiseOffset[1]);
+            
+            // === Physiological Tremor Injection ===
+            // Scale tremor down as we approach target, but keep a small floor (20%)
+            // to simulate physiological noise/intention tremor (prevents "dead still" cursor)
+            double tremorScale = 1.0 - (Math.pow(t, 4) * 0.8); 
+            double tremorX = Math.sin(elapsed / 1000.0 * tremorFreq * Math.PI * 2) * tremorAmp * tremorScale;
+            double tremorY = Math.cos(elapsed / 1000.0 * tremorFreq * Math.PI * 2) * tremorAmp * tremorScale;
+            
+            // Combine all offsets
+            double idealX = bezierPoint.x + noiseOffset[0] + tremorX;
+            double idealY = bezierPoint.y + noiseOffset[1] + tremorY;
+            
+            // === Motor Unit Quantization (Jerk) ===
+            // Accumulate sub-pixel movement; only move when threshold is met
+            // This simulates discrete muscle fiber recruitment in real motor control
+            pendingDx += (idealX - lastActualPos.x);
+            pendingDy += (idealY - lastActualPos.y);
+            
+            double pendingMagnitude = Math.hypot(pendingDx, pendingDy);
+            
+            // Move only when accumulated movement exceeds motor threshold (or at end)
+            if (pendingMagnitude >= motorThreshold || t >= 0.95) {
+                int moveX = lastActualPos.x + (int) Math.round(pendingDx);
+                int moveY = lastActualPos.y + (int) Math.round(pendingDy);
+                
+                // Clamp to viewport
+                Point clamped = clampToViewport(moveX, moveY);
+                
+                // Move mouse via UInput
+                mouseDevice.moveTo(clamped.x, clamped.y);
+                currentPosition = clamped;
+                
+                // Calculate EXACTLY what we moved (due to clamping/int rounding)
+                int actualDx = clamped.x - lastActualPos.x;
+                int actualDy = clamped.y - lastActualPos.y;
+                
+                // Update position state
+                lastActualPos = clamped;
+                
+                // Subtract what we actually moved from pending accumulators
+                pendingDx -= actualDx;
+                pendingDy -= actualDy;
+            }
 
-            // Clamp to viewport
-            Point clamped = clampToViewport(noisyX, noisyY);
-
-            // Move mouse
-            robot.mouseMove(clamped.x, clamped.y);
-            currentPosition = clamped;
-
-            // Sleep for randomized noise sample interval (5-10ms per spec)
-            Thread.sleep(randomization.uniformRandomLong(5, 10));
+            // Sleep with time-domain jitter (simulates nerve firing variability)
+            long baseSleep = NOISE_SAMPLE_INTERVAL_MS;
+            long sleepJitter = randomization.uniformRandomLong(-2, 3);
+            Thread.sleep(Math.max(1, baseSleep + sleepJitter));
             elapsed = System.currentTimeMillis() - startTime;
         }
 
@@ -1165,9 +1312,12 @@ public class RobotMouseController {
         // Calculate click duration with fatigue modifier
         long holdDuration = calculateClickDuration();
 
-        robot.mousePress(buttonMask);
+        // Convert AWT button mask to Linux button code
+        short linuxButton = UInputMouseDevice.awtButtonToLinux(buttonMask);
+        
+        mouseDevice.pressButton(linuxButton);
         Thread.sleep(holdDuration);
-        robot.mouseRelease(buttonMask);
+        mouseDevice.releaseButton(linuxButton);
         
         // Record action for fatigue/break tracking (only on actual clicks)
         fatigueModel.recordAction();
@@ -1399,8 +1549,8 @@ public class RobotMouseController {
             int baseDelay = randomization.uniformRandomInt(MIN_SCROLL_DELAY_MS, MAX_SCROLL_DELAY_MS);
             int delay = (int) (baseDelay * speedMultiplier * accelerationFactor);
 
-            // Perform single scroll tick
-            robot.mouseWheel(direction);
+            // Perform single scroll tick via UInput
+            mouseDevice.scroll(direction);
             scrolled++;
 
             // Apply delay between ticks (not after last one)
@@ -1548,8 +1698,8 @@ public class RobotMouseController {
         log.debug("Executing drag from ({}, {}) to ({}, {}), distance={}", 
                 start.x, start.y, targetX, targetY, distance);
 
-        // Press mouse button
-        robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
+        // Press mouse button via UInput
+        mouseDevice.pressButton(BTN_LEFT);
 
         // Brief hold before moving (human hesitation)
         long holdBeforeMove = randomization.uniformRandomLong(
@@ -1564,8 +1714,8 @@ public class RobotMouseController {
                 MIN_DRAG_HOLD_AFTER_MOVE_MS, MAX_DRAG_HOLD_AFTER_MOVE_MS);
         Thread.sleep(holdAfterMove);
 
-        // Release mouse button
-        robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
+        // Release mouse button via UInput
+        mouseDevice.releaseButton(BTN_LEFT);
 
         log.debug("Drag completed");
     }
@@ -1622,7 +1772,7 @@ public class RobotMouseController {
 
         while (elapsed < duration) {
             double t = (double) elapsed / duration;
-            double adjustedT = sigmoidProgress(t);
+            double adjustedT = calculateVelocityProgress(t);
 
             // Calculate point on curve
             Point bezierPoint = evaluateBezier(controlPoints, adjustedT);
@@ -1641,7 +1791,7 @@ public class RobotMouseController {
             // Clamp to viewport
             Point clamped = clampToViewport(x, y);
 
-            robot.mouseMove(clamped.x, clamped.y);
+            mouseDevice.moveTo(clamped.x, clamped.y);
             currentPosition = clamped;
 
             // Randomized sleep interval (5-10ms per spec)
@@ -1650,11 +1800,70 @@ public class RobotMouseController {
         }
 
         // Final position
-        robot.mouseMove(target.x, target.y);
+        mouseDevice.moveTo(target.x, target.y);
         currentPosition = target;
 
         lastMovementTime = System.currentTimeMillis();
         isMoving = false;
+    }
+
+    // ========================================================================
+    // Raw Mouse Operations (for CameraController integration)
+    // ========================================================================
+
+    /**
+     * Press a mouse button synchronously (blocking).
+     * Used by CameraController for middle mouse drag.
+     * 
+     * @param button the Linux button code (BTN_LEFT, BTN_MIDDLE, etc.)
+     */
+    public void pressButtonSync(short button) {
+        mouseDevice.pressButton(button);
+    }
+
+    /**
+     * Release a mouse button synchronously (blocking).
+     * Used by CameraController for middle mouse drag.
+     * 
+     * @param button the Linux button code
+     */
+    public void releaseButtonSync(short button) {
+        mouseDevice.releaseButton(button);
+    }
+
+    /**
+     * Move mouse to absolute coordinates synchronously.
+     * Used by CameraController for camera drag movement.
+     * 
+     * @param x screen X coordinate
+     * @param y screen Y coordinate
+     */
+    public void moveToSync(int x, int y) {
+        mouseDevice.moveTo(x, y);
+        currentPosition = new Point(x, y);
+    }
+
+    /**
+     * Sync mouse position with X11 cursor.
+     * Should be called before starting camera drag.
+     */
+    public void syncMousePosition() {
+        mouseDevice.syncPosition();
+        currentPosition = mouseDevice.getPosition();
+    }
+
+    /**
+     * Move mouse by relative delta synchronously.
+     * Used by CameraController for camera drag movement.
+     * 
+     * @param dx delta X (pixels)
+     * @param dy delta Y (pixels)
+     */
+    public void moveRelativeSync(int dx, int dy) {
+        mouseDevice.moveBy(dx, dy);
+        if (currentPosition != null) {
+            currentPosition = new Point(currentPosition.x + dx, currentPosition.y + dy);
+        }
     }
 
     // ========================================================================
@@ -1734,13 +1943,13 @@ public class RobotMouseController {
 
                     // Clamp interpolated point too (paranoid safety)
                     Point clamped = clampToViewport(x, y);
-                    robot.mouseMove(clamped.x, clamped.y);
+                    mouseDevice.moveTo(clamped.x, clamped.y);
                     currentPosition = clamped;
 
                     Thread.sleep(20); // Slow update rate for drift
                 }
 
-                robot.mouseMove(clampedTarget.x, clampedTarget.y);
+                mouseDevice.moveTo(clampedTarget.x, clampedTarget.y);
                 currentPosition = clampedTarget;
                 future.complete(null);
             } catch (Exception e) {
@@ -1851,7 +2060,7 @@ public class RobotMouseController {
     }
 
     /**
-     * Shutdown the executor.
+     * Shutdown the controller and release resources.
      */
     public void shutdown() {
         executor.shutdown();
@@ -1862,6 +2071,11 @@ public class RobotMouseController {
         } catch (InterruptedException e) {
             executor.shutdownNow();
             Thread.currentThread().interrupt();
+        }
+        
+        // Close the UInput virtual device
+        if (mouseDevice != null) {
+            mouseDevice.close();
         }
     }
 

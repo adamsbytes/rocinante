@@ -40,6 +40,9 @@ dependencies {
     // Guava for caching (WikiCacheManager)
     implementation 'com.google.guava:guava:33.3.1-jre'
 
+    // JNA for uinput device setup (kernel-level input injection)
+    implementation 'net.java.dev.jna:jna:5.14.0'
+
     // Testing
     testImplementation 'junit:junit:4.13.2'
     testImplementation group: 'net.runelite', name: 'client', version: runeLiteVersion

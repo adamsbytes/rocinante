@@ -2,6 +2,8 @@ package com.rocinante.input;
 
 import com.rocinante.behavior.FatigueModel;
 import com.rocinante.behavior.PlayerProfile;
+import com.rocinante.input.uinput.KeyCodeMapper;
+import com.rocinante.input.uinput.UInputKeyboardDevice;
 import com.rocinante.util.Randomization;
 import lombok.Getter;
 import lombok.Setter;
@@ -10,11 +12,12 @@ import lombok.extern.slf4j.Slf4j;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.awt.*;
 import java.awt.event.KeyEvent;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.*;
+
+import static com.rocinante.input.uinput.LinuxInputConstants.*;
 
 /**
  * Humanized keyboard controller using java.awt.Robot.
@@ -145,7 +148,7 @@ public class RobotKeyboardController {
         KEYBOARD_NEIGHBORS.put('m', new char[]{'n', 'j', 'k'});
     }
 
-    private final Robot robot;
+    private final UInputKeyboardDevice keyboardDevice;
     private final Randomization randomization;
     private final PlayerProfile playerProfile;
     private final ScheduledExecutorService executor;
@@ -160,9 +163,15 @@ public class RobotKeyboardController {
 
     @Inject
     public RobotKeyboardController(Randomization randomization, PlayerProfile playerProfile,
-                                   FatigueModel fatigueModel) throws AWTException {
-        this.robot = new Robot();
-        this.robot.setAutoDelay(0);
+                                   FatigueModel fatigueModel) {
+        // Create UInput virtual keyboard device using profile preset and polling rate
+        // This injects input at the kernel level, bypassing java.awt.Robot's XTest flag
+        // The machineId is used for deterministic physical path generation across restarts
+        this.keyboardDevice = new UInputKeyboardDevice(
+            playerProfile.getKeyboardDevicePreset(),
+            playerProfile.getKeyboardPollingRate(),
+            playerProfile.getMachineId()
+        );
         this.randomization = randomization;
         this.playerProfile = playerProfile;
         this.fatigueModel = fatigueModel;
@@ -172,7 +181,8 @@ public class RobotKeyboardController {
             return t;
         });
 
-        log.info("RobotKeyboardController initialized");
+        log.info("RobotKeyboardController initialized with UInput device: {}", 
+                playerProfile.getKeyboardDevicePreset().getName());
     }
 
     // ========================================================================
@@ -265,27 +275,11 @@ public class RobotKeyboardController {
     }
 
     /**
-     * Type a single character.
+     * Type a single character using UInput.
      */
     private void typeCharacter(char c) throws InterruptedException {
-        int keyCode = getKeyCode(c);
-        boolean needsShift = Character.isUpperCase(c) || isShiftCharacter(c);
-
         long holdDuration = randomization.uniformRandomLong(MIN_KEY_HOLD_MS, MAX_KEY_HOLD_MS);
-
-        if (needsShift) {
-            robot.keyPress(KeyEvent.VK_SHIFT);
-            Thread.sleep(randomization.uniformRandomLong(10, 30)); // Brief delay before key
-        }
-
-        robot.keyPress(keyCode);
-        Thread.sleep(holdDuration);
-        robot.keyRelease(keyCode);
-
-        if (needsShift) {
-            Thread.sleep(randomization.uniformRandomLong(10, 30)); // Brief delay after key
-            robot.keyRelease(KeyEvent.VK_SHIFT);
-        }
+        keyboardDevice.typeChar(c, holdDuration);
     }
 
     /**
@@ -436,16 +430,14 @@ public class RobotKeyboardController {
     }
 
     /**
-     * Core key press implementation.
+     * Core key press implementation using UInput.
      * 
      * @param keyCode the AWT key code
      * @param holdDuration how long to hold the key
      * @param recordAction whether to record this as an action for fatigue tracking
      */
     private void pressKeyInternal(int keyCode, long holdDuration, boolean recordAction) throws InterruptedException {
-        robot.keyPress(keyCode);
-        Thread.sleep(holdDuration);
-        robot.keyRelease(keyCode);
+        keyboardDevice.tapKeyAwt(keyCode, holdDuration);
         
         if (recordAction) {
             fatigueModel.recordAction();
@@ -474,7 +466,7 @@ public class RobotKeyboardController {
 
         executor.execute(() -> {
             try {
-                robot.keyPress(keyCode);
+                keyboardDevice.pressKeyAwt(keyCode);
                 log.debug("Key {} held down", keyCode);
                 future.complete(null);
             } catch (Exception e) {
@@ -498,7 +490,7 @@ public class RobotKeyboardController {
 
         executor.execute(() -> {
             try {
-                robot.keyRelease(keyCode);
+                keyboardDevice.releaseKeyAwt(keyCode);
                 log.debug("Key {} released", keyCode);
                 future.complete(null);
             } catch (Exception e) {
@@ -527,9 +519,9 @@ public class RobotKeyboardController {
                         MIN_HOTKEY_REACTION_MS, MAX_HOTKEY_REACTION_MS);
                 Thread.sleep(reactionDelay);
 
-                // Press all keys
+                // Press all keys via UInput
                 for (int keyCode : keyCodes) {
-                    robot.keyPress(keyCode);
+                    keyboardDevice.pressKeyAwt(keyCode);
                     Thread.sleep(randomization.uniformRandomLong(10, 30));
                 }
 
@@ -538,7 +530,7 @@ public class RobotKeyboardController {
 
                 // Release all keys in reverse order
                 for (int i = keyCodes.length - 1; i >= 0; i--) {
-                    robot.keyRelease(keyCodes[i]);
+                    keyboardDevice.releaseKeyAwt(keyCodes[i]);
                     Thread.sleep(randomization.uniformRandomLong(10, 30));
                 }
 
@@ -589,11 +581,9 @@ public class RobotKeyboardController {
 
                 Thread.sleep(baseReaction);
 
-                // Press the F-key
+                // Press the F-key via UInput
                 long holdDuration = randomization.uniformRandomLong(MIN_KEY_HOLD_MS, MAX_KEY_HOLD_MS);
-                robot.keyPress(keyCode);
-                Thread.sleep(holdDuration);
-                robot.keyRelease(keyCode);
+                keyboardDevice.tapKeyAwt(keyCode, holdDuration);
 
                 // Update learning tracking
                 fKeyUsageCount.put(fKeyNumber, usageCount + 1);
@@ -674,71 +664,35 @@ public class RobotKeyboardController {
     }
 
     // ========================================================================
-    // Utility Methods
+    // Raw Key Operations (for CameraController integration)
     // ========================================================================
 
     /**
-     * Get the AWT key code for a character.
+     * Press a key down synchronously (blocking).
+     * Used by CameraController for arrow key holds.
+     * 
+     * @param keyCode the AWT key code
      */
-    private int getKeyCode(char c) {
-        // Handle letters
-        if (Character.isLetter(c)) {
-            return KeyEvent.getExtendedKeyCodeForChar(Character.toUpperCase(c));
-        }
-
-        // Handle digits
-        if (Character.isDigit(c)) {
-            return KeyEvent.VK_0 + (c - '0');
-        }
-
-        // Handle special characters
-        return switch (c) {
-            case ' ' -> KeyEvent.VK_SPACE;
-            case '\n' -> KeyEvent.VK_ENTER;
-            case '\t' -> KeyEvent.VK_TAB;
-            case '.' -> KeyEvent.VK_PERIOD;
-            case ',' -> KeyEvent.VK_COMMA;
-            case ';' -> KeyEvent.VK_SEMICOLON;
-            case ':' -> KeyEvent.VK_SEMICOLON; // Shift required
-            case '/' -> KeyEvent.VK_SLASH;
-            case '?' -> KeyEvent.VK_SLASH; // Shift required
-            case '-' -> KeyEvent.VK_MINUS;
-            case '_' -> KeyEvent.VK_MINUS; // Shift required
-            case '=' -> KeyEvent.VK_EQUALS;
-            case '+' -> KeyEvent.VK_EQUALS; // Shift required
-            case '[' -> KeyEvent.VK_OPEN_BRACKET;
-            case '{' -> KeyEvent.VK_OPEN_BRACKET; // Shift required
-            case ']' -> KeyEvent.VK_CLOSE_BRACKET;
-            case '}' -> KeyEvent.VK_CLOSE_BRACKET; // Shift required
-            case '\\' -> KeyEvent.VK_BACK_SLASH;
-            case '|' -> KeyEvent.VK_BACK_SLASH; // Shift required
-            case '\'' -> KeyEvent.VK_QUOTE;
-            case '"' -> KeyEvent.VK_QUOTE; // Shift required
-            case '`' -> KeyEvent.VK_BACK_QUOTE;
-            case '~' -> KeyEvent.VK_BACK_QUOTE; // Shift required
-            case '!' -> KeyEvent.VK_1; // Shift required
-            case '@' -> KeyEvent.VK_2; // Shift required
-            case '#' -> KeyEvent.VK_3; // Shift required
-            case '$' -> KeyEvent.VK_4; // Shift required
-            case '%' -> KeyEvent.VK_5; // Shift required
-            case '^' -> KeyEvent.VK_6; // Shift required
-            case '&' -> KeyEvent.VK_7; // Shift required
-            case '*' -> KeyEvent.VK_8; // Shift required
-            case '(' -> KeyEvent.VK_9; // Shift required
-            case ')' -> KeyEvent.VK_0; // Shift required
-            default -> KeyEvent.getExtendedKeyCodeForChar(c);
-        };
+    public void pressKeySync(int keyCode) {
+        keyboardDevice.pressKeyAwt(keyCode);
     }
 
     /**
-     * Check if a character requires Shift to type.
+     * Release a key synchronously (blocking).
+     * Used by CameraController for arrow key releases.
+     * 
+     * @param keyCode the AWT key code
      */
-    private boolean isShiftCharacter(char c) {
-        return "~!@#$%^&*()_+{}|:\"<>?".indexOf(c) >= 0;
+    public void releaseKeySync(int keyCode) {
+        keyboardDevice.releaseKeyAwt(keyCode);
     }
 
+    // ========================================================================
+    // Lifecycle
+    // ========================================================================
+
     /**
-     * Shutdown the executor.
+     * Shutdown the controller and release resources.
      */
     public void shutdown() {
         executor.shutdown();
@@ -749,6 +703,11 @@ public class RobotKeyboardController {
         } catch (InterruptedException e) {
             executor.shutdownNow();
             Thread.currentThread().interrupt();
+        }
+        
+        // Close the UInput virtual device
+        if (keyboardDevice != null) {
+            keyboardDevice.close();
         }
     }
 }

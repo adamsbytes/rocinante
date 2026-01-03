@@ -64,6 +64,7 @@ public class MenuHelper {
 
     private final Client client;
     private final RobotMouseController mouseController;
+    private final RobotKeyboardController keyboardController;
     private final HumanTimer humanTimer;
 
     // ========================================================================
@@ -71,9 +72,11 @@ public class MenuHelper {
     // ========================================================================
 
     @Inject
-    public MenuHelper(Client client, RobotMouseController mouseController, HumanTimer humanTimer) {
+    public MenuHelper(Client client, RobotMouseController mouseController, 
+                      RobotKeyboardController keyboardController, HumanTimer humanTimer) {
         this.client = client;
         this.mouseController = mouseController;
+        this.keyboardController = keyboardController;
         this.humanTimer = humanTimer;
         log.info("MenuHelper initialized");
     }
@@ -227,17 +230,7 @@ public class MenuHelper {
         
         // If Cancel isn't found, try pressing Escape key as fallback
         log.debug("Cancel entry not found, pressing Escape to dismiss menu");
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                java.awt.Robot robot = new java.awt.Robot();
-                robot.keyPress(java.awt.event.KeyEvent.VK_ESCAPE);
-                Thread.sleep(50);
-                robot.keyRelease(java.awt.event.KeyEvent.VK_ESCAPE);
-            } catch (Exception e) {
-                log.warn("Failed to press Escape: {}", e.getMessage());
-            }
-            return false;
-                });
+        return keyboardController.pressEscape().thenApply(v -> false);
     }
 
     /**

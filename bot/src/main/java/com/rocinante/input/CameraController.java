@@ -12,9 +12,10 @@ import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.awt.*;
-import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 import java.util.concurrent.*;
+
+import static com.rocinante.input.uinput.LinuxInputConstants.BTN_MIDDLE;
 
 /**
  * Humanized camera controller using simulated input (middle mouse drag, arrow keys).
@@ -183,7 +184,8 @@ public class CameraController {
 
     // === Dependencies ===
     
-    private final Robot robot;
+    private final RobotMouseController mouseController;
+    private final RobotKeyboardController keyboardController;
     private final Client client;
     private final Randomization randomization;
     private final PerlinNoise perlinNoise;
@@ -215,9 +217,10 @@ public class CameraController {
     private long movementSeed = System.nanoTime();
 
     @Inject
-    public CameraController(Client client, Randomization randomization, PerlinNoise perlinNoise) throws AWTException {
-        this.robot = new Robot();
-        this.robot.setAutoDelay(0);
+    public CameraController(Client client, Randomization randomization, PerlinNoise perlinNoise,
+                           RobotMouseController mouseController, RobotKeyboardController keyboardController) {
+        this.mouseController = mouseController;
+        this.keyboardController = keyboardController;
         this.client = client;
         this.randomization = randomization;
         this.perlinNoise = perlinNoise;
@@ -227,15 +230,17 @@ public class CameraController {
             return t;
         });
         
-        log.info("CameraController initialized");
+        log.info("CameraController initialized (delegating to Mouse/Keyboard controllers)");
     }
     
     /**
      * Constructor for testing.
      */
-    public CameraController(Robot robot, Client client, Randomization randomization, 
+    public CameraController(RobotMouseController mouseController, RobotKeyboardController keyboardController,
+                           Client client, Randomization randomization, 
                            PerlinNoise perlinNoise, ScheduledExecutorService executor) {
-        this.robot = robot;
+        this.mouseController = mouseController;
+        this.keyboardController = keyboardController;
         this.client = client;
         this.randomization = randomization;
         this.perlinNoise = perlinNoise;
@@ -330,15 +335,20 @@ public class CameraController {
             (distance / 100.0) * (MAX_DRAG_DURATION_MS - MIN_DRAG_DURATION_MS));
         duration = Math.min(duration, MAX_DRAG_DURATION_MS);
         
-        // Move to start position
-        robot.mouseMove(startX, startY);
+        // Sync position and move to start position
+        mouseController.syncMousePosition();
+        mouseController.moveToSync(startX, startY);
         Thread.sleep(randomization.uniformRandomLong(30, 80));
         
         // Press middle mouse button
-        robot.mousePress(InputEvent.BUTTON2_DOWN_MASK);
+        mouseController.pressButtonSync(BTN_MIDDLE);
         Thread.sleep(randomization.uniformRandomLong(20, 50));
         
         // Execute drag with Bezier curve and Perlin noise
+        // Track previous position for relative movement
+        int prevX = startX;
+        int prevY = startY;
+        
         long startTime = System.currentTimeMillis();
         long elapsed = 0;
         
@@ -357,18 +367,31 @@ public class CameraController {
             currentX += (int) noiseOffset[0];
             currentY += (int) noiseOffset[1];
             
-            robot.mouseMove(currentX, currentY);
+            // Move by delta (relative movement during drag)
+            int deltaX = currentX - prevX;
+            int deltaY = currentY - prevY;
+            if (deltaX != 0 || deltaY != 0) {
+                mouseController.moveRelativeSync(deltaX, deltaY);
+            }
+            prevX = currentX;
+            prevY = currentY;
             
             Thread.sleep(DRAG_UPDATE_INTERVAL_MS);
             elapsed = System.currentTimeMillis() - startTime;
         }
         
         // Final position
-        robot.mouseMove(startX + totalDragX, startY + totalDragY);
+        int finalX = startX + totalDragX;
+        int finalY = startY + totalDragY;
+        int finalDeltaX = finalX - prevX;
+        int finalDeltaY = finalY - prevY;
+        if (finalDeltaX != 0 || finalDeltaY != 0) {
+            mouseController.moveRelativeSync(finalDeltaX, finalDeltaY);
+        }
         Thread.sleep(randomization.uniformRandomLong(20, 50));
         
         // Release middle mouse button
-        robot.mouseRelease(InputEvent.BUTTON2_DOWN_MASK);
+        mouseController.releaseButtonSync(BTN_MIDDLE);
         
         log.debug("Camera drag completed: ({}, {}) over {}ms", totalDragX, totalDragY, duration);
     }
@@ -443,7 +466,7 @@ public class CameraController {
                         direction, durationMs, maxDegrees, speed);
                 
                 // Press the arrow key
-                robot.keyPress(direction.getKeyCode());
+                keyboardController.pressKeySync(direction.getKeyCode());
                 
                 long startTime = System.currentTimeMillis();
                 long elapsed = 0;
@@ -463,14 +486,14 @@ public class CameraController {
                     
                     // Occasionally vary the hold (brief release and re-press for naturalness)
                     if (randomization.chance(0.02)) { // 2% chance per check
-                        robot.keyRelease(direction.getKeyCode());
+                        keyboardController.releaseKeySync(direction.getKeyCode());
                         Thread.sleep(randomization.uniformRandomLong(50, 150));
-                        robot.keyPress(direction.getKeyCode());
+                        keyboardController.pressKeySync(direction.getKeyCode());
                     }
                 }
                 
                 // Release the arrow key
-                robot.keyRelease(direction.getKeyCode());
+                keyboardController.releaseKeySync(direction.getKeyCode());
                 
                 lastMovementTime = System.currentTimeMillis();
                 rotating = false;
@@ -481,7 +504,7 @@ public class CameraController {
                 rotating = false;
                 try {
                     // Ensure key is released on error
-                    robot.keyRelease(direction.getKeyCode());
+                    keyboardController.releaseKeySync(direction.getKeyCode());
                 } catch (Exception releaseEx) {
                     log.debug("Failed to release key during camera hold error cleanup: {}", releaseEx.getMessage());
                 }
@@ -659,7 +682,7 @@ public class CameraController {
                 holdTime = Math.min(holdTime, duration);
                 
                 // Press and hold arrow key
-                robot.keyPress(direction.getKeyCode());
+                keyboardController.pressKeySync(direction.getKeyCode());
                 Thread.sleep(holdTime);
                 
                 lastMovementTime = System.currentTimeMillis();
@@ -670,7 +693,7 @@ public class CameraController {
             } finally {
                 // ALWAYS release the key even on exception to prevent stuck keys
                 try {
-                    robot.keyRelease(direction.getKeyCode());
+                    keyboardController.releaseKeySync(direction.getKeyCode());
                 } catch (Exception releaseEx) {
                     log.debug("Failed to release camera key in cleanup: {}", releaseEx.getMessage());
                 }
@@ -709,7 +732,7 @@ public class CameraController {
                 log.debug("Performing 360 look-around: {} over {}ms", direction, duration);
                 
                 // Use arrow key hold for smooth rotation
-                robot.keyPress(direction.getKeyCode());
+                keyboardController.pressKeySync(direction.getKeyCode());
                 
                 long startTime = System.currentTimeMillis();
                 int startYaw = client.getCameraYaw();
@@ -729,13 +752,13 @@ public class CameraController {
                     
                     // Occasionally pause briefly during the sweep (natural behavior)
                     if (randomization.chance(0.01)) {
-                        robot.keyRelease(direction.getKeyCode());
+                        keyboardController.releaseKeySync(direction.getKeyCode());
                         Thread.sleep(randomization.uniformRandomLong(100, 300));
-                        robot.keyPress(direction.getKeyCode());
+                        keyboardController.pressKeySync(direction.getKeyCode());
                     }
                 }
                 
-                robot.keyRelease(direction.getKeyCode());
+                keyboardController.releaseKeySync(direction.getKeyCode());
                 
                 lastMovementTime = System.currentTimeMillis();
                 rotating = false;
@@ -745,8 +768,8 @@ public class CameraController {
             } catch (Exception e) {
                 rotating = false;
                 try {
-                    robot.keyRelease(KeyEvent.VK_LEFT);
-                    robot.keyRelease(KeyEvent.VK_RIGHT);
+                    keyboardController.releaseKeySync(KeyEvent.VK_LEFT);
+                    keyboardController.releaseKeySync(KeyEvent.VK_RIGHT);
                 } catch (Exception releaseEx) {
                     log.debug("Failed to release camera keys during 360 look-around error cleanup: {}", releaseEx.getMessage());
                 }
@@ -885,22 +908,22 @@ public class CameraController {
      */
     public void releaseAllKeys() {
         try {
-            robot.keyRelease(KeyEvent.VK_LEFT);
+            keyboardController.releaseKeySync(KeyEvent.VK_LEFT);
         } catch (Exception e) {
             log.debug("Failed to release VK_LEFT: {}", e.getMessage());
         }
         try {
-            robot.keyRelease(KeyEvent.VK_RIGHT);
+            keyboardController.releaseKeySync(KeyEvent.VK_RIGHT);
         } catch (Exception e) {
             log.debug("Failed to release VK_RIGHT: {}", e.getMessage());
         }
         try {
-            robot.keyRelease(KeyEvent.VK_UP);
+            keyboardController.releaseKeySync(KeyEvent.VK_UP);
         } catch (Exception e) {
             log.debug("Failed to release VK_UP: {}", e.getMessage());
         }
         try {
-            robot.keyRelease(KeyEvent.VK_DOWN);
+            keyboardController.releaseKeySync(KeyEvent.VK_DOWN);
         } catch (Exception e) {
             log.debug("Failed to release VK_DOWN: {}", e.getMessage());
         }

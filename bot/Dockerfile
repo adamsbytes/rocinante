@@ -152,6 +152,9 @@ RUN apt-get update && apt-get install -y \
     libdrm2 \
     libxkbcommon0 \
     libxcomposite1 \
+    picom \
+    upower \
+    dbus-x11 \
     libxdamage1 \
     libxfixes3 \
     libxrandr2 \
@@ -176,7 +179,7 @@ RUN apt-get update && apt-get install -y \
 # =============================================================================
 # Compatibility shims for /proc and /sys filesystem operations
 COPY pthreads_ext.c /tmp/
-RUN gcc -shared -fPIC -o /usr/lib/libpthreads_ext.so /tmp/pthreads_ext.c -ldl && \
+RUN gcc -shared -fPIC -o /usr/lib/libpthreads_ext.so /tmp/pthreads_ext.c -ldl -lpthread && \
     rm /tmp/pthreads_ext.c && \
     chmod 755 /usr/lib/libpthreads_ext.so
 
