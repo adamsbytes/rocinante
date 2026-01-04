@@ -1,5 +1,6 @@
 package com.rocinante.input;
 
+import com.rocinante.behavior.AttentionModel;
 import com.rocinante.behavior.FatigueModel;
 import com.rocinante.behavior.PlayerProfile;
 import com.rocinante.util.PerlinNoise;
@@ -223,7 +224,8 @@ public class CameraController {
     @Inject
     public CameraController(Client client, Randomization randomization, PerlinNoise perlinNoise,
                            RobotMouseController mouseController, RobotKeyboardController keyboardController,
-                           PlayerProfile playerProfile, FatigueModel fatigueModel) {
+                           PlayerProfile playerProfile, FatigueModel fatigueModel,
+                           AttentionModel attentionModel) {
         this.mouseController = mouseController;
         this.keyboardController = keyboardController;
         this.client = client;
@@ -237,7 +239,8 @@ public class CameraController {
         });
         
         // Initialize biological motor noise generator
-        this.dragNoise = new BiologicalMotorNoise(playerProfile, fatigueModel);
+        // Cognitive load from attentionModel scales noise (dual-task interference effect)
+        this.dragNoise = new BiologicalMotorNoise(playerProfile, fatigueModel, attentionModel);
         
         log.info("CameraController initialized (delegating to Mouse/Keyboard controllers)");
     }
@@ -248,7 +251,8 @@ public class CameraController {
     public CameraController(RobotMouseController mouseController, RobotKeyboardController keyboardController,
                            Client client, Randomization randomization, 
                            PerlinNoise perlinNoise, ScheduledExecutorService executor,
-                           PlayerProfile playerProfile, FatigueModel fatigueModel) {
+                           PlayerProfile playerProfile, FatigueModel fatigueModel,
+                           AttentionModel attentionModel) {
         this.mouseController = mouseController;
         this.keyboardController = keyboardController;
         this.client = client;
@@ -258,7 +262,8 @@ public class CameraController {
         this.executor = executor;
         
         // Initialize biological motor noise generator
-        this.dragNoise = new BiologicalMotorNoise(playerProfile, fatigueModel);
+        // Cognitive load from attentionModel scales noise (dual-task interference effect)
+        this.dragNoise = new BiologicalMotorNoise(playerProfile, fatigueModel, attentionModel);
     }
 
     // ========================================================================

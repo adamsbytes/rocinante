@@ -28,8 +28,10 @@ export MESA_GL_RENDERER_OVERRIDE="AMD Radeon Graphics (vangogh, LLVM 15.0.7, DRM
 # =============================================================================
 # POSIX thread compatibility extensions
 # =============================================================================
-# Compatibility layer for cross-distribution /proc and /sys filesystem access
-export LD_PRELOAD=/usr/lib/libpthreads_ext.so
+# NOTE: libpthreads_ext.so is loaded via /etc/ld.so.preload (configured in Dockerfile)
+# This avoids a race condition where Java may cache env before LD_PRELOAD hooks load.
+# The dynamic linker reads /etc/ld.so.preload at process startup, before any
+# application code runs, guaranteeing the hooks are active for all processes.
 
 # =============================================================================
 # Steam Deck Identity: Fake Steam installation directories
@@ -248,19 +250,29 @@ fi
 fc-cache -f 2>/dev/null || true
 
 # =============================================================================
-# Anti-fingerprint: Generate deterministic junk files
+# Utility: Deterministic hash from machine-id (for per-bot variance)
 # =============================================================================
-generate_junk_files() {
-    # Use machine-id for per-bot determinism (hostname is always "steamdeck")
+# Returns a large integer hash derived from /etc/machine-id
+# Used for: junk files, G1GC tuning, and any per-bot deterministic variance
+get_machine_id_hash() {
     local seed_str=$(cat /etc/machine-id)
-    local seed=0
-    
+    local hash=0
     for (( i=0; i<${#seed_str}; i++ )); do
         local char="${seed_str:$i:1}"
         local val=$(printf '%d' "'$char")
-        seed=$(( (seed * 31 + val) % 1000000 ))
+        hash=$(( (hash * 31 + val) & 0x7FFFFFFF ))  # Keep positive 31-bit
     done
-    
+    echo "$hash"
+}
+
+# Cache the hash for reuse (computed once)
+MACHINE_ID_HASH=$(get_machine_id_hash)
+
+# =============================================================================
+# Anti-fingerprint: Generate deterministic junk files
+# =============================================================================
+generate_junk_files() {
+    local seed=$MACHINE_ID_HASH
     local num_files=$(( (seed % 6) + 3 ))
     
     local files=(
@@ -311,8 +323,8 @@ rm -f /.dockerenv 2>/dev/null || true
 rm -f /.dockerinit 2>/dev/null || true
 rm -f /run/.containerenv 2>/dev/null || true
 
-# Note: /proc/1/cgroup and /proc/self/cgroup are spoofed by LD_PRELOAD library
-# (libsteamdeck_spoof.so) - returns "0::/" instead of docker path
+# Note: /proc/1/cgroup and /proc/self/cgroup are spoofed by libpthreads_ext.so
+# (loaded via /etc/ld.so.preload) - returns "0::/" instead of docker path
 
 # Start PulseAudio for virtual sound (apps expect audio device)
 # Note: We intentionally DON'T create custom "Steam Deck" sinks because
@@ -416,23 +428,30 @@ RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -Dos.version=6.1.52-valve16-1-neptune-61"
 # Spoof java.home to look like Arch's OpenJDK path (not Eclipse Temurin's /opt/java/openjdk)
 RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -Djava.home=/usr/lib/jvm/java-17-openjdk"
 
-# GC algorithm from config (already loaded, required)
-case "$GC_ALGORITHM" in
-    G1GC)
-        RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -XX:+UseG1GC"
-        ;;
-    ParallelGC)
-        RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -XX:+UseParallelGC"
-        ;;
-    ZGC)
-        RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -XX:+UseZGC"
-        ;;
-    *)
-        echo "ERROR: Unknown GC_ALGORITHM '$GC_ALGORITHM'"
-        exit 1
-        ;;
-esac
-echo "GC Algorithm: $GC_ALGORITHM"
+# GC algorithm from config (web always sets G1GC)
+if [ "$GC_ALGORITHM" != "G1GC" ]; then
+    echo "ERROR: Only G1GC is supported, got '$GC_ALGORITHM'"
+    exit 1
+fi
+
+# G1GC with per-bot tuning variance derived from machine-id
+# Creates 10,605 unique configurations: 101 pause × 5 region × 21 IHOP
+RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -XX:+UseG1GC"
+
+# MaxGCPauseMillis: 50-150ms (target pause time)
+GC_PAUSE_TARGET=$(( 50 + (MACHINE_ID_HASH % 101) ))
+RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -XX:MaxGCPauseMillis=${GC_PAUSE_TARGET}"
+
+# G1HeapRegionSize: 1M, 2M, 4M, 8M, 16M (power of 2)
+GC_REGION_POW=$(( (MACHINE_ID_HASH / 101) % 5 ))
+GC_REGION_SIZE=$(( 1 << (20 + GC_REGION_POW) ))
+RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -XX:G1HeapRegionSize=${GC_REGION_SIZE}"
+
+# InitiatingHeapOccupancyPercent: 35-55%
+GC_IHOP=$(( 35 + (MACHINE_ID_HASH / 505) % 21 ))
+RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -XX:InitiatingHeapOccupancyPercent=${GC_IHOP}"
+
+echo "GC: G1GC (pause=${GC_PAUSE_TARGET}ms region=$((GC_REGION_SIZE / 1048576))M IHOP=${GC_IHOP}%)"
 
 # Configure Rocinante via JVM args (values loaded from config.json)
 RUNELITE_JVM_ARGS="$RUNELITE_JVM_ARGS -Drocinante.ironman.enabled=$IRONMAN_ENABLED"

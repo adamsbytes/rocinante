@@ -427,12 +427,12 @@ public class DropInventoryTask extends AbstractTask {
                         droppedCount++;
                         log.debug("Dropped item in slot {} ({} total)", slot, droppedCount);
 
-                        // Schedule next drop with humanized delay
-                        long delay = random.uniformRandomLong(MIN_DROP_DELAY_MS, MAX_DROP_DELAY_MS);
+                        // Schedule next drop with humanized delay (log-normal for inter-action timing)
+                        long delay = random.humanizedDelayMs(120, MIN_DROP_DELAY_MS, MAX_DROP_DELAY_MS);
 
-                        // Occasional micro-pause
+                        // Occasional micro-pause (attention break - heavier tail)
                         if (random.chance(MICRO_PAUSE_CHANCE) && !slotsToDropQueue.isEmpty()) {
-                            long pause = random.uniformRandomLong(MIN_MICRO_PAUSE_MS, MAX_MICRO_PAUSE_MS);
+                            long pause = random.humanizedDelayMs(700, 0.5, MIN_MICRO_PAUSE_MS, MAX_MICRO_PAUSE_MS);
                             delay += pause;
                             log.debug("Adding micro-pause of {}ms", pause);
                         }

@@ -22,6 +22,8 @@
 #include <net/if.h>
 #include <linux/sockios.h>
 #include <stdint.h>
+#include <ifaddrs.h>
+#include <netpacket/packet.h>
 #include <sys/syscall.h>
 #include <sys/utsname.h>
 
@@ -292,10 +294,21 @@ static const char* MOUNTS_FILTER_STRINGS[] = {
     NULL
 };
 
-// Environment variables to hide
+// Environment variables to hide from getenv()
+// These reveal spoofing - real Steam Decks have native GPU/driver identity
 static const char* HIDDEN_ENV_VARS[] = {
     "LD_PRELOAD",
     "_LD_PRELOAD",
+    // Mesa GPU override vars - presence reveals spoofing (real HW doesn't need these)
+    "MESA_GL_VERSION_OVERRIDE",
+    "MESA_GLSL_VERSION_OVERRIDE",
+    "MESA_GL_VENDOR_OVERRIDE",
+    "MESA_GL_RENDERER_OVERRIDE",
+    "AMD_VULKAN_ICD",
+    // Steam Deck identity vars - set by entrypoint, shouldn't be visible to apps
+    "STEAM_DECK",
+    "SteamDeck",
+    "SteamOS",
     NULL
 };
 
@@ -303,6 +316,14 @@ static const char* HIDDEN_ENV_VARS[] = {
 static const char* FILTERED_ENV_PREFIXES[] = {
     "LD_PRELOAD=",
     "_LD_PRELOAD=",
+    "MESA_GL_VERSION_OVERRIDE=",
+    "MESA_GLSL_VERSION_OVERRIDE=",
+    "MESA_GL_VENDOR_OVERRIDE=",
+    "MESA_GL_RENDERER_OVERRIDE=",
+    "AMD_VULKAN_ICD=",
+    "STEAM_DECK=",
+    "SteamDeck=",
+    "SteamOS=",
     NULL
 };
 
@@ -2393,6 +2414,53 @@ int ioctl(int fd, unsigned long request, ...) {
         // Replace the MAC address with our spoofed one
         // sa_data contains the MAC starting at offset 0
         memcpy(ifr->ifr_hwaddr.sa_data, net_mac_bytes, 6);
+    }
+    
+    return result;
+}
+
+// ============================================================================
+// Intercepted: getifaddrs() - for NetworkInterface.getNetworkInterfaces()
+// ============================================================================
+// Java's NetworkInterface.getNetworkInterfaces() uses getifaddrs() on Linux,
+// NOT ioctl(SIOCGIFHWADDR). This bypasses the ioctl hook entirely.
+// We must intercept getifaddrs() to spoof MAC addresses in the returned list.
+
+int getifaddrs(struct ifaddrs** ifap) {
+    static int (*real_getifaddrs)(struct ifaddrs**) = NULL;
+    if (!real_getifaddrs) real_getifaddrs = dlsym(RTLD_NEXT, "getifaddrs");
+    
+    int result = real_getifaddrs(ifap);
+    if (result != 0 || !ifap || !*ifap) {
+        return result;
+    }
+    
+    // Ensure our spoofed MAC is initialized
+    get_dynamic_mac();
+    
+    // Iterate through the linked list of interfaces
+    for (struct ifaddrs* ifa = *ifap; ifa != NULL; ifa = ifa->ifa_next) {
+        // Skip if no address
+        if (!ifa->ifa_addr) continue;
+        
+        // We only care about AF_PACKET (link layer) addresses - these contain MACs
+        if (ifa->ifa_addr->sa_family != AF_PACKET) continue;
+        
+        // Cast to sockaddr_ll to access the hardware address
+        struct sockaddr_ll* sll = (struct sockaddr_ll*)ifa->ifa_addr;
+        
+        // Only spoof Ethernet-like interfaces (hardware address length 6)
+        if (sll->sll_halen != 6) continue;
+        
+        // Skip loopback (all zeros MAC)
+        if (sll->sll_addr[0] == 0 && sll->sll_addr[1] == 0 && 
+            sll->sll_addr[2] == 0 && sll->sll_addr[3] == 0 &&
+            sll->sll_addr[4] == 0 && sll->sll_addr[5] == 0) {
+            continue;
+        }
+        
+        // Replace the MAC address with our spoofed one
+        memcpy(sll->sll_addr, net_mac_bytes, 6);
     }
     
     return result;

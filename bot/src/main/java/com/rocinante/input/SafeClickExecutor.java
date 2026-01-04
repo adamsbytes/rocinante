@@ -9,6 +9,8 @@ import net.runelite.api.NPC;
 import net.runelite.api.TileObject;
 import net.runelite.api.ObjectComposition;
 
+import com.rocinante.util.Randomization;
+
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -16,7 +18,6 @@ import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.Shape;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Executes clicks with pre-click validation to prevent misclicks on overlapping entities.
@@ -161,7 +162,7 @@ public class SafeClickExecutor {
                 : PARANOID_MENU_PROBABILITY_MIN;
 
         // Sometimes use menu even when clear (adds unpredictability)
-        boolean forceMenu = ThreadLocalRandom.current().nextDouble() < paranoidProb;
+        boolean forceMenu = Randomization.secureChance(paranoidProb);
 
         if (!overlap.hasBlockingEntity() && !forceMenu) {
             // Clear to click - use left click
@@ -256,7 +257,7 @@ public class SafeClickExecutor {
                 ? calculateParanoidProbability(distance) 
                 : PARANOID_MENU_PROBABILITY_MIN;
 
-        boolean forceMenu = ThreadLocalRandom.current().nextDouble() < paranoidProb;
+        boolean forceMenu = Randomization.secureChance(paranoidProb);
 
         if (!overlap.hasBlockingEntity() && !forceMenu) {
             log.debug("NPC click point clear, using left-click at ({}, {}) [dist={}, paranoid={}%]", 
@@ -337,7 +338,7 @@ public class SafeClickExecutor {
                 ? calculateParanoidProbability(distance) 
                 : PARANOID_MENU_PROBABILITY_MIN;
 
-        boolean forceMenu = ThreadLocalRandom.current().nextDouble() < paranoidProb;
+        boolean forceMenu = Randomization.secureChance(paranoidProb);
 
         if (!overlap.hasBlockingEntity() && !forceMenu) {
             log.debug("Ground item click point clear, using left-click at ({}, {}) [dist={}, paranoid={}%]", 
@@ -396,7 +397,7 @@ public class SafeClickExecutor {
      * Randomized for human-like behavior.
      */
     private ClickStrategy chooseStrategy(boolean isBlocked) {
-        double roll = ThreadLocalRandom.current().nextDouble();
+        double roll = Randomization.secureDouble();
 
         if (isBlocked) {
             // When blocked, higher chance of using menu (more reliable)

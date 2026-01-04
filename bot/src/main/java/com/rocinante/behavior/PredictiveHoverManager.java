@@ -926,9 +926,9 @@ public class PredictiveHoverManager {
      * Execute a delayed click (with hesitation).
      */
     private CompletableFuture<Boolean> executeDelayedClick(TaskContext ctx, PredictiveHoverState state) {
-        // Calculate hesitation delay (modified by fatigue)
+        // Calculate hesitation delay (log-normal for decision timing, modified by fatigue)
         double fatigueMultiplier = 1.0 + fatigueModel.getFatigueLevel() * 0.5;
-        long baseDelay = randomization.uniformRandomLong(MIN_HESITATION_DELAY_MS, MAX_HESITATION_DELAY_MS);
+        long baseDelay = randomization.humanizedDelayMs(200, MIN_HESITATION_DELAY_MS, MAX_HESITATION_DELAY_MS);
         long delay = (long) (baseDelay * fatigueMultiplier);
 
         log.debug("Executing delayed predicted click ({}ms hesitation)", delay);

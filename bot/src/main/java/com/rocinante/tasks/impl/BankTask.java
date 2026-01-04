@@ -35,7 +35,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ThreadLocalRandom;
+
+import com.rocinante.util.Randomization;
 
 /**
  * Full-featured bank interaction task.
@@ -651,7 +652,7 @@ public class BankTask extends AbstractTask {
 
         if (targetBooth != null && targetBanker != null) {
             // Both available - randomly pick for human-like behavior
-            if (ThreadLocalRandom.current().nextBoolean()) {
+            if (Randomization.secureBoolean()) {
                 log.debug("Found both bank booth and banker - choosing booth");
                 targetBanker = null;
             } else {
@@ -1228,7 +1229,7 @@ public class BankTask extends AbstractTask {
      * 95% use button, 5% use All mode + left-click items.
      */
     private DepositStrategy determineDepositAllStrategy(TaskContext ctx) {
-        double roll = ThreadLocalRandom.current().nextDouble();
+        double roll = Randomization.secureDouble();
         
         // Get profile preference if available (some players never use button)
         double buttonPreference = 0.95;
@@ -1252,7 +1253,7 @@ public class BankTask extends AbstractTask {
      */
     private DepositStrategy determineDepositExceptStrategy(TaskContext ctx, WithdrawQuantity currentMode) {
         int numUniqueItems = itemsToDepositIndividually != null ? itemsToDepositIndividually.size() : 0;
-        double roll = ThreadLocalRandom.current().nextDouble();
+        double roll = Randomization.secureDouble();
         
         // Profile-based modifier
         double leftClickBias = 0.90;  // Base 90% left-click preference
@@ -1891,7 +1892,7 @@ public class BankTask extends AbstractTask {
         // Pick one randomly if both available
         final boolean useBooth;
         if (booth != null && banker != null) {
-            useBooth = ThreadLocalRandom.current().nextBoolean();
+            useBooth = Randomization.secureBoolean();
         } else {
             useBooth = booth != null;
         }

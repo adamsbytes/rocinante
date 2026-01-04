@@ -35,8 +35,8 @@ export interface EnvironmentConfig {
   /** Additional fonts enabled for this profile (10-20 from optional pool) */
   additionalFonts: string[];
   
-  /** JVM garbage collector algorithm */
-  gcAlgorithm: 'G1GC' | 'ParallelGC' | 'ZGC';
+  /** JVM garbage collector (always G1GC, tuning derived from machine-id) */
+  gcAlgorithm: 'G1GC';
 }
 
 export type LampSkill =

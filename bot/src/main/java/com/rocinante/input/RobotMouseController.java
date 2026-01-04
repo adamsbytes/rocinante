@@ -1,8 +1,10 @@
 package com.rocinante.input;
 
+import com.rocinante.behavior.AttentionModel;
 import com.rocinante.behavior.FatigueModel;
 import com.rocinante.behavior.PerformanceState;
 import com.rocinante.behavior.PlayerProfile;
+import com.rocinante.behavior.TimingSelfMonitor;
 import com.rocinante.input.uinput.UInputMouseDevice;
 import com.rocinante.util.PerlinNoise;
 import com.rocinante.util.Randomization;
@@ -186,6 +188,13 @@ public class RobotMouseController {
     @Nullable
     private com.rocinante.behavior.PredictiveHoverManager predictiveHoverManager;
 
+    /**
+     * TimingSelfMonitor for detecting mechanical timing patterns in click durations.
+     */
+    @Setter
+    @Nullable
+    private TimingSelfMonitor timingSelfMonitor;
+
     @Getter
     private volatile Point currentPosition;
 
@@ -207,8 +216,10 @@ public class RobotMouseController {
     @Inject
     public RobotMouseController(Client client, Randomization randomization, PerlinNoise perlinNoise,
                                 PlayerProfile playerProfile, PerformanceState performanceState,
-                                FatigueModel fatigueModel, ClientThread clientThread) {
-        this(client, randomization, perlinNoise, playerProfile, performanceState, fatigueModel, clientThread,
+                                FatigueModel fatigueModel, AttentionModel attentionModel,
+                                ClientThread clientThread) {
+        this(client, randomization, perlinNoise, playerProfile, performanceState, fatigueModel,
+                attentionModel, clientThread,
                 Executors.newSingleThreadScheduledExecutor(r -> {
                     Thread t = new Thread(r, "RobotMouseController");
                     t.setDaemon(true);
@@ -221,8 +232,9 @@ public class RobotMouseController {
      */
     public RobotMouseController(Client client, Randomization randomization, PerlinNoise perlinNoise,
                                 PlayerProfile playerProfile, PerformanceState performanceState,
-                                FatigueModel fatigueModel) {
-        this(client, randomization, perlinNoise, playerProfile, performanceState, fatigueModel, null,
+                                FatigueModel fatigueModel, AttentionModel attentionModel) {
+        this(client, randomization, perlinNoise, playerProfile, performanceState, fatigueModel,
+                attentionModel, null,
                 Executors.newSingleThreadScheduledExecutor(r -> {
                     Thread t = new Thread(r, "RobotMouseController");
                     t.setDaemon(true);
@@ -232,8 +244,8 @@ public class RobotMouseController {
 
     private RobotMouseController(Client client, Randomization randomization, PerlinNoise perlinNoise,
                                  PlayerProfile playerProfile, PerformanceState performanceState,
-                                 FatigueModel fatigueModel, ClientThread clientThread,
-                                 ScheduledExecutorService executor) {
+                                 FatigueModel fatigueModel, AttentionModel attentionModel,
+                                 ClientThread clientThread, ScheduledExecutorService executor) {
         // Create UInput virtual mouse device using profile preset and polling rate
         // This injects input at the kernel level, bypassing java.awt.Robot's XTest flag
         // The machineId is used for deterministic physical path generation across restarts
@@ -253,8 +265,8 @@ public class RobotMouseController {
         this.executor = executor;
 
         // Initialize biological motor noise generator
-        // Uses profile's physTremorFreq, physTremorAmp, dominantHandBias for unique motor signature
-        this.motorNoise = new BiologicalMotorNoise(playerProfile, fatigueModel);
+        // Cognitive load from attentionModel scales noise (dual-task interference effect)
+        this.motorNoise = new BiologicalMotorNoise(playerProfile, fatigueModel, attentionModel);
 
         // Sync with actual cursor position
         mouseDevice.syncPosition();
@@ -1558,7 +1570,14 @@ public class RobotMouseController {
         // Clamp after variance modifier
         baseDuration = Randomization.clamp(baseDuration, MIN_CLICK_DURATION_MS, MAX_CLICK_DURATION_MS * 1.3);
 
-        return Math.round(baseDuration);
+        long duration = Math.round(baseDuration);
+        
+        // Record sample for self-monitoring
+        if (timingSelfMonitor != null) {
+            timingSelfMonitor.recordClickDuration(duration);
+        }
+        
+        return duration;
     }
 
     /**

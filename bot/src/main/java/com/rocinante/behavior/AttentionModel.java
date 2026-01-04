@@ -415,6 +415,50 @@ public class AttentionModel {
     // ========================================================================
 
     /**
+     * Get the cognitive load level for motor coupling.
+     * 
+     * Why this matters for motor control:
+     * The brain has limited cognitive bandwidth. When processing complex game situations
+     * (boss mechanics, PvP decisions) or when attention is divided (checking phone),
+     * fewer neural resources remain for fine motor control. This manifests as increased
+     * tremor and reduced precision - the "dual-task interference" effect.
+     * 
+     * Research basis: Woollacott & Shumway-Cook (2002) found cognitive load increases
+     * motor variability by 20-60%. This is distinct from fatigue (muscle tiredness).
+     * 
+     * @return cognitive load level (0.0 = minimal, 1.0 = maximum)
+     */
+    public double getCognitiveLoad() {
+        // Why distraction INCREASES cognitive load for motor tasks:
+        // A player watching YouTube while playing is mentally juggling two tasks.
+        // The game's motor control competes with the other task for neural bandwidth.
+        double attentionLoad = switch (currentState) {
+            case FOCUSED -> 0.1;   // Baseline - even focused players think about the game
+            case DISTRACTED -> 0.5; // Significant - attention split between game and distraction
+            case AFK -> 0.0;        // Not acting, motor load is irrelevant
+        };
+        
+        // Why complex activities increase cognitive load:
+        // Boss fights require tracking mechanics, cooldowns, positioning - leaving
+        // fewer resources for precise mouse control. AFK fishing needs almost none.
+        double activityLoad = 0.0;
+        BotActivityTracker tracker = activityTrackerProvider != null ? activityTrackerProvider.get() : null;
+        if (tracker != null) {
+            activityLoad = switch (tracker.getCurrentActivity()) {
+                case CRITICAL -> 0.5;      // Boss/PvP: tracking mechanics, prayer flicking, etc.
+                case HIGH -> 0.3;          // Combat: target selection, eating, positioning
+                case MEDIUM -> 0.15;       // Questing: reading dialogue, navigating
+                case LOW, AFK_COMBAT -> 0.05; // Woodcutting, NMZ: almost autopilot
+                case IDLE -> 0.0;          // Standing around: no cognitive demand
+            };
+        }
+        
+        // Simple additive combination, capped at 1.0
+        // Both factors draw from the same neural bandwidth pool
+        return Math.min(1.0, attentionLoad + activityLoad);
+    }
+
+    /**
      * Get the delay multiplier based on current attention state.
      * FOCUSED: 1.0, DISTRACTED: 1.3, AFK: 0.0 (no actions)
      * 

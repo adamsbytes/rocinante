@@ -155,6 +155,12 @@ public class TickJitterController {
     private final BotActivityTracker activityTracker;
     
     /**
+     * Self-monitor for detecting mechanical timing patterns.
+     */
+    @Setter
+    private TimingSelfMonitor timingSelfMonitor;
+    
+    /**
      * Thread name counter for obfuscation.
      */
     private static final AtomicInteger THREAD_COUNTER = new AtomicInteger(13);
@@ -284,10 +290,11 @@ public class TickJitterController {
         
         // === Attention Lapse Check ===
         // Rare but significant delays where player zones out
+        // Log-normal with heavy tail (0.6) - zone-out duration varies widely
         double lapseProb = getEffectiveAttentionLapseProbability(activity);
         if (randomization.chance(lapseProb)) {
-            long lapseDelay = randomization.uniformRandomLong(
-                    ATTENTION_LAPSE_MIN_MS, ATTENTION_LAPSE_MAX_MS);
+            long lapseDelay = randomization.humanizedDelayMs(
+                    2000, 0.6, ATTENTION_LAPSE_MIN_MS, ATTENTION_LAPSE_MAX_MS);
             jitter += lapseDelay;
         }
         
@@ -295,6 +302,11 @@ public class TickJitterController {
         jitter = Math.min(jitter, MAX_JITTER_MS);
         
         lastJitterMs = Math.round(jitter);
+        
+        // Record sample for self-monitoring
+        if (timingSelfMonitor != null) {
+            timingSelfMonitor.recordTickJitter(lastJitterMs);
+        }
         
         // Only log long delays to reduce noise
         if (lastJitterMs >= LOG_THRESHOLD_MS) {

@@ -11,7 +11,6 @@ import com.rocinante.tasks.TaskContext;
 import com.rocinante.tasks.TaskPriority;
 import com.rocinante.tasks.TaskState;
 import com.rocinante.util.Randomization;
-import java.util.concurrent.ThreadLocalRandom;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -857,7 +856,7 @@ public class CombatTask extends AbstractTask {
 
         switch (config.getSpellCycleMode()) {
             case RANDOM:
-                return spells.get(ThreadLocalRandom.current().nextInt(spells.size()));
+                return spells.get(Randomization.secureInt(spells.size()));
             case HIGHEST_AVAILABLE:
                 // For now, just return the last spell (assumed highest tier)
                 // Full implementation would check runes and level
@@ -999,8 +998,8 @@ public class CombatTask extends AbstractTask {
         }
 
         // Add humanized delay before attacking
-        int delay = ThreadLocalRandom.current().nextInt(
-                config.getMinAttackDelay(), config.getMaxAttackDelay() + 1);
+        int delay = Randomization.secureIntRange(
+                config.getMinAttackDelay(), config.getMaxAttackDelay());
         
         log.debug("Attacking {} at ({}, {}) after {}ms delay", 
                 currentTarget.getName(), clickPoint.x, clickPoint.y, delay);
@@ -1168,8 +1167,8 @@ public class CombatTask extends AbstractTask {
                     clickPending = false;
                     if (success) {
                         // Add humanized delay before next loot using async delay
-                        int delay = ThreadLocalRandom.current().nextInt(
-                                config.getMinLootDelay(), config.getMaxLootDelay() + 1);
+                        int delay = Randomization.secureIntRange(
+                                config.getMinLootDelay(), config.getMaxLootDelay());
                         return CompletableFuture.runAsync(
                                 () -> {},
                                 CompletableFuture.delayedExecutor(delay, java.util.concurrent.TimeUnit.MILLISECONDS)

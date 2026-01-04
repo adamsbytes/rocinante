@@ -400,8 +400,8 @@ public class DropInventoryTaskTest {
             task.execute(taskContext);
         }
 
-        // Should use randomized delays
-        verify(randomization, atLeastOnce()).uniformRandomLong(anyLong(), anyLong());
+        // Should use humanized (log-normal) delays instead of uniform
+        verify(randomization, atLeastOnce()).humanizedDelayMs(anyLong(), anyLong(), anyLong());
     }
 
     @Test

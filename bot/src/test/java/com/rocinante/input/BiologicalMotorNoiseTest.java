@@ -1,5 +1,6 @@
 package com.rocinante.input;
 
+import com.rocinante.behavior.AttentionModel;
 import com.rocinante.behavior.FatigueModel;
 import com.rocinante.behavior.PlayerProfile;
 import org.junit.Before;
@@ -22,6 +23,9 @@ public class BiologicalMotorNoiseTest {
     @Mock
     private FatigueModel fatigueModel;
     
+    @Mock
+    private AttentionModel attentionModel;
+    
     private BiologicalMotorNoise motorNoise;
 
     @Before
@@ -39,7 +43,10 @@ public class BiologicalMotorNoiseTest {
         // Mock fatigue (fresh player)
         when(fatigueModel.getFatigueLevel()).thenReturn(0.0);
         
-        motorNoise = new BiologicalMotorNoise(playerProfile, fatigueModel);
+        // Mock attention model (no cognitive load)
+        when(attentionModel.getCognitiveLoad()).thenReturn(0.0);
+        
+        motorNoise = new BiologicalMotorNoise(playerProfile, fatigueModel, attentionModel);
     }
 
     @Test
@@ -97,7 +104,7 @@ public class BiologicalMotorNoiseTest {
         
         // We test by collecting many samples and verifying the expected ratio holds approximately
         when(fatigueModel.getFatigueLevel()).thenReturn(0.0);
-        BiologicalMotorNoise freshNoise = new BiologicalMotorNoise(playerProfile, fatigueModel);
+        BiologicalMotorNoise freshNoise = new BiologicalMotorNoise(playerProfile, fatigueModel, attentionModel);
         
         // Use high sample count for statistical stability
         double freshSum = 0;
@@ -112,7 +119,7 @@ public class BiologicalMotorNoiseTest {
         
         // Exhausted player samples
         when(fatigueModel.getFatigueLevel()).thenReturn(1.0);
-        BiologicalMotorNoise tiredNoise = new BiologicalMotorNoise(playerProfile, fatigueModel);
+        BiologicalMotorNoise tiredNoise = new BiologicalMotorNoise(playerProfile, fatigueModel, attentionModel);
         
         double tiredSum = 0;
         for (int i = 0; i < samples; i++) {
@@ -193,11 +200,11 @@ public class BiologicalMotorNoiseTest {
         
         // Strong right-handed bias
         when(playerProfile.getDominantHandBias()).thenReturn(0.75);
-        BiologicalMotorNoise rightHandNoise = new BiologicalMotorNoise(playerProfile, fatigueModel);
+        BiologicalMotorNoise rightHandNoise = new BiologicalMotorNoise(playerProfile, fatigueModel, attentionModel);
         
         // Strong left-handed bias
         when(playerProfile.getDominantHandBias()).thenReturn(0.25);
-        BiologicalMotorNoise leftHandNoise = new BiologicalMotorNoise(playerProfile, fatigueModel);
+        BiologicalMotorNoise leftHandNoise = new BiologicalMotorNoise(playerProfile, fatigueModel, attentionModel);
         
         // Collect correlation data
         double rightCorrSum = 0;
@@ -239,7 +246,7 @@ public class BiologicalMotorNoiseTest {
         when(playerProfile.getPhysTremorFreq()).thenReturn(12.0);
         when(playerProfile.getPhysTremorAmp()).thenReturn(1.5);
         
-        BiologicalMotorNoise customNoise = new BiologicalMotorNoise(playerProfile, fatigueModel);
+        BiologicalMotorNoise customNoise = new BiologicalMotorNoise(playerProfile, fatigueModel, attentionModel);
         
         // Higher amplitude should produce larger noise values on average
         double sum = 0;
@@ -263,11 +270,11 @@ public class BiologicalMotorNoiseTest {
         when(playerProfile.getFeedbackDelaySamples()).thenReturn(15);
         when(playerProfile.getPhysTremorPhaseOffset()).thenReturn(Math.PI / 2.0); // 90° offset
         
-        BiologicalMotorNoise noise90 = new BiologicalMotorNoise(playerProfile, fatigueModel);
+        BiologicalMotorNoise noise90 = new BiologicalMotorNoise(playerProfile, fatigueModel, attentionModel);
         
         // With 0° offset, X and Y should be highly correlated (linear pattern)
         when(playerProfile.getPhysTremorPhaseOffset()).thenReturn(0.0); // 0° offset
-        BiologicalMotorNoise noise0 = new BiologicalMotorNoise(playerProfile, fatigueModel);
+        BiologicalMotorNoise noise0 = new BiologicalMotorNoise(playerProfile, fatigueModel, attentionModel);
         
         // Collect many samples and compute correlation
         // 90° offset should have lower correlation than 0° offset

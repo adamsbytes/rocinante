@@ -116,9 +116,10 @@ public class BehaviorModule extends AbstractModule {
                                                      RobotMouseController mouseController,
                                                      RobotKeyboardController keyboardController,
                                                      PlayerProfile playerProfile,
-                                                     FatigueModel fatigueModel) {
+                                                     FatigueModel fatigueModel,
+                                                     AttentionModel attentionModel) {
         return new CameraController(client, randomization, perlinNoise, mouseController, keyboardController,
-                playerProfile, fatigueModel);
+                playerProfile, fatigueModel, attentionModel);
     }
 
     /**

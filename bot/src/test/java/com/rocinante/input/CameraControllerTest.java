@@ -1,5 +1,6 @@
 package com.rocinante.input;
 
+import com.rocinante.behavior.AttentionModel;
 import com.rocinante.behavior.FatigueModel;
 import com.rocinante.behavior.PlayerProfile;
 import com.rocinante.util.PerlinNoise;
@@ -40,6 +41,9 @@ public class CameraControllerTest {
     @Mock
     private FatigueModel fatigueModel;
     
+    @Mock
+    private AttentionModel attentionModel;
+    
     private Randomization randomization;
     private PerlinNoise perlinNoise;
     private ScheduledExecutorService executor;
@@ -76,8 +80,11 @@ public class CameraControllerTest {
         // Mock fatigue model
         when(fatigueModel.getFatigueLevel()).thenReturn(0.0);
         
+        // Mock attention model
+        when(attentionModel.getCognitiveLoad()).thenReturn(0.0);
+        
         cameraController = new CameraController(mouseController, keyboardController, 
-                client, randomization, perlinNoise, executor, playerProfile, fatigueModel);
+                client, randomization, perlinNoise, executor, playerProfile, fatigueModel, attentionModel);
     }
 
     @Test
@@ -149,7 +156,7 @@ public class CameraControllerTest {
         
         // Re-create controller with high frequency profile
         CameraController highFreqController = new CameraController(mouseController, keyboardController, 
-                client, randomization, perlinNoise, executor, highFreqProfile, fatigueModel);
+                client, randomization, perlinNoise, executor, highFreqProfile, fatigueModel, attentionModel);
         
         int holdCount = 0;
         for (int i = 0; i < 1000; i++) {

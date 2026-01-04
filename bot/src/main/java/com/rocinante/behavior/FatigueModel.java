@@ -10,7 +10,6 @@ import javax.inject.Provider;
 import javax.inject.Singleton;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -461,9 +460,9 @@ public class FatigueModel {
         double fatigueScaling = 1.0 + (currentFatigue * 0.5); // Up to 1.5x at max fatigue
         double crashProbability = CRASH_PROBABILITY_PER_SECOND * secondsElapsed * fatigueScaling;
         
-        if (ThreadLocalRandom.current().nextDouble() < crashProbability) {
+        if (Randomization.secureChance(crashProbability)) {
             // Crash! Apply sudden fatigue spike
-            double spike = CRASH_MIN_SPIKE + ThreadLocalRandom.current().nextDouble() * (CRASH_MAX_SPIKE - CRASH_MIN_SPIKE);
+            double spike = CRASH_MIN_SPIKE + Randomization.secureDouble() * (CRASH_MAX_SPIKE - CRASH_MIN_SPIKE);
             double newFatigue = clampFatigue(currentFatigue + spike);
             setFatigueLevelInternal(newFatigue);
             
@@ -515,10 +514,10 @@ public class FatigueModel {
             }
         }
         
-        if (ThreadLocalRandom.current().nextDouble() < coffeeProbability) {
+        if (Randomization.secureChance(coffeeProbability)) {
             // Coffee break! Apply mini-recovery
             double recovery = COFFEE_BREAK_MIN_RECOVERY + 
-                ThreadLocalRandom.current().nextDouble() * (COFFEE_BREAK_MAX_RECOVERY - COFFEE_BREAK_MIN_RECOVERY);
+                Randomization.secureDouble() * (COFFEE_BREAK_MAX_RECOVERY - COFFEE_BREAK_MIN_RECOVERY);
             double newFatigue = clampFatigue(currentFatigue - recovery);
             setFatigueLevelInternal(newFatigue);
             

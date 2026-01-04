@@ -246,6 +246,14 @@ public class RocinantePlugin extends Plugin
     @Getter
     private com.rocinante.behavior.tasks.TradeHandler tradeHandler;
 
+    @Inject
+    @Getter
+    private com.rocinante.behavior.TimingSelfMonitor timingSelfMonitor;
+
+    @Inject
+    @Getter
+    private com.rocinante.behavior.TickJitterController tickJitterController;
+
     // === Status & Communication Components ===
 
     @Inject
@@ -433,6 +441,12 @@ public class RocinantePlugin extends Plugin
         // (FatigueModel and PlayerProfile are constructor-injected)
         humanTimer.setFatigueModel(fatigueModel);
         humanTimer.setAttentionModel(attentionModel);
+        
+        // Wire TimingSelfMonitor to all timing-generating components
+        // This enables self-monitoring of timing patterns to detect mechanical behavior
+        humanTimer.setTimingSelfMonitor(timingSelfMonitor);
+        mouseController.setTimingSelfMonitor(timingSelfMonitor);
+        tickJitterController.setTimingSelfMonitor(timingSelfMonitor);
         
         // Register emergency conditions
         registerEmergencyConditions();

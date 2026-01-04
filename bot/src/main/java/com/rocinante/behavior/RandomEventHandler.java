@@ -8,6 +8,7 @@ import com.rocinante.tasks.TaskPriority;
 import com.rocinante.tasks.impl.DialogueTask;
 import com.rocinante.tasks.impl.InteractNpcTask;
 import com.rocinante.tasks.impl.WaitForConditionTask;
+import com.rocinante.timing.HumanTimer;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Actor;
@@ -21,8 +22,6 @@ import net.runelite.client.eventbus.Subscribe;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.time.Duration;
-import java.time.Instant;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -79,9 +78,16 @@ public class RandomEventHandler {
 
     private static final int RANDOM_EVENT_COOLDOWN_TICKS = 50;
 
+    /**
+     * Probability of ignoring a random event entirely (15%).
+     * Simulates human inattention - sometimes players don't notice or choose to ignore.
+     */
+    private static final double IGNORE_PROBABILITY = 0.15;
+
     private final Client client;
     private final TaskExecutor taskExecutor;
     private final TaskContext taskContext;
+    private final HumanTimer humanTimer;
 
     /**
      * Lamp skill selection (must be provided via env/system property).
@@ -97,10 +103,12 @@ public class RandomEventHandler {
     @Inject
     public RandomEventHandler(Client client,
                               TaskExecutor taskExecutor,
-                              TaskContext taskContext) {
+                              TaskContext taskContext,
+                              HumanTimer humanTimer) {
         this.client = client;
         this.taskExecutor = taskExecutor;
         this.taskContext = taskContext;
+        this.humanTimer = humanTimer;
         this.lampSkill = resolveLampSkill();
         log.info("RandomEventHandler initialized with lamp skill: {}", lampSkill);
     }
@@ -134,34 +142,72 @@ public class RandomEventHandler {
 
         lastHandledTickByIndex.put(npcIndex, tick);
 
-        if (GENIE_NPC_IDS.contains(npc.getId())) {
-            handleGenie(npc);
-        } else {
-            handleDismiss(npc);
+        // 15% chance to ignore the random event entirely (simulates inattention)
+        if (humanTimer.chance(IGNORE_PROBABILITY)) {
+            log.info("Ignoring random event NPC {} ({}) - simulated inattention", npc.getName(), npc.getId());
+            return;
         }
+
+        // Apply human-like detection delay before responding
+        // Random events are unexpected, so use UNEXPECTED reaction context
+        long detectionDelay = humanTimer.getContextualReaction(HumanTimer.ReactionContext.UNEXPECTED);
+        int npcId = npc.getId();
+        String npcName = npc.getName();
+
+        log.debug("Random event detected: {} ({}), responding after {}ms", npcName, npcId, detectionDelay);
+
+        humanTimer.sleep(detectionDelay).thenRun(() -> {
+            // Verify the NPC is still targeting us after the delay
+            if (!isNpcStillTargetingPlayer(npcIndex)) {
+                log.debug("Random event NPC no longer targeting player after delay, skipping response");
+                return;
+            }
+
+            if (GENIE_NPC_IDS.contains(npcId)) {
+                handleGenie(npcId, npcName);
+            } else {
+                handleDismiss(npcId, npcName);
+            }
+        });
+    }
+
+    /**
+     * Check if the NPC at the given index is still targeting the local player.
+     */
+    private boolean isNpcStillTargetingPlayer(int npcIndex) {
+        if (client.getLocalPlayer() == null) {
+            return false;
+        }
+
+        for (NPC npc : client.getNpcs()) {
+            if (npc != null && npc.getIndex() == npcIndex) {
+                return npc.getInteracting() == client.getLocalPlayer();
+            }
+        }
+        return false;
     }
 
     // ========================================================================
     // Actions
     // ========================================================================
 
-    private void handleDismiss(NPC npc) {
-        InteractNpcTask dismiss = new InteractNpcTask(npc.getId(), "Dismiss")
+    private void handleDismiss(int npcId, String npcName) {
+        InteractNpcTask dismiss = new InteractNpcTask(npcId, "Dismiss")
                 .withDescription("Dismiss random event")
                 .withTrackMovement(false);
 
         taskExecutor.queueTask(dismiss, TaskPriority.URGENT);
-        log.info("Queued dismiss for random event NPC {} ({})", npc.getName(), npc.getId());
+        log.info("Queued dismiss for random event NPC {} ({})", npcName, npcId);
     }
 
-    private void handleGenie(NPC npc) {
+    private void handleGenie(int npcId, String npcName) {
         if (lampSkill == null) {
             log.error("LAMP_SKILL not configured; dismissing genie to avoid idle");
-            handleDismiss(npc);
+            handleDismiss(npcId, npcName);
             return;
         }
 
-        InteractNpcTask talk = new InteractNpcTask(npc.getId(), "Talk-to")
+        InteractNpcTask talk = new InteractNpcTask(npcId, "Talk-to")
                 .withDialogueExpected(true)
                 .withDescription("Talk to Genie for lamp")
                 .withTrackMovement(false);

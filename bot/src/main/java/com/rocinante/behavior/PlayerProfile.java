@@ -144,6 +144,18 @@ public class PlayerProfile {
         {  -0.30,   0.25,  0.35,  -0.15, -0.10,  0.25,  0.35,   1.00 }, // walkInterval
     };
     
+    /**
+     * Standard deviation of Gaussian noise added to each correlation coefficient.
+     * 
+     * This creates per-bot variation in the correlation structure, preventing
+     * population-level fingerprinting. Value of 0.10 provides meaningful variation
+     * (~±0.2 at 2σ) while preserving the overall correlation structure.
+     * 
+     * Higher values = more diverse population (harder to fingerprint)
+     * Lower values = more consistent structure (easier to fingerprint but more realistic individual traits)
+     */
+    private static final double CORRELATION_NOISE_STDDEV = 0.10;
+    
     // Motor trait distribution parameters: { mean, stdDev, min, max }
     private static final double[][] MOTOR_TRAIT_PARAMS = {
         { 1.05,  0.15,   0.80,   1.30 },  // mouseSpeedMultiplier
@@ -277,7 +289,7 @@ public class PlayerProfile {
         profileData.createdAt = Instant.now();
         
         // ====================================================================
-        // CORRELATED MOTOR TRAITS (Multivariate Normal)
+        // CORRELATED MOTOR TRAITS (Multivariate Normal with Per-Bot Noise)
         // ====================================================================
         // Instead of linearly deriving traits from mouseSpeedMultiplier (which
         // creates a rank-1 manifold where all bots are "Athletic Gamers" of
@@ -289,6 +301,11 @@ public class PlayerProfile {
         //   - "Slow but Snappy": low speed, short clicks, quick reactions  
         //   - "FPS Precision": fast mouse, deliberate slow clicks
         //   - "RTS Clicker": slow mouse, rapid fire clicks
+        // 
+        // CRITICAL: Each bot gets a perturbed correlation matrix to avoid
+        // population-level fingerprinting. Real human populations have varying
+        // correlation structures between sub-groups (gamers vs casuals, age
+        // groups, etc.). A fixed correlation matrix is statistically detectable.
         // ====================================================================
         
         // Extract means, stdDevs, mins, maxs from MOTOR_TRAIT_PARAMS
@@ -303,9 +320,14 @@ public class PlayerProfile {
             maxs[i] = MOTOR_TRAIT_PARAMS[i][3];
         }
         
-        // Generate 8 correlated motor traits together
+        // Generate per-bot noisy correlation matrix to avoid population fingerprinting
+        // Noise stddev of 0.10 provides meaningful variation while preserving structure
+        double[][] perturbedCorrelations = seededRandomization.perturbCorrelationMatrix(
+                MOTOR_CORRELATION_MATRIX, CORRELATION_NOISE_STDDEV);
+        
+        // Generate 8 correlated motor traits together using the perturbed matrix
         double[] motorTraits = seededRandomization.multivariateNormalBounded(
-                means, stdDevs, MOTOR_CORRELATION_MATRIX, mins, maxs);
+                means, stdDevs, perturbedCorrelations, mins, maxs);
         
         // Assign correlated traits to profile
         profileData.mouseSpeedMultiplier = motorTraits[MT_MOUSE_SPEED];
@@ -2250,8 +2272,21 @@ public class PlayerProfile {
      * Calculate the circadian performance multiplier for the current time.
      * Returns a value that can be used to adjust action speed, error rate, etc.
      * 
+     * <p>Models a biologically realistic circadian rhythm with:
+     * <ul>
+     *   <li><b>Sinusoidal primary rhythm:</b> Smooth cosine-based transitions rather than
+     *       linear decline, matching the natural oscillation of alertness hormones</li>
+     *   <li><b>Post-lunch dip:</b> Universal performance dip ~2-4pm caused by postprandial
+     *       somnolence (digestion) and natural body temperature drop, independent of chronotype</li>
+     *   <li><b>Night trough amplification:</b> The 3-5am window is a circadian nadir where
+     *       performance craters beyond what distance-from-peak would predict (microsleeps,
+     *       severely impaired reaction time)</li>
+     *   <li><b>Asymmetric rise/decline:</b> Morning alertness rises faster than evening
+     *       decline due to cortisol awakening response vs gradual melatonin onset</li>
+     * </ul>
+     * 
      * @param hourOfDay the current hour (0-23) in the player's timezone
-     * @return performance multiplier (lower when tired, higher when alert)
+     * @return performance multiplier (0.5-1.0, lower when tired, higher when alert)
      */
     public double getCircadianPerformanceMultiplier(int hourOfDay) {
         // Base peak hours by chronotype
@@ -2270,16 +2305,73 @@ public class PlayerProfile {
         // Apply personal offset
         double peakHour = basePeakHour + profileData.peakHourOffset;
         
-        // Calculate distance from peak (0-12 hours)
-        double distance = Math.abs(hourOfDay - peakHour);
-        if (distance > 12) {
-            distance = 24 - distance;  // Wrap around midnight
-        }
+        // ========================================================================
+        // Primary Rhythm: Sinusoidal (Cosine Wave)
+        // ========================================================================
+        // Cosine gives 1.0 at peak, smoothly declining to -1.0 at nadir (12h from peak).
+        // This matches the natural oscillation of circadian alertness hormones.
         
-        // Calculate performance: 1.0 at peak, decreasing with distance
-        // At 12 hours from peak (worst time), multiplier = 1.0 - circadianStrength
-        double performanceDip = (distance / 12.0) * profileData.circadianStrength;
-        return 1.0 - performanceDip;
+        double hoursFromPeak = hourOfDay - peakHour;
+        // Normalize to [0, 24) range
+        while (hoursFromPeak < 0) hoursFromPeak += 24;
+        while (hoursFromPeak >= 24) hoursFromPeak -= 24;
+        
+        // Cosine wave: 1.0 at peak (0h), -1.0 at nadir (12h from peak)
+        double primaryRhythm = Math.cos(hoursFromPeak * Math.PI / 12.0);
+        
+        // ========================================================================
+        // Post-Lunch Dip (Universal, ~2-4pm)
+        // ========================================================================
+        // Separate biological process: postprandial somnolence (digestion redirects blood
+        // flow), natural body temperature dip, and homeostatic sleep pressure.
+        // This dip occurs regardless of chronotype.
+        
+        double lunchDipCenter = 14.5; // 2:30pm - peak of the afternoon dip
+        double lunchDipWidth = 2.0;   // ~2 hours wide (Gaussian spread)
+        double distanceFromLunchDip = Math.abs(hourOfDay - lunchDipCenter);
+        if (distanceFromLunchDip > 12) distanceFromLunchDip = 24 - distanceFromLunchDip;
+        
+        // Gaussian curve centered on 2:30pm
+        double lunchDipEffect = Math.exp(-distanceFromLunchDip * distanceFromLunchDip 
+                / (2 * lunchDipWidth * lunchDipWidth));
+        double lunchDipMagnitude = 0.08; // 8% dip at peak (2:30pm)
+        
+        // ========================================================================
+        // Night Trough Amplification (3-5am)
+        // ========================================================================
+        // The circadian nadir is MUCH worse than "just far from peak":
+        // - Core body temperature minimum
+        // - Cortisol at lowest point
+        // - Microsleep intrusions even in motivated subjects
+        // - Reaction time can be 2-3x worse than daytime
+        // This creates the characteristic "cratering" of night shift performance.
+        
+        double nightTroughCenter = 4.0; // 4am - circadian nadir
+        double distanceFromTrough = Math.abs(hourOfDay - nightTroughCenter);
+        if (distanceFromTrough > 12) distanceFromTrough = 24 - distanceFromTrough;
+        
+        // Wider Gaussian for the night trough (affects 2-6am range significantly)
+        double nightTroughEffect = Math.exp(-distanceFromTrough * distanceFromTrough / 8.0);
+        double nightTroughMagnitude = 0.15; // Additional 15% penalty at 4am
+        
+        // ========================================================================
+        // Combine All Effects
+        // ========================================================================
+        
+        // Primary rhythm: scale by circadianStrength, map from [-1,1] to [1-strength, 1+strength/2]
+        // At peak (primaryRhythm=1): performance = 1.0
+        // At nadir (primaryRhythm=-1): performance = 1.0 - circadianStrength
+        double basePerformance = 1.0 - (1.0 - primaryRhythm) * profileData.circadianStrength * 0.5;
+        
+        // Apply lunch dip and night trough as additive penalties scaled by circadianStrength
+        // Players with lower circadianStrength are also less affected by these dips
+        double lunchPenalty = lunchDipEffect * lunchDipMagnitude * (profileData.circadianStrength / 0.25);
+        double nightPenalty = nightTroughEffect * nightTroughMagnitude * (profileData.circadianStrength / 0.25);
+        
+        double finalPerformance = basePerformance - lunchPenalty - nightPenalty;
+        
+        // Clamp to [0.5, 1.0] - even at worst, humans maintain some baseline function
+        return Math.max(0.5, Math.min(1.0, finalPerformance));
     }
 
     // ========================================================================

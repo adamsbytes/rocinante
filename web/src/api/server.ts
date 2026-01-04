@@ -356,7 +356,9 @@ function formatValidationErrors(issues: Array<{ message: string }>): string {
 // Deterministically generates anti-fingerprint settings from bot ID
 // =============================================================================
 
-const COMMON_DPIS = [96, 110, 120, 144];
+// Steam Deck handheld mode: 1280x800 @ 215 DPI
+const STEAM_DECK_RESOLUTION = '1280x800';
+const STEAM_DECK_DPI = 215;
 
 // Optional fonts pool - installed in Dockerfile but disabled by default
 // Entrypoint enables selected fonts per bot
@@ -370,7 +372,8 @@ const OPTIONAL_FONTS = [
   'noto-color-emoji', 'freefont-otf', 'urw-base35', 'texgyre',
 ];
 
-const GC_ALGORITHMS: Array<'G1GC' | 'ParallelGC' | 'ZGC'> = ['G1GC', 'ParallelGC', 'ZGC'];
+// G1GC only - per-bot tuning variance is derived from machine-id in entrypoint.sh
+const GC_ALGORITHM = 'G1GC' as const;
 
 /** Simple seeded random number generator (matches Java's behavior) */
 function seededRandom(seed: number): () => number {
@@ -405,16 +408,10 @@ function generateEnvironmentFingerprint(fingerprintSeed: string): EnvironmentCon
   // TODO: Make configurable if we need to support multi-display setups
   const displayNumber = 0;
 
-  // Screen resolution: sample from common sizes to avoid fingerprinting
-  // TODO: Add weighted random selection of resolutions.
-  // We are only running one bot right now, so this isn't important
-  const screenResolution = '1280x720';
-
-  // Screen depth: 24 or 32 (70% use 24-bit)
-  const screenDepth = random() < 0.7 ? 24 : 32;
-
-  // Display DPI: Random from common values
-  const displayDpi = COMMON_DPIS[Math.floor(random() * COMMON_DPIS.length)];
+  // Steam Deck handheld mode
+  const screenResolution = STEAM_DECK_RESOLUTION;
+  const screenDepth = 24;
+  const displayDpi = STEAM_DECK_DPI;
 
   // Timezone: Default, user sets per account to match proxy
   const timezone = 'America/New_York';
@@ -424,8 +421,8 @@ function generateEnvironmentFingerprint(fingerprintSeed: string): EnvironmentCon
   const shuffledFonts = [...OPTIONAL_FONTS].sort(() => random() - 0.5);
   const additionalFonts = shuffledFonts.slice(0, numFonts);
 
-  // GC algorithm: Random from available options
-  const gcAlgorithm = GC_ALGORITHMS[Math.floor(random() * GC_ALGORITHMS.length)];
+  // GC algorithm: Always G1GC (tuning variance derived from machine-id in entrypoint)
+  const gcAlgorithm = GC_ALGORITHM;
 
   return {
     machineId,

@@ -1,5 +1,6 @@
 package com.rocinante.behavior;
 
+import com.rocinante.util.Randomization;
 import lombok.extern.slf4j.Slf4j;
 
 import javax.inject.Inject;
@@ -7,7 +8,6 @@ import javax.inject.Singleton;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.Objects;
-import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Real-time performance state combining static identity with dynamic modifiers.
@@ -243,7 +243,8 @@ public class PerformanceState {
         double previousPerformance = dailyPerformance; // Store before update
         
         // Generate new random "innovation" (the random component)
-        double innovation = 1.0 + ThreadLocalRandom.current().nextGaussian() * DAILY_PERFORMANCE_INNOVATION_STDDEV;
+        // Uses SecureRandom for unpredictable daily variation
+        double innovation = 1.0 + Randomization.getSecureRandom().nextGaussian() * DAILY_PERFORMANCE_INNOVATION_STDDEV;
         
         // Asymmetric AR(1): use different coefficients for degradation vs recovery
         // Degradation (innovation < previous): fast change (low α = 0.4)

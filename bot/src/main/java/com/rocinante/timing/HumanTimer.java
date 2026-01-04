@@ -2,6 +2,7 @@ package com.rocinante.timing;
 
 import com.rocinante.behavior.AttentionModel;
 import com.rocinante.behavior.FatigueModel;
+import com.rocinante.behavior.TimingSelfMonitor;
 import com.rocinante.util.Randomization;
 import lombok.Getter;
 import lombok.Setter;
@@ -21,6 +22,7 @@ import java.util.concurrent.*;
  * - Custom delays with configurable distributions
  * - Fatigue multiplier integration via FatigueModel
  * - Async sleep methods for non-blocking delays
+ * - Self-monitoring integration via TimingSelfMonitor
  *
  * All delays are multiplied by the fatigue multiplier before being returned.
  * FatigueModel updates the multiplier based on session fatigue and attention state.
@@ -43,6 +45,12 @@ public class HumanTimer {
      */
     @Setter
     private AttentionModel attentionModel;
+
+    /**
+     * TimingSelfMonitor for detecting mechanical timing patterns.
+     */
+    @Setter
+    private TimingSelfMonitor timingSelfMonitor;
 
     @Inject
     public HumanTimer(Randomization randomization) {
@@ -89,7 +97,12 @@ public class HumanTimer {
      */
     public long getDelay(DelayProfile profile) {
         long baseDelay = calculateBaseDelay(profile, profile.getMean());
-        return applyModifiers(baseDelay);
+        long finalDelay = applyModifiers(baseDelay);
+        
+        // Record sample for self-monitoring based on profile type
+        recordTimingSample(profile, finalDelay);
+        
+        return finalDelay;
     }
 
     /**
@@ -481,7 +494,47 @@ public class HumanTimer {
     private long applyModifiers(long baseDelay) {
         double sigmaMult = getFatigueSigmaMultiplier();
         double attentionMult = getAttentionMultiplier();
-        return Math.round(baseDelay * sigmaMult * attentionMult);
+        double varianceMult = getVarianceMultiplier();
+        return Math.round(baseDelay * sigmaMult * attentionMult * varianceMult);
+    }
+
+    /**
+     * Get variance multiplier from self-monitor (increases when timing is too consistent).
+     */
+    private double getVarianceMultiplier() {
+        return timingSelfMonitor != null ? timingSelfMonitor.getVarianceMultiplier() : 1.0;
+    }
+
+    /**
+     * Record timing sample to self-monitor based on delay profile type.
+     */
+    private void recordTimingSample(DelayProfile profile, long delay) {
+        if (timingSelfMonitor == null || delay <= 0) {
+            return;
+        }
+
+        // Map profile types to timing categories
+        switch (profile) {
+            case REACTION:
+            case REACTION_EXPECTED:
+            case REACTION_UNEXPECTED:
+            case REACTION_COMPLEX:
+                timingSelfMonitor.recordReactionTime(delay);
+                break;
+
+            case ACTION_GAP:
+            case MENU_SELECT:
+            case INVENTORY_SCAN:
+            case BANK_SEARCH:
+            case GEAR_SWITCH:
+            case PRAYER_SWITCH:
+                timingSelfMonitor.recordActionInterval(delay);
+                break;
+
+            // Other profiles (DIALOGUE_READ, etc.) don't need tracking
+            default:
+                break;
+        }
     }
 
     // ========================================================================

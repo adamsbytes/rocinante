@@ -9,11 +9,12 @@ import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 
+import com.rocinante.util.Randomization;
+
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Handles equipment switching with humanized timing.
@@ -336,7 +337,7 @@ public class GearSwitcher {
      * Generate a random delay within configured range.
      */
     private int randomDelay() {
-        return ThreadLocalRandom.current().nextInt(minClickDelay, maxClickDelay + 1);
+        return Randomization.secureIntRange(minClickDelay, maxClickDelay);
     }
 
     /**

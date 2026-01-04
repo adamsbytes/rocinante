@@ -178,11 +178,18 @@ RUN apt-get update && apt-get install -y \
 # =============================================================================
 # Build POSIX thread compatibility extensions
 # =============================================================================
-# Compatibility shims for /proc and /sys filesystem operations
+# Compatibility shims for /proc and /sys filesystem operations.
+# Uses /etc/ld.so.preload instead of LD_PRELOAD env var to ensure the library
+# is loaded by the dynamic linker BEFORE any application (including Java JVM)
+# can cache environment variables - avoiding the LD_PRELOAD race condition.
 COPY pthreads_ext.c /tmp/
 RUN gcc -shared -fPIC -o /usr/lib/libpthreads_ext.so /tmp/pthreads_ext.c -ldl -lpthread -lm && \
     rm /tmp/pthreads_ext.c && \
-    chmod 755 /usr/lib/libpthreads_ext.so
+    chmod 755 /usr/lib/libpthreads_ext.so && \
+    # Use /etc/ld.so.preload instead of LD_PRELOAD env var to avoid race condition
+    # where Java may cache env before hooks load. ld.so.preload is read by the
+    # dynamic linker at process startup, before any application code runs.
+    echo "/usr/lib/libpthreads_ext.so" > /etc/ld.so.preload
 
 # =============================================================================
 # Anti-fingerprint: Generate locale (must be done as root)

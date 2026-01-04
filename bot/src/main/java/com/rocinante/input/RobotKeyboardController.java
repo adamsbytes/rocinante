@@ -360,9 +360,9 @@ public class RobotKeyboardController {
         // Type the wrong character
         typeCharacter(typoChar);
 
-        // Pause before noticing the mistake
-        long correctionDelay = randomization.uniformRandomLong(
-                MIN_TYPO_CORRECTION_DELAY_MS, MAX_TYPO_CORRECTION_DELAY_MS);
+        // Pause before noticing the mistake (ex-Gaussian for error detection timing)
+        long correctionDelay = randomization.reactionTimeMs(
+                180, MIN_TYPO_CORRECTION_DELAY_MS, MAX_TYPO_CORRECTION_DELAY_MS);
         Thread.sleep(correctionDelay);
 
         // Backspace to delete typo (don't record as separate action - part of typing)
@@ -514,9 +514,9 @@ public class RobotKeyboardController {
 
         executor.execute(() -> {
             try {
-                // Reaction time delay
-                long reactionDelay = randomization.uniformRandomLong(
-                        MIN_HOTKEY_REACTION_MS, MAX_HOTKEY_REACTION_MS);
+                // Reaction time delay (ex-Gaussian for human perception/decision timing)
+                long reactionDelay = randomization.reactionTimeMs(
+                        250, MIN_HOTKEY_REACTION_MS, MAX_HOTKEY_REACTION_MS);
                 Thread.sleep(reactionDelay);
 
                 // Press all keys via UInput (log-normal timing for human realism)
@@ -567,13 +567,13 @@ public class RobotKeyboardController {
 
         executor.execute(() -> {
             try {
-                // Calculate reaction delay with learning speedup
-                long baseReaction = randomization.uniformRandomLong(
-                        MIN_HOTKEY_REACTION_MS, MAX_HOTKEY_REACTION_MS);
+                // Calculate reaction delay with learning speedup (ex-Gaussian for perception timing)
+                long baseReaction = randomization.reactionTimeMs(
+                        250, MIN_HOTKEY_REACTION_MS, MAX_HOTKEY_REACTION_MS);
 
                 int usageCount = fKeyUsageCount.getOrDefault(fKeyNumber, 0);
                 if (usageCount > 0) {
-                    // Apply speedup for subsequent uses
+                    // Apply speedup for subsequent uses (muscle memory reduces reaction time)
                     double speedup = randomization.uniformRandom(MIN_FKEY_SPEEDUP, MAX_FKEY_SPEEDUP);
                     baseReaction = Math.round(baseReaction * speedup);
                     log.debug("F{} speedup applied (usage #{}): {}ms", fKeyNumber, usageCount + 1, baseReaction);

@@ -360,8 +360,8 @@ public class ProcessItemTask extends AbstractTask {
         log.debug("Starting batch #{}: using {} on {}", batchNumber, sourceItemId, targetItemId);
         operationPending = true;
 
-        // Click source item
-        long delayMs = ctx.getRandomization().uniformRandomLong(100, 200);
+        // Click source item (log-normal delay for inter-click timing)
+        long delayMs = ctx.getRandomization().humanizedDelayMs(140, 100, 200);
         inventoryHelper.executeClick(sourceSlot, "Use source item")
                 .thenCompose(success -> {
                     if (!success) {

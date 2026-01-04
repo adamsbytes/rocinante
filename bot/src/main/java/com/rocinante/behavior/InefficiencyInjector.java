@@ -271,11 +271,12 @@ public class InefficiencyInjector {
 
     /**
      * Get the duration to hesitate (hover) before clicking.
+     * Uses log-normal distribution for realistic decision timing.
      * 
      * @return hesitation delay in milliseconds
      */
     public long getHesitationDelay() {
-        return randomization.uniformRandomLong(MIN_HESITATION_DELAY_MS, MAX_HESITATION_DELAY_MS);
+        return randomization.humanizedDelayMs(900, 0.4, MIN_HESITATION_DELAY_MS, MAX_HESITATION_DELAY_MS);
     }
 
     /**

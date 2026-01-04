@@ -1,5 +1,6 @@
 package com.rocinante.input;
 
+import com.rocinante.behavior.AttentionModel;
 import com.rocinante.behavior.FatigueModel;
 import com.rocinante.behavior.PlayerProfile;
 import lombok.extern.slf4j.Slf4j;
@@ -61,6 +62,18 @@ import java.security.SecureRandom;
  * 7. **Per-profile unique characteristics** - Uses PlayerProfile's physTremorFreq,
  *    physTremorAmp, and dominantHandBias for truly unique motor signatures.
  * 
+ * 8. **Cognitive-motor coupling** - When AttentionModel is provided, cognitive load
+ *    scales motor noise. Complex tasks and divided attention increase tremor by up
+ *    to 50%, modeling dual-task interference (Woollacott & Shumway-Cook, 2002).
+ * 
+ * 9. **Postural drift** - Very slow (sub-Hz) wandering of the hand's resting position.
+ *    Unlike tremor which oscillates around a point, postural drift is a gradual shift
+ *    of that central point itself. Modeled as Ornstein-Uhlenbeck process with:
+ *    - Mean-reversion to center (arm muscles naturally return to neutral)
+ *    - ~1 second update interval (much slower than tremor)
+ *    - 0.1-0.3 pixel range (subtle but detectable in aggregate statistics)
+ *    Reference: Slifkin & Newell (1999) - postural control exhibits 1/f noise
+ * 
  * <h3>Resulting Error Spectrum</h3>
  * The combination produces error residuals that are NOT pure 1/f:
  * - Low frequencies: ~1/f from underlying pink noise
@@ -75,6 +88,8 @@ import java.security.SecureRandom;
  * - Motor unit firing: 8-25 Hz, summed to ~10 Hz tremor (Elble, 1996)
  * - Fatigue increases tremor amplitude by 50-100% (Vøllestad, 1997)
  * - Visual feedback latency: 100-200ms (Miall et al., 1993)
+ * - Cognitive load increases motor variability 20-60% (Woollacott & Shumway-Cook, 2002)
+ * - Postural control exhibits 1/f noise (Slifkin & Newell, 1999)
  */
 @Slf4j
 public class BiologicalMotorNoise {
@@ -102,11 +117,44 @@ public class BiologicalMotorNoise {
     }
 
     // ========================================================================
+    // Cognitive Motor Coupling Constants
+    // ========================================================================
+    // Why cognitive load affects motor control:
+    // The brain has limited bandwidth. Complex tasks (boss mechanics, PvP decisions)
+    // consume resources that would otherwise be used for fine motor control.
+    // Research (Woollacott & Shumway-Cook, 2002) shows 20-60% increase in motor noise.
+    
+    /** At max cognitive load, motor noise increases by 50%. */
+    private static final double COGNITIVE_LOAD_MAX_SCALE = 0.5;
+
+    // ========================================================================
+    // Postural Drift Constants
+    // ========================================================================
+    // Why postural drift exists:
+    // When holding the mouse, the arm isn't perfectly still - it slowly wanders
+    // from the intended position. Unlike tremor (8-12Hz oscillation), postural
+    // drift is sub-Hz wandering of the resting point itself. It's most visible
+    // in long stationary periods and creates a slow DC offset in mouse position.
+    
+    /** Update interval in samples. ~100 samples/sec → ~1 update/second. */
+    private static final int POSTURAL_UPDATE_INTERVAL_SAMPLES = 100;
+    
+    /** OU volatility - how much the drift position jumps each update. */
+    private static final double POSTURAL_OU_SIGMA = 0.1;
+    
+    /** OU mean-reversion rate - arm muscles naturally pull back to neutral. */
+    private static final double POSTURAL_OU_THETA = 0.02;
+    
+    /** Converts internal drift state to pixels. Gives ~0.1-0.3px typical offset. */
+    private static final double POSTURAL_DRIFT_AMPLITUDE = 0.2;
+
+    // ========================================================================
     // Dependencies
     // ========================================================================
     
     private final PlayerProfile playerProfile;
     private final FatigueModel fatigueModel;
+    private final AttentionModel attentionModel;
     private final PinkNoiseGenerator pinkNoiseX;
     private final PinkNoiseGenerator pinkNoiseY;
     private final SecureRandom random;
@@ -267,6 +315,17 @@ public class BiologicalMotorNoise {
     private double currentProgress = 0.0;
 
     // ========================================================================
+    // Postural Drift State
+    // ========================================================================
+    
+    /** Current drift position (internal units, scaled by POSTURAL_DRIFT_AMPLITUDE to pixels). */
+    private double posturalDriftX = 0.0;
+    private double posturalDriftY = 0.0;
+    
+    /** Counter for slow-update scheduling (~1 update/second vs tremor's 8-12Hz). */
+    private int samplesSincePosturalUpdate = 0;
+
+    // ========================================================================
     // Constructor
     // ========================================================================
 
@@ -275,10 +334,13 @@ public class BiologicalMotorNoise {
      * 
      * @param playerProfile profile for tremor characteristics and feedback delay
      * @param fatigueModel fatigue model for amplitude scaling
+     * @param attentionModel attention model for cognitive-motor coupling
      */
-    public BiologicalMotorNoise(PlayerProfile playerProfile, FatigueModel fatigueModel) {
+    public BiologicalMotorNoise(PlayerProfile playerProfile, FatigueModel fatigueModel,
+                                AttentionModel attentionModel) {
         this.playerProfile = playerProfile;
         this.fatigueModel = fatigueModel;
+        this.attentionModel = attentionModel;
         this.random = new SecureRandom();
         this.pinkNoiseX = new PinkNoiseGenerator(random);
         this.pinkNoiseY = new PinkNoiseGenerator(random);
@@ -379,6 +441,8 @@ public class BiologicalMotorNoise {
      * 2. Delayed feedback correction attempt (visual-motor loop)
      * 3. Correction noise (the correction itself is imperfect)
      * 4. Occasional overcorrection (creates mid-frequency oscillation)
+     * 5. Cognitive load scaling (when AttentionModel is set)
+     * 6. Postural drift (very slow DC bias wandering)
      * 
      * @return array of [noiseX, noiseY] in pixels
      */
@@ -472,10 +536,74 @@ public class BiologicalMotorNoise {
         // === Stage 7: Amplitude Scaling ===
         double amplitude = calculateEffectiveAmplitude();
         
+        // === Stage 8: Cognitive Motor Coupling ===
+        // Cognitive load from complex tasks or divided attention increases motor noise.
+        // This models the dual-task interference effect documented in motor control research.
+        double cognitiveScale = calculateCognitiveLoadScale();
+        
+        // === Stage 9: Postural Drift ===
+        // Very slow wandering of the hand's resting position (~1 update/second).
+        // Unlike tremor which oscillates, this shifts the baseline position itself.
+        double[] posturalOffset = updatePosturalDrift();
+        
         return new double[] {
-            filteredX * amplitude,
-            filteredY * amplitude
+            filteredX * amplitude * cognitiveScale + posturalOffset[0],
+            filteredY * amplitude * cognitiveScale + posturalOffset[1]
         };
+    }
+    
+    /**
+     * Update and return the postural drift offset.
+     * 
+     * Why this exists: When holding a mouse, your arm slowly wanders from where
+     * you intended to keep it. This is different from tremor (fast oscillation) -
+     * it's a slow shift in the baseline position itself. Visible in long idles.
+     * 
+     * @return [driftX, driftY] offset in pixels
+     */
+    private double[] updatePosturalDrift() {
+        samplesSincePosturalUpdate++;
+        
+        if (samplesSincePosturalUpdate >= POSTURAL_UPDATE_INTERVAL_SAMPLES) {
+            samplesSincePosturalUpdate = 0;
+            
+            // Ornstein-Uhlenbeck: random walk with mean-reversion
+            // Why mean-reverting: arm muscles naturally pull back toward a neutral position
+            posturalDriftX += random.nextGaussian() * POSTURAL_OU_SIGMA 
+                            - posturalDriftX * POSTURAL_OU_THETA;
+            posturalDriftY += random.nextGaussian() * POSTURAL_OU_SIGMA 
+                            - posturalDriftY * POSTURAL_OU_THETA;
+            
+            // Clamp to ±5 internal units (±1px after amplitude scaling)
+            // Why clamp: safety net - mean-reversion should keep it bounded anyway
+            posturalDriftX = Math.max(-5.0, Math.min(5.0, posturalDriftX));
+            posturalDriftY = Math.max(-5.0, Math.min(5.0, posturalDriftY));
+        }
+        
+        // Why fatigue matters: tired muscles have worse postural stability
+        double fatigueScale = 1.0 + fatigueModel.getFatigueLevel() * 0.5;
+        
+        return new double[] {
+            posturalDriftX * POSTURAL_DRIFT_AMPLITUDE * fatigueScale,
+            posturalDriftY * POSTURAL_DRIFT_AMPLITUDE * fatigueScale
+        };
+    }
+    
+    /**
+     * Calculate the cognitive load scaling factor for motor noise.
+     * 
+     * Why cognitive load affects motor control:
+     * When the brain is processing complex tasks, fewer neural resources are
+     * available for fine motor control. This manifests as increased tremor and
+     * reduced precision - the "dual-task interference" effect.
+     * 
+     * @return scaling factor (1.0 = minimal load, up to 1.5 = maximum load)
+     */
+    private double calculateCognitiveLoadScale() {
+        double cognitiveLoad = attentionModel.getCognitiveLoad();
+        
+        // Linear scaling: load 0.0 → 1.0x, load 1.0 → 1.5x
+        return 1.0 + cognitiveLoad * COGNITIVE_LOAD_MAX_SCALE;
     }
 
     /**
@@ -509,6 +637,11 @@ public class BiologicalMotorNoise {
         // Don't reset shared amplitude envelope - fatigue/arousal persists across movements
         // But dampen the velocity to avoid jarring transitions
         sharedAmpEnvelopeVelocity *= 0.5;
+        
+        // Don't reset postural drift - it persists across movements (biological continuity)
+        // The hand's resting position doesn't suddenly snap back when starting a new movement
+        // Just reset the update counter to ensure consistent timing
+        samplesSincePosturalUpdate = 0;
         
         // Reset underlying pink noise generators
         pinkNoiseX.reset();

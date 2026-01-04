@@ -386,6 +386,13 @@ async function startBotWithConfig(bot: BotConfig): Promise<void> {
         // Steam Deck has 4 cores / 8 threads - limit to match availableProcessors()
         CpusetCpus: '0-7',
         ShmSize: 256 * 1024 * 1024,
+        // TCP stack settings to match typical Linux desktop fingerprint
+        Sysctls: {
+          'net.ipv4.tcp_congestion_control': 'cubic',
+          'net.ipv4.tcp_window_scaling': '1',
+          'net.ipv4.tcp_timestamps': '1',
+          'net.ipv4.tcp_sack': '1',
+        },
         Devices: [
           {
             PathOnHost: '/dev/uinput',
