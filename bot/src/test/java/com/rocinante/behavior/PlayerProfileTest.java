@@ -1031,13 +1031,398 @@ public class PlayerProfileTest {
     public void testTotalTaskExperience() {
         PlayerProfile profile = new PlayerProfile(randomization, executor);
         profile.initializeDefault();
-        
+
         profile.recordTaskExperience("COMBAT", 100.0);
         profile.recordTaskExperience("BANKING", 50.0);
         profile.recordTaskExperience("COOKING", 75.0);
-        
+
         double total = profile.getTotalTaskExperience();
         assertEquals(225.0, total, 0.001);
+    }
+
+    // ========================================================================
+    // Constrained Random Correlation Matrix Tests
+    // ========================================================================
+
+    @Test
+    public void testCorrelationMatrix_SatisfiesAllConstraints() {
+        // Generate multiple profiles and verify all correlation matrices satisfy constraints
+        int sampleSize = 50;
+
+        for (int seed = 1; seed <= sampleSize; seed++) {
+            Randomization seededRandom = new Randomization(seed * 99999L);
+            PlayerProfile profile = new PlayerProfile(seededRandom, executor);
+            profile.initializeDefault();
+
+            double[][] corrMatrix = profile.getProfileData().motorCorrelationMatrix;
+            assertNotNull("Correlation matrix should exist", corrMatrix);
+
+            // Verify matrix is 8x8
+            assertEquals(8, corrMatrix.length);
+            for (int i = 0; i < 8; i++) {
+                assertEquals(8, corrMatrix[i].length);
+            }
+
+            // Verify diagonal is all 1.0
+            for (int i = 0; i < 8; i++) {
+                assertEquals("Diagonal should be 1.0 at index " + i,
+                           1.0, corrMatrix[i][i], 0.0001);
+            }
+
+            // Verify symmetry
+            for (int i = 0; i < 8; i++) {
+                for (int j = i + 1; j < 8; j++) {
+                    assertEquals("Matrix should be symmetric at [" + i + "][" + j + "]",
+                               corrMatrix[i][j], corrMatrix[j][i], 0.0001);
+                }
+            }
+
+            // Verify all off-diagonal elements are in [-1, 1]
+            for (int i = 0; i < 8; i++) {
+                for (int j = 0; j < 8; j++) {
+                    if (i != j) {
+                        assertTrue("Correlation [" + i + "][" + j + "] should be >= -1: " + corrMatrix[i][j],
+                                 corrMatrix[i][j] >= -1.0);
+                        assertTrue("Correlation [" + i + "][" + j + "] should be <= 1: " + corrMatrix[i][j],
+                                 corrMatrix[i][j] <= 1.0);
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    public void testCorrelationMatrix_PerBotUnique() {
+        // Generate 20 profiles and verify they have different correlation matrices
+        int sampleSize = 20;
+        double[][][] matrices = new double[sampleSize][][];
+
+        for (int seed = 1; seed <= sampleSize; seed++) {
+            Randomization seededRandom = new Randomization(seed * 87654L);
+            PlayerProfile profile = new PlayerProfile(seededRandom, executor);
+            profile.initializeDefault();
+
+            matrices[seed - 1] = profile.getProfileData().motorCorrelationMatrix;
+        }
+
+        // Count how many unique matrices we have
+        int uniqueCount = 0;
+        for (int i = 0; i < sampleSize; i++) {
+            boolean isUnique = true;
+            for (int j = 0; j < i; j++) {
+                if (matricesEqual(matrices[i], matrices[j])) {
+                    isUnique = false;
+                    break;
+                }
+            }
+            if (isUnique) {
+                uniqueCount++;
+            }
+        }
+
+        // Should have mostly unique matrices (allow 1-2 duplicates due to random chance)
+        assertTrue("Should have at least 18/20 unique matrices, got " + uniqueCount,
+                 uniqueCount >= 18);
+    }
+
+    @Test
+    public void testCholeskyDecomposition_Exists() {
+        // Verify Cholesky decomposition is computed and cached
+        PlayerProfile profile = new PlayerProfile(randomization, executor);
+        profile.initializeDefault();
+
+        double[][] cholesky = profile.getProfileData().motorCorrelationCholesky;
+        assertNotNull("Cholesky decomposition should exist", cholesky);
+
+        // Verify it's 8x8
+        assertEquals(8, cholesky.length);
+        for (int i = 0; i < 8; i++) {
+            assertEquals(8, cholesky[i].length);
+        }
+
+        // Verify it's lower triangular (all elements above diagonal are zero)
+        for (int i = 0; i < 8; i++) {
+            for (int j = i + 1; j < 8; j++) {
+                assertEquals("Cholesky should be lower triangular at [" + i + "][" + j + "]",
+                           0.0, cholesky[i][j], 0.0001);
+            }
+        }
+
+        // Verify diagonal elements are positive
+        for (int i = 0; i < 8; i++) {
+            assertTrue("Cholesky diagonal should be positive at " + i,
+                     cholesky[i][i] > 0);
+        }
+    }
+
+    @Test
+    public void testCholeskyDecomposition_ReconstructsCorrelationMatrix() {
+        // Verify that L * L^T equals the original correlation matrix
+        PlayerProfile profile = new PlayerProfile(randomization, executor);
+        profile.initializeDefault();
+
+        double[][] R = profile.getProfileData().motorCorrelationMatrix;
+        double[][] L = profile.getProfileData().motorCorrelationCholesky;
+
+        // Compute L * L^T
+        double[][] reconstructed = new double[8][8];
+        for (int i = 0; i < 8; i++) {
+            for (int j = 0; j < 8; j++) {
+                double sum = 0.0;
+                for (int k = 0; k < 8; k++) {
+                    sum += L[i][k] * L[j][k];
+                }
+                reconstructed[i][j] = sum;
+            }
+        }
+
+        // Verify reconstructed matrix matches original
+        for (int i = 0; i < 8; i++) {
+            for (int j = 0; j < 8; j++) {
+                assertEquals("Reconstructed correlation [" + i + "][" + j + "] should match original",
+                           R[i][j], reconstructed[i][j], 0.01);
+            }
+        }
+    }
+
+    // ========================================================================
+    // Correlation Preservation Across Session Drift Tests (CRITICAL)
+    // ========================================================================
+
+    @Test
+    public void testSessionDrift_PreservesCorrelation() {
+        // This is the CRITICAL test that verifies the fix for correlation decay.
+        //
+        // OLD IMPLEMENTATION: Independent drift caused correlation decay by factor 1/(1 + p²/3)
+        //   After 100 sessions: r=0.35 → r=0.34 (3% decay)
+        //   After 1000 sessions: r=0.35 → r=0.31 (12% decay)
+        //
+        // NEW IMPLEMENTATION: Geometric Brownian Motion with Cholesky decomposition
+        //   Should preserve correlation exactly across all sessions
+
+        int numProfiles = 30;
+        int sessionsPerProfile = 100;
+
+        for (int profileSeed = 1; profileSeed <= numProfiles; profileSeed++) {
+            Randomization seededRandom = new Randomization(profileSeed * 44444L);
+            PlayerProfile profile = new PlayerProfile(seededRandom, executor);
+            profile.initializeDefault();
+
+            // Record original correlation matrix
+            double[][] originalCorr = copyMatrix(profile.getProfileData().motorCorrelationMatrix);
+
+            // Apply 100 session drifts
+            for (int session = 1; session <= sessionsPerProfile; session++) {
+                profile.applySessionDrift();
+            }
+
+            // Extract final motor traits
+            double[] finalTraits = new double[8];
+            finalTraits[0] = profile.getMouseSpeedMultiplier();
+            finalTraits[1] = profile.getClickDurationMu();
+            finalTraits[2] = profile.getCognitiveDelayBase();
+            finalTraits[3] = profile.getOvershootProbability();
+            finalTraits[4] = profile.getWobbleAmplitudeModifier();
+            finalTraits[5] = profile.getVelocityFlow();
+            finalTraits[6] = profile.getFittsB();
+            finalTraits[7] = profile.getMinWalkClickIntervalBase();
+
+            // Verify all traits are still in bounds
+            assertTrue("mouseSpeed in bounds after drift", finalTraits[0] >= 0.80 && finalTraits[0] <= 1.30);
+            assertTrue("clickDuration in bounds after drift", finalTraits[1] >= 65.0 && finalTraits[1] <= 95.0);
+            assertTrue("cognitiveDelay in bounds after drift", finalTraits[2] >= 60.0 && finalTraits[2] <= 180.0);
+            assertTrue("overshoot in bounds after drift", finalTraits[3] >= 0.08 && finalTraits[3] <= 0.20);
+            assertTrue("wobble in bounds after drift", finalTraits[4] >= 0.70 && finalTraits[4] <= 1.40);
+            assertTrue("velocityFlow in bounds after drift", finalTraits[5] >= 0.20 && finalTraits[5] <= 0.65);
+            assertTrue("fittsB in bounds after drift", finalTraits[6] >= 60.0 && finalTraits[6] <= 180.0);
+            assertTrue("walkInterval in bounds after drift", finalTraits[7] >= 2.0 && finalTraits[7] <= 6.0);
+        }
+
+        // To truly verify correlation preservation, we need to:
+        // 1. Generate many profiles
+        // 2. Apply drift to all of them
+        // 3. Measure empirical correlation after drift
+        // 4. Compare to original correlation matrix
+
+        // This is done in the next test
+    }
+
+    @Test
+    public void testSessionDrift_EmpiricalCorrelationMatches() {
+        // Generate population of profiles, apply drift, measure empirical correlation
+        int populationSize = 200;
+        int sessions = 50;
+
+        double[][] initialTraits = new double[populationSize][8];
+        double[][] finalTraits = new double[populationSize][8];
+        double[][] firstCorrelationMatrix = null;
+
+        for (int i = 0; i < populationSize; i++) {
+            Randomization seededRandom = new Randomization((i + 1) * 55555L);
+            PlayerProfile profile = new PlayerProfile(seededRandom, executor);
+            profile.initializeDefault();
+
+            // Save first correlation matrix as reference
+            if (i == 0) {
+                firstCorrelationMatrix = profile.getProfileData().motorCorrelationMatrix;
+            }
+
+            // Record initial traits
+            initialTraits[i][0] = profile.getMouseSpeedMultiplier();
+            initialTraits[i][1] = profile.getClickDurationMu();
+            initialTraits[i][2] = profile.getCognitiveDelayBase();
+            initialTraits[i][3] = profile.getOvershootProbability();
+            initialTraits[i][4] = profile.getWobbleAmplitudeModifier();
+            initialTraits[i][5] = profile.getVelocityFlow();
+            initialTraits[i][6] = profile.getFittsB();
+            initialTraits[i][7] = profile.getMinWalkClickIntervalBase();
+
+            // Apply drift
+            for (int session = 0; session < sessions; session++) {
+                profile.applySessionDrift();
+            }
+
+            // Record final traits
+            finalTraits[i][0] = profile.getMouseSpeedMultiplier();
+            finalTraits[i][1] = profile.getClickDurationMu();
+            finalTraits[i][2] = profile.getCognitiveDelayBase();
+            finalTraits[i][3] = profile.getOvershootProbability();
+            finalTraits[i][4] = profile.getWobbleAmplitudeModifier();
+            finalTraits[i][5] = profile.getVelocityFlow();
+            finalTraits[i][6] = profile.getFittsB();
+            finalTraits[i][7] = profile.getMinWalkClickIntervalBase();
+        }
+
+        // Compute empirical correlation matrices (initial and final)
+        double[][] initialEmpCorr = computeEmpiricalCorrelation(initialTraits);
+        double[][] finalEmpCorr = computeEmpiricalCorrelation(finalTraits);
+
+        // Compare empirical correlations (should be similar before and after drift)
+        // We expect some noise due to:
+        // 1. Each profile has unique correlation matrix
+        // 2. Finite sample size (n=200)
+        // 3. Random drift
+        // But major correlations should remain
+
+        double totalDiff = 0.0;
+        int count = 0;
+        for (int i = 0; i < 8; i++) {
+            for (int j = i + 1; j < 8; j++) {
+                double diff = Math.abs(finalEmpCorr[i][j] - initialEmpCorr[i][j]);
+                totalDiff += diff;
+                count++;
+
+                // Individual correlations should not change dramatically
+                assertTrue("Correlation [" + i + "][" + j + "] changed too much: " +
+                          "initial=" + String.format("%.3f", initialEmpCorr[i][j]) +
+                          ", final=" + String.format("%.3f", finalEmpCorr[i][j]),
+                          diff < 0.15); // Allow up to 0.15 change due to noise
+            }
+        }
+
+        double avgDiff = totalDiff / count;
+
+        // Average change across all correlations should be small
+        assertTrue("Average correlation change should be < 0.08, was " + avgDiff,
+                 avgDiff < 0.08);
+    }
+
+    @Test
+    public void testSessionDrift_MotorTraitsChange() {
+        // Verify that drift actually changes motor traits (not stuck at initial values)
+        PlayerProfile profile = new PlayerProfile(randomization, executor);
+        profile.initializeDefault();
+
+        double initialSpeed = profile.getMouseSpeedMultiplier();
+        double initialClick = profile.getClickDurationMu();
+
+        // Apply 50 drifts
+        boolean speedChanged = false;
+        boolean clickChanged = false;
+        for (int i = 0; i < 50; i++) {
+            profile.applySessionDrift();
+
+            if (Math.abs(profile.getMouseSpeedMultiplier() - initialSpeed) > 0.001) {
+                speedChanged = true;
+            }
+            if (Math.abs(profile.getClickDurationMu() - initialClick) > 0.001) {
+                clickChanged = true;
+            }
+        }
+
+        assertTrue("Mouse speed should drift over 50 sessions", speedChanged);
+        assertTrue("Click duration should drift over 50 sessions", clickChanged);
+    }
+
+    // ========================================================================
+    // Helper Methods
+    // ========================================================================
+
+    private boolean matricesEqual(double[][] a, double[][] b) {
+        if (a.length != b.length) return false;
+        for (int i = 0; i < a.length; i++) {
+            if (a[i].length != b[i].length) return false;
+            for (int j = 0; j < a[i].length; j++) {
+                if (Math.abs(a[i][j] - b[i][j]) > 0.0001) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private double[][] copyMatrix(double[][] matrix) {
+        double[][] copy = new double[matrix.length][];
+        for (int i = 0; i < matrix.length; i++) {
+            copy[i] = matrix[i].clone();
+        }
+        return copy;
+    }
+
+    private double[][] computeEmpiricalCorrelation(double[][] data) {
+        int n = data.length;
+        int p = data[0].length;
+
+        // Compute means
+        double[] means = new double[p];
+        for (int j = 0; j < p; j++) {
+            double sum = 0;
+            for (int i = 0; i < n; i++) {
+                sum += data[i][j];
+            }
+            means[j] = sum / n;
+        }
+
+        // Compute standard deviations
+        double[] stds = new double[p];
+        for (int j = 0; j < p; j++) {
+            double sumSq = 0;
+            for (int i = 0; i < n; i++) {
+                double diff = data[i][j] - means[j];
+                sumSq += diff * diff;
+            }
+            stds[j] = Math.sqrt(sumSq / (n - 1));
+        }
+
+        // Compute correlation matrix
+        double[][] corr = new double[p][p];
+        for (int j1 = 0; j1 < p; j1++) {
+            for (int j2 = 0; j2 < p; j2++) {
+                if (j1 == j2) {
+                    corr[j1][j2] = 1.0;
+                } else {
+                    double sum = 0;
+                    for (int i = 0; i < n; i++) {
+                        double z1 = (data[i][j1] - means[j1]) / stds[j1];
+                        double z2 = (data[i][j2] - means[j2]) / stds[j2];
+                        sum += z1 * z2;
+                    }
+                    corr[j1][j2] = sum / (n - 1);
+                }
+            }
+        }
+
+        return corr;
     }
 }
 

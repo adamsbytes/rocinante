@@ -4,6 +4,7 @@ import com.rocinante.tasks.Task;
 import com.rocinante.tasks.TaskContext;
 import com.rocinante.tasks.TaskExecutor;
 import com.rocinante.tasks.TaskPriority;
+import com.rocinante.timing.HumanTimer;
 import net.runelite.api.Client;
 import net.runelite.api.NPC;
 import net.runelite.api.Player;
@@ -32,6 +33,9 @@ public class RandomEventHandlerTest {
 
     @Mock
     private TaskContext taskContext;
+
+    @Mock
+    private HumanTimer humanTimer;
 
     @Mock
     private NPC npc;
@@ -63,7 +67,7 @@ public class RandomEventHandlerTest {
     public void dismissesNonGenieRandomEvent() {
         when(npc.getId()).thenReturn(NpcID.MACRO_BEEKEEPER_INVITATION);
 
-        RandomEventHandler handler = new RandomEventHandler(client, taskExecutor, taskContext);
+        RandomEventHandler handler = new RandomEventHandler(client, taskExecutor, taskContext, humanTimer);
 
         handler.onInteractingChanged(new InteractingChanged(npc, player));
 
@@ -76,7 +80,7 @@ public class RandomEventHandlerTest {
     public void queuesGenieSequence() {
         when(npc.getId()).thenReturn(NpcID.MACRO_GENI);
 
-        RandomEventHandler handler = new RandomEventHandler(client, taskExecutor, taskContext);
+        RandomEventHandler handler = new RandomEventHandler(client, taskExecutor, taskContext, humanTimer);
 
         handler.onInteractingChanged(new InteractingChanged(npc, player));
 
